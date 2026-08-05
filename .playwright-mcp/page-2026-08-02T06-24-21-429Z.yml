@@ -1,0 +1,183 @@
+- generic [ref=f12e2]:
+  - generic [ref=f12e4]:
+    - generic [ref=f12e5]: Internal Server Error
+    - button "Copy as Markdown" [ref=f12e11] [cursor=pointer]
+  - generic [ref=f12e18]:
+    - generic [ref=f12e19]:
+      - heading "Illuminate\\Database\\Eloquent\\RelationNotFoundException" [level=1] [ref=f12e20]
+      - generic [ref=f12e21]: vendor\laravel\framework\src\Illuminate\Database\Eloquent\RelationNotFoundException.php:35
+      - paragraph [ref=f12e23]: Call to undefined relationship [catalogProducts] on model [App\Models\ProductGroup].
+    - generic [ref=f12e24]:
+      - generic [ref=f12e25]:
+        - generic [ref=f12e26]:
+          - generic [ref=f12e27]: LARAVEL
+          - generic [ref=f12e28]: 13.23.0
+        - generic [ref=f12e29]:
+          - generic [ref=f12e30]: PHP
+          - generic [ref=f12e31]: 8.4.16
+      - generic [ref=f12e32]: UNHANDLED
+      - generic [ref=f12e36]: CODE 0
+    - generic [ref=f12e38]:
+      - generic [ref=f12e39]: "500"
+      - generic [ref=f12e43]: GET
+      - generic [ref=f12e47]: http://127.0.0.1:8000/admin/cart
+      - button [ref=f12e48] [cursor=pointer]
+  - generic [ref=f12e53]:
+    - generic [ref=f12e54]:
+      - heading "Exception trace" [level=3] [ref=f12e60]
+      - generic [ref=f12e61]:
+        - generic [ref=f12e63] [cursor=pointer]:
+          - generic [ref=f12e68]: 7 vendor frames
+          - button [ref=f12e69]
+        - generic [ref=f12e74]:
+          - generic [ref=f12e75] [cursor=pointer]:
+            - generic [ref=f12e78]:
+              - code [ref=f12e82]:
+                - generic [ref=f12e83]: Illuminate\Database\Eloquent\Builder->get()
+              - generic [ref=f12e84]: app\Http\Controllers\Admin\CartController.php:17
+            - button [ref=f12e87]
+          - code [ref=f12e96]:
+            - generic [ref=f12e97]: "12{"
+            - generic [ref=f12e98]: "13 public function index(Request $request): View"
+            - generic [ref=f12e99]: "14 {"
+            - generic [ref=f12e100]: 15 $groups = ProductGroup::with(['catalogProducts' => fn($q) => $q->where('status', 'active')->where('show_in_order', true)])
+            - generic [ref=f12e101]: 16 ->orderBy('sort_order')
+            - generic [ref=f12e102]: 17 ->get();
+            - generic [ref=f12e103]: 18 $categories = $groups->filter(fn($g) => $g->catalogProducts->isNotEmpty());
+            - generic [ref=f12e104]: 19 return view('admin.cart.index', compact('categories'));
+            - generic [ref=f12e105]: "20 }"
+            - generic [ref=f12e106]: "21"
+            - generic [ref=f12e107]: "22 public function domainSearch(Request $request): View"
+            - generic [ref=f12e108]: "23 {"
+            - generic [ref=f12e109]: 24 $domain = $request->query('domain', '');
+            - generic [ref=f12e110]: 25 $results = [];
+            - generic [ref=f12e111]: "26 if ($domain) {"
+            - generic [ref=f12e112]: "27 // Stub: check domain availability via registrar service"
+            - generic [ref=f12e113]: 28 $extensions = ['.com', '.net', '.org', '.in', '.co'];
+            - generic [ref=f12e114]: "29"
+        - generic [ref=f12e116] [cursor=pointer]:
+          - generic [ref=f12e121]: 5 vendor frames
+          - button [ref=f12e122]
+        - generic [ref=f12e128] [cursor=pointer]:
+          - generic [ref=f12e131]:
+            - code [ref=f12e135]:
+              - generic [ref=f12e136]: "Illuminate\\Pipeline\\Pipeline->{closure:Illuminate\\Pipeline\\Pipeline::prepareDestination():178}(object(Illuminate\\Http\\Request))"
+            - generic [ref=f12e137]: app\Http\Middleware\PermissionMiddleware.php:22
+          - button [ref=f12e140]
+        - generic [ref=f12e146] [cursor=pointer]:
+          - generic [ref=f12e151]: 1 vendor frame
+          - button [ref=f12e152]
+        - generic [ref=f12e158] [cursor=pointer]:
+          - generic [ref=f12e161]:
+            - code [ref=f12e165]:
+              - generic [ref=f12e166]: "Illuminate\\Pipeline\\Pipeline->{closure:{closure:Illuminate\\Pipeline\\Pipeline::carry():194}:195}(object(Illuminate\\Http\\Request))"
+            - generic [ref=f12e167]: app\Http\Middleware\AdminMiddleware.php:34
+          - button [ref=f12e170]
+        - generic [ref=f12e176] [cursor=pointer]:
+          - generic [ref=f12e181]: 45 vendor frames
+          - button [ref=f12e182]
+        - generic [ref=f12e188] [cursor=pointer]:
+          - generic [ref=f12e191]:
+            - code [ref=f12e195]:
+              - generic [ref=f12e196]: Illuminate\Foundation\Application->handleRequest(object(Illuminate\Http\Request))
+            - generic [ref=f12e197]: public\index.php:20
+          - button [ref=f12e200]
+        - generic [ref=f12e206] [cursor=pointer]:
+          - generic [ref=f12e211]: 1 vendor frame
+          - button [ref=f12e212]
+    - generic [ref=f12e217]:
+      - generic [ref=f12e218]:
+        - heading "Queries" [level=3] [ref=f12e223]
+        - generic [ref=f12e224]: 1-4 of 4
+      - generic [ref=f12e226]:
+        - generic [ref=f12e227]:
+          - generic [ref=f12e228]:
+            - generic [ref=f12e229]: mysql
+            - code [ref=f12e236]:
+              - generic [ref=f12e237]: "select * from `sessions` where `id` = '410rrpRax4tS6uemV0rgSbVUo0geXNSHQvYVAovt' limit 1"
+          - generic [ref=f12e238]: 12.43ms
+        - generic [ref=f12e239]:
+          - generic [ref=f12e240]:
+            - generic [ref=f12e241]: mysql
+            - code [ref=f12e248]:
+              - generic [ref=f12e249]: "select * from `users` where `id` = 1 limit 1"
+          - generic [ref=f12e250]: 1.32ms
+        - generic [ref=f12e251]:
+          - generic [ref=f12e252]:
+            - generic [ref=f12e253]: mysql
+            - code [ref=f12e260]:
+              - generic [ref=f12e261]: "select exists(select * from `adminlte_roles` inner join `adminlte_role_user` on `adminlte_roles`.`id` = `adminlte_role_user`.`role_id` where `adminlte_role_user`.`user_id` = 1 and exists (select * from `adminlte_permissions` inner join `adminlte_permission_role` on `adminlte_permissions`.`id` = `adminlte_permission_role`.`permission_id` where `adminlte_roles`.`id` = `adminlte_permission_role`.`role_id` and `name` = 'orders.view')) as `exists`"
+          - generic [ref=f12e262]: 2.12ms
+        - generic [ref=f12e263]:
+          - generic [ref=f12e264]:
+            - generic [ref=f12e265]: mysql
+            - code [ref=f12e272]:
+              - generic [ref=f12e273]: "select * from `product_groups` order by `sort_order` asc"
+          - generic [ref=f12e274]: 6.31ms
+  - generic [ref=f12e276]:
+    - generic [ref=f12e277]:
+      - heading "Headers" [level=2] [ref=f12e278]
+      - generic [ref=f12e279]:
+        - generic [ref=f12e280]:
+          - generic [ref=f12e281]: host
+          - generic [ref=f12e283]: 127.0.0.1:8000
+        - generic [ref=f12e284]:
+          - generic [ref=f12e285]: connection
+          - generic [ref=f12e287]: keep-alive
+        - generic [ref=f12e288]:
+          - generic [ref=f12e289]: sec-ch-ua
+          - generic [ref=f12e291]: "\"Not=A?Brand\";v=\"99\", \"Google Chrome\";v=\"151\", \"Chromium\";v=\"151\""
+        - generic [ref=f12e292]:
+          - generic [ref=f12e293]: sec-ch-ua-mobile
+          - generic [ref=f12e295]: "?0"
+        - generic [ref=f12e296]:
+          - generic [ref=f12e297]: sec-ch-ua-platform
+          - generic [ref=f12e299]: "\"Windows\""
+        - generic [ref=f12e300]:
+          - generic [ref=f12e301]: upgrade-insecure-requests
+          - generic [ref=f12e303]: "1"
+        - generic [ref=f12e304]:
+          - generic [ref=f12e305]: user-agent
+          - generic [ref=f12e307]: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36
+        - generic [ref=f12e308]:
+          - generic [ref=f12e309]: accept
+          - generic [ref=f12e311]: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7
+        - generic [ref=f12e312]:
+          - generic [ref=f12e313]: sec-fetch-site
+          - generic [ref=f12e315]: none
+        - generic [ref=f12e316]:
+          - generic [ref=f12e317]: sec-fetch-mode
+          - generic [ref=f12e319]: navigate
+        - generic [ref=f12e320]:
+          - generic [ref=f12e321]: sec-fetch-user
+          - generic [ref=f12e323]: "?1"
+        - generic [ref=f12e324]:
+          - generic [ref=f12e325]: sec-fetch-dest
+          - generic [ref=f12e327]: document
+        - generic [ref=f12e328]:
+          - generic [ref=f12e329]: accept-encoding
+          - generic [ref=f12e331]: gzip, deflate, br, zstd
+        - generic [ref=f12e332]:
+          - generic [ref=f12e333]: accept-language
+          - generic [ref=f12e335]: en-US,en;q=0.9
+        - generic [ref=f12e336]:
+          - generic [ref=f12e337]: cookie
+          - generic [ref=f12e339]: XSRF-TOKEN=eyJpdiI6IjhxK05RWC9ZVnZMRnZxblkyUGZUSEE9PSIsInZhbHVlIjoibE12eDRGN3I1ZHlUMk9oN2grOGc3Z1hFRWRaRTRLZWtZdnozZ3JrOHJNK1BXTVdDYVk4ci9kZ3dPUGUrenhSMzhNdEdxZ1hac1NYbm9qcSt2WXN6NEtLVUhtYkxVUTFSWmtXblZTY2QwRTNOSkpWVll4L0xPc2R4MjZ3Wng2RVAiLCJtYWMiOiIzNGQ3YTAzMDkxNGUxYzAzZmM2Yjc0OTk5Yzg0OWJhZDM2MGYwYmMwNDU2YTliOWQ3Mjc3NWY1MDE0NWRlODY4IiwidGFnIjoiIn0%3D; laravel-session=eyJpdiI6IjM5bll0Wkl6ZkltcFU5WFhsVE5ZckE9PSIsInZhbHVlIjoiTEgxYllGbjBHeCtWTHp0SUE3SUQ5bUVZNHNOOWYxcFZpYmtYS2MvMnZ6K0hJVW9vT0U4em4wbC9FZE1ScW9yVGVPUTRYOG9mdXV6aWFHM1kzSnhoNDNYOHFTaFNyL1AzTm5Gb1N5Zkl1TEdJTC9qYTFKSXdha3o3UG8xRklLMW0iLCJtYWMiOiIwYmUwOWNjOTEzMmU2MzhhNzhkNWYyN2ZhMjQ0NGMzM2U5NGFkNjgxNjcxYmE2MzY2YTE1Nzc2YmY1MDNjMjRhIiwidGFnIjoiIn0%3D
+    - generic [ref=f12e340]:
+      - heading "Body" [level=2] [ref=f12e341]
+      - generic [ref=f12e342]: // No request body
+    - generic [ref=f12e343]:
+      - heading "Routing" [level=2] [ref=f12e344]
+      - generic [ref=f12e345]:
+        - generic [ref=f12e346]:
+          - generic [ref=f12e347]: controller
+          - generic [ref=f12e349]: App\Http\Controllers\Admin\CartController@index
+        - generic [ref=f12e350]:
+          - generic [ref=f12e351]: route name
+          - generic [ref=f12e353]: admin.cart.index
+        - generic [ref=f12e354]:
+          - generic [ref=f12e355]: middleware
+          - generic [ref=f12e357]: web, auth, admin, permission:orders.view
+    - generic [ref=f12e358]:
+      - heading "Routing parameters" [level=2] [ref=f12e359]
+      - generic [ref=f12e360]: // No routing parameters

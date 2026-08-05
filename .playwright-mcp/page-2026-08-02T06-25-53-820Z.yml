@@ -1,0 +1,193 @@
+- generic [ref=f16e2]:
+  - generic [ref=f16e4]:
+    - generic [ref=f16e5]: Internal Server Error
+    - button "Copy as Markdown" [ref=f16e11] [cursor=pointer]
+  - generic [ref=f16e18]:
+    - generic [ref=f16e19]:
+      - heading "Illuminate\\Database\\QueryException" [level=1] [ref=f16e20]
+      - generic [ref=f16e21]: vendor\laravel\framework\src\Illuminate\Database\Connection.php:857
+      - paragraph [ref=f16e23]: "SQLSTATE[42S22]: Column not found: 1054 Unknown column 'email' in 'where clause' (Connection: mysql, Host: 127.0.0.1, Port: 10006, Database: hosting_crm, SQL: select * from `customers` where `email` like %Primary% or `first_name` like %Primary% or `last_name` like %Primary% limit 5)"
+    - generic [ref=f16e24]:
+      - generic [ref=f16e25]:
+        - generic [ref=f16e26]:
+          - generic [ref=f16e27]: LARAVEL
+          - generic [ref=f16e28]: 13.23.0
+        - generic [ref=f16e29]:
+          - generic [ref=f16e30]: PHP
+          - generic [ref=f16e31]: 8.4.16
+      - generic [ref=f16e32]: UNHANDLED
+      - generic [ref=f16e36]: CODE 42S22
+    - generic [ref=f16e38]:
+      - generic [ref=f16e39]: "500"
+      - generic [ref=f16e43]: GET
+      - generic [ref=f16e47]: http://127.0.0.1:8000/admin/search?q=Primary
+      - button [ref=f16e48] [cursor=pointer]
+  - generic [ref=f16e53]:
+    - generic [ref=f16e54]:
+      - generic [ref=f16e55]:
+        - heading "Exception trace" [level=3] [ref=f16e60]
+        - link "1 previous exception" [ref=f16e61] [cursor=pointer]:
+          - /url: "#previous-exceptions"
+      - generic [ref=f16e62]:
+        - generic [ref=f16e64] [cursor=pointer]:
+          - generic [ref=f16e69]: 7 vendor frames
+          - button [ref=f16e70]
+        - generic [ref=f16e75]:
+          - generic [ref=f16e76] [cursor=pointer]:
+            - generic [ref=f16e79]:
+              - code [ref=f16e83]:
+                - generic [ref=f16e84]: Illuminate\Database\Eloquent\Builder->get()
+              - generic [ref=f16e85]: app\Http\Controllers\Admin\SearchController.php:24
+            - button [ref=f16e88]
+          - code [ref=f16e97]:
+            - generic [ref=f16e98]: 19 $results = [];
+            - generic [ref=f16e99]: "20 if (strlen($q) >= 2) {"
+            - generic [ref=f16e100]: "21 $results['customers'] = Customer::where('email', 'like', \"%{$q}%\")"
+            - generic [ref=f16e101]: "22 ->orWhere('first_name', 'like', \"%{$q}%\")"
+            - generic [ref=f16e102]: "23 ->orWhere('last_name', 'like', \"%{$q}%\")"
+            - generic [ref=f16e103]: 24 ->limit(5)->get();
+            - generic [ref=f16e104]: "25 $results['services'] = ServiceInstance::where('username', 'like', \"%{$q}%\")"
+            - generic [ref=f16e105]: "26 ->orWhere('domain', 'like', \"%{$q}%\")"
+            - generic [ref=f16e106]: 27 ->limit(5)->get();
+            - generic [ref=f16e107]: "28 $results['invoices'] = Invoice::where('invoice_number', 'like', \"%{$q}%\")"
+            - generic [ref=f16e108]: 29 ->limit(5)->get();
+            - generic [ref=f16e109]: "30 $results['tickets'] = Ticket::where('subject', 'like', \"%{$q}%\")"
+            - generic [ref=f16e110]: "31 ->orWhere('ticket_number', 'like', \"%{$q}%\")"
+            - generic [ref=f16e111]: 32 ->limit(5)->get();
+            - generic [ref=f16e112]: "33 $results['products'] = CatalogProduct::where('name', 'like', \"%{$q}%\")"
+            - generic [ref=f16e113]: "34 ->orWhere('sku', 'like', \"%{$q}%\")"
+            - generic [ref=f16e114]: 35 ->limit(5)->get();
+            - generic [ref=f16e115]: "36"
+        - generic [ref=f16e117] [cursor=pointer]:
+          - generic [ref=f16e122]: 5 vendor frames
+          - button [ref=f16e123]
+        - generic [ref=f16e129] [cursor=pointer]:
+          - generic [ref=f16e132]:
+            - code [ref=f16e136]:
+              - generic [ref=f16e137]: "Illuminate\\Pipeline\\Pipeline->{closure:Illuminate\\Pipeline\\Pipeline::prepareDestination():178}(object(Illuminate\\Http\\Request))"
+            - generic [ref=f16e138]: app\Http\Middleware\PermissionMiddleware.php:22
+          - button [ref=f16e141]
+        - generic [ref=f16e147] [cursor=pointer]:
+          - generic [ref=f16e152]: 1 vendor frame
+          - button [ref=f16e153]
+        - generic [ref=f16e159] [cursor=pointer]:
+          - generic [ref=f16e162]:
+            - code [ref=f16e166]:
+              - generic [ref=f16e167]: "Illuminate\\Pipeline\\Pipeline->{closure:{closure:Illuminate\\Pipeline\\Pipeline::carry():194}:195}(object(Illuminate\\Http\\Request))"
+            - generic [ref=f16e168]: app\Http\Middleware\AdminMiddleware.php:34
+          - button [ref=f16e171]
+        - generic [ref=f16e177] [cursor=pointer]:
+          - generic [ref=f16e182]: 45 vendor frames
+          - button [ref=f16e183]
+        - generic [ref=f16e189] [cursor=pointer]:
+          - generic [ref=f16e192]:
+            - code [ref=f16e196]:
+              - generic [ref=f16e197]: Illuminate\Foundation\Application->handleRequest(object(Illuminate\Http\Request))
+            - generic [ref=f16e198]: public\index.php:20
+          - button [ref=f16e201]
+        - generic [ref=f16e207] [cursor=pointer]:
+          - generic [ref=f16e212]: 1 vendor frame
+          - button [ref=f16e213]
+    - generic [ref=f16e218]:
+      - heading "Previous exception" [level=3] [ref=f16e224]
+      - generic [ref=f16e228] [cursor=pointer]:
+        - generic [ref=f16e229]:
+          - heading "PDOException" [level=4] [ref=f16e230]
+          - paragraph [ref=f16e231]: "SQLSTATE[42S22]: Column not found: 1054 Unknown column 'email' in 'where clause'"
+        - button [ref=f16e232]
+    - generic [ref=f16e237]:
+      - generic [ref=f16e238]:
+        - heading "Queries" [level=3] [ref=f16e243]
+        - generic [ref=f16e244]: 1-3 of 3
+      - generic [ref=f16e246]:
+        - generic [ref=f16e247]:
+          - generic [ref=f16e248]:
+            - generic [ref=f16e249]: mysql
+            - code [ref=f16e256]:
+              - generic [ref=f16e257]: "select * from `sessions` where `id` = '410rrpRax4tS6uemV0rgSbVUo0geXNSHQvYVAovt' limit 1"
+          - generic [ref=f16e258]: 12.5ms
+        - generic [ref=f16e259]:
+          - generic [ref=f16e260]:
+            - generic [ref=f16e261]: mysql
+            - code [ref=f16e268]:
+              - generic [ref=f16e269]: "select * from `users` where `id` = 1 limit 1"
+          - generic [ref=f16e270]: 0.67ms
+        - generic [ref=f16e271]:
+          - generic [ref=f16e272]:
+            - generic [ref=f16e273]: mysql
+            - code [ref=f16e280]:
+              - generic [ref=f16e281]: "select exists(select * from `adminlte_roles` inner join `adminlte_role_user` on `adminlte_roles`.`id` = `adminlte_role_user`.`role_id` where `adminlte_role_user`.`user_id` = 1 and exists (select * from `adminlte_permissions` inner join `adminlte_permission_role` on `adminlte_permissions`.`id` = `adminlte_permission_role`.`permission_id` where `adminlte_roles`.`id` = `adminlte_permission_role`.`role_id` and `name` = 'dashboard.view')) as `exists`"
+          - generic [ref=f16e282]: 0.95ms
+  - generic [ref=f16e284]:
+    - generic [ref=f16e285]:
+      - heading "Headers" [level=2] [ref=f16e286]
+      - generic [ref=f16e287]:
+        - generic [ref=f16e288]:
+          - generic [ref=f16e289]: host
+          - generic [ref=f16e291]: 127.0.0.1:8000
+        - generic [ref=f16e292]:
+          - generic [ref=f16e293]: connection
+          - generic [ref=f16e295]: keep-alive
+        - generic [ref=f16e296]:
+          - generic [ref=f16e297]: sec-ch-ua
+          - generic [ref=f16e299]: "\"Not=A?Brand\";v=\"99\", \"Google Chrome\";v=\"151\", \"Chromium\";v=\"151\""
+        - generic [ref=f16e300]:
+          - generic [ref=f16e301]: sec-ch-ua-mobile
+          - generic [ref=f16e303]: "?0"
+        - generic [ref=f16e304]:
+          - generic [ref=f16e305]: sec-ch-ua-platform
+          - generic [ref=f16e307]: "\"Windows\""
+        - generic [ref=f16e308]:
+          - generic [ref=f16e309]: upgrade-insecure-requests
+          - generic [ref=f16e311]: "1"
+        - generic [ref=f16e312]:
+          - generic [ref=f16e313]: user-agent
+          - generic [ref=f16e315]: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36
+        - generic [ref=f16e316]:
+          - generic [ref=f16e317]: accept
+          - generic [ref=f16e319]: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7
+        - generic [ref=f16e320]:
+          - generic [ref=f16e321]: sec-fetch-site
+          - generic [ref=f16e323]: same-origin
+        - generic [ref=f16e324]:
+          - generic [ref=f16e325]: sec-fetch-mode
+          - generic [ref=f16e327]: navigate
+        - generic [ref=f16e328]:
+          - generic [ref=f16e329]: sec-fetch-user
+          - generic [ref=f16e331]: "?1"
+        - generic [ref=f16e332]:
+          - generic [ref=f16e333]: sec-fetch-dest
+          - generic [ref=f16e335]: document
+        - generic [ref=f16e336]:
+          - generic [ref=f16e337]: referer
+          - generic [ref=f16e339]: http://127.0.0.1:8000/admin/search
+        - generic [ref=f16e340]:
+          - generic [ref=f16e341]: accept-encoding
+          - generic [ref=f16e343]: gzip, deflate, br, zstd
+        - generic [ref=f16e344]:
+          - generic [ref=f16e345]: accept-language
+          - generic [ref=f16e347]: en-US,en;q=0.9
+        - generic [ref=f16e348]:
+          - generic [ref=f16e349]: cookie
+          - generic [ref=f16e351]: XSRF-TOKEN=eyJpdiI6IlF6ZllqeGQvOEQxTUF4OGZ6OHpLMHc9PSIsInZhbHVlIjoiNEpNRktlMkFiNmU0OU9ia2poT2ZBSmtwZ01HejNzT0xCZHdqbExwNHJya1JTTFFjeUpFZ1RzS0hBb3ZxVFVIcEVnNWxqSGVDQmQxSW82K0JQU1BrdDhHRkVXem5yWVU4NThIVWdwS2hrbmtWYXZ3WUJodzI2L21IYUNzSktoUWwiLCJtYWMiOiJlODhlZGYwNDk2YjJlMmY2MzI3OTM4OTFhNDgxNjk4MGEyZjY0MWMzZDI3OGRjOTg0YWM1NmQ4YzNjYzFkYzM4IiwidGFnIjoiIn0%3D; laravel-session=eyJpdiI6IkdTOHp3MFUyaEU0YVVxOEVQSU53Y3c9PSIsInZhbHVlIjoiU0lQbzZyN2xSRkFoL01yajB4N1V3dWZ0MGRCNnlrR0h1NitVWEMxdWVPVmp3ZnRDcXE5M24xc0psbExlRE0yTDJMK283ZWVlTWU4NXNVcjAyZG1aN2M3SzZMSXNLZFJMWE1XSTlqRVJEV0lRTWtHU1JaQlkwSFBRcFB3YVRNbE0iLCJtYWMiOiJjNTA0NTU3M2I0NzFlYjFmMDA3YTY0NjdhNmIwODAwOThiMzI1ZWNjMzQ3MjcxMzJlMWRlYWU3NzkwYzk1M2YyIiwidGFnIjoiIn0%3D
+    - generic [ref=f16e352]:
+      - heading "Body" [level=2] [ref=f16e353]
+      - code [ref=f16e358]:
+        - generic [ref=f16e359]: "{"
+        - generic [ref=f16e360]: "\"q\": \"Primary\""
+        - generic [ref=f16e361]: "}"
+    - generic [ref=f16e362]:
+      - heading "Routing" [level=2] [ref=f16e363]
+      - generic [ref=f16e364]:
+        - generic [ref=f16e365]:
+          - generic [ref=f16e366]: controller
+          - generic [ref=f16e368]: App\Http\Controllers\Admin\SearchController@search
+        - generic [ref=f16e369]:
+          - generic [ref=f16e370]: route name
+          - generic [ref=f16e372]: admin.search.index
+        - generic [ref=f16e373]:
+          - generic [ref=f16e374]: middleware
+          - generic [ref=f16e376]: web, auth, admin, permission:dashboard.view
+    - generic [ref=f16e377]:
+      - heading "Routing parameters" [level=2] [ref=f16e378]
+      - generic [ref=f16e379]: // No routing parameters

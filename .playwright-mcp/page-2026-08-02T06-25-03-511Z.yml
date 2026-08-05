@@ -1,0 +1,230 @@
+- generic [active] [ref=f13e1]:
+  - generic:
+    - link "Skip to main content" [ref=f13e2] [cursor=pointer]:
+      - /url: "#main"
+    - link "Skip to navigation" [ref=f13e3] [cursor=pointer]:
+      - /url: "#navigation"
+  - generic [ref=f13e4]:
+    - navigation [ref=f13e5]:
+      - generic [ref=f13e6]:
+        - list [ref=f13e7]:
+          - listitem [ref=f13e8]:
+            - button "Toggle sidebar" [ref=f13e9] [cursor=pointer]:
+              - generic [ref=f13e10]: 
+          - listitem [ref=f13e11]:
+            - link "Home" [ref=f13e12] [cursor=pointer]:
+              - /url: http://127.0.0.1:8000
+              - generic [ref=f13e13]: 
+              - text: Home
+          - listitem [ref=f13e14]:
+            - link "Documentation" [ref=f13e15] [cursor=pointer]:
+              - /url: /docs
+              - generic [ref=f13e16]: 
+              - text: Documentation
+        - list [ref=f13e17]:
+          - listitem [ref=f13e18]:
+            - button "Search" [ref=f13e19] [cursor=pointer]:
+              - generic [ref=f13e20]: 
+              - generic [ref=f13e21]: Search…
+              - generic [ref=f13e22]: ⌘K
+          - listitem [ref=f13e23]:
+            - link "3" [ref=f13e24] [cursor=pointer]:
+              - /url: "#"
+              - generic [ref=f13e25]: 
+            - text:      
+          - listitem [ref=f13e27]:
+            - link "3" [ref=f13e28] [cursor=pointer]:
+              - /url: "#"
+              - generic [ref=f13e29]: 
+            - text:   
+          - listitem [ref=f13e31]:
+            - link "Toggle fullscreen" [ref=f13e32] [cursor=pointer]:
+              - /url: "#"
+              - generic [ref=f13e33]: 
+              - text: 
+          - listitem [ref=f13e34]:
+            - link "Toggle color scheme" [ref=f13e35] [cursor=pointer]:
+              - /url: "#"
+              - generic [ref=f13e36]: 
+              - text:  
+            - text:      
+          - listitem [ref=f13e37]:
+            - link [ref=f13e38] [cursor=pointer]:
+              - /url: "#"
+              - img "System Administrator" [ref=f13e39]
+              - text: System Administrator
+    - text: 
+    - complementary [ref=f13e40]:
+      - link "AdminLTE Logo HostingCRM" [ref=f13e42] [cursor=pointer]:
+        - /url: http://127.0.0.1:8000
+        - img "AdminLTE Logo" [ref=f13e43]
+        - generic [ref=f13e44]: HostingCRM
+      - navigation "Main navigation" [ref=f13e47]:
+        - menu [ref=f13e48]:
+          - listitem [ref=f13e49]: NAVIGATION
+          - listitem [ref=f13e50]:
+            - link [ref=f13e51] [cursor=pointer]:
+              - /url: http://127.0.0.1:8000/admin/dashboard
+              - generic [ref=f13e52]: 
+              - paragraph [ref=f13e53]: Dashboard
+          - listitem [ref=f13e54]: MANAGEMENT
+          - listitem [ref=f13e55]:
+            - button [ref=f13e56] [cursor=pointer]:
+              - generic [ref=f13e57]: 
+              - paragraph [ref=f13e58]:
+                - text: Customers
+                - generic [ref=f13e59]: 
+            - text:   
+          - listitem [ref=f13e60]:
+            - button [ref=f13e61] [cursor=pointer]:
+              - generic [ref=f13e62]: 
+              - paragraph [ref=f13e63]:
+                - text: Products
+                - generic [ref=f13e64]: 
+            - text:     
+          - listitem [ref=f13e65]:
+            - button [ref=f13e66] [cursor=pointer]:
+              - generic [ref=f13e67]: 
+              - paragraph [ref=f13e68]:
+                - text: Orders
+                - generic [ref=f13e69]: 
+            - text:  
+          - listitem [ref=f13e70]:
+            - button [ref=f13e71] [cursor=pointer]:
+              - generic [ref=f13e72]: 
+              - paragraph [ref=f13e73]:
+                - text: Hosting
+                - generic [ref=f13e74]: 
+            - text:   
+          - listitem [ref=f13e75]:
+            - button [ref=f13e76] [cursor=pointer]:
+              - generic [ref=f13e77]: 
+              - paragraph [ref=f13e78]:
+                - text: Domains
+                - generic [ref=f13e79]: 
+            - text:    
+          - listitem [ref=f13e80]: BILLING
+          - listitem [ref=f13e81]:
+            - button [ref=f13e82] [cursor=pointer]:
+              - generic [ref=f13e83]: 
+              - paragraph [ref=f13e84]:
+                - text: Invoices
+                - generic [ref=f13e85]: 
+            - text:  
+          - listitem [ref=f13e86]:
+            - button [ref=f13e87] [cursor=pointer]:
+              - generic [ref=f13e88]: 
+              - paragraph [ref=f13e89]:
+                - text: Payments
+                - generic [ref=f13e90]: 
+            - text:  
+          - listitem [ref=f13e91]:
+            - link [ref=f13e92] [cursor=pointer]:
+              - /url: http://127.0.0.1:8000/admin/quotes
+              - generic [ref=f13e93]: 
+              - paragraph [ref=f13e94]: Quotes
+          - listitem [ref=f13e95]:
+            - link [ref=f13e96] [cursor=pointer]:
+              - /url: http://127.0.0.1:8000/admin/transactions
+              - generic [ref=f13e97]: 
+              - paragraph [ref=f13e98]: Transactions
+          - listitem [ref=f13e99]:
+            - link [ref=f13e100] [cursor=pointer]:
+              - /url: http://127.0.0.1:8000/admin/gst-settings
+              - generic [ref=f13e101]: 
+              - paragraph [ref=f13e102]: GST Settings
+          - listitem [ref=f13e103]: SUPPORT
+          - listitem [ref=f13e104]:
+            - link [ref=f13e105] [cursor=pointer]:
+              - /url: http://127.0.0.1:8000/admin/chat
+              - generic [ref=f13e106]: 
+              - paragraph [ref=f13e107]: Live Chat
+          - listitem [ref=f13e108]: ANALYTICS
+          - listitem [ref=f13e109]:
+            - button [ref=f13e110] [cursor=pointer]:
+              - generic [ref=f13e111]: 
+              - paragraph [ref=f13e112]:
+                - text: Reports
+                - generic [ref=f13e113]: 
+            - text:   
+          - listitem [ref=f13e114]:
+            - link [ref=f13e115] [cursor=pointer]:
+              - /url: http://127.0.0.1:8000/admin/analytics
+              - generic [ref=f13e116]: 
+              - paragraph [ref=f13e117]: Analytics
+          - listitem [ref=f13e118]: INFRASTRUCTURE
+          - listitem [ref=f13e119]:
+            - link [ref=f13e120] [cursor=pointer]:
+              - /url: http://127.0.0.1:8000/admin/datacenters
+              - generic [ref=f13e121]: 
+              - paragraph [ref=f13e122]: Datacenters
+          - listitem [ref=f13e123]:
+            - button [ref=f13e124] [cursor=pointer]:
+              - generic [ref=f13e125]: 
+              - paragraph [ref=f13e126]:
+                - text: IP Manager
+                - generic [ref=f13e127]: 
+            - text:    
+          - listitem [ref=f13e128]:
+            - link [ref=f13e129] [cursor=pointer]:
+              - /url: http://127.0.0.1:8000/admin/inventory-assets
+              - generic [ref=f13e130]: 
+              - paragraph [ref=f13e131]: Inventory
+          - listitem [ref=f13e132]: SYSTEM
+          - listitem [ref=f13e133]:
+            - link [ref=f13e134] [cursor=pointer]:
+              - /url: http://127.0.0.1:8000/admin/users
+              - generic [ref=f13e135]: 
+              - paragraph [ref=f13e136]: Users
+          - listitem [ref=f13e137]:
+            - link [ref=f13e138] [cursor=pointer]:
+              - /url: http://127.0.0.1:8000/admin/email-templates
+              - generic [ref=f13e139]: 
+              - paragraph [ref=f13e140]: Email Templates
+          - listitem [ref=f13e141]:
+            - link [ref=f13e142] [cursor=pointer]:
+              - /url: http://127.0.0.1:8000/admin/settings
+              - generic [ref=f13e143]: 
+              - paragraph [ref=f13e144]: Settings
+          - listitem [ref=f13e145]:
+            - link [ref=f13e146] [cursor=pointer]:
+              - /url: http://127.0.0.1:8000/admin/activity-log
+              - generic [ref=f13e147]: 
+              - paragraph [ref=f13e148]: Activity Log
+          - listitem [ref=f13e149]: CLIENT PORTAL
+          - listitem [ref=f13e150]:
+            - link [ref=f13e151] [cursor=pointer]:
+              - /url: http://127.0.0.1:8000/client/dashboard
+              - generic [ref=f13e152]: 
+              - paragraph [ref=f13e153]: Client Area
+        - link "View documentation" [ref=f13e155] [cursor=pointer]:
+          - /url: /docs
+          - generic [ref=f13e156]: 
+    - main [ref=f13e158]:
+      - generic [ref=f13e161]:
+        - heading "Shopping Cart" [level=1] [ref=f13e163]
+        - list [ref=f13e165]:
+          - listitem [ref=f13e166]:
+            - link "Home" [ref=f13e167] [cursor=pointer]:
+              - /url: http://127.0.0.1:8000
+          - listitem [ref=f13e168]: / Shopping Cart
+      - generic [ref=f13e171]:
+        - generic [ref=f13e172]:
+          - generic [ref=f13e173]:
+            - generic [ref=f13e175]:
+              - generic [ref=f13e176]: 
+              - text: Categories
+            - generic [ref=f13e177]:
+              - list
+          - generic [ref=f13e178]:
+            - generic [ref=f13e180]:
+              - generic [ref=f13e181]: 
+              - text: Domain Search
+            - generic [ref=f13e183]:
+              - textbox "example.com" [ref=f13e185]
+              - button "Check Availability" [ref=f13e186] [cursor=pointer]
+        - alert [ref=f13e188]: No product categories available.
+    - contentinfo [ref=f13e189]:
+      - generic [ref=f13e190]: Powered by Laravel & AdminLTE
+      - text: Copyright © 2026 Hosting CRM. All rights reserved.
+  - status [ref=f13e191]

@@ -1,0 +1,201 @@
+- generic [ref=f17e2]:
+  - generic [ref=f17e4]:
+    - generic [ref=f17e5]: Internal Server Error
+    - button "Copy as Markdown" [ref=f17e11] [cursor=pointer]
+  - generic [ref=f17e18]:
+    - generic [ref=f17e19]:
+      - heading "Illuminate\\Database\\QueryException" [level=1] [ref=f17e20]
+      - generic [ref=f17e21]: vendor\laravel\framework\src\Illuminate\Database\Connection.php:857
+      - paragraph [ref=f17e23]: "SQLSTATE[42S22]: Column not found: 1054 Unknown column 'invoice_number' in 'where clause' (Connection: mysql, Host: 127.0.0.1, Port: 10006, Database: hosting_crm, SQL: select * from `invoices` where `invoice_number` like %Primary% limit 5)"
+    - generic [ref=f17e24]:
+      - generic [ref=f17e25]:
+        - generic [ref=f17e26]:
+          - generic [ref=f17e27]: LARAVEL
+          - generic [ref=f17e28]: 13.23.0
+        - generic [ref=f17e29]:
+          - generic [ref=f17e30]: PHP
+          - generic [ref=f17e31]: 8.4.16
+      - generic [ref=f17e32]: UNHANDLED
+      - generic [ref=f17e36]: CODE 42S22
+    - generic [ref=f17e38]:
+      - generic [ref=f17e39]: "500"
+      - generic [ref=f17e43]: GET
+      - generic [ref=f17e47]: http://127.0.0.1:8000/admin/search?q=Primary
+      - button [ref=f17e48] [cursor=pointer]
+  - generic [ref=f17e53]:
+    - generic [ref=f17e54]:
+      - generic [ref=f17e55]:
+        - heading "Exception trace" [level=3] [ref=f17e60]
+        - link "1 previous exception" [ref=f17e61] [cursor=pointer]:
+          - /url: "#previous-exceptions"
+      - generic [ref=f17e62]:
+        - generic [ref=f17e64] [cursor=pointer]:
+          - generic [ref=f17e69]: 7 vendor frames
+          - button [ref=f17e70]
+        - generic [ref=f17e75]:
+          - generic [ref=f17e76] [cursor=pointer]:
+            - generic [ref=f17e79]:
+              - code [ref=f17e83]:
+                - generic [ref=f17e84]: Illuminate\Database\Eloquent\Builder->get()
+              - generic [ref=f17e85]: app\Http\Controllers\Admin\SearchController.php:33
+            - button [ref=f17e88]
+          - code [ref=f17e97]:
+            - generic [ref=f17e98]: 28 ->limit(5)->get();
+            - generic [ref=f17e99]: "29 $results['services'] = ServiceInstance::where('username', 'like', \"%{$q}%\")"
+            - generic [ref=f17e100]: "30 ->orWhere('domain', 'like', \"%{$q}%\")"
+            - generic [ref=f17e101]: 31 ->limit(5)->get();
+            - generic [ref=f17e102]: "32 $results['invoices'] = Invoice::where('invoice_number', 'like', \"%{$q}%\")"
+            - generic [ref=f17e103]: 33 ->limit(5)->get();
+            - generic [ref=f17e104]: "34 $results['tickets'] = Ticket::where('subject', 'like', \"%{$q}%\")"
+            - generic [ref=f17e105]: "35 ->orWhere('ticket_number', 'like', \"%{$q}%\")"
+            - generic [ref=f17e106]: 36 ->limit(5)->get();
+            - generic [ref=f17e107]: "37 $results['products'] = CatalogProduct::where('name', 'like', \"%{$q}%\")"
+            - generic [ref=f17e108]: "38 ->orWhere('sku', 'like', \"%{$q}%\")"
+            - generic [ref=f17e109]: 39 ->limit(5)->get();
+            - generic [ref=f17e110]: "40 }"
+            - generic [ref=f17e111]: 41 return view('admin.search.index', compact('q', 'results'));
+            - generic [ref=f17e112]: "42 }"
+            - generic [ref=f17e113]: "43}"
+            - generic [ref=f17e114]: "44"
+        - generic [ref=f17e116] [cursor=pointer]:
+          - generic [ref=f17e121]: 5 vendor frames
+          - button [ref=f17e122]
+        - generic [ref=f17e128] [cursor=pointer]:
+          - generic [ref=f17e131]:
+            - code [ref=f17e135]:
+              - generic [ref=f17e136]: "Illuminate\\Pipeline\\Pipeline->{closure:Illuminate\\Pipeline\\Pipeline::prepareDestination():178}(object(Illuminate\\Http\\Request))"
+            - generic [ref=f17e137]: app\Http\Middleware\PermissionMiddleware.php:22
+          - button [ref=f17e140]
+        - generic [ref=f17e146] [cursor=pointer]:
+          - generic [ref=f17e151]: 1 vendor frame
+          - button [ref=f17e152]
+        - generic [ref=f17e158] [cursor=pointer]:
+          - generic [ref=f17e161]:
+            - code [ref=f17e165]:
+              - generic [ref=f17e166]: "Illuminate\\Pipeline\\Pipeline->{closure:{closure:Illuminate\\Pipeline\\Pipeline::carry():194}:195}(object(Illuminate\\Http\\Request))"
+            - generic [ref=f17e167]: app\Http\Middleware\AdminMiddleware.php:34
+          - button [ref=f17e170]
+        - generic [ref=f17e176] [cursor=pointer]:
+          - generic [ref=f17e181]: 45 vendor frames
+          - button [ref=f17e182]
+        - generic [ref=f17e188] [cursor=pointer]:
+          - generic [ref=f17e191]:
+            - code [ref=f17e195]:
+              - generic [ref=f17e196]: Illuminate\Foundation\Application->handleRequest(object(Illuminate\Http\Request))
+            - generic [ref=f17e197]: public\index.php:20
+          - button [ref=f17e200]
+        - generic [ref=f17e206] [cursor=pointer]:
+          - generic [ref=f17e211]: 1 vendor frame
+          - button [ref=f17e212]
+    - generic [ref=f17e217]:
+      - heading "Previous exception" [level=3] [ref=f17e223]
+      - generic [ref=f17e227] [cursor=pointer]:
+        - generic [ref=f17e228]:
+          - heading "PDOException" [level=4] [ref=f17e229]
+          - paragraph [ref=f17e230]: "SQLSTATE[42S22]: Column not found: 1054 Unknown column 'invoice_number' in 'where clause'"
+        - button [ref=f17e231]
+    - generic [ref=f17e236]:
+      - generic [ref=f17e237]:
+        - heading "Queries" [level=3] [ref=f17e242]
+        - generic [ref=f17e243]: 1-5 of 5
+      - generic [ref=f17e245]:
+        - generic [ref=f17e246]:
+          - generic [ref=f17e247]:
+            - generic [ref=f17e248]: mysql
+            - code [ref=f17e255]:
+              - generic [ref=f17e256]: "select * from `sessions` where `id` = '410rrpRax4tS6uemV0rgSbVUo0geXNSHQvYVAovt' limit 1"
+          - generic [ref=f17e257]: 2.54ms
+        - generic [ref=f17e258]:
+          - generic [ref=f17e259]:
+            - generic [ref=f17e260]: mysql
+            - code [ref=f17e267]:
+              - generic [ref=f17e268]: "select * from `users` where `id` = 1 limit 1"
+          - generic [ref=f17e269]: 0.94ms
+        - generic [ref=f17e270]:
+          - generic [ref=f17e271]:
+            - generic [ref=f17e272]: mysql
+            - code [ref=f17e279]:
+              - generic [ref=f17e280]: "select exists(select * from `adminlte_roles` inner join `adminlte_role_user` on `adminlte_roles`.`id` = `adminlte_role_user`.`role_id` where `adminlte_role_user`.`user_id` = 1 and exists (select * from `adminlte_permissions` inner join `adminlte_permission_role` on `adminlte_permissions`.`id` = `adminlte_permission_role`.`permission_id` where `adminlte_roles`.`id` = `adminlte_permission_role`.`role_id` and `name` = 'dashboard.view')) as `exists`"
+          - generic [ref=f17e281]: 1ms
+        - generic [ref=f17e282]:
+          - generic [ref=f17e283]:
+            - generic [ref=f17e284]: mysql
+            - code [ref=f17e291]:
+              - generic [ref=f17e292]: "select * from `customers` where exists (select * from `users` where `customers`.`user_id` = `users`.`id` and (`email` like '%Primary%' or `first_name` like '%Primary%' or `last_name` like '%Primary%')) or `company` like '%Primary%' limit 5"
+          - generic [ref=f17e293]: 3.09ms
+        - generic [ref=f17e294]:
+          - generic [ref=f17e295]:
+            - generic [ref=f17e296]: mysql
+            - code [ref=f17e303]:
+              - generic [ref=f17e304]: "select * from `service_instances` where (`username` like '%Primary%' or `domain` like '%Primary%') and `service_instances`.`deleted_at` is null limit 5"
+          - generic [ref=f17e305]: 4.06ms
+  - generic [ref=f17e307]:
+    - generic [ref=f17e308]:
+      - heading "Headers" [level=2] [ref=f17e309]
+      - generic [ref=f17e310]:
+        - generic [ref=f17e311]:
+          - generic [ref=f17e312]: host
+          - generic [ref=f17e314]: 127.0.0.1:8000
+        - generic [ref=f17e315]:
+          - generic [ref=f17e316]: connection
+          - generic [ref=f17e318]: keep-alive
+        - generic [ref=f17e319]:
+          - generic [ref=f17e320]: sec-ch-ua
+          - generic [ref=f17e322]: "\"Not=A?Brand\";v=\"99\", \"Google Chrome\";v=\"151\", \"Chromium\";v=\"151\""
+        - generic [ref=f17e323]:
+          - generic [ref=f17e324]: sec-ch-ua-mobile
+          - generic [ref=f17e326]: "?0"
+        - generic [ref=f17e327]:
+          - generic [ref=f17e328]: sec-ch-ua-platform
+          - generic [ref=f17e330]: "\"Windows\""
+        - generic [ref=f17e331]:
+          - generic [ref=f17e332]: upgrade-insecure-requests
+          - generic [ref=f17e334]: "1"
+        - generic [ref=f17e335]:
+          - generic [ref=f17e336]: user-agent
+          - generic [ref=f17e338]: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36
+        - generic [ref=f17e339]:
+          - generic [ref=f17e340]: accept
+          - generic [ref=f17e342]: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7
+        - generic [ref=f17e343]:
+          - generic [ref=f17e344]: sec-fetch-site
+          - generic [ref=f17e346]: none
+        - generic [ref=f17e347]:
+          - generic [ref=f17e348]: sec-fetch-mode
+          - generic [ref=f17e350]: navigate
+        - generic [ref=f17e351]:
+          - generic [ref=f17e352]: sec-fetch-user
+          - generic [ref=f17e354]: "?1"
+        - generic [ref=f17e355]:
+          - generic [ref=f17e356]: sec-fetch-dest
+          - generic [ref=f17e358]: document
+        - generic [ref=f17e359]:
+          - generic [ref=f17e360]: accept-encoding
+          - generic [ref=f17e362]: gzip, deflate, br, zstd
+        - generic [ref=f17e363]:
+          - generic [ref=f17e364]: accept-language
+          - generic [ref=f17e366]: en-US,en;q=0.9
+        - generic [ref=f17e367]:
+          - generic [ref=f17e368]: cookie
+          - generic [ref=f17e370]: XSRF-TOKEN=eyJpdiI6Ilp1QzFrd2JCOGdMc0xTVWQxNVJTN1E9PSIsInZhbHVlIjoibVBUM3pkZVpCQmRFVlBLNXRQUDRvNkpCR3NVTlRHdExhcFN0ZEI5cmJKN25TeVdIUXp6eG1PTmRsRFhjNWxMMUN4Q05Ha09UR2MwdXVnMU41cU1mVlEyTk81Z3YwNVQ1bUZocXovK3pqSklTUCsyc2lLVEdxNEg5Smw0dEtXYUwiLCJtYWMiOiIwNTAzNDRjZjU5MDAxY2Q2ZDQ3YzlkNzdhOTE5NWY5MWY2ZTg1ZjA3MjgzOTQ5ZTdiM2E5NmRlMjI0NTdkZTM2IiwidGFnIjoiIn0%3D; laravel-session=eyJpdiI6ImlvdmxXWEtQcm02bzRHcmUzcUJweXc9PSIsInZhbHVlIjoiemdWOXNuT1BBdHJiQVhCL0VyZ2dvNFJ6NTNuYmVNaUtXSXpmMC83Q1JIR2dvWTIwN0xUVGtvQmUyakJhQ3hac2wrbVdHaEo2SU04bUE2RitFRjlmU3JRKzFTQUozRncvY0dhTkdoc1hHNEFNVndqcnVua3cvWDBJSFhORHFKeWciLCJtYWMiOiJlNGVlZDQ0ZDE3NTQ1N2RjMjA1YmE4MmJmNGUxOTJhYmYzZmMxOTA0Yjg5MDI3NWNiN2QyOTNmZDU3MDBiOTg3IiwidGFnIjoiIn0%3D
+    - generic [ref=f17e371]:
+      - heading "Body" [level=2] [ref=f17e372]
+      - code [ref=f17e377]:
+        - generic [ref=f17e378]: "{"
+        - generic [ref=f17e379]: "\"q\": \"Primary\""
+        - generic [ref=f17e380]: "}"
+    - generic [ref=f17e381]:
+      - heading "Routing" [level=2] [ref=f17e382]
+      - generic [ref=f17e383]:
+        - generic [ref=f17e384]:
+          - generic [ref=f17e385]: controller
+          - generic [ref=f17e387]: App\Http\Controllers\Admin\SearchController@search
+        - generic [ref=f17e388]:
+          - generic [ref=f17e389]: route name
+          - generic [ref=f17e391]: admin.search.index
+        - generic [ref=f17e392]:
+          - generic [ref=f17e393]: middleware
+          - generic [ref=f17e395]: web, auth, admin, permission:dashboard.view
+    - generic [ref=f17e396]:
+      - heading "Routing parameters" [level=2] [ref=f17e397]
+      - generic [ref=f17e398]: // No routing parameters

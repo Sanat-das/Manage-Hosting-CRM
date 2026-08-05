@@ -1,0 +1,30 @@
+- generic [ref=e1]:
+  - generic:
+    - link "Skip to main content" [ref=e2] [cursor=pointer]:
+      - /url: "#main"
+    - link "Skip to navigation" [ref=e3] [cursor=pointer]:
+      - /url: "#navigation"
+  - generic [ref=e5]:
+    - link "HostingCRM" [ref=e7] [cursor=pointer]:
+      - /url: http://127.0.0.1:8000
+    - generic [ref=e8]:
+      - paragraph [ref=e9]: Sign in to start your session
+      - generic [ref=e10]:
+        - generic [ref=e11]:
+          - textbox "Email" [active] [ref=e12]
+          - generic [ref=e13]: 
+        - generic [ref=e15]:
+          - textbox "Password" [ref=e16]
+          - generic [ref=e17]: 
+        - generic [ref=e19]:
+          - generic [ref=e21]:
+            - checkbox "Remember Me" [ref=e22]
+            - generic [ref=e23]: Remember Me
+          - button "Sign In" [ref=e25] [cursor=pointer]
+      - paragraph [ref=e26]:
+        - link "I forgot my password" [ref=e27] [cursor=pointer]:
+          - /url: http://127.0.0.1:8000/forgot-password
+      - paragraph [ref=e28]:
+        - link "Register a new membership" [ref=e29] [cursor=pointer]:
+          - /url: http://127.0.0.1:8000/register
+  - status [ref=e30]
