@@ -22,18 +22,29 @@ class Order extends Model
         'next_billing_date' => 'date',
         'last_billing_date' => 'date',
     ];
+
     /**
      * Order statuses — DB-level enum (decisions.md #2). The DDD
      * pending/processing/completed/refunded vocabulary is NOT ported.
      */
     public const STATUS_PENDING = 'pending';
+
+    public const STATUS_PAID = 'paid';
+
+    public const STATUS_PROVISIONING = 'provisioning';
+
+    public const STATUS_FAILED = 'failed';
+
     public const STATUS_ACTIVE = 'active';
+
     public const STATUS_SUSPENDED = 'suspended';
+
     public const STATUS_CANCELLED = 'cancelled';
+
     public const STATUS_TERMINATED = 'terminated';
 
     /** Exact values of the orders.status enum column. */
-    public const STATUSES = ['pending', 'active', 'suspended', 'cancelled', 'terminated'];
+    public const STATUSES = ['pending', 'paid', 'provisioning', 'failed', 'active', 'suspended', 'cancelled', 'terminated'];
 
     /** Billing cycles for orders (same vocabulary as products.billing_cycle). */
     public const BILLING_CYCLES = ['monthly', 'quarterly', 'semi_annual', 'annual', 'biennial', 'one_time'];
@@ -85,5 +96,10 @@ class Order extends Model
     public function domain(): HasOne
     {
         return $this->hasOne(Domain::class);
+    }
+
+    public function statusHistory(): HasMany
+    {
+        return $this->hasMany(OrderStatusHistory::class);
     }
 }

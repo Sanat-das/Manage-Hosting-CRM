@@ -7,6 +7,7 @@ use App\Http\Controllers\Client\InvoiceController;
 use App\Http\Controllers\Client\KbController;
 use App\Http\Controllers\Client\PaymentController;
 use App\Http\Controllers\Client\ProfileController;
+use App\Http\Controllers\Client\StoreController;
 use App\Http\Controllers\Client\TicketController;
 use App\Http\Controllers\Client\WalletController;
 use Illuminate\Support\Facades\Route;
@@ -22,6 +23,17 @@ use Illuminate\Support\Facades\Route;
 Route::middleware(['web', 'auth', 'client', 'customer.record'])->prefix('client')->name('client.')->group(function () {
     // Dashboard
     Route::get('/', [DashboardController::class, 'index'])->name('dashboard');
+
+    // Store (browse, cart, checkout, order placement)
+    Route::get('store', [StoreController::class, 'index'])->name('store.index');
+    Route::get('store/cart', [StoreController::class, 'cart'])->name('store.cart');
+    Route::get('store/checkout', [StoreController::class, 'checkout'])->name('store.checkout');
+    Route::get('store/order/{order}', [StoreController::class, 'confirmation'])->name('store.confirmation');
+    Route::post('store/cart/add', [StoreController::class, 'addToCart'])->name('store.cart.add');
+    Route::post('store/cart/update', [StoreController::class, 'updateCart'])->name('store.cart.update');
+    Route::post('store/cart/remove', [StoreController::class, 'removeFromCart'])->name('store.cart.remove');
+    Route::post('store/checkout', [StoreController::class, 'placeOrder'])->name('store.checkout.post');
+    Route::get('store/{product}', [StoreController::class, 'show'])->name('store.show');
 
     // Hosting
     Route::get('hosting', [HostingController::class, 'index'])->name('hosting.index');

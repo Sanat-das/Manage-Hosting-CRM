@@ -1,13 +1,145 @@
 {
-  "active_plan": "C:\\Users\\Administrator\\Local Sites\\managehosting\\app\\public\\.omo\\plans\\hosting-crm-adminlte.md",
-  "started_at": "2026-07-30T11:18:50.942Z",
-  "session_ids": [
-    "opencode:ses_04da410edffeKlkeJsJZspzTRU"
-  ],
-  "plan_name": "hosting-crm-adminlte",
-  "worktree_path": null,
-  "session_origins": {
-    "opencode:ses_04da410edffeKlkeJsJZspzTRU": "direct"
+  "schema_version": 2,
+  "active_work_id": "product-config-options-6a537b78",
+  "works": {
+    "product-config-options-6a537b78": {
+      "work_id": "product-config-options-6a537b78",
+      "active_plan": "C:\\Users\\Administrator\\Local Sites\\managehosting\\app\\.omo\\plans\\product-config-options.md",
+      "plan_name": "product-config-options",
+      "status": "completed",
+      "started_at": "2026-08-06T08:03:09.771Z",
+      "updated_at": "2026-08-06T11:55:04.023Z",
+      "session_ids": [
+        "opencode:ses_02a51aa09ffek9rZlYehL9ophq"
+      ],
+      "session_origins": {
+        "opencode:ses_02a51aa09ffek9rZlYehL9ophq": "direct"
+      },
+      "agent": "atlas",
+      "task_sessions": {
+        "todo:1": {
+          "task_key": "todo:1",
+          "task_label": "1",
+          "task_title": "`IpAssignmentService` + `Product::requiresIp()` helper (TDD, pure logic)",
+          "session_id": "opencode:ses_0298ff2c5ffeRBJU4Qipamia8C",
+          "agent": "Sisyphus-Junior",
+          "category": "unspecified-high",
+          "started_at": "2026-08-06T09:28:21.073Z",
+          "status": "completed",
+          "updated_at": "2026-08-06T10:01:54.063Z",
+          "ended_at": "2026-08-06T10:01:54.063Z",
+          "elapsed_ms": 2012990
+        },
+        "todo:3": {
+          "task_key": "todo:3",
+          "task_label": "3",
+          "task_title": "Hosting-account admin \"IP address\" card (UI, tests-after)",
+          "session_id": "opencode:ses_029796b76ffe0NZ116bO07z9as",
+          "agent": "Sisyphus-Junior",
+          "category": "visual-engineering",
+          "updated_at": "2026-08-06T11:20:25.140Z",
+          "started_at": "2026-08-06T11:05:00.827Z",
+          "status": "completed",
+          "ended_at": "2026-08-06T11:20:25.140Z",
+          "elapsed_ms": 924313
+        },
+        "todo:5": {
+          "task_key": "todo:5",
+          "task_label": "5",
+          "task_title": "`AssetRelationship` admin CRUD (controller + routes + blades, tests-after)",
+          "session_id": "opencode:ses_02921ee4fffeNpWvW7Ln66MsLx",
+          "agent": "Sisyphus-Junior",
+          "category": "quick",
+          "updated_at": "2026-08-06T11:41:08.391Z",
+          "started_at": "2026-08-06T11:40:07.140Z",
+          "status": "completed",
+          "ended_at": "2026-08-06T11:41:08.391Z",
+          "elapsed_ms": 61251
+        },
+        "todo:6": {
+          "task_key": "todo:6",
+          "task_label": "6",
+          "task_title": "Cross-cut feature tests for IP card + relationship plumbing (tests-after)",
+          "session_id": "opencode:ses_0291eec93ffe0QqtIYoCBpyK0y",
+          "agent": "Sisyphus-Junior",
+          "category": "deep",
+          "updated_at": "2026-08-06T11:50:54.304Z",
+          "started_at": "2026-08-06T11:49:14.644Z",
+          "status": "completed",
+          "ended_at": "2026-08-06T11:50:54.304Z",
+          "elapsed_ms": 99660
+        }
+      },
+      "ended_at": "2026-08-06T11:55:04.023Z",
+      "elapsed_ms": 13914252
+    }
   },
-  "task_sessions": {}
+  "active_plan": "C:\\Users\\Administrator\\Local Sites\\managehosting\\app\\.omo\\plans\\product-config-options.md",
+  "started_at": "2026-08-06T08:03:09.771Z",
+  "status": "completed",
+  "updated_at": "2026-08-06T11:55:04.023Z",
+  "session_ids": [
+    "opencode:ses_02a51aa09ffek9rZlYehL9ophq"
+  ],
+  "session_origins": {
+    "opencode:ses_02a51aa09ffek9rZlYehL9ophq": "direct"
+  },
+  "plan_name": "product-config-options",
+  "task_sessions": {
+    "todo:1": {
+      "task_key": "todo:1",
+      "task_label": "1",
+      "task_title": "`IpAssignmentService` + `Product::requiresIp()` helper (TDD, pure logic)",
+      "session_id": "opencode:ses_0298ff2c5ffeRBJU4Qipamia8C",
+      "agent": "Sisyphus-Junior",
+      "category": "unspecified-high",
+      "started_at": "2026-08-06T09:28:21.073Z",
+      "status": "completed",
+      "updated_at": "2026-08-06T10:01:54.063Z",
+      "ended_at": "2026-08-06T10:01:54.063Z",
+      "elapsed_ms": 2012990
+    },
+    "todo:3": {
+      "task_key": "todo:3",
+      "task_label": "3",
+      "task_title": "Hosting-account admin \"IP address\" card (UI, tests-after)",
+      "session_id": "opencode:ses_029796b76ffe0NZ116bO07z9as",
+      "agent": "Sisyphus-Junior",
+      "category": "visual-engineering",
+      "updated_at": "2026-08-06T11:20:25.140Z",
+      "started_at": "2026-08-06T11:05:00.827Z",
+      "status": "completed",
+      "ended_at": "2026-08-06T11:20:25.140Z",
+      "elapsed_ms": 924313
+    },
+    "todo:5": {
+      "task_key": "todo:5",
+      "task_label": "5",
+      "task_title": "`AssetRelationship` admin CRUD (controller + routes + blades, tests-after)",
+      "session_id": "opencode:ses_02921ee4fffeNpWvW7Ln66MsLx",
+      "agent": "Sisyphus-Junior",
+      "category": "quick",
+      "updated_at": "2026-08-06T11:41:08.391Z",
+      "started_at": "2026-08-06T11:40:07.140Z",
+      "status": "completed",
+      "ended_at": "2026-08-06T11:41:08.391Z",
+      "elapsed_ms": 61251
+    },
+    "todo:6": {
+      "task_key": "todo:6",
+      "task_label": "6",
+      "task_title": "Cross-cut feature tests for IP card + relationship plumbing (tests-after)",
+      "session_id": "opencode:ses_0291eec93ffe0QqtIYoCBpyK0y",
+      "agent": "Sisyphus-Junior",
+      "category": "deep",
+      "updated_at": "2026-08-06T11:50:54.304Z",
+      "started_at": "2026-08-06T11:49:14.644Z",
+      "status": "completed",
+      "ended_at": "2026-08-06T11:50:54.304Z",
+      "elapsed_ms": 99660
+    }
+  },
+  "agent": "atlas",
+  "ended_at": "2026-08-06T11:55:04.023Z",
+  "elapsed_ms": 13914252
 }

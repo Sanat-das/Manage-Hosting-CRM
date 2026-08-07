@@ -17,7 +17,7 @@ use Illuminate\Support\Facades\Route;
 |     require __DIR__.'/admin/hosting.php';
 |
 | Route names match the sidebar contract:
-|     admin.hosting.*  (index/create/store/show/edit/update/destroy/suspend/unsuspend/change-package)
+|     admin.hosting.*  (index/create/store/show/edit/update/destroy/suspend/unsuspend/change-package/pull-ip/choose-ip/release-ip)
 |     admin.servers.*  (index/show/create/store/edit/update)
 |     admin.server-groups.* (index/create/store/edit/update)
 |
@@ -62,6 +62,17 @@ Route::middleware(['web', 'auth', 'admin', 'throttle:admin'])->prefix('admin')->
     Route::post('hosting/{hostingAccount}/change-package', [HostingController::class, 'changePackage'])
         ->middleware('permission:hosting.manage')
         ->name('hosting.change-package');
+
+    // IP lease actions (IP address card on the show page)
+    Route::post('hosting/{hostingAccount}/pull-ip', [HostingController::class, 'pullIp'])
+        ->middleware('permission:hosting.manage')
+        ->name('hosting.pull-ip');
+    Route::post('hosting/{hostingAccount}/choose-ip', [HostingController::class, 'chooseIp'])
+        ->middleware('permission:hosting.manage')
+        ->name('hosting.choose-ip');
+    Route::post('hosting/{hostingAccount}/release-ip', [HostingController::class, 'releaseIp'])
+        ->middleware('permission:hosting.manage')
+        ->name('hosting.release-ip');
 
     // --- Servers ---
     Route::get('servers', [ServerController::class, 'index'])

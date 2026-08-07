@@ -37,3 +37,8 @@ Schedule::command('reports:send-scheduled --days=7')
     ->weeklyOn(1, '06:00')
     ->withoutOverlapping()
     ->runInBackground();
+
+Schedule::command('domains:sync-pricing')
+    ->dailyAt('04:30')
+    ->withoutOverlapping()
+    ->runInBackground();

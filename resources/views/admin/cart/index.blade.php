@@ -31,14 +31,15 @@
             @forelse ($categories as $cat)
                 <x-adminlte-card icon="bi bi-folder" title="{{ $cat->name }}" id="cat-{{ $cat->id }}">
                     <div class="row">
-                        @forelse ($cat->catalogProducts as $product)
+                        @forelse ($cat->products as $product)
                             <div class="col-md-6 col-lg-4 mb-3">
                                 <div class="card h-100 border">
                                     <div class="card-body">
                                         <h6 class="card-title">{{ $product->name }}</h6>
                                         <p class="card-text small text-muted">{{ Str::limit($product->description, 80) }}</p>
-                                        <span class="badge bg-info">{{ ucfirst($product->product_type) }}</span>
-                                        <span class="badge bg-secondary">{{ ucfirst(str_replace('_', ' ', $product->billing_model)) }}</span>
+                                        <span class="badge bg-info">{{ ucfirst($product->type) }}</span>
+                                        <span class="badge bg-secondary">{{ ucfirst(str_replace('_', ' ', $product->billing_cycle ?? 'monthly')) }}</span>
+                                        <span class="badge bg-primary">₹{{ number_format($product->price, 2) }}</span>
                                     </div>
                                     <div class="card-footer d-flex justify-content-between align-items-center">
                                         <a href="{{ route('admin.cart.product', $product) }}" class="btn btn-sm btn-outline-primary">Details</a>

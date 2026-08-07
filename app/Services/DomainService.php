@@ -3,12 +3,16 @@
 namespace App\Services;
 
 use App\Models\Domain;
+use App\Models\DomainPricing;
 use App\Models\DomainSearchLog;
 use App\Models\RegistrarSetting;
+use App\Services\Registrars\RegistrarManager;
 use Carbon\Carbon;
 use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Facades\Http;
 use InvalidArgumentException;
+use Throwable;
 
 /**
  * Domain lifecycle service.
@@ -280,14 +284,21 @@ class DomainService
         return ['updated' => $updated, 'skipped' => $skipped, 'errors' => $errors];
     }
 
-    // ─────────────────────── Availability search (stub) ───────────────────────
+    // ─────────────────── Availability search (RDAP-first) ───────────────────
 
     /**
      * Whois-style availability check.
      *
-     * STUB: real registrar lookup arrives with the registrar API integration
-     * (Session 3B/4). For now availability is "not already registered in the
-     * CRM" plus a deterministic default price table.
+     * Lookup order:
+     *  1. Local CRM — a domain already registered in the CRM is never available.
+     *  2. RDAP bootstrap ("https://rdap.org/domain/{name}") — authoritative
+     *     availability from the registry when the network is reachable.
+     *  3. Registrar driver (via RegistrarManager) — for the current registrar.
+     *  4. Local `domain_pricing` table — as a price/sellable fallback.
+     *
+     * A network or parser failure never fabricates availability: when both
+     * RDAP and the registrar are unreachable, the result surfaces
+     * `available: null` and only a deterministic default price is returned.
      *
      * - "example.com"  → checks just that name
      * - "example"      → checks the label against the default TLD list
@@ -297,7 +308,7 @@ class DomainService
      *     valid: bool,
      *     error: string|null,
      *     results: list<array{domain: string, tld: string, label: string,
-     *         available: bool, price: float, currency: string, premium: bool}>
+     *         available: bool|null, price: float, currency: string, premium: bool}>
      * }
      */
     public function searchAvailability(string $query): array
@@ -321,17 +332,7 @@ class DomainService
 
         $results = [];
         foreach ($candidates as $candidate) {
-            [$label, $tld] = $this->splitDomain($candidate);
-
-            $results[] = [
-                'domain' => $candidate,
-                'tld' => $tld,
-                'label' => $label,
-                'available' => $this->isAvailable($candidate),
-                'price' => self::DEFAULT_TLD_PRICES[$tld] ?? 999.0,
-                'currency' => 'INR',
-                'premium' => strlen($label) <= 3,
-            ];
+            $results[] = $this->resolveCandidate($candidate);
         }
 
         return [
@@ -345,14 +346,180 @@ class DomainService
     }
 
     /**
-     * Whether a fully-qualified domain name is currently unregistered.
+     * Resolve availability + pricing for a single fully-qualified candidate.
+     *
+     * @return array{domain: string, tld: string, label: string, available: bool|null,
+     *     price: float, currency: string, premium: bool}
      */
-    public function isAvailable(string $domain): bool
+    private function resolveCandidate(string $candidate): array
     {
-        return ! Domain::query()
+        [$label, $tld] = $this->splitDomain($candidate);
+
+        // 1. Local CRM — a domain already tracked as taken is never offered.
+        if (Domain::query()
+            ->where('name', strtolower($candidate))
+            ->whereIn('status', self::TAKEN_STATUSES)
+            ->exists()) {
+            return $this->buildResult($candidate, $label, $tld, false);
+        }
+
+        // 2. Authoritative RDAP check (404 -> available, 200 -> taken, null -> unknown).
+        $rdap = $this->rdapAvailability($candidate);
+        if ($rdap !== null) {
+            return $this->buildResult($candidate, $label, $tld, $rdap);
+        }
+
+        // 3. RDAP unreachable/failed → consult an enabled registrar driver.
+        $registrar = $this->registrarAvailability($candidate);
+        if ($registrar !== null) {
+            return $this->buildResult($candidate, $label, $tld, $registrar['available'], $registrar);
+        }
+
+        // 4. Unknown — never fabricate availability; price falls back to the
+        //    domain_pricing table / deterministic defaults.
+        return $this->buildResult($candidate, $label, $tld, null);
+    }
+
+    /**
+     * Build a results row for the view, resolving price/currency/premium from
+     * the registrar result first, then the `domain_pricing` table, then the
+     * deterministic default table.
+     *
+     * @param  array{price: float|null, currency: string|null, premium: bool}|null  $registrar
+     */
+    private function buildResult(string $domain, string $label, string $tld, ?bool $available, ?array $registrar = null): array
+    {
+        return [
+            'domain' => $domain,
+            'tld' => $tld,
+            'label' => $label,
+            'available' => $available,
+            'price' => $registrar['price'] ?? $this->priceFor($tld),
+            'currency' => $registrar['currency'] ?? $this->currencyFor($tld),
+            'premium' => $registrar['premium'] ?? $this->isPremium($label, $tld),
+        ];
+    }
+
+    /**
+     * RDAP bootstrap availability for a domain. Returns:
+     *  - true  when the registry returns 404 (available),
+     *  - false when the registry returns 200 (registered),
+     *  - null  when the registry is unreachable / errors (unknown).
+     */
+    private function rdapAvailability(string $domain): ?bool
+    {
+        try {
+            $response = Http::timeout(5)
+                ->accept('application/rdap+json')
+                ->get('https://rdap.org/domain/'.rawurlencode($domain));
+
+            if ($response->notFound()) {
+                return true; // registry has no record → available
+            }
+
+            if ($response->successful()) {
+                return false; // registry has a record → taken
+            }
+
+            return null; // 5xx / rate-limited → unknown
+        } catch (Throwable) {
+            return null; // network failure → unknown, never fabricate
+        }
+    }
+
+    /**
+     * Registrar driver availability lookup (best-effort, never throws to caller).
+     *
+     * Uses the first enabled registrar whose driver is configured and online.
+     *
+     * @return array{available: bool, premium: bool, price: float|null, currency: string|null}|null
+     */
+    private function registrarAvailability(string $domain): ?array
+    {
+        try {
+            $manager = app(RegistrarManager::class);
+
+            foreach ($manager->enabled() as $code) {
+                try {
+                    $driver = $manager->driverFor($code);
+                } catch (InvalidArgumentException) {
+                    continue;
+                }
+
+                if (! $driver->isConfigured() || ! $driver->isOnline()) {
+                    continue;
+                }
+
+                $result = $driver->checkAvailability($domain);
+
+                return [
+                    'available' => (bool) ($result['available'] ?? false),
+                    'premium' => (bool) ($result['premium'] ?? false),
+                    'price' => isset($result['price']) ? (float) $result['price'] : null,
+                    'currency' => $result['currency'] ?? null,
+                ];
+            }
+
+            return null;
+        } catch (Throwable) {
+            return null;
+        }
+    }
+
+    /**
+     * Resolve the per-TLD register price from the `domain_pricing` table,
+     * falling back to the deterministic default when unlisted.
+     */
+    private function priceFor(string $tld): float
+    {
+        $pricing = DomainPricing::query()
+            ->where('tld', $tld)
+            ->where('enabled', true)
+            ->first();
+
+        return $pricing && $pricing->register_price !== null
+            ? (float) $pricing->register_price
+            : (float) (self::DEFAULT_TLD_PRICES[$tld] ?? 999.0);
+    }
+
+    private function currencyFor(string $tld): string
+    {
+        $pricing = DomainPricing::query()
+            ->where('tld', $tld)
+            ->where('enabled', true)
+            ->first();
+
+        return $pricing->currency ?? 'INR';
+    }
+
+    private function isPremium(string $label, string $tld): bool
+    {
+        $pricing = DomainPricing::query()
+            ->where('tld', $tld)
+            ->where('enabled', true)
+            ->first();
+
+        return $pricing ? (bool) $pricing->premium : strlen($label) <= 3;
+    }
+
+    /**
+     * Whether a fully-qualified domain name is currently unregistered.
+     *
+     * Checks the local CRM first (registrability is never assumed for a domain
+     * already tracked as taken), then the RDAP bootstrap registry.
+     *
+     * Returns null when the registry is unreachable and the CRM gives no signal.
+     */
+    public function isAvailable(string $domain): ?bool
+    {
+        if (Domain::query()
             ->where('name', strtolower(trim($domain)))
             ->whereIn('status', self::TAKEN_STATUSES)
-            ->exists();
+            ->exists()) {
+            return false;
+        }
+
+        return $this->rdapAvailability(strtolower(trim($domain)));
     }
 
     /**

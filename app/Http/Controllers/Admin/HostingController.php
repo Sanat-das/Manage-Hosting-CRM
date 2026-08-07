@@ -2,13 +2,16 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Exceptions\NoAvailableIpException;
 use App\Http\Controllers\Controller;
 use App\Models\AuditLog;
 use App\Models\Customer;
 use App\Models\HostingAccount;
+use App\Models\IpAddress;
 use App\Models\Product;
 use App\Models\Server;
 use App\Services\HostingService;
+use App\Services\IpAssignmentService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -40,9 +43,13 @@ class HostingController extends Controller
     /** Reference domain-name pattern (Modules\Hosting\Domain\HostingAccount). */
     private const DOMAIN_PATTERN = '/^[a-zA-Z0-9]([a-zA-Z0-9\-]*[a-zA-Z0-9])?(\.[a-zA-Z]{2,})+$/';
 
-    public function __construct(private readonly HostingService $hostingService)
-    {
-    }
+    /** Cap on the "choose specific IP" dropdown so the show page stays fast on large pools. */
+    private const AVAILABLE_IP_LIMIT = 100;
+
+    public function __construct(
+        private readonly HostingService $hostingService,
+        private readonly IpAssignmentService $ipAssignmentService,
+    ) {}
 
     public function index(Request $request): View
     {
@@ -137,7 +144,22 @@ class HostingController extends Controller
             ->orderBy('name')
             ->get(['id', 'name', 'type', 'price', 'billing_cycle']);
 
-        return view('admin.hosting.show', compact('hostingAccount', 'audit', 'packages'));
+        // IP lease state for the IP address card: the lease lives on the
+        // polymorphic ip_addresses pair, not on hosting_accounts itself.
+        $assignedIp = IpAddress::query()
+            ->where('assigned_to_type', HostingAccount::class)
+            ->where('assigned_to_id', $hostingAccount->id)
+            ->with('subnet:id,name')
+            ->first();
+
+        $availableIps = IpAddress::query()
+            ->whereNull('assigned_to_type')
+            ->with('subnet:id,name')
+            ->orderBy('id')
+            ->limit(self::AVAILABLE_IP_LIMIT)
+            ->get(['id', 'subnet_id', 'ip_address', 'ip_version', 'type']);
+
+        return view('admin.hosting.show', compact('hostingAccount', 'audit', 'packages', 'assignedIp', 'availableIps'));
     }
 
     public function edit(HostingAccount $hostingAccount): View
@@ -244,6 +266,53 @@ class HostingController extends Controller
         }
 
         return back()->with('success', "Hosting account {$hostingAccount->username} package changed.");
+    }
+
+    /**
+     * Lease the lowest-id available IP from the pool to this account.
+     */
+    public function pullIp(HostingAccount $hostingAccount): RedirectResponse
+    {
+        try {
+            $ip = $this->ipAssignmentService->assignNextAvailable($hostingAccount);
+        } catch (NoAvailableIpException $e) {
+            return back()->with('error', $e->getMessage());
+        }
+
+        return back()->with('success', "IP {$ip->ip_address} assigned to {$hostingAccount->username}.");
+    }
+
+    /**
+     * Lease a specific, currently unassigned IP chosen from the dropdown.
+     */
+    public function chooseIp(Request $request, HostingAccount $hostingAccount): RedirectResponse
+    {
+        $validated = $request->validate([
+            'ip_address_id' => ['required', 'integer', 'exists:ip_addresses,id'],
+        ]);
+
+        try {
+            $ip = $this->ipAssignmentService->assignSpecific($hostingAccount, (int) $validated['ip_address_id']);
+        } catch (NoAvailableIpException $e) {
+            return back()->withInput()->with('error', $e->getMessage());
+        }
+
+        return back()->with('success', "IP {$ip->ip_address} assigned to {$hostingAccount->username}.");
+    }
+
+    /**
+     * Release the account's current IP lease back to the pool (no-op when
+     * the account holds no lease).
+     */
+    public function releaseIp(Request $request, HostingAccount $hostingAccount): RedirectResponse
+    {
+        $validated = $request->validate([
+            'reason' => ['nullable', 'string', 'max:1000'],
+        ]);
+
+        $this->ipAssignmentService->release($hostingAccount, $validated['reason'] ?? null);
+
+        return back()->with('success', "IP lease released from {$hostingAccount->username}.");
     }
 
     private function formOptions(): array

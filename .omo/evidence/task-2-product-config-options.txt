@@ -1,0 +1,36 @@
+Task T2 - AssetRelationship migration + model + saveGuard
+Date: 2026-08-06
+
+TDD red phase:
+- Command: php artisan test --filter=AssetRelationshipTest
+- Result before implementation: 5 tests, 0 passed, 3 failures, 2 errors.
+- Expected failures were the absent asset_relationships table and missing App\\Models\\AssetRelationship class.
+
+Implementation:
+- Added database/migrations/2026_08_06_000001_create_asset_relationships_table.php.
+- Added app/Models/AssetRelationship.php.
+- Added tests/Unit/AssetRelationshipTest.php before implementation.
+- Added the required project learning notes to .omo/notepads/product-config-options/learnings.md.
+- relationship_type is enforced by the model saving guard; the migration includes the required composite unique database constraint.
+
+Focused verification:
+- Command: php artisan test --filter=AssetRelationshipTest
+- Result: PASS, 5 tests, 13 assertions.
+- Covered schema columns/indexes, valid persistence/defaults, self-relationship rejection, unknown type rejection, and friendly pre-save duplicate rejection.
+
+Migration verification against the configured MySQL database:
+- Initial migrate exposed an overlong generated unique-index identifier; fixed with explicit name asset_relationships_parent_child_type_unique.
+- Second migrate exposed the utf8mb4/InnoDB 3072-byte composite-key limit; bounded the three indexed string columns while retaining string types.
+- Command: php artisan migrate -> DONE.
+- Command: php artisan migrate:rollback -> DONE.
+- Command: php artisan migrate -> DONE (repeat migration after rollback).
+
+Syntax verification:
+- php -l app/Models/AssetRelationship.php -> No syntax errors detected.
+- php -l database/migrations/2026_08_06_000001_create_asset_relationships_table.php -> No syntax errors detected.
+- php -l tests/Unit/AssetRelationshipTest.php -> No syntax errors detected.
+
+Final guard hardening verification:
+- Explicit null relationship_type is now rejected as an unsupported value, while an omitted value continues to use the hosted_on model/database default.
+- Command: php artisan test --filter=AssetRelationshipTest -> PASS, 5 tests, 13 assertions.
+- Command: php -l app/Models/AssetRelationship.php -> No syntax errors detected.

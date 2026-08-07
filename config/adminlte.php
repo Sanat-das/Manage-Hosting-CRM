@@ -1,5 +1,6 @@
 <?php
 
+use App\Support\AdminLte\RoleFilter;
 use App\Support\AdminLte\RouteExistsFilter;
 use ColorlibHQ\AdminLte\Menu\Filters\ActiveFilter;
 use ColorlibHQ\AdminLte\Menu\Filters\GateFilter;
@@ -118,7 +119,7 @@ return [
     |
     */
 
-    'footer_left' => 'Copyright &copy; ' . date('Y') . ' Hosting CRM. All rights reserved.',
+    'footer_left' => 'Copyright &copy; '.date('Y').' Hosting CRM. All rights reserved.',
     'footer_right' => 'Powered by Laravel & AdminLTE',
     'preloader' => false,
     'control_sidebar' => false,
@@ -416,54 +417,60 @@ return [
             'can' => 'settings.view',
         ],
 
-        ['header' => 'CLIENT PORTAL'],
+        ['header' => 'CLIENT PORTAL', 'role' => 'client'],
         [
             'text' => 'Dashboard',
             'route' => 'client.dashboard',
             'icon' => 'bi bi-speedometer2',
-            'can' => 'client.portal',
+            'role' => 'client',
         ],
         [
             'text' => 'My Hosting',
             'route' => 'client.hosting.index',
             'icon' => 'bi bi-hdd-rack',
-            'can' => 'client.portal',
+            'role' => 'client',
+        ],
+        [
+            'text' => 'Store',
+            'route' => 'client.store.index',
+            'icon' => 'bi bi-shop',
+            'role' => 'client',
         ],
         [
             'text' => 'Domains',
             'route' => 'client.domains.index',
             'icon' => 'bi bi-globe2',
-            'can' => 'client.portal',
+            'role' => 'client',
         ],
         [
             'text' => 'Invoices',
             'route' => 'client.invoices.index',
             'icon' => 'bi bi-receipt',
-            'can' => 'client.portal',
+            'role' => 'client',
         ],
         [
             'text' => 'Tickets',
             'route' => 'client.tickets.index',
             'icon' => 'bi bi-life-preserver',
-            'can' => 'client.portal',
+            'role' => 'client',
         ],
         [
             'text' => 'Knowledge Base',
             'route' => 'client.kb.index',
             'icon' => 'bi bi-book',
-            'can' => 'client.portal',
+            'role' => 'client',
         ],
         [
             'text' => 'Wallet',
             'route' => 'client.wallet.index',
             'icon' => 'bi bi-wallet2',
-            'can' => 'client.portal',
+            'role' => 'client',
         ],
         [
             'text' => 'Profile',
             'route' => 'client.profile',
             'icon' => 'bi bi-person-circle',
-            'can' => 'client.portal',
+            'role' => 'client',
         ],
     ],
 
@@ -479,6 +486,7 @@ return [
     */
 
     'filters' => [
+        RoleFilter::class,
         GateFilter::class,
         RouteExistsFilter::class,
         HrefFilter::class,

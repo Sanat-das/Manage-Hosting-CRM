@@ -10,6 +10,7 @@ use App\Models\Customer;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Product;
+use App\Services\OrderNumberService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -20,7 +21,8 @@ use Illuminate\View\View;
  * Admin order management (Session 3A.2).
  *
  * Ported behavior from the reference CRM orders module:
- * - order number generation ORD-{YEAR}-{seq} (reference format)
+ * - order number generation ORD-{YEAR}-{seq} (reference format) via the
+ *   shared race-safe OrderNumberService (gap-fillup T1.3)
  * - order + order_items row snapshot (product_name/unit_price/total)
  * - status workflow with a single guarded transition map (pending→active /
  *   pending→cancelled here; active→suspended is reserved for the hosting
@@ -31,6 +33,8 @@ use Illuminate\View\View;
 class OrderController extends Controller
 {
     private const PER_PAGE = 20;
+
+    public function __construct(private readonly OrderNumberService $orderNumbers) {}
 
     /**
      * Allowed order status transitions (single source of truth for the whole
@@ -101,7 +105,7 @@ class OrderController extends Controller
                 $order = Order::create([
                     'customer_id' => $validated['customer_id'],
                     'product_id' => $validated['product_id'],
-                    'order_number' => $this->generateOrderNumber(),
+                    'order_number' => $this->orderNumbers->next(),
                     'billing_cycle' => $validated['billing_cycle'],
                     'quantity' => $validated['quantity'],
                     'total' => $total,
@@ -200,23 +204,6 @@ class OrderController extends Controller
         return redirect()
             ->route('admin.orders.show', $order)
             ->with('success', "Order {$order->order_number} is now {$order->status}.");
-    }
-
-    /**
-     * Reference order number format: ORD-{YEAR}-{seq padded to 5}.
-     */
-    private function generateOrderNumber(): string
-    {
-        $year = date('Y');
-        $seq = Order::query()->whereYear('created_at', $year)->count() + 1;
-        $number = "ORD-{$year}-".str_pad((string) $seq, 5, '0', STR_PAD_LEFT);
-
-        while (Order::query()->where('order_number', $number)->exists()) {
-            $seq++;
-            $number = "ORD-{$year}-".str_pad((string) $seq, 5, '0', STR_PAD_LEFT);
-        }
-
-        return $number;
     }
 
     /**

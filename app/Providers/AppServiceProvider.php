@@ -37,11 +37,11 @@ class AppServiceProvider extends ServiceProvider
         });
 
         // Role-aware sidebar menus (see config/adminlte.php menu items).
-        // `client.portal` shows the client-portal navigation to clients;
-        // `admin.panel` keeps the admin section headers/items visible only to
-        // staff. The Gate::before bridge above returns null for these names
-        // (no matching permission), so the definitions below decide.
-        Gate::define('client.portal', fn (User $user) => $user->hasRole('client'));
+        // Client items use a custom `RoleFilter` (bypasses the Gate system
+        // because the AdminLTE package's Gate::before short-circuits for
+        // admin users). Admin section headers still use `can: 'admin.panel'`
+        // which works correctly — the Gate::before bridge returns null for
+        // non-permission abilities, falling through to this definition.
         Gate::define('admin.panel', fn (User $user) => ! $user->hasRole('client'));
 
         // Default API limiter — applied to the whole `api` middleware group via

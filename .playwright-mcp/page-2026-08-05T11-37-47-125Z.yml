@@ -1,0 +1,660 @@
+- generic [active] [ref=f7e1]:
+  - generic:
+    - link "Skip to main content" [ref=f7e2] [cursor=pointer]:
+      - /url: "#main"
+    - link "Skip to navigation" [ref=f7e3] [cursor=pointer]:
+      - /url: "#navigation"
+  - generic [ref=f7e4]:
+    - navigation [ref=f7e5]:
+      - generic [ref=f7e6]:
+        - list [ref=f7e7]:
+          - listitem [ref=f7e8]:
+            - button "Toggle sidebar" [ref=f7e9] [cursor=pointer]:
+              - generic [ref=f7e10]: 
+          - listitem [ref=f7e11]:
+            - link "Home" [ref=f7e12] [cursor=pointer]:
+              - /url: http://managehosting.local
+              - generic [ref=f7e13]: 
+              - text: Home
+          - listitem [ref=f7e14]:
+            - link "Documentation" [ref=f7e15] [cursor=pointer]:
+              - /url: /docs
+              - generic [ref=f7e16]: 
+              - text: Documentation
+        - list [ref=f7e17]:
+          - listitem [ref=f7e18]:
+            - button "Search" [ref=f7e19] [cursor=pointer]:
+              - generic [ref=f7e20]: 
+              - generic [ref=f7e21]: Search…
+              - generic [ref=f7e22]: ⌘K
+          - listitem [ref=f7e23]:
+            - link "3" [ref=f7e24] [cursor=pointer]:
+              - /url: "#"
+              - generic [ref=f7e25]: 
+            - text:      
+          - listitem [ref=f7e27]:
+            - link "3" [ref=f7e28] [cursor=pointer]:
+              - /url: "#"
+              - generic [ref=f7e29]: 
+            - text:   
+          - listitem [ref=f7e31]:
+            - link "Toggle fullscreen" [ref=f7e32] [cursor=pointer]:
+              - /url: "#"
+              - generic [ref=f7e33]: 
+              - text: 
+          - listitem [ref=f7e34]:
+            - link "Toggle color scheme" [ref=f7e35] [cursor=pointer]:
+              - /url: "#"
+              - generic [ref=f7e36]: 
+              - text:  
+            - text:      
+          - listitem [ref=f7e37]:
+            - link " Sanat Das" [ref=f7e38] [cursor=pointer]:
+              - /url: "#"
+              - generic [ref=f7e39]: 
+              - text: Sanat Das
+            - text: 
+    - text: 
+    - complementary [ref=f7e40]:
+      - link " Hosting CRM" [ref=f7e42] [cursor=pointer]:
+        - /url: http://managehosting.local
+        - generic [ref=f7e43]:
+          - generic [ref=f7e44]: 
+          - text: Hosting CRM
+      - navigation "Main navigation" [ref=f7e47]:
+        - menu [ref=f7e48]:
+          - listitem [ref=f7e49]: NAVIGATION
+          - listitem [ref=f7e50]:
+            - link [ref=f7e51] [cursor=pointer]:
+              - /url: http://managehosting.local/admin/dashboard
+              - generic [ref=f7e52]: 
+              - paragraph [ref=f7e53]: Dashboard
+          - listitem [ref=f7e54]: MANAGEMENT
+          - listitem [ref=f7e55]:
+            - button [ref=f7e56] [cursor=pointer]:
+              - generic [ref=f7e57]: 
+              - paragraph [ref=f7e58]:
+                - text: Customers
+                - generic [ref=f7e59]: 
+            - text:   
+          - listitem [ref=f7e60]:
+            - button [ref=f7e61] [cursor=pointer]:
+              - generic [ref=f7e62]: 
+              - paragraph [ref=f7e63]:
+                - text: Products
+                - generic [ref=f7e64]: 
+            - text:     
+          - listitem [ref=f7e65]:
+            - button [ref=f7e66] [cursor=pointer]:
+              - generic [ref=f7e67]: 
+              - paragraph [ref=f7e68]:
+                - text: Orders
+                - generic [ref=f7e69]: 
+            - text:  
+          - listitem [ref=f7e70]:
+            - button [ref=f7e71] [cursor=pointer]:
+              - generic [ref=f7e72]: 
+              - paragraph [ref=f7e73]:
+                - text: Hosting
+                - generic [ref=f7e74]: 
+            - text:   
+          - listitem [ref=f7e75]:
+            - button [ref=f7e76] [cursor=pointer]:
+              - generic [ref=f7e77]: 
+              - paragraph [ref=f7e78]:
+                - text: Domains
+                - generic [ref=f7e79]: 
+            - text:    
+          - listitem [ref=f7e80]: BILLING
+          - listitem [ref=f7e81]:
+            - button [ref=f7e82] [cursor=pointer]:
+              - generic [ref=f7e83]: 
+              - paragraph [ref=f7e84]:
+                - text: Invoices
+                - generic [ref=f7e85]: 
+            - text:  
+          - listitem [ref=f7e86]:
+            - button [ref=f7e87] [cursor=pointer]:
+              - generic [ref=f7e88]: 
+              - paragraph [ref=f7e89]:
+                - text: Payments
+                - generic [ref=f7e90]: 
+            - text:   
+          - listitem [ref=f7e91]:
+            - link [ref=f7e92] [cursor=pointer]:
+              - /url: http://managehosting.local/admin/quotes
+              - generic [ref=f7e93]: 
+              - paragraph [ref=f7e94]: Quotes
+          - listitem [ref=f7e95]:
+            - link [ref=f7e96] [cursor=pointer]:
+              - /url: http://managehosting.local/admin/transactions
+              - generic [ref=f7e97]: 
+              - paragraph [ref=f7e98]: Transactions
+          - listitem [ref=f7e99]:
+            - link [ref=f7e100] [cursor=pointer]:
+              - /url: http://managehosting.local/admin/gst-settings
+              - generic [ref=f7e101]: 
+              - paragraph [ref=f7e102]: GST Settings
+          - listitem [ref=f7e103]: SUPPORT
+          - listitem [ref=f7e104]:
+            - button [ref=f7e105] [cursor=pointer]:
+              - generic [ref=f7e106]: 
+              - paragraph [ref=f7e107]:
+                - text: Tickets
+                - generic [ref=f7e108]: 
+            - text:   
+          - listitem [ref=f7e109]:
+            - button [ref=f7e110] [cursor=pointer]:
+              - generic [ref=f7e111]: 
+              - paragraph [ref=f7e112]:
+                - text: Knowledge Base
+                - generic [ref=f7e113]: 
+            - text:  
+          - listitem [ref=f7e114]:
+            - link [ref=f7e115] [cursor=pointer]:
+              - /url: http://managehosting.local/admin/chat
+              - generic [ref=f7e116]: 
+              - paragraph [ref=f7e117]: Live Chat
+          - listitem [ref=f7e118]: ANALYTICS
+          - listitem [ref=f7e119]:
+            - button [ref=f7e120] [cursor=pointer]:
+              - generic [ref=f7e121]: 
+              - paragraph [ref=f7e122]:
+                - text: Reports
+                - generic [ref=f7e123]: 
+            - text:   
+          - listitem [ref=f7e124]:
+            - link [ref=f7e125] [cursor=pointer]:
+              - /url: http://managehosting.local/admin/analytics
+              - generic [ref=f7e126]: 
+              - paragraph [ref=f7e127]: Analytics
+          - listitem [ref=f7e128]: INFRASTRUCTURE
+          - listitem [ref=f7e129]:
+            - link [ref=f7e130] [cursor=pointer]:
+              - /url: http://managehosting.local/admin/datacenters
+              - generic [ref=f7e131]: 
+              - paragraph [ref=f7e132]: Datacenters
+          - listitem [ref=f7e133]:
+            - button [ref=f7e134] [cursor=pointer]:
+              - generic [ref=f7e135]: 
+              - paragraph [ref=f7e136]:
+                - text: IP Manager
+                - generic [ref=f7e137]: 
+            - text:    
+          - listitem [ref=f7e138]:
+            - link [ref=f7e139] [cursor=pointer]:
+              - /url: http://managehosting.local/admin/inventory-assets
+              - generic [ref=f7e140]: 
+              - paragraph [ref=f7e141]: Inventory
+          - listitem [ref=f7e142]: SYSTEM
+          - listitem [ref=f7e143]:
+            - link [ref=f7e144] [cursor=pointer]:
+              - /url: http://managehosting.local/admin/users
+              - generic [ref=f7e145]: 
+              - paragraph [ref=f7e146]: Users
+          - listitem [ref=f7e147]:
+            - link [ref=f7e148] [cursor=pointer]:
+              - /url: http://managehosting.local/admin/roles
+              - generic [ref=f7e149]: 
+              - paragraph [ref=f7e150]: Roles & Permissions
+          - listitem [ref=f7e151]:
+            - link [ref=f7e152] [cursor=pointer]:
+              - /url: http://managehosting.local/admin/email-templates
+              - generic [ref=f7e153]: 
+              - paragraph [ref=f7e154]: Email Templates
+          - listitem [ref=f7e155]:
+            - link [ref=f7e156] [cursor=pointer]:
+              - /url: http://managehosting.local/admin/settings
+              - generic [ref=f7e157]: 
+              - paragraph [ref=f7e158]: Settings
+          - listitem [ref=f7e159]:
+            - link [ref=f7e160] [cursor=pointer]:
+              - /url: http://managehosting.local/admin/activity-log
+              - generic [ref=f7e161]: 
+              - paragraph [ref=f7e162]: Activity Log
+          - listitem [ref=f7e163]: CLIENT PORTAL
+          - listitem [ref=f7e164]:
+            - link [ref=f7e165] [cursor=pointer]:
+              - /url: http://managehosting.local/client/dashboard
+              - generic [ref=f7e166]: 
+              - paragraph [ref=f7e167]: Dashboard
+          - listitem [ref=f7e168]:
+            - link [ref=f7e169] [cursor=pointer]:
+              - /url: http://managehosting.local/client/hosting
+              - generic [ref=f7e170]: 
+              - paragraph [ref=f7e171]: My Hosting
+          - listitem [ref=f7e172]:
+            - link [ref=f7e173] [cursor=pointer]:
+              - /url: http://managehosting.local/client/domains
+              - generic [ref=f7e174]: 
+              - paragraph [ref=f7e175]: Domains
+          - listitem [ref=f7e176]:
+            - link [ref=f7e177] [cursor=pointer]:
+              - /url: http://managehosting.local/client/invoices
+              - generic [ref=f7e178]: 
+              - paragraph [ref=f7e179]: Invoices
+          - listitem [ref=f7e180]:
+            - link [ref=f7e181] [cursor=pointer]:
+              - /url: http://managehosting.local/client/tickets
+              - generic [ref=f7e182]: 
+              - paragraph [ref=f7e183]: Tickets
+          - listitem [ref=f7e184]:
+            - link [ref=f7e185] [cursor=pointer]:
+              - /url: http://managehosting.local/client/kb
+              - generic [ref=f7e186]: 
+              - paragraph [ref=f7e187]: Knowledge Base
+          - listitem [ref=f7e188]:
+            - link [ref=f7e189] [cursor=pointer]:
+              - /url: http://managehosting.local/client/wallet
+              - generic [ref=f7e190]: 
+              - paragraph [ref=f7e191]: Wallet
+          - listitem [ref=f7e192]:
+            - link [ref=f7e193] [cursor=pointer]:
+              - /url: http://managehosting.local/client/profile
+              - generic [ref=f7e194]: 
+              - paragraph [ref=f7e195]: Profile
+        - link "View documentation" [ref=f7e197] [cursor=pointer]:
+          - /url: /docs
+          - generic [ref=f7e198]: 
+    - main [ref=f7e200]:
+      - generic [ref=f7e203]:
+        - heading "Customers" [level=1] [ref=f7e205]
+        - list [ref=f7e207]:
+          - listitem [ref=f7e208]:
+            - link "Home" [ref=f7e209] [cursor=pointer]:
+              - /url: http://managehosting.local
+          - listitem [ref=f7e210]: / Customers
+      - generic [ref=f7e213]:
+        - generic [ref=f7e214]:
+          - generic [ref=f7e215]:
+            - generic [ref=f7e216]: 
+            - text: All Customers
+          - link "Add Customer" [ref=f7e218] [cursor=pointer]:
+            - /url: http://managehosting.local/admin/customers/create
+            - generic [ref=f7e219]: 
+            - text: Add Customer
+        - generic [ref=f7e220]:
+          - generic [ref=f7e222]:
+            - generic [ref=f7e224]:
+              - generic [ref=f7e225]: 
+              - textbox "Search name, email, company..." [ref=f7e227]
+            - combobox [ref=f7e229]:
+              - option "All statuses" [selected]
+              - option "Active"
+              - option "Inactive"
+              - option "Suspended"
+            - generic [ref=f7e230]:
+              - button "Filter" [ref=f7e231] [cursor=pointer]
+              - link "Reset" [ref=f7e232] [cursor=pointer]:
+                - /url: http://managehosting.local/admin/customers
+          - table [ref=f7e234]:
+            - rowgroup [ref=f7e235]:
+              - row [ref=f7e236]:
+                - columnheader "#" [ref=f7e237]
+                - columnheader "Name" [ref=f7e238]
+                - columnheader "Email" [ref=f7e239]
+                - columnheader "Company" [ref=f7e240]
+                - columnheader "Balance" [ref=f7e241]
+                - columnheader "Status" [ref=f7e242]
+                - columnheader "Registered" [ref=f7e243]
+                - columnheader "Actions" [ref=f7e244]
+            - rowgroup [ref=f7e245]:
+              - row [ref=f7e246]:
+                - cell "#CLT-00023" [ref=f7e247]
+                - cell [ref=f7e248]:
+                  - link [ref=f7e249] [cursor=pointer]:
+                    - /url: http://managehosting.local/admin/customers/23
+                    - strong [ref=f7e250]: Demo Client
+                - cell "client@demo.com" [ref=f7e251]
+                - cell "Demo Client Co" [ref=f7e252]
+                - cell "250.00" [ref=f7e253]
+                - cell "Active" [ref=f7e254]
+                - cell "Aug 5, 2026" [ref=f7e256]
+                - cell [ref=f7e257]:
+                  - link "" [ref=f7e258] [cursor=pointer]:
+                    - /url: http://managehosting.local/admin/customers/23
+                  - link "" [ref=f7e260] [cursor=pointer]:
+                    - /url: http://managehosting.local/admin/customers/23/edit
+                  - button "" [ref=f7e263] [cursor=pointer]
+              - row [ref=f7e265]:
+                - cell "#CLT-00022" [ref=f7e266]
+                - cell [ref=f7e267]:
+                  - link [ref=f7e268] [cursor=pointer]:
+                    - /url: http://managehosting.local/admin/customers/22
+                    - strong [ref=f7e269]: Suresh Babu
+                - cell "client13@demo.com" [ref=f7e270]
+                - cell "Chennai Hosting Co" [ref=f7e271]
+                - cell "2,750.00" [ref=f7e272]
+                - cell "Active" [ref=f7e273]
+                - cell [ref=f7e275]
+                - cell [ref=f7e276]:
+                  - link "" [ref=f7e277] [cursor=pointer]:
+                    - /url: http://managehosting.local/admin/customers/22
+                  - link "" [ref=f7e279] [cursor=pointer]:
+                    - /url: http://managehosting.local/admin/customers/22/edit
+                  - button "" [ref=f7e282] [cursor=pointer]
+              - row [ref=f7e284]:
+                - cell "#CLT-00021" [ref=f7e285]
+                - cell [ref=f7e286]:
+                  - link [ref=f7e287] [cursor=pointer]:
+                    - /url: http://managehosting.local/admin/customers/21
+                    - strong [ref=f7e288]: Prakash Joshi
+                - cell "client21@demo.com" [ref=f7e289]
+                - cell "Joshi Web Tech" [ref=f7e290]
+                - cell "980.00" [ref=f7e291]
+                - cell "Active" [ref=f7e292]
+                - cell [ref=f7e294]
+                - cell [ref=f7e295]:
+                  - link "" [ref=f7e296] [cursor=pointer]:
+                    - /url: http://managehosting.local/admin/customers/21
+                  - link "" [ref=f7e298] [cursor=pointer]:
+                    - /url: http://managehosting.local/admin/customers/21/edit
+                  - button "" [ref=f7e301] [cursor=pointer]
+              - row [ref=f7e303]:
+                - cell "#CLT-00020" [ref=f7e304]
+                - cell [ref=f7e305]:
+                  - link [ref=f7e306] [cursor=pointer]:
+                    - /url: http://managehosting.local/admin/customers/20
+                    - strong [ref=f7e307]: Geeta Iyer
+                - cell "client20@demo.com" [ref=f7e308]
+                - cell "—" [ref=f7e309]
+                - cell "290.00" [ref=f7e310]
+                - cell "Active" [ref=f7e311]
+                - cell [ref=f7e313]
+                - cell [ref=f7e314]:
+                  - link "" [ref=f7e315] [cursor=pointer]:
+                    - /url: http://managehosting.local/admin/customers/20
+                  - link "" [ref=f7e317] [cursor=pointer]:
+                    - /url: http://managehosting.local/admin/customers/20/edit
+                  - button "" [ref=f7e320] [cursor=pointer]
+              - row [ref=f7e322]:
+                - cell "#CLT-00019" [ref=f7e323]
+                - cell [ref=f7e324]:
+                  - link [ref=f7e325] [cursor=pointer]:
+                    - /url: http://managehosting.local/admin/customers/19
+                    - strong [ref=f7e326]: Ravi Prasad
+                - cell "client19@demo.com" [ref=f7e327]
+                - cell "Ravi Softwares" [ref=f7e328]
+                - cell "1,650.00" [ref=f7e329]
+                - cell "Active" [ref=f7e330]
+                - cell [ref=f7e332]
+                - cell [ref=f7e333]:
+                  - link "" [ref=f7e334] [cursor=pointer]:
+                    - /url: http://managehosting.local/admin/customers/19
+                  - link "" [ref=f7e336] [cursor=pointer]:
+                    - /url: http://managehosting.local/admin/customers/19/edit
+                  - button "" [ref=f7e339] [cursor=pointer]
+              - row [ref=f7e341]:
+                - cell "#CLT-00018" [ref=f7e342]
+                - cell [ref=f7e343]:
+                  - link [ref=f7e344] [cursor=pointer]:
+                    - /url: http://managehosting.local/admin/customers/18
+                    - strong [ref=f7e345]: Sneha Patil
+                - cell "client18@demo.com" [ref=f7e346]
+                - cell "—" [ref=f7e347]
+                - cell "780.00" [ref=f7e348]
+                - cell "Active" [ref=f7e349]
+                - cell [ref=f7e351]
+                - cell [ref=f7e352]:
+                  - link "" [ref=f7e353] [cursor=pointer]:
+                    - /url: http://managehosting.local/admin/customers/18
+                  - link "" [ref=f7e355] [cursor=pointer]:
+                    - /url: http://managehosting.local/admin/customers/18/edit
+                  - button "" [ref=f7e358] [cursor=pointer]
+              - row [ref=f7e360]:
+                - cell "#CLT-00017" [ref=f7e361]
+                - cell [ref=f7e362]:
+                  - link [ref=f7e363] [cursor=pointer]:
+                    - /url: http://managehosting.local/admin/customers/17
+                    - strong [ref=f7e364]: Vivek Gupta
+                - cell "client17@demo.com" [ref=f7e365]
+                - cell "Vivek IT Services" [ref=f7e366]
+                - cell "1,120.00" [ref=f7e367]
+                - cell "Active" [ref=f7e368]
+                - cell [ref=f7e370]
+                - cell [ref=f7e371]:
+                  - link "" [ref=f7e372] [cursor=pointer]:
+                    - /url: http://managehosting.local/admin/customers/17
+                  - link "" [ref=f7e374] [cursor=pointer]:
+                    - /url: http://managehosting.local/admin/customers/17/edit
+                  - button "" [ref=f7e377] [cursor=pointer]
+              - row [ref=f7e379]:
+                - cell "#CLT-00016" [ref=f7e380]
+                - cell [ref=f7e381]:
+                  - link [ref=f7e382] [cursor=pointer]:
+                    - /url: http://managehosting.local/admin/customers/16
+                    - strong [ref=f7e383]: Nisha Choudhary
+                - cell "client16@demo.com" [ref=f7e384]
+                - cell "Nisha Creations" [ref=f7e385]
+                - cell "560.00" [ref=f7e386]
+                - cell "Active" [ref=f7e387]
+                - cell [ref=f7e389]
+                - cell [ref=f7e390]:
+                  - link "" [ref=f7e391] [cursor=pointer]:
+                    - /url: http://managehosting.local/admin/customers/16
+                  - link "" [ref=f7e393] [cursor=pointer]:
+                    - /url: http://managehosting.local/admin/customers/16/edit
+                  - button "" [ref=f7e396] [cursor=pointer]
+              - row [ref=f7e398]:
+                - cell "#CLT-00015" [ref=f7e399]
+                - cell [ref=f7e400]:
+                  - link [ref=f7e401] [cursor=pointer]:
+                    - /url: http://managehosting.local/admin/customers/15
+                    - strong [ref=f7e402]: Karthik Subramanian
+                - cell "client15@demo.com" [ref=f7e403]
+                - cell "KSoft Solutions" [ref=f7e404]
+                - cell "1,890.00" [ref=f7e405]
+                - cell "Active" [ref=f7e406]
+                - cell [ref=f7e408]
+                - cell [ref=f7e409]:
+                  - link "" [ref=f7e410] [cursor=pointer]:
+                    - /url: http://managehosting.local/admin/customers/15
+                  - link "" [ref=f7e412] [cursor=pointer]:
+                    - /url: http://managehosting.local/admin/customers/15/edit
+                  - button "" [ref=f7e415] [cursor=pointer]
+              - row [ref=f7e417]:
+                - cell "#CLT-00014" [ref=f7e418]
+                - cell [ref=f7e419]:
+                  - link [ref=f7e420] [cursor=pointer]:
+                    - /url: http://managehosting.local/admin/customers/14
+                    - strong [ref=f7e421]: Anjali Menon
+                - cell "client14@demo.com" [ref=f7e422]
+                - cell "—" [ref=f7e423]
+                - cell "420.00" [ref=f7e424]
+                - cell "Active" [ref=f7e425]
+                - cell [ref=f7e427]
+                - cell [ref=f7e428]:
+                  - link "" [ref=f7e429] [cursor=pointer]:
+                    - /url: http://managehosting.local/admin/customers/14
+                  - link "" [ref=f7e431] [cursor=pointer]:
+                    - /url: http://managehosting.local/admin/customers/14/edit
+                  - button "" [ref=f7e434] [cursor=pointer]
+              - row [ref=f7e436]:
+                - cell "#CLT-00013" [ref=f7e437]
+                - cell [ref=f7e438]:
+                  - link [ref=f7e439] [cursor=pointer]:
+                    - /url: http://managehosting.local/admin/customers/13
+                    - strong [ref=f7e440]: Somenath Patra
+                - cell "somenath@localhost.local" [ref=f7e441]
+                - cell "DTPL" [ref=f7e442]
+                - cell "0.00" [ref=f7e443]
+                - cell "Active" [ref=f7e444]
+                - cell "Aug 2, 2026" [ref=f7e446]
+                - cell [ref=f7e447]:
+                  - link "" [ref=f7e448] [cursor=pointer]:
+                    - /url: http://managehosting.local/admin/customers/13
+                  - link "" [ref=f7e450] [cursor=pointer]:
+                    - /url: http://managehosting.local/admin/customers/13/edit
+                  - button "" [ref=f7e453] [cursor=pointer]
+              - row [ref=f7e455]:
+                - cell "#CLT-00012" [ref=f7e456]
+                - cell [ref=f7e457]:
+                  - link [ref=f7e458] [cursor=pointer]:
+                    - /url: http://managehosting.local/admin/customers/12
+                    - strong [ref=f7e459]: Divya Rao
+                - cell "client12@demo.com" [ref=f7e460]
+                - cell "Divya Designs" [ref=f7e461]
+                - cell "1,340.00" [ref=f7e462]
+                - cell "Active" [ref=f7e463]
+                - cell [ref=f7e465]
+                - cell [ref=f7e466]:
+                  - link "" [ref=f7e467] [cursor=pointer]:
+                    - /url: http://managehosting.local/admin/customers/12
+                  - link "" [ref=f7e469] [cursor=pointer]:
+                    - /url: http://managehosting.local/admin/customers/12/edit
+                  - button "" [ref=f7e472] [cursor=pointer]
+              - row [ref=f7e474]:
+                - cell "#CLT-00011" [ref=f7e475]
+                - cell [ref=f7e476]:
+                  - link [ref=f7e477] [cursor=pointer]:
+                    - /url: http://managehosting.local/admin/customers/11
+                    - strong [ref=f7e478]: Manoj Yadav
+                - cell "client11@demo.com" [ref=f7e479]
+                - cell "—" [ref=f7e480]
+                - cell "950.00" [ref=f7e481]
+                - cell "Active" [ref=f7e482]
+                - cell [ref=f7e484]
+                - cell [ref=f7e485]:
+                  - link "" [ref=f7e486] [cursor=pointer]:
+                    - /url: http://managehosting.local/admin/customers/11
+                  - link "" [ref=f7e488] [cursor=pointer]:
+                    - /url: http://managehosting.local/admin/customers/11/edit
+                  - button "" [ref=f7e491] [cursor=pointer]
+              - row [ref=f7e493]:
+                - cell "#CLT-00010" [ref=f7e494]
+                - cell [ref=f7e495]:
+                  - link [ref=f7e496] [cursor=pointer]:
+                    - /url: http://managehosting.local/admin/customers/10
+                    - strong [ref=f7e497]: Pooja Sinha
+                - cell "client10@demo.com" [ref=f7e498]
+                - cell "Patna Web Hub" [ref=f7e499]
+                - cell "680.00" [ref=f7e500]
+                - cell "Active" [ref=f7e501]
+                - cell [ref=f7e503]
+                - cell [ref=f7e504]:
+                  - link "" [ref=f7e505] [cursor=pointer]:
+                    - /url: http://managehosting.local/admin/customers/10
+                  - link "" [ref=f7e507] [cursor=pointer]:
+                    - /url: http://managehosting.local/admin/customers/10/edit
+                  - button "" [ref=f7e510] [cursor=pointer]
+              - row [ref=f7e512]:
+                - cell "#CLT-00009" [ref=f7e513]
+                - cell [ref=f7e514]:
+                  - link [ref=f7e515] [cursor=pointer]:
+                    - /url: http://managehosting.local/admin/customers/9
+                    - strong [ref=f7e516]: Arun Tiwari
+                - cell "client9@demo.com" [ref=f7e517]
+                - cell "Tiwari Enterprises" [ref=f7e518]
+                - cell "2,100.00" [ref=f7e519]
+                - cell "Active" [ref=f7e520]
+                - cell [ref=f7e522]
+                - cell [ref=f7e523]:
+                  - link "" [ref=f7e524] [cursor=pointer]:
+                    - /url: http://managehosting.local/admin/customers/9
+                  - link "" [ref=f7e526] [cursor=pointer]:
+                    - /url: http://managehosting.local/admin/customers/9/edit
+                  - button "" [ref=f7e529] [cursor=pointer]
+              - row [ref=f7e531]:
+                - cell "#CLT-00008" [ref=f7e532]
+                - cell [ref=f7e533]:
+                  - link [ref=f7e534] [cursor=pointer]:
+                    - /url: http://managehosting.local/admin/customers/8
+                    - strong [ref=f7e535]: Kavita Desai
+                - cell "client8@demo.com" [ref=f7e536]
+                - cell "—" [ref=f7e537]
+                - cell "175.00" [ref=f7e538]
+                - cell "Suspended" [ref=f7e539]
+                - cell [ref=f7e541]
+                - cell [ref=f7e542]:
+                  - link "" [ref=f7e543] [cursor=pointer]:
+                    - /url: http://managehosting.local/admin/customers/8
+                  - link "" [ref=f7e545] [cursor=pointer]:
+                    - /url: http://managehosting.local/admin/customers/8/edit
+                  - button "" [ref=f7e548] [cursor=pointer]
+              - row [ref=f7e550]:
+                - cell "#CLT-00007" [ref=f7e551]
+                - cell [ref=f7e552]:
+                  - link [ref=f7e553] [cursor=pointer]:
+                    - /url: http://managehosting.local/admin/customers/7
+                    - strong [ref=f7e554]: Sanjay Mishra
+                - cell "client7@demo.com" [ref=f7e555]
+                - cell "Mishra Digital" [ref=f7e556]
+                - cell "320.00" [ref=f7e557]
+                - cell "Active" [ref=f7e558]
+                - cell [ref=f7e560]
+                - cell [ref=f7e561]:
+                  - link "" [ref=f7e562] [cursor=pointer]:
+                    - /url: http://managehosting.local/admin/customers/7
+                  - link "" [ref=f7e564] [cursor=pointer]:
+                    - /url: http://managehosting.local/admin/customers/7/edit
+                  - button "" [ref=f7e567] [cursor=pointer]
+              - row [ref=f7e569]:
+                - cell "#CLT-00006" [ref=f7e570]
+                - cell [ref=f7e571]:
+                  - link [ref=f7e572] [cursor=pointer]:
+                    - /url: http://managehosting.local/admin/customers/6
+                    - strong [ref=f7e573]: Meera Nair
+                - cell "client6@demo.com" [ref=f7e574]
+                - cell "Kerala Web Solutions" [ref=f7e575]
+                - cell "1,500.00" [ref=f7e576]
+                - cell "Active" [ref=f7e577]
+                - cell [ref=f7e579]
+                - cell [ref=f7e580]:
+                  - link "" [ref=f7e581] [cursor=pointer]:
+                    - /url: http://managehosting.local/admin/customers/6
+                  - link "" [ref=f7e583] [cursor=pointer]:
+                    - /url: http://managehosting.local/admin/customers/6/edit
+                  - button "" [ref=f7e586] [cursor=pointer]
+              - row [ref=f7e588]:
+                - cell "#CLT-00005" [ref=f7e589]
+                - cell [ref=f7e590]:
+                  - link [ref=f7e591] [cursor=pointer]:
+                    - /url: http://managehosting.local/admin/customers/5
+                    - strong [ref=f7e592]: Rajesh Iyer
+                - cell "client5@demo.com" [ref=f7e593]
+                - cell "Iyer Tech Labs" [ref=f7e594]
+                - cell "890.00" [ref=f7e595]
+                - cell "Active" [ref=f7e596]
+                - cell [ref=f7e598]
+                - cell [ref=f7e599]:
+                  - link "" [ref=f7e600] [cursor=pointer]:
+                    - /url: http://managehosting.local/admin/customers/5
+                  - link "" [ref=f7e602] [cursor=pointer]:
+                    - /url: http://managehosting.local/admin/customers/5/edit
+                  - button "" [ref=f7e605] [cursor=pointer]
+              - row [ref=f7e607]:
+                - cell "#CLT-00004" [ref=f7e608]
+                - cell [ref=f7e609]:
+                  - link [ref=f7e610] [cursor=pointer]:
+                    - /url: http://managehosting.local/admin/customers/4
+                    - strong [ref=f7e611]: Neha Gupta
+                - cell "client4@demo.com" [ref=f7e612]
+                - cell "—" [ref=f7e613]
+                - cell "540.00" [ref=f7e614]
+                - cell "Active" [ref=f7e615]
+                - cell [ref=f7e617]
+                - cell [ref=f7e618]:
+                  - link "" [ref=f7e619] [cursor=pointer]:
+                    - /url: http://managehosting.local/admin/customers/4
+                  - link "" [ref=f7e621] [cursor=pointer]:
+                    - /url: http://managehosting.local/admin/customers/4/edit
+                  - button "" [ref=f7e624] [cursor=pointer]
+        - navigation "Pagination Navigation" [ref=f7e627]:
+          - generic [ref=f7e628]:
+            - text: « Previous
+            - link "Next »" [ref=f7e629] [cursor=pointer]:
+              - /url: http://managehosting.local/admin/customers?page=2
+          - generic [ref=f7e630]:
+            - paragraph [ref=f7e632]: Showing 1 to 20 of 23 results
+            - generic [ref=f7e634]:
+              - generic "&laquo; Previous" [ref=f7e635]
+              - generic [ref=f7e639]: "1"
+              - link "Go to page 2" [ref=f7e640] [cursor=pointer]:
+                - /url: http://managehosting.local/admin/customers?page=2
+                - text: "2"
+              - link "Next &raquo;" [ref=f7e641] [cursor=pointer]:
+                - /url: http://managehosting.local/admin/customers?page=2
+    - contentinfo [ref=f7e644]:
+      - generic [ref=f7e645]: Powered by Laravel & AdminLTE
+      - text: Copyright © 2026 Hosting CRM. All rights reserved.
+  - status [ref=f7e646]

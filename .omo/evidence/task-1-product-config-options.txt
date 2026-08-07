@@ -1,0 +1,69 @@
+Task 1 — IpAssignmentService + Product::requiresIp() helper (TDD, pure logic)
+=============================================================================
+Date: 2026-08-06
+Plan: .omo/plans/product-config-options.md lines 71-77
+
+TDD BASELINE (RED) — tests written first, before any implementation
+-------------------------------------------------------------------
+$ php artisan test --filter=IpAssignmentServiceTest
+{"tool":"phpunit","result":"failed","tests":5,"passed":0,"assertions":0,"errors":5}
+  - test_assigns_next_available_ip: Class "App\Services\IpAssignmentService" not found
+  - test_throws_when_subnet_empty: Class "App\Services\IpAssignmentService" not found
+  - test_assign_specific_works_and_rejects_taken: Class "App\Services\IpAssignmentService" not found
+  - test_release_clears_assignment_and_writes_history: Class "App\Services\IpAssignmentService" not found
+  - test_sequential_assigns_return_different_ips: Class "App\Services\IpAssignmentService" not found
+
+$ php artisan test --filter=ProductRequiresIpTest
+{"tool":"phpunit","result":"failed","tests":4,"passed":0,"assertions":0,"errors":4}
+  - all 4 methods: Call to undefined method App\Models\Product::requiresIp()
+
+FINAL RUNS (GREEN) — after implementation
+-----------------------------------------
+$ php artisan test --filter=IpAssignmentServiceTest
+{"tool":"phpunit","result":"passed","tests":5,"passed":5,"assertions":28}
+
+$ php artisan test --filter=ProductRequiresIpTest
+{"tool":"phpunit","result":"passed","tests":4,"passed":4,"assertions":5}
+
+QA scenarios from the plan (named invocations)
+----------------------------------------------
+happy   — $ php artisan test --filter=IpAssignmentServiceTest::test_assigns_next_available_ip
+          {"tool":"phpunit","result":"passed","tests":1,"passed":1,"assertions":13}
+failure — $ php artisan test --filter=IpAssignmentServiceTest::test_throws_when_subnet_empty
+          {"tool":"phpunit","result":"passed","tests":1,"passed":1,"assertions":1}
+
+Regression sweeps (migration touches shared IPAM schema)
+--------------------------------------------------------
+$ php artisan test --testsuite=Unit
+{"tool":"phpunit","result":"passed","tests":43,"passed":43,"assertions":148}
+
+$ php artisan test --testsuite=Feature
+{"tool":"phpunit","result":"passed","tests":67,"passed":67,"assertions":192}
+
+$ vendor\bin\pint (changed files): all clean after auto-fix of 3 style nits
+  (single_line_empty_body, class_attributes_separation, no_unused_imports)
+
+Files
+-----
++ app/Services/IpAssignmentService.php        (assignNextAvailable / assignSpecific / release; DB::transaction + lockForUpdate; history ledger writes)
++ app/Exceptions/NoAvailableIpException.php   (extends RuntimeException)
++ database/migrations/2026_08_06_000002_widen_ipam_assignment_enums.php
++ tests/Unit/IpAssignmentServiceTest.php      (5 tests)
++ tests/Unit/ProductRequiresIpTest.php        (4 tests)
+~ app/Models/Product.php                      (requiresIp() only)
+~ app/Models/IpAllocationHistory.php          ($timestamps = false; changed_at added to Fillable)
+
+Schema deviation forced by reality (documented in learnings)
+------------------------------------------------------------
+The spec's morph marker 'App\Models\HostingAccount' and history actions
+'assigned'/'override' were REJECTED by the existing DB CHECK constraints
+(Laravel 13 compiles enum to varchar + CHECK on SQLite too — verified
+empirically). An additive enum-widening migration was therefore required.
+Also: ip_allocation_history has no created_at/updated_at columns, so the
+model needed $timestamps = false, and changed_at had to be fillable.
+ip_address_snapshot was widened VARCHAR(45) -> TEXT so the mandated
+json_encode-of-the-row fits on MySQL strict mode.
+
+Commit: NOT POSSIBLE in this environment — git binary not installed and the
+working directory is not a git repository. Intended message per plan:
+  feat(ipam): add IpAssignmentService leasing next available IP from existing IPAM

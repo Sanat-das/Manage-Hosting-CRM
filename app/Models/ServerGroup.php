@@ -10,6 +10,13 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 #[Fillable(['name', 'description', 'load_balancing', 'status'])]
 class ServerGroup extends Model
 {
+    /**
+     * The server_groups table carries only created_at (DB default), no
+     * updated_at column — disable Eloquent's automatic timestamps so
+     * create/update don't write a nonexistent column.
+     */
+    public $timestamps = false;
+
     protected $casts = [
         'status' => 'string',
     ];

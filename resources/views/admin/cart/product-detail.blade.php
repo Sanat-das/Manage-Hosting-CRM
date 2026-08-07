@@ -10,34 +10,23 @@
             <x-adminlte-card icon="bi bi-box-seam" title="{{ $product->name }}">
                 <p>{{ $product->description ?? 'No description available.' }}</p>
                 <div class="mb-2">
-                    <span class="badge bg-info">{{ ucfirst($product->product_type) }}</span>
-                    <span class="badge bg-secondary">{{ ucfirst(str_replace('_', ' ', $product->billing_model)) }}</span>
-                    <span class="badge bg-primary">SKU: {{ $product->sku }}</span>
+                    <span class="badge bg-info">{{ ucfirst($product->type) }}</span>
+                    <span class="badge bg-secondary">{{ ucfirst(str_replace('_', ' ', $product->billing_cycle ?? 'monthly')) }}</span>
+                    <span class="badge bg-primary">From ₹{{ number_format($product->price, 2) }}</span>
                 </div>
 
-                @if ($configurableOptions)
-                    <x-adminlte-card title="Options" class="mt-3">
-                        @foreach ($configurableOptions as $option)
-                            <div class="mb-2">
-                                <label class="form-label fw-bold">{{ $option['name'] ?? 'Option' }}</label>
-                                <select class="form-select" name="option[{{ $option['slug'] ?? $loop->index }}]">
-                                    @foreach ($option['values'] ?? [] as $val)
-                                        <option value="{{ $val }}">{{ $val }}</option>
-                                    @endforeach
-                                </select>
-                            </div>
-                        @endforeach
-                    </x-adminlte-card>
-                @endif
-
-                @if ($pricingTiers)
+                @if ($product->pricing->isNotEmpty())
                     <x-adminlte-card title="Pricing" class="mt-3">
                         <div class="table-responsive">
                             <table class="table table-sm mb-0">
-                                <thead><tr><th>Period</th><th>Price</th></tr></thead>
+                                <thead><tr><th>Period</th><th>Setup</th><th>Price</th></tr></thead>
                                 <tbody>
-                                    @foreach ($pricingTiers as $tier)
-                                        <tr><td>{{ $tier['period'] ?? 'Monthly' }}</td><td>${{ number_format($tier['price'] ?? 0, 2) }}</td></tr>
+                                    @foreach ($product->pricing as $tier)
+                                        <tr>
+                                            <td>{{ ucfirst(str_replace('_', ' ', $tier->billing_cycle)) }}</td>
+                                            <td>₹{{ number_format($tier->setup_fee, 2) }}</td>
+                                            <td>₹{{ number_format($tier->price, 2) }}</td>
+                                        </tr>
                                     @endforeach
                                 </tbody>
                             </table>
@@ -51,6 +40,24 @@
                 <form method="POST" action="{{ route('admin.cart.add') }}">
                     @csrf
                     <input type="hidden" name="product_id" value="{{ $product->id }}">
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Billing Cycle</label>
+                        <select name="billing_cycle" class="form-select">
+                            @if ($product->pricing->isNotEmpty())
+                                @foreach ($product->pricing as $tier)
+                                    <option value="{{ $tier->billing_cycle }}">{{ ucfirst(str_replace('_', ' ', $tier->billing_cycle)) }}</option>
+                                @endforeach
+                            @else
+                                <option value="{{ $product->billing_cycle ?? 'monthly' }}">{{ ucfirst(str_replace('_', ' ', $product->billing_cycle ?? 'monthly')) }}</option>
+                            @endif
+                        </select>
+                    </div>
+                    @if ($product->require_domain)
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Domain</label>
+                            <input type="text" name="domain" class="form-control" placeholder="example.com">
+                        </div>
+                    @endif
                     <button type="submit" class="btn btn-primary w-100"><i class="bi bi-cart-plus me-1"></i> Add to Cart</button>
                 </form>
                 <a href="{{ route('admin.cart.index') }}" class="btn btn-outline-secondary w-100 mt-2">Back to Cart</a>

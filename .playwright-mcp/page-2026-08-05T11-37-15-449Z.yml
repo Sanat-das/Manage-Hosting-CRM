@@ -1,0 +1,316 @@
+- generic [active] [ref=f6e1]:
+  - generic:
+    - link "Skip to main content" [ref=f6e2] [cursor=pointer]:
+      - /url: "#main"
+    - link "Skip to navigation" [ref=f6e3] [cursor=pointer]:
+      - /url: "#navigation"
+  - generic [ref=f6e4]:
+    - navigation [ref=f6e5]:
+      - generic [ref=f6e6]:
+        - list [ref=f6e7]:
+          - listitem [ref=f6e8]:
+            - button "Toggle sidebar" [ref=f6e9] [cursor=pointer]:
+              - generic [ref=f6e10]: 
+          - listitem [ref=f6e11]:
+            - link "Home" [ref=f6e12] [cursor=pointer]:
+              - /url: http://managehosting.local
+              - generic [ref=f6e13]: 
+              - text: Home
+          - listitem [ref=f6e14]:
+            - link "Documentation" [ref=f6e15] [cursor=pointer]:
+              - /url: /docs
+              - generic [ref=f6e16]: 
+              - text: Documentation
+        - list [ref=f6e17]:
+          - listitem [ref=f6e18]:
+            - button "Search" [ref=f6e19] [cursor=pointer]:
+              - generic [ref=f6e20]: 
+              - generic [ref=f6e21]: Search…
+              - generic [ref=f6e22]: ⌘K
+          - listitem [ref=f6e23]:
+            - link "3" [ref=f6e24] [cursor=pointer]:
+              - /url: "#"
+              - generic [ref=f6e25]: 
+            - text:      
+          - listitem [ref=f6e27]:
+            - link "3" [ref=f6e28] [cursor=pointer]:
+              - /url: "#"
+              - generic [ref=f6e29]: 
+            - text:   
+          - listitem [ref=f6e31]:
+            - link "Toggle fullscreen" [ref=f6e32] [cursor=pointer]:
+              - /url: "#"
+              - generic [ref=f6e33]: 
+              - text: 
+          - listitem [ref=f6e34]:
+            - link "Toggle color scheme" [ref=f6e35] [cursor=pointer]:
+              - /url: "#"
+              - generic [ref=f6e36]: 
+              - text:  
+            - text:      
+          - listitem [ref=f6e37]:
+            - link " Sanat Das" [ref=f6e38] [cursor=pointer]:
+              - /url: "#"
+              - generic [ref=f6e39]: 
+              - text: Sanat Das
+            - text: 
+    - text: 
+    - complementary [ref=f6e40]:
+      - link " Hosting CRM" [ref=f6e42] [cursor=pointer]:
+        - /url: http://managehosting.local
+        - generic [ref=f6e43]:
+          - generic [ref=f6e44]: 
+          - text: Hosting CRM
+      - navigation "Main navigation" [ref=f6e47]:
+        - menu [ref=f6e48]:
+          - listitem [ref=f6e49]: NAVIGATION
+          - listitem [ref=f6e50]:
+            - link [ref=f6e51] [cursor=pointer]:
+              - /url: http://managehosting.local/admin/dashboard
+              - generic [ref=f6e52]: 
+              - paragraph [ref=f6e53]: Dashboard
+          - listitem [ref=f6e54]: MANAGEMENT
+          - listitem [ref=f6e55]:
+            - button [ref=f6e56] [cursor=pointer]:
+              - generic [ref=f6e57]: 
+              - paragraph [ref=f6e58]:
+                - text: Customers
+                - generic [ref=f6e59]: 
+            - text:   
+          - listitem [ref=f6e60]:
+            - button [ref=f6e61] [cursor=pointer]:
+              - generic [ref=f6e62]: 
+              - paragraph [ref=f6e63]:
+                - text: Products
+                - generic [ref=f6e64]: 
+            - text:     
+          - listitem [ref=f6e65]:
+            - button [ref=f6e66] [cursor=pointer]:
+              - generic [ref=f6e67]: 
+              - paragraph [ref=f6e68]:
+                - text: Orders
+                - generic [ref=f6e69]: 
+            - text:  
+          - listitem [ref=f6e70]:
+            - button [ref=f6e71] [cursor=pointer]:
+              - generic [ref=f6e72]: 
+              - paragraph [ref=f6e73]:
+                - text: Hosting
+                - generic [ref=f6e74]: 
+            - text:   
+          - listitem [ref=f6e75]:
+            - button [ref=f6e76] [cursor=pointer]:
+              - generic [ref=f6e77]: 
+              - paragraph [ref=f6e78]:
+                - text: Domains
+                - generic [ref=f6e79]: 
+            - text:    
+          - listitem [ref=f6e80]: BILLING
+          - listitem [ref=f6e81]:
+            - button [ref=f6e82] [cursor=pointer]:
+              - generic [ref=f6e83]: 
+              - paragraph [ref=f6e84]:
+                - text: Invoices
+                - generic [ref=f6e85]: 
+            - text:  
+          - listitem [ref=f6e86]:
+            - button [ref=f6e87] [cursor=pointer]:
+              - generic [ref=f6e88]: 
+              - paragraph [ref=f6e89]:
+                - text: Payments
+                - generic [ref=f6e90]: 
+            - text:   
+          - listitem [ref=f6e91]:
+            - link [ref=f6e92] [cursor=pointer]:
+              - /url: http://managehosting.local/admin/quotes
+              - generic [ref=f6e93]: 
+              - paragraph [ref=f6e94]: Quotes
+          - listitem [ref=f6e95]:
+            - link [ref=f6e96] [cursor=pointer]:
+              - /url: http://managehosting.local/admin/transactions
+              - generic [ref=f6e97]: 
+              - paragraph [ref=f6e98]: Transactions
+          - listitem [ref=f6e99]:
+            - link [ref=f6e100] [cursor=pointer]:
+              - /url: http://managehosting.local/admin/gst-settings
+              - generic [ref=f6e101]: 
+              - paragraph [ref=f6e102]: GST Settings
+          - listitem [ref=f6e103]: SUPPORT
+          - listitem [ref=f6e104]:
+            - button [ref=f6e105] [cursor=pointer]:
+              - generic [ref=f6e106]: 
+              - paragraph [ref=f6e107]:
+                - text: Tickets
+                - generic [ref=f6e108]: 
+            - text:   
+          - listitem [ref=f6e109]:
+            - button [ref=f6e110] [cursor=pointer]:
+              - generic [ref=f6e111]: 
+              - paragraph [ref=f6e112]:
+                - text: Knowledge Base
+                - generic [ref=f6e113]: 
+            - text:  
+          - listitem [ref=f6e114]:
+            - link [ref=f6e115] [cursor=pointer]:
+              - /url: http://managehosting.local/admin/chat
+              - generic [ref=f6e116]: 
+              - paragraph [ref=f6e117]: Live Chat
+          - listitem [ref=f6e118]: ANALYTICS
+          - listitem [ref=f6e119]:
+            - button [ref=f6e120] [cursor=pointer]:
+              - generic [ref=f6e121]: 
+              - paragraph [ref=f6e122]:
+                - text: Reports
+                - generic [ref=f6e123]: 
+            - text:   
+          - listitem [ref=f6e124]:
+            - link [ref=f6e125] [cursor=pointer]:
+              - /url: http://managehosting.local/admin/analytics
+              - generic [ref=f6e126]: 
+              - paragraph [ref=f6e127]: Analytics
+          - listitem [ref=f6e128]: INFRASTRUCTURE
+          - listitem [ref=f6e129]:
+            - link [ref=f6e130] [cursor=pointer]:
+              - /url: http://managehosting.local/admin/datacenters
+              - generic [ref=f6e131]: 
+              - paragraph [ref=f6e132]: Datacenters
+          - listitem [ref=f6e133]:
+            - button [ref=f6e134] [cursor=pointer]:
+              - generic [ref=f6e135]: 
+              - paragraph [ref=f6e136]:
+                - text: IP Manager
+                - generic [ref=f6e137]: 
+            - text:    
+          - listitem [ref=f6e138]:
+            - link [ref=f6e139] [cursor=pointer]:
+              - /url: http://managehosting.local/admin/inventory-assets
+              - generic [ref=f6e140]: 
+              - paragraph [ref=f6e141]: Inventory
+          - listitem [ref=f6e142]: SYSTEM
+          - listitem [ref=f6e143]:
+            - link [ref=f6e144] [cursor=pointer]:
+              - /url: http://managehosting.local/admin/users
+              - generic [ref=f6e145]: 
+              - paragraph [ref=f6e146]: Users
+          - listitem [ref=f6e147]:
+            - link [ref=f6e148] [cursor=pointer]:
+              - /url: http://managehosting.local/admin/roles
+              - generic [ref=f6e149]: 
+              - paragraph [ref=f6e150]: Roles & Permissions
+          - listitem [ref=f6e151]:
+            - link [ref=f6e152] [cursor=pointer]:
+              - /url: http://managehosting.local/admin/email-templates
+              - generic [ref=f6e153]: 
+              - paragraph [ref=f6e154]: Email Templates
+          - listitem [ref=f6e155]:
+            - link [ref=f6e156] [cursor=pointer]:
+              - /url: http://managehosting.local/admin/settings
+              - generic [ref=f6e157]: 
+              - paragraph [ref=f6e158]: Settings
+          - listitem [ref=f6e159]:
+            - link [ref=f6e160] [cursor=pointer]:
+              - /url: http://managehosting.local/admin/activity-log
+              - generic [ref=f6e161]: 
+              - paragraph [ref=f6e162]: Activity Log
+          - listitem [ref=f6e163]: CLIENT PORTAL
+          - listitem [ref=f6e164]:
+            - link [ref=f6e165] [cursor=pointer]:
+              - /url: http://managehosting.local/client/dashboard
+              - generic [ref=f6e166]: 
+              - paragraph [ref=f6e167]: Dashboard
+          - listitem [ref=f6e168]:
+            - link [ref=f6e169] [cursor=pointer]:
+              - /url: http://managehosting.local/client/hosting
+              - generic [ref=f6e170]: 
+              - paragraph [ref=f6e171]: My Hosting
+          - listitem [ref=f6e172]:
+            - link [ref=f6e173] [cursor=pointer]:
+              - /url: http://managehosting.local/client/domains
+              - generic [ref=f6e174]: 
+              - paragraph [ref=f6e175]: Domains
+          - listitem [ref=f6e176]:
+            - link [ref=f6e177] [cursor=pointer]:
+              - /url: http://managehosting.local/client/invoices
+              - generic [ref=f6e178]: 
+              - paragraph [ref=f6e179]: Invoices
+          - listitem [ref=f6e180]:
+            - link [ref=f6e181] [cursor=pointer]:
+              - /url: http://managehosting.local/client/tickets
+              - generic [ref=f6e182]: 
+              - paragraph [ref=f6e183]: Tickets
+          - listitem [ref=f6e184]:
+            - link [ref=f6e185] [cursor=pointer]:
+              - /url: http://managehosting.local/client/kb
+              - generic [ref=f6e186]: 
+              - paragraph [ref=f6e187]: Knowledge Base
+          - listitem [ref=f6e188]:
+            - link [ref=f6e189] [cursor=pointer]:
+              - /url: http://managehosting.local/client/wallet
+              - generic [ref=f6e190]: 
+              - paragraph [ref=f6e191]: Wallet
+          - listitem [ref=f6e192]:
+            - link [ref=f6e193] [cursor=pointer]:
+              - /url: http://managehosting.local/client/profile
+              - generic [ref=f6e194]: 
+              - paragraph [ref=f6e195]: Profile
+        - link "View documentation" [ref=f6e197] [cursor=pointer]:
+          - /url: /docs
+          - generic [ref=f6e198]: 
+    - main [ref=f6e200]:
+      - generic [ref=f6e203]:
+        - heading "Dashboard" [level=1] [ref=f6e205]
+        - list [ref=f6e207]:
+          - listitem [ref=f6e208]:
+            - link "Home" [ref=f6e209] [cursor=pointer]:
+              - /url: http://managehosting.local
+          - listitem [ref=f6e210]: / Dashboard
+      - generic [ref=f6e212]:
+        - generic [ref=f6e213]:
+          - generic [ref=f6e215]:
+            - generic [ref=f6e216]:
+              - heading "0" [level=3] [ref=f6e217]
+              - paragraph [ref=f6e218]: Customers
+            - generic [ref=f6e219]: 
+            - link "View all " [ref=f6e220] [cursor=pointer]:
+              - /url: "#"
+              - text: View all
+              - generic [ref=f6e221]: 
+          - generic [ref=f6e223]:
+            - generic [ref=f6e224]:
+              - heading "0" [level=3] [ref=f6e225]
+              - paragraph [ref=f6e226]: Invoices
+            - generic [ref=f6e227]: 
+            - link "View all " [ref=f6e228] [cursor=pointer]:
+              - /url: "#"
+              - text: View all
+              - generic [ref=f6e229]: 
+          - generic [ref=f6e231]:
+            - generic [ref=f6e232]:
+              - heading "0" [level=3] [ref=f6e233]
+              - paragraph [ref=f6e234]: Tickets
+            - generic [ref=f6e235]: 
+            - link "View all " [ref=f6e236] [cursor=pointer]:
+              - /url: "#"
+              - text: View all
+              - generic [ref=f6e237]: 
+          - generic [ref=f6e239]:
+            - generic [ref=f6e240]:
+              - heading "$0.00" [level=3] [ref=f6e241]
+              - paragraph [ref=f6e242]: Revenue
+            - generic [ref=f6e243]: 
+            - link "View report " [ref=f6e244] [cursor=pointer]:
+              - /url: "#"
+              - text: View report
+              - generic [ref=f6e245]: 
+        - generic [ref=f6e246]:
+          - generic [ref=f6e248]:
+            - generic [ref=f6e249]: 
+            - text: Dashboard
+          - paragraph [ref=f6e251]:
+            - text: Welcome back,
+            - strong [ref=f6e252]: Sanat Das
+            - text: . The dashboard metrics will be populated as modules are built out.
+    - contentinfo [ref=f6e253]:
+      - generic [ref=f6e254]: Powered by Laravel & AdminLTE
+      - text: Copyright © 2026 Hosting CRM. All rights reserved.
+  - status [ref=f6e255]

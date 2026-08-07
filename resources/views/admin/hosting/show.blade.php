@@ -100,6 +100,70 @@
         ['title' => $hostingAccount->server?->name ?? 'Unassigned', 'text' => 'Server', 'icon' => 'bi bi-server', 'theme' => 'warning'],
     ]" />
 
+    {{-- IP address --}}
+    <x-adminlte-card title="IP Address" icon="bi bi-hdd-network">
+        <div class="row g-3">
+            <div class="col-md-6">
+                @if ($assignedIp)
+                    <table class="table table-sm table-borderless mb-0">
+                        <tbody>
+                            <tr><th class="w-25 text-muted">IP address</th><td><code>{{ $assignedIp->ip_address }}</code></td></tr>
+                            <tr><th class="text-muted">Type</th><td>{{ $assignedIp->type ? ucfirst(str_replace('_', ' ', $assignedIp->type)) : '—' }}</td></tr>
+                            <tr><th class="text-muted">Subnet</th><td>{{ $assignedIp->subnet?->name ?? '—' }}</td></tr>
+                            <tr><th class="text-muted">PTR record</th><td>{{ $assignedIp->ptr_record ?? '—' }}</td></tr>
+                        </tbody>
+                    </table>
+                @else
+                    <p class="text-muted mb-0">No IP assigned</p>
+                @endif
+            </div>
+            @can('hosting.manage')
+                <div class="col-md-6">
+                    @if ($assignedIp)
+                        {{-- Release the current lease --}}
+                        <form method="POST" action="{{ route('admin.hosting.release-ip', $hostingAccount) }}">
+                            @csrf
+                            <div class="mb-2">
+                                <input type="text" name="reason" class="form-control form-control-sm"
+                                       placeholder="Release reason (optional)" maxlength="1000">
+                            </div>
+                            <button type="submit" class="btn btn-outline-danger btn-sm">
+                                <i class="bi bi-arrow-counterclockwise me-1"></i> Release IP
+                            </button>
+                        </form>
+                    @else
+                        {{-- Pull next available --}}
+                        <form method="POST" action="{{ route('admin.hosting.pull-ip', $hostingAccount) }}" class="mb-3">
+                            @csrf
+                            <button type="submit" class="btn btn-primary btn-sm">
+                                <i class="bi bi-lightning me-1"></i> Pull Next Available
+                            </button>
+                        </form>
+
+                        {{-- Choose a specific free IP --}}
+                        @if ($availableIps->isNotEmpty())
+                            <form method="POST" action="{{ route('admin.hosting.choose-ip', $hostingAccount) }}">
+                                @csrf
+                                <div class="input-group input-group-sm">
+                                    <select name="ip_address_id" class="form-select" required>
+                                        @foreach ($availableIps as $availableIp)
+                                            <option value="{{ $availableIp->id }}">
+                                                {{ $availableIp->ip_address }}{{ $availableIp->subnet ? ' — '.$availableIp->subnet->name : '' }}
+                                            </option>
+                                        @endforeach
+                                    </select>
+                                    <button type="submit" class="btn btn-outline-primary">Assign</button>
+                                </div>
+                            </form>
+                        @else
+                            <p class="text-muted small mb-0">No available IPs in the pool.</p>
+                        @endif
+                    @endif
+                </div>
+            @endcan
+        </div>
+    </x-adminlte-card>
+
     {{-- Tabbed detail --}}
     <x-adminlte-card>
         <x-adminlte.partials.detail-tabs :tabs="$tabs" :active-tab="$activeTab">

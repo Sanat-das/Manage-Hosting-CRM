@@ -1,0 +1,182 @@
+- generic [active] [ref=f8e1]:
+  - generic:
+    - link "Skip to main content" [ref=f8e2] [cursor=pointer]:
+      - /url: "#main"
+    - link "Skip to navigation" [ref=f8e3] [cursor=pointer]:
+      - /url: "#navigation"
+  - generic [ref=f8e4]:
+    - generic [ref=f8e5]:
+      - generic [ref=f8e6]: 
+      - text: You are impersonating Demo Client.
+    - link "Leave impersonation" [ref=f8e7] [cursor=pointer]:
+      - /url: http://managehosting.local/admin/impersonate/stop
+      - generic [ref=f8e8]: 
+      - text: Leave impersonation
+  - generic [ref=f8e9]:
+    - navigation [ref=f8e10]:
+      - generic [ref=f8e11]:
+        - list [ref=f8e12]:
+          - listitem [ref=f8e13]:
+            - button "Toggle sidebar" [ref=f8e14] [cursor=pointer]:
+              - generic [ref=f8e15]: 
+          - listitem [ref=f8e16]:
+            - link "Home" [ref=f8e17] [cursor=pointer]:
+              - /url: http://managehosting.local
+              - generic [ref=f8e18]: 
+              - text: Home
+          - listitem [ref=f8e19]:
+            - link "Documentation" [ref=f8e20] [cursor=pointer]:
+              - /url: /docs
+              - generic [ref=f8e21]: 
+              - text: Documentation
+        - list [ref=f8e22]:
+          - listitem [ref=f8e23]:
+            - button "Search" [ref=f8e24] [cursor=pointer]:
+              - generic [ref=f8e25]: 
+              - generic [ref=f8e26]: Search…
+              - generic [ref=f8e27]: ⌘K
+          - listitem [ref=f8e28]:
+            - link "3" [ref=f8e29] [cursor=pointer]:
+              - /url: "#"
+              - generic [ref=f8e30]: 
+            - text:      
+          - listitem [ref=f8e32]:
+            - link "3" [ref=f8e33] [cursor=pointer]:
+              - /url: "#"
+              - generic [ref=f8e34]: 
+            - text:   
+          - listitem [ref=f8e36]:
+            - link "Toggle fullscreen" [ref=f8e37] [cursor=pointer]:
+              - /url: "#"
+              - generic [ref=f8e38]: 
+              - text: 
+          - listitem [ref=f8e39]:
+            - link "Toggle color scheme" [ref=f8e40] [cursor=pointer]:
+              - /url: "#"
+              - generic [ref=f8e41]: 
+              - text:  
+            - text:      
+          - listitem [ref=f8e42]:
+            - link " Demo Client" [ref=f8e43] [cursor=pointer]:
+              - /url: "#"
+              - generic [ref=f8e44]: 
+              - text: Demo Client
+            - text: 
+    - text: 
+    - complementary [ref=f8e45]:
+      - link " Hosting CRM" [ref=f8e47] [cursor=pointer]:
+        - /url: http://managehosting.local
+        - generic [ref=f8e48]:
+          - generic [ref=f8e49]: 
+          - text: Hosting CRM
+      - navigation "Main navigation" [ref=f8e52]:
+        - menu [ref=f8e53]:
+          - listitem [ref=f8e54]: CLIENT PORTAL
+          - listitem [ref=f8e55]:
+            - link [ref=f8e56] [cursor=pointer]:
+              - /url: http://managehosting.local/client/dashboard
+              - generic [ref=f8e57]: 
+              - paragraph [ref=f8e58]: Dashboard
+          - listitem [ref=f8e59]:
+            - link [ref=f8e60] [cursor=pointer]:
+              - /url: http://managehosting.local/client/hosting
+              - generic [ref=f8e61]: 
+              - paragraph [ref=f8e62]: My Hosting
+          - listitem [ref=f8e63]:
+            - link [ref=f8e64] [cursor=pointer]:
+              - /url: http://managehosting.local/client/domains
+              - generic [ref=f8e65]: 
+              - paragraph [ref=f8e66]: Domains
+          - listitem [ref=f8e67]:
+            - link [ref=f8e68] [cursor=pointer]:
+              - /url: http://managehosting.local/client/invoices
+              - generic [ref=f8e69]: 
+              - paragraph [ref=f8e70]: Invoices
+          - listitem [ref=f8e71]:
+            - link [ref=f8e72] [cursor=pointer]:
+              - /url: http://managehosting.local/client/tickets
+              - generic [ref=f8e73]: 
+              - paragraph [ref=f8e74]: Tickets
+          - listitem [ref=f8e75]:
+            - link [ref=f8e76] [cursor=pointer]:
+              - /url: http://managehosting.local/client/kb
+              - generic [ref=f8e77]: 
+              - paragraph [ref=f8e78]: Knowledge Base
+          - listitem [ref=f8e79]:
+            - link [ref=f8e80] [cursor=pointer]:
+              - /url: http://managehosting.local/client/wallet
+              - generic [ref=f8e81]: 
+              - paragraph [ref=f8e82]: Wallet
+          - listitem [ref=f8e83]:
+            - link [ref=f8e84] [cursor=pointer]:
+              - /url: http://managehosting.local/client/profile
+              - generic [ref=f8e85]: 
+              - paragraph [ref=f8e86]: Profile
+        - link "View documentation" [ref=f8e88] [cursor=pointer]:
+          - /url: /docs
+          - generic [ref=f8e89]: 
+    - main [ref=f8e91]:
+      - generic [ref=f8e94]:
+        - heading "adminlte.client_portal" [level=1] [ref=f8e96]
+        - list [ref=f8e98]:
+          - listitem [ref=f8e99]:
+            - link "Home" [ref=f8e100] [cursor=pointer]:
+              - /url: http://managehosting.local
+          - listitem [ref=f8e101]: / Dashboard
+      - generic [ref=f8e103]:
+        - alert [ref=f8e104]:
+          - text: You are currently viewing the portal as
+          - strong [ref=f8e105]: Demo Client
+          - text: .
+          - link "Stop impersonation" [ref=f8e106] [cursor=pointer]:
+            - /url: http://managehosting.local/admin/impersonate/stop
+          - text: .
+        - generic [ref=f8e107]:
+          - generic [ref=f8e109]:
+            - generic [ref=f8e110]:
+              - heading "0" [level=3] [ref=f8e111]
+              - paragraph [ref=f8e112]: Hosting Accounts
+            - generic [ref=f8e113]: 
+          - generic [ref=f8e115]:
+            - generic [ref=f8e116]:
+              - heading "0" [level=3] [ref=f8e117]
+              - paragraph [ref=f8e118]: Active Domains
+            - generic [ref=f8e119]: 
+          - generic [ref=f8e121]:
+            - generic [ref=f8e122]:
+              - heading "0" [level=3] [ref=f8e123]
+              - paragraph [ref=f8e124]: Open Invoices
+            - generic [ref=f8e125]: 
+          - generic [ref=f8e127]:
+            - generic [ref=f8e128]:
+              - heading "0" [level=3] [ref=f8e129]
+              - paragraph [ref=f8e130]: Open Tickets
+            - generic [ref=f8e131]: 
+        - generic [ref=f8e132]:
+          - generic [ref=f8e134]:
+            - generic [ref=f8e136]:
+              - generic [ref=f8e137]: 
+              - text: Recent Invoices
+            - paragraph [ref=f8e139]: No open invoices.
+          - generic [ref=f8e141]:
+            - generic [ref=f8e143]:
+              - generic [ref=f8e144]: 
+              - text: Recent Tickets
+            - paragraph [ref=f8e146]: No open tickets.
+        - generic [ref=f8e147]:
+          - generic [ref=f8e149]:
+            - generic [ref=f8e151]:
+              - generic [ref=f8e152]: 
+              - text: Account Balance
+            - generic [ref=f8e154]:
+              - generic [ref=f8e155]: "250.00"
+              - generic [ref=f8e156]: "Credit: 100.00"
+          - generic [ref=f8e158]:
+            - generic [ref=f8e160]:
+              - generic [ref=f8e161]: 
+              - text: Recent Activity
+            - paragraph [ref=f8e163]: No activity yet.
+    - contentinfo [ref=f8e164]:
+      - generic [ref=f8e165]: Powered by Laravel & AdminLTE
+      - text: Copyright © 2026 Hosting CRM. All rights reserved.
+  - status [ref=f8e166]

@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Client;
 
 use App\Http\Controllers\Controller;
 use App\Models\ActivityLog;
+use App\Models\Product;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
 
@@ -48,6 +49,14 @@ class DashboardController extends Controller
             ->limit(10)
             ->get();
 
-        return view('client.dashboard', compact('customer', 'summary', 'recentActivity'));
+        $featuredProducts = Product::query()
+            ->where('status', 'active')
+            ->where('show_in_order', true)
+            ->where('only_admin', false)
+            ->orderBy('sort_order')
+            ->limit(3)
+            ->get();
+
+        return view('client.dashboard', compact('customer', 'summary', 'recentActivity', 'featuredProducts'));
     }
 }

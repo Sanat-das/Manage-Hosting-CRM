@@ -12,6 +12,9 @@ use App\Http\Controllers\Admin\ResourceTypeController;
 use App\Http\Controllers\Admin\ResourcePoolController;
 use App\Http\Controllers\Admin\DatacenterController;
 use App\Http\Controllers\Admin\IpSubnetController;
+use App\Http\Controllers\Admin\AssetRelationshipController;
+use App\Http\Controllers\Admin\ProductHostedOnController;
+use App\Http\Controllers\Admin\ServerHostingTreeController;
 
 /*
 |--------------------------------------------------------------------------
@@ -184,4 +187,26 @@ Route::middleware(['web', 'auth', 'admin', 'throttle:admin'])->prefix('admin')->
         ->middleware('permission:hosting.manage')->name('resource-pools.update');
     Route::delete('resource-pools/{resourcePool}', [ResourcePoolController::class, 'destroy'])
         ->middleware('permission:hosting.manage')->name('resource-pools.destroy');
+
+    // Asset relationships (reporting links)
+    Route::get('asset-relationships', [AssetRelationshipController::class, 'index'])
+        ->middleware('permission:hosting.view')->name('asset-relationships.index');
+
+    // Server hosting tree (read-only report)
+    Route::get('hosting-tree', [ServerHostingTreeController::class, 'index'])
+        ->middleware('permission:hosting.view')->name('hosting-tree.index');
+    Route::get('asset-relationships/create', [AssetRelationshipController::class, 'create'])
+        ->middleware('permission:hosting.manage')->name('asset-relationships.create');
+    Route::post('asset-relationships', [AssetRelationshipController::class, 'store'])
+        ->middleware('permission:hosting.manage')->name('asset-relationships.store');
+    Route::get('asset-relationships/{assetRelationship}/edit', [AssetRelationshipController::class, 'edit'])
+        ->middleware('permission:hosting.manage')->name('asset-relationships.edit');
+    Route::put('asset-relationships/{assetRelationship}', [AssetRelationshipController::class, 'update'])
+        ->middleware('permission:hosting.manage')->name('asset-relationships.update');
+    Route::delete('asset-relationships/{assetRelationship}', [AssetRelationshipController::class, 'destroy'])
+        ->middleware('permission:hosting.manage')->name('asset-relationships.destroy');
+
+    // Product hosted-on report (read-only)
+    Route::get('product-hosting-tree', [ProductHostedOnController::class, 'index'])
+        ->middleware('permission:hosting.view')->name('product-hosting-tree.index');
 });

@@ -20,3 +20,9 @@
 ## Session 2 decisions (carried over)
 - Component namespace <x-adminlte.partials.*> dots
 - E2E via test_customers.php pattern; reset_2fa.php before admin login tests
+
+## 2026-08-06 Server hosting tree report
+
+- HostingAccount display name = **username**. Task spec said "account_identifier" but that column does not exist in this codebase (hosting_accounts has username/domain/panel_account_id). username is the natural account identifier and matches the existing ProductHostedOnController convention.
+- Route uses ->middleware('permission:hosting.view') (file convention) instead of ->permission('hosting.view') shortcut suggested in spec — identical effect, matches every other route in enterprise.php.
+- "Eager loading" from spec implemented as batch per-kind name resolution (AssetRelationship defines no Eloquent relations, so with() is meaningless; batch lookup avoids N+1).

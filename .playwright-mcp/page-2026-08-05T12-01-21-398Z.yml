@@ -1,0 +1,35 @@
+- generic [ref=f3e1]:
+  - generic:
+    - link "Skip to main content" [ref=f3e2] [cursor=pointer]:
+      - /url: "#main"
+    - link "Skip to navigation" [ref=f3e3] [cursor=pointer]:
+      - /url: "#navigation"
+  - generic [ref=f3e5]:
+    - link " Hosting CRM" [ref=f3e7] [cursor=pointer]:
+      - /url: http://managehosting.local
+      - generic [ref=f3e8]: 
+      - text: Hosting CRM
+    - generic [ref=f3e9]:
+      - paragraph [ref=f3e10]: Client Portal — Sign in to manage your services
+      - generic [ref=f3e11]:
+        - generic [ref=f3e12]:
+          - textbox "Email" [active] [ref=f3e13]
+          - generic [ref=f3e14]: 
+        - generic [ref=f3e16]:
+          - textbox "Password" [ref=f3e17]
+          - generic [ref=f3e18]: 
+        - generic [ref=f3e20]:
+          - generic [ref=f3e22]:
+            - checkbox "Remember Me" [ref=f3e23]
+            - generic [ref=f3e24]: Remember Me
+          - button "Sign In" [ref=f3e26] [cursor=pointer]
+      - paragraph [ref=f3e27]:
+        - link "I forgot my password" [ref=f3e28] [cursor=pointer]:
+          - /url: http://managehosting.local/forgot-password
+      - paragraph [ref=f3e29]:
+        - link "Register a new membership" [ref=f3e30] [cursor=pointer]:
+          - /url: http://managehosting.local/register
+      - paragraph [ref=f3e31]:
+        - link "Staff login" [ref=f3e32] [cursor=pointer]:
+          - /url: http://managehosting.local/admin
+  - status [ref=f3e33]

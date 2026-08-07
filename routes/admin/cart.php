@@ -1,7 +1,7 @@
 <?php
 
-use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Admin\CartController;
+use Illuminate\Support\Facades\Route;
 
 /*
 |--------------------------------------------------------------------------
@@ -21,6 +21,8 @@ Route::middleware(['web', 'auth', 'admin', 'throttle:admin'])->prefix('admin')->
         ->middleware('permission:orders.create')->name('cart.remove');
     Route::get('cart/checkout', [CartController::class, 'checkout'])
         ->middleware('permission:orders.create')->name('cart.checkout');
+    Route::post('cart/place-order', [CartController::class, 'placeOrder'])
+        ->middleware('permission:orders.create')->name('cart.place-order');
     Route::get('cart/domain-search', [CartController::class, 'domainSearch'])
         ->middleware('permission:orders.view')->name('cart.domain-search');
     Route::get('cart/product/{product}', [CartController::class, 'productDetail'])

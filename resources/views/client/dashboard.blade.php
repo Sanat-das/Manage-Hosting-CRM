@@ -122,4 +122,29 @@
             </x-adminlte-card>
         </div>
     </div>
+
+    {{-- Featured products --}}
+    @if (! empty($featuredProducts) && $featuredProducts->isNotEmpty())
+        <x-adminlte-card icon="bi bi-shop" title="Featured Products">
+            <div class="row">
+                @foreach ($featuredProducts as $fp)
+                    <div class="col-md-4 mb-3">
+                        <div class="card h-100 border">
+                            <div class="card-body">
+                                <h6 class="card-title">{{ $fp->name }}</h6>
+                                <p class="card-text small text-muted">{{ Str::limit($fp->description, 70) }}</p>
+                                <span class="badge bg-primary">From ₹{{ number_format($fp->price, 2) }}/mo</span>
+                            </div>
+                            <div class="card-footer text-end">
+                                <a href="{{ route('client.store.show', $fp) }}" class="btn btn-sm btn-outline-primary">View</a>
+                            </div>
+                        </div>
+                    </div>
+                @endforeach
+            </div>
+            <div class="text-end">
+                <a href="{{ route('client.store.index') }}" class="btn btn-sm btn-primary"><i class="bi bi-shop me-1"></i> Browse Store</a>
+            </div>
+        </x-adminlte-card>
+    @endif
 @stop

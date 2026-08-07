@@ -23,6 +23,7 @@ class Product extends Model
         'only_admin' => 'boolean',
         'gst_enabled' => 'boolean',
     ];
+
     /**
      * Product types (reference: modules/products/ProductModel::TYPES).
      */
@@ -86,6 +87,15 @@ class Product extends Model
         'exempt' => 'Exempt (0%)',
         'reverse_charge' => 'Reverse Charge',
     ];
+
+    /**
+     * Whether provisioning this product requires leasing an IP address.
+     * Single source of truth for the "needs an IP" rule.
+     */
+    public function requiresIp(): bool
+    {
+        return in_array($this->type, ['vps', 'dedicated'], true);
+    }
 
     public function group(): BelongsTo
     {

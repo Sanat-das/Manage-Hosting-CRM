@@ -2,9 +2,11 @@
 
 namespace App\Services;
 
+use App\Exceptions\NoAvailableIpException;
 use App\Models\ActivityLog;
 use App\Models\AuditLog;
 use App\Models\HostingAccount;
+use Closure;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
@@ -77,17 +79,33 @@ class HostingService
      * Reactivate a suspended account (or activate a pending one).
      * Clears the suspension fields.
      *
-     * @throws RuntimeException when the account status does not allow activation
+     * A pending -> active activation on a product that requires an IP
+     * (vps / dedicated) first leases the next available address from the
+     * IPAM pool — inside the same transaction, so an exhausted pool rolls
+     * the activation back and the account stays pending. Suspended ->
+     * active reactivations keep the lease the account already holds.
+     *
+     * @throws RuntimeException when the account status does not allow activation,
+     *                          or when the product needs an IP but the pool has none free
      */
     public function unsuspend(HostingAccount $account): void
     {
         $this->assertStatus($account, self::CAN_ACTIVATE_FROM, 'activated');
 
-        $this->mutate($account, 'hosting.unsuspended', "Hosting account {$account->username} reactivated", [
-            'status' => self::STATUS_ACTIVE,
-            'suspended_reason' => null,
-            'suspended_at' => null,
-        ]);
+        try {
+            $this->mutate($account, 'hosting.unsuspended', "Hosting account {$account->username} reactivated", [
+                'status' => self::STATUS_ACTIVE,
+                'suspended_reason' => null,
+                'suspended_at' => null,
+            ], before: function () use ($account) {
+                $this->leaseIpForActivation($account);
+            });
+        } catch (NoAvailableIpException $e) {
+            throw new RuntimeException(
+                "Cannot activate hosting account {$account->username}: no available IP address for this product type.",
+                previous: $e,
+            );
+        }
     }
 
     /**
@@ -180,13 +198,41 @@ class HostingService
 
     /**
      * Apply the status transition and write the audit trail atomically.
+     * The optional $before hook runs first inside the same transaction, so
+     * a failure there (e.g. IP pool exhaustion on activation) rolls back
+     * both the transition and the audit trail.
      */
-    private function mutate(HostingAccount $account, string $action, string $description, array $attributes, array $details = []): void
+    private function mutate(HostingAccount $account, string $action, string $description, array $attributes, array $details = [], ?Closure $before = null): void
     {
-        DB::transaction(function () use ($account, $action, $description, $attributes, $details) {
+        DB::transaction(function () use ($account, $action, $description, $attributes, $details, $before) {
+            if ($before !== null) {
+                $before();
+            }
+
             $account->update($attributes);
             $this->audit($account, $action, $description, $details);
         });
+    }
+
+    /**
+     * Lease the next available IP from the IPAM pool when a fresh
+     * (pending -> active) activation needs one. Only products with
+     * Product::requiresIp() (vps / dedicated) consume a lease;
+     * reactivations from suspended keep the lease they already hold.
+     *
+     * @throws NoAvailableIpException when the product needs an IP but the pool has none free
+     */
+    private function leaseIpForActivation(HostingAccount $account): void
+    {
+        if ($account->status !== self::STATUS_PENDING) {
+            return;
+        }
+
+        if (! $account->product?->requiresIp()) {
+            return;
+        }
+
+        app(IpAssignmentService::class)->assignNextAvailable($account);
     }
 
     private function normalizeReason(?string $reason): ?string

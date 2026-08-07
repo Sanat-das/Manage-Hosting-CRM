@@ -1,0 +1,139 @@
+- generic [active] [ref=f1e1]:
+  - generic:
+    - link "Skip to main content" [ref=f1e2] [cursor=pointer]:
+      - /url: "#main"
+    - link "Skip to navigation" [ref=f1e3] [cursor=pointer]:
+      - /url: "#navigation"
+  - generic [ref=f1e4]:
+    - navigation [ref=f1e5]:
+      - generic [ref=f1e6]:
+        - list [ref=f1e7]:
+          - listitem [ref=f1e8]:
+            - button "Toggle sidebar" [ref=f1e9] [cursor=pointer]:
+              - generic [ref=f1e10]: 
+          - listitem [ref=f1e11]:
+            - link "Home" [ref=f1e12] [cursor=pointer]:
+              - /url: http://managehosting.local
+              - generic [ref=f1e13]: 
+              - text: Home
+          - listitem [ref=f1e14]:
+            - link "Documentation" [ref=f1e15] [cursor=pointer]:
+              - /url: /docs
+              - generic [ref=f1e16]: 
+              - text: Documentation
+        - list [ref=f1e17]:
+          - listitem [ref=f1e18]:
+            - button "Search" [ref=f1e19] [cursor=pointer]:
+              - generic [ref=f1e20]: 
+              - generic [ref=f1e21]: Search…
+              - generic [ref=f1e22]: ⌘K
+          - listitem [ref=f1e23]:
+            - link "3" [ref=f1e24] [cursor=pointer]:
+              - /url: "#"
+              - generic [ref=f1e25]: 
+            - text:      
+          - listitem [ref=f1e27]:
+            - link "3" [ref=f1e28] [cursor=pointer]:
+              - /url: "#"
+              - generic [ref=f1e29]: 
+            - text:   
+          - listitem [ref=f1e31]:
+            - link "Toggle fullscreen" [ref=f1e32] [cursor=pointer]:
+              - /url: "#"
+              - generic [ref=f1e33]: 
+              - text: 
+          - listitem [ref=f1e34]:
+            - link "Toggle color scheme" [ref=f1e35] [cursor=pointer]:
+              - /url: "#"
+              - generic [ref=f1e36]: 
+              - text:  
+            - text:      
+          - listitem [ref=f1e37]:
+            - link " Pending Test" [ref=f1e38] [cursor=pointer]:
+              - /url: "#"
+              - generic [ref=f1e39]: 
+              - text: Pending Test
+            - text: 
+    - text: 
+    - complementary [ref=f1e40]:
+      - link " Hosting CRM" [ref=f1e42] [cursor=pointer]:
+        - /url: http://managehosting.local
+        - generic [ref=f1e43]:
+          - generic [ref=f1e44]: 
+          - text: Hosting CRM
+      - navigation "Main navigation" [ref=f1e47]:
+        - menu [ref=f1e48]:
+          - listitem [ref=f1e49]: CLIENT PORTAL
+          - listitem [ref=f1e50]:
+            - link [ref=f1e51] [cursor=pointer]:
+              - /url: http://managehosting.local/client/dashboard
+              - generic [ref=f1e52]: 
+              - paragraph [ref=f1e53]: Dashboard
+          - listitem [ref=f1e54]:
+            - link [ref=f1e55] [cursor=pointer]:
+              - /url: http://managehosting.local/client/hosting
+              - generic [ref=f1e56]: 
+              - paragraph [ref=f1e57]: My Hosting
+          - listitem [ref=f1e58]:
+            - link [ref=f1e59] [cursor=pointer]:
+              - /url: http://managehosting.local/client/domains
+              - generic [ref=f1e60]: 
+              - paragraph [ref=f1e61]: Domains
+          - listitem [ref=f1e62]:
+            - link [ref=f1e63] [cursor=pointer]:
+              - /url: http://managehosting.local/client/invoices
+              - generic [ref=f1e64]: 
+              - paragraph [ref=f1e65]: Invoices
+          - listitem [ref=f1e66]:
+            - link [ref=f1e67] [cursor=pointer]:
+              - /url: http://managehosting.local/client/tickets
+              - generic [ref=f1e68]: 
+              - paragraph [ref=f1e69]: Tickets
+          - listitem [ref=f1e70]:
+            - link [ref=f1e71] [cursor=pointer]:
+              - /url: http://managehosting.local/client/kb
+              - generic [ref=f1e72]: 
+              - paragraph [ref=f1e73]: Knowledge Base
+          - listitem [ref=f1e74]:
+            - link [ref=f1e75] [cursor=pointer]:
+              - /url: http://managehosting.local/client/wallet
+              - generic [ref=f1e76]: 
+              - paragraph [ref=f1e77]: Wallet
+          - listitem [ref=f1e78]:
+            - link [ref=f1e79] [cursor=pointer]:
+              - /url: http://managehosting.local/client/profile
+              - generic [ref=f1e80]: 
+              - paragraph [ref=f1e81]: Profile
+        - link "View documentation" [ref=f1e83] [cursor=pointer]:
+          - /url: /docs
+          - generic [ref=f1e84]: 
+    - main [ref=f1e86]:
+      - generic [ref=f1e89]:
+        - heading "Account Pending" [level=1] [ref=f1e91]
+        - list [ref=f1e93]:
+          - listitem [ref=f1e94]:
+            - link "Home" [ref=f1e95] [cursor=pointer]:
+              - /url: http://managehosting.local
+          - listitem [ref=f1e96]: / Account Pending
+      - generic [ref=f1e99]:
+        - generic [ref=f1e101]:
+          - generic [ref=f1e102]: 
+          - text: Your account is being set up
+        - generic [ref=f1e103]:
+          - paragraph [ref=f1e104]:
+            - text: Hi
+            - strong [ref=f1e105]: Pending Test
+            - text: — your account has been created but is not linked to a customer record yet. This usually means we're still provisioning your services.
+          - paragraph [ref=f1e106]: Please check back shortly. If this persists, contact our support team and we'll get you sorted.
+          - generic [ref=f1e107]:
+            - button "Sign out" [ref=f1e109] [cursor=pointer]:
+              - generic [ref=f1e110]: 
+              - text: Sign out
+            - link "Back to home" [ref=f1e111] [cursor=pointer]:
+              - /url: http://managehosting.local
+              - generic [ref=f1e112]: 
+              - text: Back to home
+    - contentinfo [ref=f1e113]:
+      - generic [ref=f1e114]: Powered by Laravel & AdminLTE
+      - text: Copyright © 2026 Hosting CRM. All rights reserved.
+  - status [ref=f1e115]
