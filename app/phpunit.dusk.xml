@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<phpunit backupGlobals="false"
+         beStrictAboutTestsThatDoNotTestAnything="false"
+         colors="true"
+         processIsolation="false"
+         stopOnError="false"
+         stopOnFailure="false"
+         cacheDirectory=".phpunit.cache"
+         backupStaticProperties="false"
+         bootstrap="vendor/autoload.php"
+>
+    <!--
+        Dusk-specific PHPUnit configuration (used automatically by
+        `php artisan dusk` instead of phpunit.xml).
+
+        Deliberately has NO <env> overrides: the Dusk run swaps .env for
+        .env.dusk.local (separate file-sqlite database, file sessions), so
+        both the test process and the served app share database/dusk.sqlite.
+    -->
+    <testsuites>
+        <testsuite name="Browser Test Suite">
+            <directory suffix="Test.php">./tests/Dusk</directory>
+        </testsuite>
+    </testsuites>
+    <source>
+        <include>
+            <directory>app</directory>
+        </include>
+    </source>
+</phpunit>

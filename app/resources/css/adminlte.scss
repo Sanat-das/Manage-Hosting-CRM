@@ -1,0 +1,1175 @@
+/*
+ * Hosting CRM — AdminLTE 4 stylesheet entry point (SCSS).
+ *
+ * Option B customization: brand tokens are declared BEFORE the AdminLTE
+ * source import so they win over the package's `!default` variables.
+ * See node_modules/admin-lte/src/scss/_bootstrap-overrides.scss and
+ * https://adminlte.io/themes/v4/docs/customization.html
+ */
+
+// ---------------------------------------------------------------------------
+// 1. Third-party CSS kept from the old adminlte.css entry point. Other pages
+//    depend on these: bootstrap-icons everywhere, overlayscrollbars for the
+//    sidebar scrollbars.
+// ---------------------------------------------------------------------------
+@import 'bootstrap-icons/font/bootstrap-icons.css';
+@import 'overlayscrollbars/overlayscrollbars.css';
+
+// ---------------------------------------------------------------------------
+// 2. Brand design tokens — "datacenter control room at night"
+// ---------------------------------------------------------------------------
+$brand-ink: #0B1120;                // page background (auth)
+$brand-surface: #101A2E;            // cards / panels
+$brand-surface-elevated: #16213A;   // inputs, raised surfaces
+$brand-teal: #2DD4BF;               // primary — calm, professional
+$brand-teal-hover: #26B8A6;         // primary hover
+$brand-amber: #F5A524;              // signature: status LED / CTA glow accents only
+$brand-text-hi: #E8EDF7;            // primary text
+$brand-text-lo: #8A97AD;            // secondary text
+$brand-text-mid: #A9B4C8;           // small mono readouts (status rows, footer) — brighter than lo for legibility
+$brand-border: rgba(148, 163, 184, 0.16);   // hairline borders on dark
+$brand-border-light: rgba(148, 163, 184, 0.35); // same hue, tuned for light surfaces
+$brand-danger: #F87171;             // errors, tuned for dark
+$brand-on-teal: #06281F;            // text on teal fills
+
+// ---------------------------------------------------------------------------
+// 3. Bootstrap overrides — declared BEFORE the AdminLTE import (all !default)
+// ---------------------------------------------------------------------------
+
+// Brand primary + danger
+$primary: $brand-teal;
+$danger: $brand-danger;
+
+// Typography: Instrument Sans (self-hosted via bunny() in vite.config.js) for
+// body/UI, Space Grotesk for display, JetBrains Mono for technical readouts.
+$font-family-sans-serif: 'Instrument Sans', system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', 'Noto Sans', 'Liberation Sans', Arial, sans-serif;
+$font-family-monospace: 'JetBrains Mono', ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
+$font-family-display: 'Space Grotesk', $font-family-sans-serif;
+
+// Borders: slate hairline in both modes (light surfaces need a touch more ink)
+$border-color: $brand-border-light;
+$border-color-dark: $brand-border;
+
+// Hover shade tuned so teal hovers land near the brand hover token
+$btn-hover-bg-shade-amount: 13%;
+
+// Dark mode → full brand palette. Light mode keeps Bootstrap defaults so the
+// admin panel's existing light/dark toggle keeps working as before.
+$body-bg-dark: $brand-ink;
+$body-color-dark: $brand-text-hi;
+$body-emphasis-color-dark: $brand-text-hi;
+$body-secondary-bg-dark: $brand-surface;
+$body-tertiary-bg-dark: $brand-ink;
+
+$primary-text-emphasis-dark: $brand-teal;
+$primary-bg-subtle-dark: rgba(45, 212, 191, 0.12);
+$primary-border-subtle-dark: rgba(45, 212, 191, 0.35);
+$danger-text-emphasis-dark: $brand-danger;
+$danger-bg-subtle-dark: rgba(248, 113, 113, 0.12);
+$danger-border-subtle-dark: rgba(248, 113, 113, 0.35);
+
+$link-color-dark: $brand-teal;
+$link-hover-color-dark: $brand-teal-hover;
+
+$input-bg-dark: $brand-surface;
+$input-color-dark: $brand-text-hi;
+$input-border-color-dark: $brand-border;
+$input-placeholder-color-dark: rgba(138, 151, 173, 0.55);
+$input-focus-border-color-dark: $brand-teal;
+$input-focus-box-shadow-dark: 0 0 0 0.25rem rgba(45, 212, 191, 0.25);
+
+$form-check-input-bg-dark: $brand-surface-elevated;
+$form-check-input-border-color-dark: $brand-border;
+$form-check-input-checked-bg-color-dark: $brand-teal;
+$form-check-input-checked-border-color-dark: $brand-teal;
+$form-feedback-invalid-color-dark: $brand-danger;
+
+$card-bg-dark: $brand-surface;
+$card-border-color-dark: $brand-border;
+$card-cap-bg-dark: rgba(255, 255, 255, 0.03);
+
+$dropdown-bg-dark: $brand-surface-elevated;
+$dropdown-border-color-dark: $brand-border;
+$modal-content-bg-dark: $brand-surface;
+
+// Light mode → cohesive brand palette. Dark stays the default; light must not
+// fall back to raw Bootstrap blues. These feed Bootstrap's root light
+// variables; components referencing var(--bs-*) flip automatically.
+$body-bg: #FFFFFF;                       // navbar, dropdowns, modals
+$body-color: #1A2233;                    // primary text
+$body-emphasis-color: $brand-ink;
+$body-secondary-color: #5B6B84;          // muted text
+$body-secondary-bg: #EFF3F9;             // progress tracks, subtle fills
+$body-tertiary-color: #5B6B84;
+$body-tertiary-bg: #F6F8FB;              // page background
+$border-color-translucent: #E3E8F0;      // dropdown / modal hairlines
+$code-color: #0D9488;                    // teal-600: legible on white
+$form-valid-color: #047857;
+$form-valid-border-color: #047857;
+$form-invalid-color: #DC2626;
+$form-invalid-border-color: #DC2626;
+
+// Dark-mode root extras not covered by the block above
+$body-secondary-color-dark: $brand-text-lo;
+$body-tertiary-color-dark: rgba(138, 151, 173, 0.6);
+$border-color-translucent-dark: $brand-border;
+$code-color-dark: #5EEAD4;               // teal-300: legible on ink
+$form-valid-color-dark: #34D399;
+$form-valid-border-color-dark: #34D399;
+$form-invalid-color-dark: $brand-danger;
+$form-invalid-border-color-dark: $brand-danger;
+
+// Brand-tuned status colors. Base values are tuned for dark surfaces; light
+// mode deepens the fills via CSS variables in §6 so white text stays legible.
+$success: #10B981;                       // emerald — teal-adjacent
+$warning: $brand-amber;                  // signature amber
+$info: #22D3EE;                          // cyan
+$secondary: #64748B;                     // slate
+
+// Dark-mode status text/subtle/border variants — control-room translucent fills
+$success-text-emphasis-dark: #34D399;
+$success-bg-subtle-dark: rgba(16, 185, 129, 0.12);
+$success-border-subtle-dark: rgba(16, 185, 129, 0.35);
+$warning-text-emphasis-dark: $brand-amber;
+$warning-bg-subtle-dark: rgba(245, 165, 36, 0.12);
+$warning-border-subtle-dark: rgba(245, 165, 36, 0.35);
+$info-text-emphasis-dark: #22D3EE;
+$info-bg-subtle-dark: rgba(34, 211, 238, 0.12);
+$info-border-subtle-dark: rgba(34, 211, 238, 0.35);
+$secondary-text-emphasis-dark: $brand-text-mid;
+$secondary-bg-subtle-dark: rgba(148, 163, 184, 0.12);
+$secondary-border-subtle-dark: rgba(148, 163, 184, 0.35);
+
+// Sidebar skin — always dark by design (data-bs-theme="dark" is hardcoded on
+// the aside). Replaces AdminLTE's default slate --lte-sidebar-* palette with
+// the brand teal/slate treatment. These are !default in AdminLTE, so ours win.
+$lte-sidebar-hover-bg-dark: rgba(45, 212, 191, 0.08);
+$lte-sidebar-color-dark: $brand-text-lo;
+$lte-sidebar-hover-color-dark: $brand-text-hi;
+$lte-sidebar-active-color-dark: $brand-teal;
+$lte-sidebar-menu-active-bg-dark: rgba(45, 212, 191, 0.12);
+$lte-sidebar-menu-active-color-dark: $brand-teal;
+$lte-sidebar-submenu-bg-dark: rgba(5, 9, 18, 0.35);
+$lte-sidebar-submenu-color-dark: $brand-text-lo;
+$lte-sidebar-submenu-hover-color-dark: $brand-text-hi;
+$lte-sidebar-submenu-hover-bg-dark: rgba(45, 212, 191, 0.06);
+$lte-sidebar-submenu-active-color-dark: $brand-teal;
+$lte-sidebar-submenu-active-bg-dark: rgba(45, 212, 191, 0.1);
+$lte-sidebar-header-color-dark: $brand-text-lo;
+
+// ---------------------------------------------------------------------------
+// 4. AdminLTE 4 compiled from source (Option B)
+// ---------------------------------------------------------------------------
+@import 'admin-lte/src/scss/adminlte';
+
+// ---------------------------------------------------------------------------
+// 5. App styles — brand mark + "datacenter control room" auth experience
+// ---------------------------------------------------------------------------
+
+// --- Brand mark & wordmark (sidebar + auth) --------------------------------
+
+.brand-mark {
+    display: block;
+    flex-shrink: 0;
+    color: $brand-teal;
+}
+
+.brand-word {
+    margin-left: 0.5rem;
+    font-family: $font-family-display;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+}
+
+// Center the mark when the sidebar collapses to mini mode (text is hidden)
+.sidebar-mini.sidebar-collapse .brand-link .brand-mark {
+    margin-inline: auto;
+}
+
+// The sidebar partial nests the mark INSIDE <span class="brand-text">, and
+// AdminLTE's collapse rules hide every .brand-text (max-width:0; overflow:
+// hidden; visibility:hidden) — which would take the mark down with the word,
+// leaving an empty brand bar. Un-hide only the wrapper (direct child, so the
+// word keeps its stock hiding) and keep it a flex row so the mark centers via
+// margin-inline:auto above.
+.sidebar-mini.sidebar-collapse .app-sidebar .brand-link > .brand-text {
+    max-width: none;
+    overflow: visible;
+    visibility: visible;
+    display: flex;
+    align-items: center;
+}
+
+// Hover-expanded state: AdminLTE re-shows .brand-text with display:inline
+// ((0,6,0) — higher than our §6 flex rule), which would re-stack the block
+// mark above the word. Restore the flex row at matching/higher specificity.
+.sidebar-mini.sidebar-collapse:not(.sidebar-without-hover) .app-sidebar:hover .brand-link > .brand-text {
+    display: flex;
+    align-items: center;
+}
+
+// --- Auth shell: two-panel layout ------------------------------------------
+
+.auth-shell {
+    min-height: 100vh;
+    min-height: 100dvh;
+    display: flex;
+    align-items: stretch;
+    background-color: $brand-ink;
+    color: $brand-text-hi;
+    font-family: $font-family-sans-serif;
+}
+
+.auth-shell__inner {
+    display: grid;
+    grid-template-columns: 1fr;
+    width: 100%;
+}
+
+// --- Brand panel (left) -----------------------------------------------------
+
+.auth-brand {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    padding: 1.25rem 1.5rem 0.75rem;
+    background-color: $brand-ink;
+    border-bottom: 1px solid $brand-border;
+    overflow: hidden;
+
+    // Subtle datacenter grid texture
+    &::before {
+        content: '';
+        position: absolute;
+        inset: 0;
+        background-image:
+            linear-gradient(rgba(148, 163, 184, 0.05) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(148, 163, 184, 0.05) 1px, transparent 1px);
+        background-size: 44px 44px;
+        mask-image: radial-gradient(ellipse 90% 80% at 50% 45%, black 30%, transparent 75%);
+        pointer-events: none;
+    }
+
+    // Scanline texture
+    &::after {
+        content: '';
+        position: absolute;
+        inset: 0;
+        background: repeating-linear-gradient(
+            0deg,
+            transparent 0,
+            transparent 3px,
+            rgba(148, 163, 184, 0.028) 3px,
+            rgba(148, 163, 184, 0.028) 4px
+        );
+        pointer-events: none;
+    }
+
+    .auth-status,
+    .auth-brand__foot {
+        display: none;
+    }
+}
+
+.auth-brand__top {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+}
+
+.auth-brand__wordmark {
+    display: inline-flex;
+    align-items: center;
+    color: $brand-text-hi;
+    text-decoration: none;
+    font-family: $font-family-display;
+    font-size: 1.15rem;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+
+    &:hover {
+        color: $brand-text-hi;
+    }
+}
+
+// --- System status readout (the signature) ----------------------------------
+
+.auth-status {
+    position: relative;
+    z-index: 1;
+    margin: auto;
+    width: min(100%, 26rem);
+    padding: 1.5rem 1.75rem;
+    background: rgba(16, 26, 46, 0.72);
+    border: 1px solid $brand-border;
+    border-radius: 1rem;
+    backdrop-filter: blur(6px);
+    box-shadow: 0 24px 48px -24px rgba(0, 0, 0, 0.6);
+}
+
+.auth-status__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 0.75rem;
+    font-family: $font-family-monospace;
+    font-size: 0.6875rem;
+    font-weight: 500;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: $brand-text-lo;
+
+    .auth-status__live {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        color: $brand-teal;
+    }
+}
+
+.auth-status__row {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 0.5rem 1rem;
+    padding: 0.45rem 0;
+    font-family: $font-family-monospace;
+    font-size: 0.8125rem;
+    line-height: 1.4;
+    border-top: 1px solid rgba(148, 163, 184, 0.08);
+
+    .auth-status__key {
+        color: $brand-text-mid;
+    }
+
+    .auth-status__val {
+        display: inline-flex;
+        align-items: center;
+        color: $brand-text-hi;
+        font-variant-numeric: tabular-nums;
+    }
+}
+
+// Amber status LED — the one animated element on the page
+.auth-led {
+    display: inline-block;
+    width: 0.5rem;
+    height: 0.5rem;
+    margin-right: 0.45rem;
+    border-radius: 50%;
+    background: $brand-amber;
+    box-shadow: 0 0 0 0 rgba(245, 165, 36, 0.5);
+    animation: auth-led-pulse 2.4s ease-out infinite;
+}
+
+@keyframes auth-led-pulse {
+    0% {
+        box-shadow: 0 0 0 0 rgba(245, 165, 36, 0.5);
+    }
+    70% {
+        box-shadow: 0 0 0 0.55rem rgba(245, 165, 36, 0);
+    }
+    100% {
+        box-shadow: 0 0 0 0 rgba(245, 165, 36, 0);
+    }
+}
+
+.auth-brand__foot {
+    position: relative;
+    z-index: 1;
+    justify-content: space-between;
+    gap: 1rem;
+    font-family: $font-family-monospace;
+    font-size: 0.6875rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: $brand-text-mid;
+}
+
+// --- Form panel (right) ------------------------------------------------------
+
+.auth-form {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem 1.5rem 3rem;
+    background:
+        radial-gradient(ellipse 80% 60% at 50% -10%, rgba(45, 212, 191, 0.06), transparent 60%),
+        $brand-surface;
+}
+
+.auth-form__card {
+    width: min(100%, 26rem);
+    padding: clamp(1.75rem, 4vw, 2.5rem);
+    background: $brand-surface-elevated;
+    border: 1px solid $brand-border;
+    border-radius: 1rem;
+    box-shadow: 0 24px 64px -32px rgba(0, 0, 0, 0.65);
+}
+
+// --- Auth headings -----------------------------------------------------------
+
+.auth-head {
+    margin-bottom: 2rem;
+}
+
+.auth-head__eyebrow {
+    margin: 0 0 0.5rem;
+    font-family: $font-family-monospace;
+    font-size: 0.6875rem;
+    font-weight: 500;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: $brand-teal;
+}
+
+.auth-head__title {
+    margin: 0;
+    font-family: $font-family-display;
+    font-size: 1.75rem;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    color: $brand-text-hi;
+}
+
+.auth-head__sub {
+    margin: 0.5rem 0 0;
+    font-size: 0.9375rem;
+    color: $brand-text-lo;
+}
+
+// --- Form controls -----------------------------------------------------------
+
+.auth-field {
+    margin-bottom: 1.25rem;
+}
+
+.auth-field-row {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 0;
+
+    @media (min-width: 420px) {
+        grid-template-columns: 1fr 1fr;
+        gap: 1rem;
+    }
+}
+
+.auth-field__label {
+    display: block;
+    margin-bottom: 0.45rem;
+    font-family: $font-family-monospace;
+    font-size: 0.6875rem;
+    font-weight: 500;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: $brand-text-lo;
+}
+
+.auth-input {
+    position: relative;
+    display: flex;
+    align-items: center;
+
+    .auth-input__control {
+        width: 100%;
+        padding: 0.7rem 2.75rem 0.7rem 0.9rem;
+        font-family: $font-family-sans-serif;
+        font-size: 0.9375rem;
+        color: $brand-text-hi;
+        background-color: $brand-surface-elevated;
+        border: 1px solid $brand-border;
+        border-radius: 0.5rem;
+        transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out, background-color 0.15s ease-in-out;
+
+        &::placeholder {
+            color: rgba(138, 151, 173, 0.55);
+        }
+
+        &:focus {
+            outline: none;
+            background-color: $brand-surface-elevated;
+            border-color: $brand-teal;
+            box-shadow: 0 0 0 0.25rem rgba(45, 212, 191, 0.18);
+        }
+
+        // Keep the custom icon visible; Bootstrap's .is-invalid adds its own
+        // warning background-image and padding we don't want here.
+        &.is-invalid {
+            background-image: none;
+            padding-right: 2.75rem;
+            border-color: $brand-danger;
+
+            &:focus {
+                box-shadow: 0 0 0 0.25rem rgba(248, 113, 113, 0.18);
+            }
+        }
+    }
+
+    .auth-input__icon {
+        position: absolute;
+        right: 0.9rem;
+        color: $brand-text-lo;
+        font-size: 1rem;
+        pointer-events: none;
+    }
+}
+
+// Dark inputs keep their fill under Chrome autofill
+.auth-input__control:-webkit-autofill,
+.auth-input__control:-webkit-autofill:hover,
+.auth-input__control:-webkit-autofill:focus {
+    -webkit-text-fill-color: $brand-text-hi;
+    -webkit-box-shadow: 0 0 0 1000px $brand-surface-elevated inset;
+    transition: background-color 9999s ease-in-out 0s;
+}
+
+// --- Options row (remember me / forgot password) -----------------------------
+
+.auth-options {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+}
+
+.auth-check {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: $brand-text-lo;
+    font-size: 0.875rem;
+    cursor: pointer;
+    user-select: none;
+
+    .form-check-input {
+        margin: 0;
+        background-color: $brand-surface-elevated;
+        border-color: $brand-border;
+        cursor: pointer;
+
+        &:checked {
+            background-color: $brand-teal;
+            border-color: $brand-teal;
+        }
+
+        &:focus {
+            box-shadow: 0 0 0 0.25rem rgba(45, 212, 191, 0.18);
+        }
+    }
+}
+
+.auth-link {
+    color: $brand-teal;
+    text-decoration: none;
+    font-size: 0.875rem;
+
+    &:hover {
+        color: $brand-teal-hover;
+        text-decoration: underline;
+    }
+}
+
+// --- Buttons -----------------------------------------------------------------
+
+.auth-submit {
+    --bs-btn-bg: #{$brand-teal};
+    --bs-btn-border-color: #{$brand-teal};
+    --bs-btn-color: #{$brand-on-teal};
+    --bs-btn-hover-bg: #{$brand-teal-hover};
+    --bs-btn-hover-border-color: #{$brand-teal-hover};
+    --bs-btn-hover-color: #{$brand-on-teal};
+    --bs-btn-active-bg: #{$brand-teal-hover};
+    --bs-btn-active-border-color: #{$brand-teal-hover};
+    --bs-btn-active-color: #{$brand-on-teal};
+    --bs-btn-focus-shadow-rgb: 45, 212, 191;
+    padding: 0.7rem 1rem;
+    font-family: $font-family-display;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    border-radius: 0.5rem;
+    transition: box-shadow 0.2s ease, transform 0.1s ease, background-color 0.15s ease;
+
+    // Key CTA glow accent — the only amber use outside the status LED
+    &:hover {
+        box-shadow: 0 0 0 1px rgba(245, 165, 36, 0.28), 0 10px 28px -10px rgba(245, 165, 36, 0.4);
+    }
+
+    &:active {
+        transform: translateY(1px);
+    }
+}
+
+.auth-submit--ghost {
+    --bs-btn-bg: transparent;
+    --bs-btn-border-color: #{$brand-border};
+    --bs-btn-color: #{$brand-text-lo};
+    --bs-btn-hover-bg: rgba(45, 212, 191, 0.08);
+    --bs-btn-hover-border-color: #{$brand-teal};
+    --bs-btn-hover-color: #{$brand-teal};
+    --bs-btn-active-bg: rgba(45, 212, 191, 0.12);
+    --bs-btn-active-border-color: #{$brand-teal};
+    --bs-btn-active-color: #{$brand-teal};
+    --bs-btn-focus-shadow-rgb: 45, 212, 191;
+    padding: 0.7rem 1rem;
+    font-family: $font-family-display;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    border-radius: 0.5rem;
+}
+
+// --- Misc --------------------------------------------------------------------
+
+.auth-alt {
+    margin: 1.5rem 0 0;
+    text-align: center;
+    font-size: 0.875rem;
+    color: $brand-text-lo;
+}
+
+.auth-alert {
+    border-radius: 0.5rem;
+    font-size: 0.875rem;
+}
+
+.auth-divider {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin: 1.5rem 0;
+    font-family: $font-family-monospace;
+    font-size: 0.6875rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: $brand-text-lo;
+
+    &::before,
+    &::after {
+        content: '';
+        flex: 1;
+        height: 1px;
+        background: $brand-border;
+    }
+}
+
+::selection {
+    background: rgba(45, 212, 191, 0.3);
+}
+
+// --- Responsive: two-panel from 768px up -------------------------------------
+
+@media (min-width: 768px) {
+    .auth-shell__inner {
+        grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+    }
+
+    .auth-brand {
+        padding: clamp(1.5rem, 4vw, 3rem);
+        border-bottom: 0;
+        border-right: 1px solid $brand-border;
+
+        .auth-status {
+            display: block;
+        }
+
+        .auth-brand__foot {
+            display: flex;
+        }
+    }
+
+    .auth-form {
+        padding: clamp(1.5rem, 5vw, 4rem);
+        border-left: 1px solid $brand-border;
+    }
+}
+
+// --- Accessibility -----------------------------------------------------------
+
+// Visible keyboard focus on interactive elements (inputs use their own ring)
+.auth-shell a:focus-visible,
+.auth-shell button:focus-visible,
+.auth-shell .form-check-input:focus-visible {
+    outline: 2px solid $brand-teal;
+    outline-offset: 2px;
+}
+
+// Respect reduced motion: kill the LED pulse
+@media (prefers-reduced-motion: reduce) {
+    .auth-led {
+        animation: none;
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 6. App styles — admin shell & content components
+//    Dark is the default mode; everything here reads correctly in both modes
+//    because colors come from CSS variables that flip with data-bs-theme.
+// ---------------------------------------------------------------------------
+
+// --- Light mode: deepen status fills so white text stays legible -------------
+// The base $success/$warning/$danger/$info/$secondary tokens are tuned for
+// dark surfaces; on white the same hues render too pale under white text.
+// Overriding the --bs-* and --bs-*-rgb variables keeps every consumer
+// (badges, buttons, alerts, small-boxes, progress bars) branded in both modes.
+[data-bs-theme='light'] {
+    --bs-success: #047857;
+    --bs-success-rgb: 4, 120, 87;
+    --bs-warning: #B45309;
+    --bs-warning-rgb: 180, 83, 9;
+    --bs-danger: #DC2626;
+    --bs-danger-rgb: 220, 38, 38;
+    --bs-info: #0E7490;
+    --bs-info-rgb: 14, 116, 144;
+    --bs-secondary: #475569;
+    --bs-secondary-rgb: 71, 85, 105;
+}
+
+// --- Sidebar ----------------------------------------------------------------
+// Always dark by design (the aside carries data-bs-theme="dark"); skin colors
+// come from the $lte-sidebar-*-dark tokens in §3. Here: typography, the teal
+// active indicator, and the brand-mark finish.
+
+.app-sidebar {
+    border-right: 1px solid $brand-border;
+
+    .sidebar-brand {
+        border-bottom: 1px solid $brand-border;
+    }
+
+    // The sidebar partial wraps the configured logo in <span class="brand-text">,
+    // and the logo ships a block-level .brand-mark svg. Inside that inline span
+    // the block svg breaks onto its own line, stacking the mark above the
+    // wordmark. Make the wrapper a flex row so mark + word sit side by side,
+    // vertically centered as one pair.
+    .brand-link .brand-text {
+        display: flex;
+        align-items: center;
+    }
+
+    .brand-word {
+        color: $brand-text-hi;
+    }
+
+    // Section headers: mono uppercase readouts, like the auth eyebrows
+    .nav-header {
+        font-family: $font-family-monospace;
+        font-size: 0.6875rem;
+        font-weight: 500;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+    }
+
+    // Icons read slightly brighter than the label; teal on hover/active
+    .nav-icon {
+        color: $brand-text-mid;
+    }
+
+    .nav-link:hover .nav-icon,
+    .nav-link.active .nav-icon {
+        color: $brand-teal;
+    }
+
+    // Active edge indicator — 2px teal rail on the left
+    .sidebar-menu > .nav-item > .nav-link.active,
+    .nav-treeview .nav-link.active {
+        position: relative;
+
+        &::before {
+            content: '';
+            position: absolute;
+            top: 0.4rem;
+            bottom: 0.4rem;
+            left: 0;
+            width: 2px;
+            border-radius: 0 2px 2px 0;
+            background-color: $brand-teal;
+        }
+    }
+
+    .nav-badge {
+        font-family: $font-family-monospace;
+        font-size: 0.625rem;
+        font-weight: 500;
+    }
+}
+
+// --- Topbar -----------------------------------------------------------------
+
+.app-header {
+    border-bottom: 1px solid var(--bs-border-color);
+
+    .nav-link {
+        color: var(--bs-body-color);
+        opacity: 0.85;
+        transition: color 0.15s ease, opacity 0.15s ease;
+
+        &:hover,
+        &:focus {
+            color: $brand-teal;
+            opacity: 1;
+        }
+    }
+
+    // Search pill (⌘K command palette trigger)
+    .adminlte-search-trigger {
+        border-color: var(--bs-border-color);
+        color: var(--bs-body-color);
+        font-size: 0.875rem;
+
+        kbd {
+            font-family: $font-family-monospace;
+            font-size: 0.6875rem;
+            background-color: transparent;
+            color: var(--bs-secondary-color);
+        }
+
+        &:hover {
+            border-color: $brand-teal;
+            color: $brand-teal;
+
+            kbd {
+                color: $brand-teal;
+            }
+        }
+    }
+
+    // Notification / message counters — the amber status-LED language
+    .navbar-badge {
+        font-family: $font-family-monospace;
+        font-weight: 500;
+    }
+}
+
+// --- Content header ----------------------------------------------------------
+// AdminLTE's stock rules ship as `.app-main .app-content-header` /
+// `.app-main .app-content-header .breadcrumb` (higher specificity than the bare
+// class). Our overrides must match that prefix so the source order (ours comes
+// later) wins the cascade — otherwise the stock padding: 1rem .5rem and
+// line-height: 2.5rem would beat these and leave a tall empty band below the
+// page title.
+
+.app-main .app-content-header {
+    background-color: var(--bs-secondary-bg);
+    border-bottom: 1px solid var(--bs-border-color);
+    padding-top: 0.625rem;
+    padding-bottom: 0.625rem;
+
+    h1 {
+        font-family: $font-family-display;
+        font-size: 1.5rem;
+        font-weight: 600;
+        letter-spacing: -0.01em;
+        color: var(--bs-body-color);
+    }
+
+    .breadcrumb {
+        --bs-breadcrumb-divider-color: var(--bs-secondary-color);
+        font-size: 0.8125rem;
+        line-height: 1.75rem;
+    }
+
+    .breadcrumb-item.active {
+        color: var(--bs-secondary-color);
+    }
+}
+
+// --- Footer -----------------------------------------------------------------
+// Matches the auth footer: mono uppercase small readout.
+
+.app-footer {
+    font-family: $font-family-monospace;
+    font-size: 0.6875rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--bs-secondary-color);
+    border-top: 1px solid var(--bs-border-color);
+}
+
+// --- Cards ------------------------------------------------------------------
+
+.card {
+    border: 1px solid var(--bs-border-color);
+    border-radius: 0.75rem;
+    box-shadow: 0 1px 2px rgba(11, 17, 32, 0.04), 0 12px 32px -20px rgba(11, 17, 32, 0.14);
+}
+
+.card-header {
+    padding: 0.875rem 1.25rem;
+    border-bottom: 1px solid var(--bs-border-color);
+}
+
+.card-title {
+    font-family: $font-family-display;
+    font-size: 1rem;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+}
+
+.card-tools .btn-tool {
+    color: var(--bs-secondary-color);
+
+    &:hover {
+        color: $brand-teal;
+    }
+}
+
+.card-footer {
+    border-top: 1px solid var(--bs-border-color);
+}
+
+// Plain outline cards get the teal top edge; themed outlines keep their color
+.card.card-outline {
+    border-top: 3px solid $brand-teal;
+}
+
+// The content area needs breathing room from the header band: stock AdminLTE
+// gives .app-content only horizontal padding (padding: 0 .5rem), so the first
+// cards sit flush against the header's bottom border. 1rem top padding matches
+// the mb-3 rhythm the metric-cards partial already uses → uniform 16px gaps.
+.app-content {
+    padding-top: 1rem;
+}
+
+// Stacked content needs breathing room: AdminLTE 4 ships no default margin
+// between consecutive .card blocks, so cards placed directly in the content
+// area (the common layout) sit flush against each other. 1rem matches the
+// mb-3 rhythm the metric-cards partial already uses → uniform 16px gaps.
+.app-content > .container-fluid > .card {
+    margin-bottom: 1rem;
+}
+
+// --- Tables -----------------------------------------------------------------
+
+.table thead th {
+    font-family: $font-family-monospace;
+    font-size: 0.6875rem;
+    font-weight: 500;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--bs-secondary-color);
+    border-bottom-width: 1px;
+}
+
+// --- Pagination -------------------------------------------------------------
+// Colors are var-driven from §3 tokens; just finish the shape.
+
+.pagination {
+    --bs-pagination-border-radius: 0.5rem;
+}
+
+.page-link {
+    font-size: 0.875rem;
+}
+
+// --- Badges -----------------------------------------------------------------
+// Status readouts: mono uppercase, like the auth status rows.
+
+.badge {
+    font-family: $font-family-monospace;
+    font-size: 0.6875rem;
+    font-weight: 500;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
+
+// --- Buttons ----------------------------------------------------------------
+
+.btn {
+    border-radius: 0.5rem;
+}
+
+// Teal fills carry the dark on-teal text (matches the auth CTA pattern)
+.btn-primary {
+    --bs-btn-color: #{$brand-on-teal};
+    --bs-btn-hover-color: #{$brand-on-teal};
+    --bs-btn-active-color: #{$brand-on-teal};
+    --bs-btn-disabled-color: #{$brand-on-teal};
+}
+
+// --- Alerts -----------------------------------------------------------------
+
+.alert {
+    border-radius: 0.5rem;
+    font-size: 0.875rem;
+}
+
+// --- Modals -----------------------------------------------------------------
+
+.modal-content {
+    border: 1px solid var(--bs-border-color-translucent);
+    border-radius: 0.75rem;
+    box-shadow: 0 24px 64px -32px rgba(0, 0, 0, 0.55);
+}
+
+.modal-header {
+    border-bottom: 1px solid var(--bs-border-color);
+}
+
+.modal-footer {
+    border-top: 1px solid var(--bs-border-color);
+}
+
+.modal-title {
+    font-family: $font-family-display;
+    font-weight: 600;
+}
+
+// --- Nav tabs ---------------------------------------------------------------
+// Underline style: teal indicator on the active tab, no boxy borders.
+
+.nav-tabs {
+    border-bottom: 1px solid var(--bs-border-color);
+
+    .nav-link {
+        margin-bottom: -1px;
+        font-weight: 500;
+        color: var(--bs-secondary-color);
+        border: 0;
+        border-bottom: 2px solid transparent;
+        background-color: transparent;
+
+        &:hover,
+        &:focus {
+            color: $brand-teal;
+            border-bottom-color: rgba(45, 212, 191, 0.4);
+        }
+
+        &.active {
+            color: $brand-teal;
+            background-color: transparent;
+            border-bottom-color: $brand-teal;
+        }
+
+        &.disabled {
+            color: var(--bs-secondary-color);
+            opacity: 0.6;
+        }
+    }
+}
+
+// --- Form controls -----------------------------------------------------------
+
+.form-control,
+.form-select {
+    border-radius: 0.5rem;
+    font-size: 0.9375rem;
+}
+
+.form-control:focus,
+.form-select:focus {
+    border-color: $brand-teal;
+    box-shadow: 0 0 0 0.25rem rgba(45, 212, 191, 0.18);
+}
+
+// Labels: mono uppercase, matching the auth field labels
+.form-label {
+    margin-bottom: 0.4rem;
+    font-family: $font-family-monospace;
+    font-size: 0.6875rem;
+    font-weight: 500;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--bs-secondary-color);
+}
+
+.input-group-text {
+    font-family: $font-family-monospace;
+    font-size: 0.8125rem;
+}
+
+.invalid-feedback {
+    font-size: 0.8125rem;
+}
+
+// --- Small-box metric cards --------------------------------------------------
+
+.small-box {
+    border-radius: 0.75rem;
+    box-shadow: 0 1px 2px rgba(11, 17, 32, 0.04), 0 12px 32px -20px rgba(11, 17, 32, 0.14);
+
+    .inner {
+        h3 {
+            font-family: $font-family-display;
+            font-size: 1.75rem;
+            font-weight: 600;
+            letter-spacing: -0.01em;
+        }
+
+        p {
+            font-family: $font-family-monospace;
+            font-size: 0.6875rem;
+            font-weight: 500;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            opacity: 0.85;
+        }
+    }
+
+    .small-box-icon {
+        opacity: 0.35;
+    }
+
+    .small-box-footer {
+        border-radius: 0 0 0.75rem 0.75rem;
+        background-color: rgba(0, 0, 0, 0.18);
+    }
+}
+
+// Bright teal/amber fills read better with the dark on-teal text (auth pattern)
+.small-box.text-bg-primary .inner,
+.small-box.text-bg-warning .inner {
+    color: $brand-on-teal;
+}
+
+// In light mode the warning fill deepens to amber-700 → white text instead
+[data-bs-theme='light'] .small-box.text-bg-warning .inner {
+    color: #fff;
+}
+
+// --- Dropdowns ---------------------------------------------------------------
+
+.dropdown-menu {
+    border-color: var(--bs-border-color-translucent);
+    border-radius: 0.625rem;
+    box-shadow: 0 16px 40px -16px rgba(11, 17, 32, 0.28);
+}
+
+.dropdown-item {
+    font-size: 0.875rem;
+}
+
+.dropdown-header,
+.dropdown-footer {
+    font-family: $font-family-monospace;
+    font-size: 0.6875rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--bs-secondary-color);
+}
+
+// --- Misc --------------------------------------------------------------------
+
+.progress {
+    border-radius: 0.5rem;
+}
+
+code {
+    font-family: $font-family-monospace;
+    font-size: 0.85em;
+}
+
+.timeline {
+    .timeline-header,
+    .timeline-item > .time {
+        font-family: $font-family-monospace;
+    }
+}
+
+// Visible keyboard focus on interactive elements (inputs use their own ring)
+a:focus-visible:not(.btn),
+button:focus-visible:not(.btn) {
+    outline: 2px solid $brand-teal;
+    outline-offset: 2px;
+}
