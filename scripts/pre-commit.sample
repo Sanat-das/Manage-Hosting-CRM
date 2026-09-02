@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# pre-commit.sample — fast seeder integrity gate (sqlite:memory, <30s)
+# Install: cp scripts/pre-commit.sample .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit
+# Requires: php artisan test --filter SeederIntegrityTest
+set -euo pipefail
+echo "== pre-commit: SeederIntegrityTest =="
+php artisan test --filter SeederIntegrityTest --no-interaction
+# Fallback: also run the scratch-DB smoke (uncomment if desired):
+# bash scripts/seed-smoke.sh
