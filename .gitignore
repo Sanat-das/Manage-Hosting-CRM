@@ -18,6 +18,10 @@
 /public/build
 /public/fonts-manifest.dev.json
 /public/hot
+/.codegraph/
+/.omo/
+/.openchamber/
+/.playwright-mcp/
 /public/storage
 /storage/*.key
 /storage/pail
