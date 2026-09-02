@@ -1,0 +1,153 @@
+<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+
+<p align="center">
+<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
+<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
+<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
+<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
+</p>
+
+## Billing & Recurring
+
+Orders are **one-time transactions** (WHMCS model); renewals are maintained by
+each purchased **product/service** — an `order_items` row — independently.
+Every order item carries its own `billing_cycle`, `next_billing_date`,
+`last_billing_date`, and a snapshot of the product's `recurring_cycles_limit`.
+`billing:recurring` (`BillingService::processRecurringBilling`) bills **only
+the items that are due**: active orders are scanned, each due item produces
+one line of a sent renewal invoice (due today + 7 days), and that item's
+`next_billing_date` advances by **its own** cycle months (one-time / zero-value
+items are never billed). The order's `next_billing_date` is kept as a summary —
+the earliest item date — for the orders list. Legacy orders created before the
+per-item columns behave exactly as before (their single item falls back to the
+order's cycle and date, and adopts its own schedule on the first renewal).
+
+### Recurring cycles limit
+
+`products.recurring_cycles_limit` (0 = unlimited) caps how many billing cycles
+**each purchased service** may be invoiced for. The limit is snapshotted onto
+the order item at order time, and the item's own counter (`billing_cycles_count`)
+is authoritative: the **initial order invoice counts as cycle 1** — so a limit
+of **12 means the initial invoice plus 11 renewals**. Once an item's counter
+reaches the limit, that item stops renewing (its `next_billing_date` is cleared)
+without affecting any sibling item on the same order.
+
+### Auto-termination / fixed term
+
+Each purchased service has its own fixed term, taken from its product's
+`auto_terminate_value` + `auto_terminate_unit` (days / months / years;
+0 = disabled). The term is measured from the order's **earliest activation**
+(the first `order_status_history` row that moved it to `active` — all services
+on an order activate together). When a service's term end passes,
+`BillingService::processAutoTerminations` ends **that service's** recurring
+billing (its `next_billing_date` is cleared — the same end-state as the cycle
+limit), independent of its siblings. The order is terminated through the
+guarded state machine only when **nothing remains on a recurring schedule** —
+so single-service orders behave as before, and an order keeps running while at
+least one service is still active. Legacy orders without an activation audit
+row are skipped. `billing:recurring` runs auto-termination before the renewal
+pass.
+
+### Quantity & Service Behaviour
+
+`products.quantity_behaviour` is the single switch controlling how an ordered
+quantity is interpreted:
+
+- **none** — sold without a quantity selector; the order form locks the
+  quantity to 1;
+- **multiple_services** (default) — each quantity ordered is an independent
+  service instance;
+- **scaling** — the quantity scales a single service (e.g. CPU cores,
+  storage).
+
+The legacy `sell_single` flag was removed — `none` is its replacement, and
+existing single-unit products were migrated to it automatically.
+
+## About Laravel
+
+Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+
+- [Simple, fast routing engine](https://laravel.com/docs/routing).
+- [Powerful dependency injection container](https://laravel.com/docs/container).
+- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
+- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
+- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
+- [Robust background job processing](https://laravel.com/docs/queues).
+- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+
+Laravel is accessible, powerful, and provides tools required for large, robust applications.
+
+## Learning Laravel
+
+Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework.
+
+In addition, [Laracasts](https://laracasts.com) contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+
+You can also watch bite-sized lessons with real-world projects on [Laravel Learn](https://laravel.com/learn), where you will be guided through building a Laravel application from scratch while learning PHP fundamentals.
+
+## Agentic Development
+
+Laravel's predictable structure and conventions make it ideal for AI coding agents like Claude Code, Cursor, and GitHub Copilot. Install [Laravel Boost](https://laravel.com/docs/ai) to supercharge your AI workflow:
+
+```bash
+composer require laravel/boost --dev
+
+php artisan boost:install
+```
+
+Boost provides your agent 15+ tools and skills that help agents build Laravel applications while following best practices.
+
+## Contributing
+
+Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+
+## Code of Conduct
+
+In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+
+## Security Vulnerabilities
+
+If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+
+## Pre-release verification — seeder smoke
+
+Every release must be able to rebuild the database from scratch. Before
+tagging a release or merging to `main`, run the seeder smoke gate locally
+(it uses a disposable sqlite file and never touches your mysql `local` DB):
+
+```bash
+composer seed:smoke        # 30-60s: migrate:fresh --seed on scratch sqlite, checks rows + permissions + idempotency
+php artisan test --filter SeederIntegrityTest  # 10-15s: same checks via phpunit sqlite:memory (what CI runs)
+```
+
+What it guards: missing permissions that hide menu items / return 403 (e.g. the
+`modules.view`/`modules.manage` regression), non-idempotent seeders that
+duplicate rows on re-run, and dummy-data minima drift (`DummyDataConfig::ROWS`).
+CI runs both automatically — see `.github/workflows/ci.yml` — but running them
+locally before a release catches the failure without waiting for CI.
+
+Hook (optional):
+
+```bash
+cp scripts/pre-commit.sample .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit
+```
+
+## Deprecated tables
+
+The following snapshot tables are **retained but unused** by the current
+codebase. They exist for backward compatibility with data collected before
+the SNMP monitoring module replaced them:
+
+| Table                      | Original module    | Replacement |
+|----------------------------|--------------------|-------------|
+| `linux_vps_snapshots`      | ssh-console (then linux-vps)      | `snmp_host_samples` / `snmp_if_samples` (monitoring connection) |
+| `windows_server_snapshots` | rdp-console (then windows-server) | `snmp_host_samples` / `snmp_if_samples` (monitoring connection) |
+
+Both tables are safe to drop after **2 release cycles** from the
+three-module-split milestone. No application code reads from or writes to
+them. The schema and seed data remain in `sql/local.sql` for legacy local
+development environments only.
+
+## License
+
+The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).

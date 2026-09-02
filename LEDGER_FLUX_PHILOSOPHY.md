@@ -1,0 +1,20 @@
+# Ledger Flux — Algorithmic Philosophy
+
+**Movement:** Ledger Flux / Fiscal Flow Dynamics
+
+A computational meditation on how value moves through systems — invoices not as static documents but as living currents, bifurcating, accumulating, settling. Ledger Flux treats every billing entity as a particle in a fiscal field, rendered visible only through its motion.
+
+**Computational Processes & Mathematical Relationships:**
+At its core, Ledger Flux is a meticulously crafted curl-noise vector field — not simple flow but a divergence-free field derived from Perlin noise gradients, ensuring every fiscal current conserves its charge. Layered octaves of noise (lacunarity 2.0, persistence 0.5) create macro trends (quarterly cycles) and micro eddies (daily adjustments), the product of deep computational expertise where each octave weight was painstakingly optimized through thousands of generative iterations. Particles do not follow random walks; they integrate field vectors via Euler steps modulated by a fiscal viscosity parameter, so fast-settling invoices carve bright channels while overdue drifts pool into shadowed basins.
+
+**Noise Functions & Randomness Patterns:**
+Seeded randomness is the ledger's DNA — a single integer seed deterministically births an entire fiscal quarter, reproducibility as auditability. Perlin noise drives the primary current, simplex perturbations add GST-specific bifurcation (intra-state fields curl inward, inter-state fields shear laterally), and a low-frequency warp displacement ensures no two invoices share the same path yet all obey the same invisible fiscal law. This is not noise for texture; it is noise as governance — a master-level implementation where noise scales were refined until turbulence felt organic yet bookkept.
+
+**Particle Behaviors & Field Dynamics:**
+Each particle carries a ledger identity — draft (pale, hesitant velocity), sent (accelerating along field lines), paid (settled, green-shifted, decaying trail), overdue (turbulent jitter, terracotta burn). Particles are born at the ledger's west edge (invoice creation), advected eastward by the recurring-billing field, and die at settlement or at the canvas boundary (write-off). Mid-canvas, a GST bifurcation force — a meticulously tuned attractor/repeller pair — splits flow into CGST/SGST twin vortices or a single IGST spiral, the algorithmic echo of India's dual-GST logic made visible as fluid dynamics. Velocity-mapped color and opacity turn speed into value: swift settlement glows, stagnant debt smolders.
+
+**Temporal Evolution & System States:**
+The system never freezes; it breathes. A fading trail buffer (alpha 12–28) accumulates density maps where high-flow corridors become ledgers in negative space — brighter where many invoices have passed, darker where fiscal drought lingers. Over 900 frames, the field slowly rotates its z-offset, simulating fiscal quarters advancing; particles age, their lifespans mapped to due-date proximity, so overdue particles live longest and dominate the final composition. The result is a time-based painting where equilibrium is never reached, only approached — a painstakingly choreographed computational dance where every frame is both data and art.
+
+**Parametric Variation & Emergent Complexity:**
+Five tunable dimensions expose the ledger's soul without breaking its integrity: invoice density, flow velocity, GST turbulence, settlement drift, and ledger curvature. Adjusting one rebalances the whole ecosystem — higher density saturates channels into rivers of revenue, higher turbulence fragments them into fiscal archipelagos. Complexity emerges not from added rules but from interaction: thousands of simple particles, one master-level field, infinite unique settlements. Each seed is a different company's quarter; each parameter set, a different fiscal policy. The algorithm, refined through countless hours by a master of computational aesthetics, proves that bookkeeping, at scale, is already a generative art — we merely made its currents visible.
