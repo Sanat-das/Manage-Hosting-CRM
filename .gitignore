@@ -22,6 +22,46 @@
 /.omo/
 /.openchamber/
 /.playwright-mcp/
+
+# Local debug scripts
+_debug_fk.php
+debug_2fa.php
+domain_check.php
+make_client.php
+recreate_db.php
+reset_2fa.php
+show_tables.php
+test_2fa.php
+test_billing_services.php
+test_customers.php
+test_dashboard.php
+test_login.php
+verify_auth.php
+
+# Local environment variants
+.env.docker
+.env.dusk
+.env.dusk.local
+.envrc
+
+# Local runtime files
+dusk.sqlite
+install.lock
+opencode.jsonc
+.phpunit.result.cache
+phpunit.dusk.xml
+AGENTS.md
+LEDGER_FLUX_PHILOSOPHY.md
+
+# Sensitive backups and local DB dumps
+/storage/backups/
+/sql/local.sql
+/sql/local-backup-addon-database-dump.sql
+
+# Public debug files
+/public/local-phpinfo.php
+/public/__flush_probe.php
+/public/ledger-flux.html
 /public/storage
 /storage/*.key
 /storage/pail
