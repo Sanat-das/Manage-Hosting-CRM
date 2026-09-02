@@ -1,0 +1,104 @@
+@php
+    $navLeft = app('adminlte')->menu('navbar-left');
+@endphp
+<nav class="app-header {{ config('adminlte.classes_topnav', 'navbar-expand bg-body') }} navbar">
+    <div class="{{ config('adminlte.classes_topnav_container', 'container-fluid') }}">
+        {{-- Left side --}}
+        <ul class="navbar-nav">
+            <li class="nav-item">
+                <a class="nav-link" data-lte-toggle="sidebar" href="#" role="button" aria-label="{{ __('Toggle sidebar') }}">
+                    <i class="bi bi-list" aria-hidden="true"></i>
+                </a>
+            </li>
+
+            <li class="nav-item d-none d-md-block">
+                <a href="{{ url('/') }}" class="nav-link">
+                    <i class="bi bi-grid-1x2 me-1" aria-hidden="true"></i> {{ __('adminlte.home') }}
+                </a>
+            </li>
+            <li class="nav-item d-none d-md-block">
+                <a href="{{ config('adminlte.sidebar_docs_url', '#') }}" class="nav-link" target="_blank" rel="noopener">
+                    <i class="bi bi-book me-1" aria-hidden="true"></i> {{ __('adminlte.documentation') }}
+                </a>
+            </li>
+
+            @foreach ($navLeft as $item)
+                <li class="nav-item d-none d-md-block">
+                    <a href="{{ $item['href'] ?? '#' }}" class="nav-link">{{ $item['text'] ?? '' }}</a>
+                </li>
+            @endforeach
+        </ul>
+
+        {{-- Right side --}}
+        <ul class="navbar-nav ms-auto">
+            {{-- Search (opens the ⌘K command palette) — single unified pill, tokens for radius/spacing --}}
+            <li class="nav-item d-flex align-items-center me-lg-2">
+                <button type="button" data-adminlte-search aria-label="{{ __('adminlte.search') }}"
+                        class="adminlte-search-trigger btn btn-sm border rounded-pill d-flex align-items-center gap-2 px-2 px-lg-3 text-body-secondary"
+                        style="border-radius: var(--radius-full); gap: var(--space-2);">
+                    <i class="bi bi-search" aria-hidden="true"></i>
+                    <span class="d-none d-lg-inline">{{ __('adminlte.search') }}…</span>
+                    <kbd class="d-none d-lg-inline small border rounded px-1 ms-lg-3" style="border-radius: var(--radius-sm);">⌘K</kbd>
+                </button>
+            </li>
+
+            {{-- Store cart (client portal only) --}}
+            @if (auth()->check() && auth()->user()->hasRole('client'))
+                @php
+                    $cart = session('cart', []);
+                    $cartCount = collect($cart)->sum(fn ($item) => max(1, (int) ($item['quantity'] ?? 1)));
+                @endphp
+                <li class="nav-item">
+                    <a class="nav-link" href="{{ route('client.store.cart') }}"
+                       aria-label="{{ __('Cart') }}">
+                        <i class="bi bi-cart" aria-hidden="true"></i>
+                        @if ($cartCount > 0)
+                            <span class="navbar-badge badge text-bg-primary">{{ min($cartCount, 99) }}{{ $cartCount > 99 ? '+' : '' }}</span>
+                        @endif
+                    </a>
+                </li>
+            @endif
+
+            {{-- Messages dropdown --}}
+            @include('adminlte::partials.navbar-messages')
+
+            {{-- Notifications dropdown --}}
+            @include('adminlte::partials.navbar-notifications')
+
+            {{-- Fullscreen toggle --}}
+            <li class="nav-item">
+                <a class="nav-link" href="#" data-lte-toggle="fullscreen" aria-label="{{ __('Toggle fullscreen') }}">
+                    <i data-lte-icon="maximize" class="bi bi-arrows-fullscreen" aria-hidden="true"></i>
+                    <i data-lte-icon="minimize" class="bi bi-fullscreen-exit d-none" aria-hidden="true"></i>
+                </a>
+            </li>
+
+            {{-- Color mode toggle --}}
+            @if (config('adminlte.color_mode_toggle', true))
+                @include('adminlte::partials.color-mode')
+            @endif
+
+            {{-- User menu --}}
+            @if (config('adminlte.usermenu_enabled', true))
+                @include('adminlte::partials.usermenu')
+            @endif
+        </ul>
+    </div>
+</nav>
+
+@include('adminlte::partials.command-palette')
+
+@once
+<style>
+    /* Navbar — 8px rhythm, token radius, subtle bottom hairline via Bootstrap border */
+    .app-header {
+        border-bottom: 1px solid var(--bs-border-color);
+        gap: var(--space-2);
+    }
+    .app-header .navbar-nav { gap: var(--space-1); }
+    .app-header .nav-link { border-radius: var(--radius-sm); transition: background-color var(--duration-base) var(--ease-default); }
+    .app-header .adminlte-search-trigger {
+        transition: background-color var(--duration-base) var(--ease-default), border-color var(--duration-base) var(--ease-default);
+    }
+</style>
+@endonce

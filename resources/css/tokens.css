@@ -1,0 +1,147 @@
+/* ==========================================================================
+   ManageHosting — Unified Design Tokens
+   Single source for Bootstrap 5.3, Tailwind 4 & AdminLTE 4.1.
+   Imported first by app.css & adminlte.css (Option B).
+   Light in :root, dark in [data-bs-theme="dark"] — respects
+   layout_dark_mode:null + color_mode_toggle. Hex first, OKLCH override
+   provides fallback where unsupported. Enterprise palette: slate neutrals
+   + desaturated indigo-violet primary (oklch 0.55/0.15/279), AA on white.
+   ========================================================================== */
+
+/* ── 1 · COLOR — primary / neutral / semantic ──────────────────────────── */
+:root {
+    /* Primary indigo-violet 50-900 */
+    --color-primary-50: #eef2ff; --color-primary-50: oklch(0.97 0.02 279);
+    --color-primary-100: #e0e7ff; --color-primary-100: oklch(0.93 0.04 279);
+    --color-primary-200: #c7d2fe; --color-primary-200: oklch(0.88 0.06 279);
+    --color-primary-300: #a5b4fc; --color-primary-300: oklch(0.80 0.09 279);
+    --color-primary-400: #818cf8; --color-primary-400: oklch(0.70 0.13 279);
+    --color-primary-500: #6366f1; --color-primary-500: oklch(0.62 0.16 279);
+    --color-primary-600: #5b5bd6; --color-primary-600: oklch(0.55 0.15 279);
+    --color-primary-700: #4f46e5; --color-primary-700: oklch(0.51 0.18 279);
+    --color-primary-800: #4338ca; --color-primary-800: oklch(0.45 0.16 279);
+    --color-primary-900: #3730a3; --color-primary-900: oklch(0.40 0.13 279);
+    --color-primary: var(--color-primary-600);
+    --color-primary-hover: var(--color-primary-700);
+    --color-primary-active: var(--color-primary-800);
+    --color-primary-subtle: var(--color-primary-50);
+    --color-primary-emphasis: var(--color-primary-700);
+    /* Neutral deep slate */
+    --color-neutral-0: #ffffff;
+    --color-neutral-50: #f8fafc; --color-neutral-50: oklch(0.98 0.005 258);
+    --color-neutral-100: #f1f5f9; --color-neutral-100: oklch(0.96 0.008 258);
+    --color-neutral-200: #e2e8f0; --color-neutral-200: oklch(0.92 0.012 258);
+    --color-neutral-300: #cbd5e1; --color-neutral-300: oklch(0.86 0.014 258);
+    --color-neutral-400: #94a3b8; --color-neutral-400: oklch(0.71 0.02 258);
+    --color-neutral-500: #64748b; --color-neutral-500: oklch(0.56 0.03 258);
+    --color-neutral-600: #475569; --color-neutral-600: oklch(0.45 0.035 258);
+    --color-neutral-700: #334155; --color-neutral-700: oklch(0.37 0.03 258);
+    --color-neutral-800: #1e293b; --color-neutral-800: oklch(0.28 0.03 258);
+    --color-neutral-900: #0f172a; --color-neutral-900: oklch(0.20 0.03 258);
+    --color-neutral-950: #020617; --color-neutral-950: oklch(0.14 0.03 258);
+    /* Semantic — 600 is AA on white */
+    --color-success-50: #ecfdf5;
+    --color-success-500: #10b981; --color-success-500: oklch(0.70 0.15 162);
+    --color-success-600: #0d9f6e; --color-success-600: oklch(0.62 0.14 162);
+    --color-success-700: #047857;
+    --color-success: var(--color-success-600);
+    --color-success-subtle: var(--color-success-50);
+    --color-warning-50: #fffbeb;
+    --color-warning-500: #f59e0b; --color-warning-500: oklch(0.77 0.15 70);
+    --color-warning-600: #d97706; --color-warning-600: oklch(0.68 0.15 70);
+    --color-warning-700: #b45309;
+    --color-warning: var(--color-warning-600);
+    --color-warning-subtle: var(--color-warning-50);
+    --color-danger-50: #fef2f2;
+    --color-danger-500: #ef4444; --color-danger-500: oklch(0.63 0.21 25);
+    --color-danger-600: #dc2626; --color-danger-600: oklch(0.57 0.21 25);
+    --color-danger-700: #b91c1c;
+    --color-danger: var(--color-danger-600);
+    --color-danger-subtle: var(--color-danger-50);
+    --color-info-50: #f0f9ff;
+    --color-info-500: #0ea5e9; --color-info-500: oklch(0.68 0.15 237);
+    --color-info-600: #0284c7; --color-info-600: oklch(0.59 0.14 237);
+    --color-info-700: #0369a1;
+    --color-info: var(--color-info-600);
+    --color-info-subtle: var(--color-info-50);
+    /* Surface / border / text — light */
+    --color-bg: var(--color-neutral-0);
+    --color-bg-subtle: var(--color-neutral-50);
+    --color-bg-muted: var(--color-neutral-100);
+    --color-surface: var(--color-neutral-0);
+    --color-surface-raised: var(--color-neutral-0);
+    --color-border: var(--color-neutral-200);
+    --color-border-strong: var(--color-neutral-300);
+    --color-text: var(--color-neutral-900);
+    --color-text-muted: var(--color-neutral-600);
+    --color-text-faint: var(--color-neutral-500);
+    --color-focus-ring: var(--color-primary-500);
+}
+
+/* ── 2 · TYPOGRAPHY ────────────────────────────────────────────────────── */
+:root {
+    --font-sans: "Instrument Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+    --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    --font-display: var(--font-sans);
+    /* sizes 12-32 */
+    --text-xs: 0.75rem; --text-sm: 0.8125rem; --text-base: 0.875rem; --text-md: 1rem;
+    --text-lg: 1.125rem; --text-xl: 1.25rem; --text-2xl: 1.5rem; --text-3xl: 2rem;
+    --leading-tight: 1.2; --leading-normal: 1.5; --leading-relaxed: 1.65;
+    --tracking-tight: -0.015em; --tracking-normal: 0; --tracking-wide: 0.02em;
+    --font-weight-regular: 400; --font-weight-medium: 500; --font-weight-semibold: 600; --font-weight-bold: 700;
+}
+
+/* ── 3 · SPACING — 8px scale (4px unit, 0→64) ─────────────────────────── */
+:root {
+    --space-0: 0; --space-1: 0.25rem; --space-2: 0.5rem; --space-3: 0.75rem;
+    --space-4: 1rem; --space-5: 1.25rem; --space-6: 1.5rem; --space-8: 2rem;
+    --space-10: 2.5rem; --space-12: 3rem; --space-16: 4rem;
+    --space-section: var(--space-8); --space-card: var(--space-6);
+    --space-stack: var(--space-4); --space-inline: var(--space-3);
+}
+
+/* ── 4 · RADII — 6 / 8 / 12 / 16 ──────────────────────────────────────── */
+:root { --radius-sm: 6px; --radius-md: 8px; --radius-lg: 12px; --radius-xl: 16px; --radius-full: 9999px; }
+
+/* ── 5 · SHADOWS — slate-tinted, fallback where oklch unsupported ─────── */
+:root {
+    --shadow-sm: 0 1px 2px oklch(0.20 0.03 258 / 0.06), 0 1px 3px oklch(0.20 0.03 258 / 0.08);
+    --shadow-md: 0 2px 6px oklch(0.20 0.03 258 / 0.07), 0 4px 12px oklch(0.20 0.03 258 / 0.07);
+    --shadow-lg: 0 8px 20px oklch(0.20 0.03 258 / 0.10), 0 4px 8px oklch(0.20 0.03 258 / 0.08);
+    --shadow-sm-fb: 0 1px 2px rgb(15 23 42 / 6%), 0 1px 3px rgb(15 23 42 / 8%);
+    --shadow-md-fb: 0 2px 6px rgb(15 23 42 / 7%), 0 4px 12px rgb(15 23 42 / 7%);
+    --shadow-lg-fb: 0 8px 20px rgb(15 23 42 / 10%), 0 4px 8px rgb(15 23 42 / 8%);
+}
+
+/* ── 6 · Z-INDEX — Bootstrap-aligned ───────────────────────────────────── */
+:root { --z-dropdown: 1000; --z-sticky: 1020; --z-fixed: 1030; --z-offcanvas: 1045; --z-modal-backdrop: 1040; --z-modal: 1050; --z-popover: 1060; --z-tooltip: 1070; --z-toast: 1080; }
+
+/* ── 7 · MOTION — all <250ms ───────────────────────────────────────────── */
+:root {
+    --duration-instant: 80ms; --duration-fast: 120ms; --duration-base: 180ms; --duration-slow: 240ms;
+    --ease-default: cubic-bezier(0.4, 0, 0.2, 1); --ease-in: cubic-bezier(0.4, 0, 1, 1);
+    --ease-out: cubic-bezier(0, 0, 0.2, 1); --ease-spring: cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+/* ── 8 · DARK MODE — [data-bs-theme="dark"] (master.blade.php $darkMode) ──
+      Lighter oklch stops hold AA on dark surface. Also respects
+      prefers-color-scheme when layout_dark_mode is null/Auto. ─────────── */
+[data-bs-theme="dark"] {
+    --color-primary: var(--color-primary-400); --color-primary-hover: var(--color-primary-300);
+    --color-primary-active: var(--color-primary-500); --color-primary-subtle: oklch(0.28 0.08 279);
+    --color-primary-emphasis: var(--color-primary-300);
+    --color-bg: var(--color-neutral-950); --color-bg-subtle: var(--color-neutral-900);
+    --color-bg-muted: oklch(0.24 0.02 258); --color-surface: oklch(0.20 0.025 258);
+    --color-surface-raised: oklch(0.24 0.02 258); --color-border: oklch(0.32 0.02 258);
+    --color-border-strong: oklch(0.38 0.02 258); --color-text: oklch(0.96 0.005 258);
+    --color-text-muted: oklch(0.71 0.015 258); --color-text-faint: oklch(0.60 0.02 258);
+    --color-focus-ring: var(--color-primary-400);
+    --color-success: oklch(0.72 0.13 162); --color-success-subtle: oklch(0.28 0.06 162);
+    --color-warning: oklch(0.78 0.13 70); --color-warning-subtle: oklch(0.30 0.06 70);
+    --color-danger: oklch(0.66 0.17 25); --color-danger-subtle: oklch(0.28 0.07 25);
+    --color-info: oklch(0.70 0.12 237); --color-info-subtle: oklch(0.26 0.06 237);
+    --shadow-sm: 0 1px 2px oklch(0 0 0 / 0.30), 0 1px 3px oklch(0 0 0 / 0.35);
+    --shadow-md: 0 4px 12px oklch(0 0 0 / 0.35), 0 2px 6px oklch(0 0 0 / 0.30);
+    --shadow-lg: 0 12px 28px oklch(0 0 0 / 0.45), 0 4px 10px oklch(0 0 0 / 0.35);
+}
+@media (prefers-color-scheme: dark) { :root:not([data-bs-theme="light"]) { color-scheme: dark; } }

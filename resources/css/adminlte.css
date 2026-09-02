@@ -1,0 +1,958 @@
+/*
+ * AdminLTE 4 stylesheet entry point.
+ * Published by `php artisan adminlte:install`. Added to vite.config.js inputs.
+ *
+ * Option A (active): prebuilt CSS + runtime CSS-variable overrides.
+ *   tokens.css is single source; :root overrides below re-theme
+ *   Bootstrap/AdminLTE without SCSS compilation. Fastest, no `sass` dep.
+ *
+ * Option B (SCSS recompile): comment out the admin-lte CSS import and
+ *   compile from source to customize SCSS variables at build time
+ *   (requires `sass`). See https://adminlte.io/themes/v4/docs/customization.html
+ *
+ *   // resources/css/adminlte.scss
+ *   $primary: #5b5bd6;              // must be set BEFORE the import
+ *   $border-radius: 8px;
+ *   $lte-sidebar-width: 280px;
+ *   @import 'admin-lte/src/scss/adminlte';
+ */
+@import './tokens.css';
+@import 'bootstrap-icons/font/bootstrap-icons.css';
+@import 'overlayscrollbars/overlayscrollbars.css';
+@import 'admin-lte/dist/css/adminlte.css';
+
+/* ── Runtime token overrides — Option B via CSS variables ───────────────
+   Conceptually these :root values sit BEFORE the admin-lte import
+   (SCSS $primary overrides work that way). CSS requires all @import
+   before other rules, so they live after the import here; Vite/PostCSS
+   bundles correctly and cascade ensures this :root wins (last wins).
+   Single source remains tokens.css — no hardcoded hex outside it. ────── */
+:root {
+    --bs-primary: var(--color-primary);
+    --bs-primary-rgb: 91, 91, 214;
+    --bs-link-color: var(--color-primary);
+    --bs-link-hover-color: var(--color-primary-hover);
+    --bs-border-radius: var(--radius-md);
+    --bs-border-radius-sm: var(--radius-sm);
+    --bs-border-radius-lg: var(--radius-lg);
+    --bs-border-radius-xl: var(--radius-xl);
+    --bs-body-font-family: var(--font-sans);
+    --bs-body-bg: var(--color-bg);
+    --bs-body-color: var(--color-text);
+    --bs-border-color: var(--color-border);
+    --bs-secondary-bg: var(--color-bg-subtle);
+    --bs-tertiary-bg: var(--color-bg-muted);
+}
+
+[data-bs-theme="dark"] {
+    --bs-body-bg: var(--color-bg);
+    --bs-body-color: var(--color-text);
+    --bs-border-color: var(--color-border);
+    --bs-link-color: var(--color-primary);
+    --bs-link-hover-color: var(--color-primary-hover);
+}
+
+/* ── Shell — header / content hierarchy (8px system) ───────────────────── */
+.app-content-header {
+    padding-block: var(--space-4); /* py-3 fallback via config, token here ensures consistency */
+    border-bottom: 1px solid var(--bs-border-color);
+    background: var(--color-surface);
+}
+.app-content-header .breadcrumb { font-size: var(--text-sm); gap: var(--space-1); }
+.app-content-header .breadcrumb-item + .breadcrumb-item::before { color: var(--color-text-faint); }
+.app-content {
+    padding-block: var(--space-4);
+}
+/* Sticky header polish — layout_fixed_navbar already pins .app-header;
+   ensure content-header respects sticky offset via AdminLTE vars. */
+.app-main .app-content-header + .app-content { padding-top: var(--space-4); }
+
+/* ── Content stack — every sub-page inside .container-fluid gets uniform
+   vertical rhythm via flex gap (16px = var(--space-4)). This replaces the
+   ad-hoc per-page mb-* / g-* hacks that left show pages cramped at 0 gap
+   while dashboard used 24px. Rows/cards reset margin-bottom so Bootstrap
+   utilities like mb-4 don't double-count. ───────────────────────────── */
+.app-content .container-fluid {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+}
+.app-content .container-fluid > .card,
+.app-content .container-fluid > .row {
+    margin-bottom: 0 !important;
+}
+
+/* ------------------------------------------------------------------ *
+ *  Compact icon-only table actions — global for all datatables
+ * ------------------------------------------------------------------ */
+.table-actions {
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: var(--space-1);
+    white-space: nowrap;
+}
+.table-actions .btn-icon {
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.82rem;
+    line-height: 1;
+    border-radius: var(--radius-md);
+    transition: background var(--duration-fast) var(--ease-default), border-color var(--duration-fast) var(--ease-default), color var(--duration-fast) var(--ease-default);
+}
+.table-actions .btn-icon i { line-height: 1; }
+.table-actions .btn-icon:hover {
+    background: color-mix(in srgb, var(--color-primary) 8%, var(--bs-body-bg));
+    border-color: color-mix(in srgb, var(--color-primary) 22%, var(--bs-border-color));
+    color: var(--color-primary);
+}
+.table-actions .btn-icon.btn-outline-danger:hover {
+    background: color-mix(in srgb, var(--color-danger) 10%, var(--bs-body-bg));
+    border-color: color-mix(in srgb, var(--color-danger) 30%, var(--bs-border-color));
+    color: var(--color-danger);
+}
+/* Narrow the Actions column so it doesn't consume layout (fits 2 icon buttons + header on one line).
+   Scoped to tables that actually have a <thead>: a header-less two-column detail
+   table (Billing, quote totals) also right-aligns its value cell, and the clamp
+   + nowrap made a long value such as an order number spill out of the card. */
+.table thead th:last-child.text-end,
+.table thead ~ tbody td.text-end:last-child {
+    width: 96px;
+    min-width: 96px;
+    max-width: 96px;
+    white-space: nowrap;
+}
+/* Right-aligned *data* column (a currency total, say). `.text-end` on a last
+   column is reserved for Actions and carries the 96px clamp above, which would
+   truncate a long figure — this aligns without claiming that width. */
+.table th.grid-numeric,
+.table td.grid-numeric {
+    text-align: right;
+}
+/* Item name that doubles as View link */
+.table-link {
+    color: var(--bs-body-color);
+    text-decoration: none;
+    font-weight: 600;
+}
+.table-link:hover {
+    color: var(--bs-primary);
+    text-decoration: underline;
+}
+.table-link-subtle {
+    color: var(--bs-primary);
+    text-decoration: none;
+    font-weight: 600;
+}
+.table-link-subtle:hover {
+    text-decoration: underline;
+}
+
+/* ------------------------------------------------------------------ *
+ *  Data grid: resizable columns + sortable headers
+ *
+ *  Applied by <x-adminlte.partials.datatable>, so every grid built on
+ *  that component gets this for free. Any other table can opt in with
+ *  `data-grid-resizable` on the <table>.
+ * ------------------------------------------------------------------ */
+
+/* Until the JS has measured the columns the table keeps auto layout, so a
+   grid renders identically with JS disabled. `grid-resizable` is added by
+   initResizableGrids() once a <colgroup> holds the real widths. */
+.table-grid th {
+    position: relative;
+}
+.table-grid {
+    width: 100%;
+}
+.table-grid.grid-resizable {
+    table-layout: fixed;
+    width: 100%;
+}
+/* The grid is sized to fit its container, so a cell may end up narrower than
+   its longest word. `anywhere` (not `break-word`) is what makes the browser
+   count the broken width when it computes min-content — without it a long
+   e-mail, URL or key would still force the table wider than the page and the
+   horizontal scrollbar would come back on auto layout. */
+.table-grid th,
+.table-grid td {
+    overflow-wrap: anywhere;
+}
+.table-grid.grid-resizable th,
+.table-grid.grid-resizable td {
+    overflow: hidden;
+}
+/* The Actions column is pinned to 96px by default (above). Once the grid is
+   resizable the <colgroup> is authoritative, so release the clamp. */
+.table-grid.grid-resizable thead th:last-child.text-end,
+.table-grid.grid-resizable tbody td.text-end:last-child {
+    width: auto;
+    min-width: 0;
+    max-width: none;
+}
+
+.grid-col-resizer {
+    position: absolute;
+    top: 0;
+    right: 0;
+    z-index: 2;
+    width: 9px;
+    height: 100%;
+    cursor: col-resize;
+    user-select: none;
+    touch-action: none;
+}
+.grid-col-resizer::after {
+    content: "";
+    position: absolute;
+    top: 25%;
+    bottom: 25%;
+    right: 4px;
+    width: 2px;
+    border-radius: 1px;
+    background: var(--bs-border-color);
+    opacity: 0;
+    transition: opacity 0.12s ease-in-out;
+}
+.table-grid th:hover > .grid-col-resizer::after {
+    opacity: 1;
+}
+.grid-col-resizer.is-dragging::after {
+    background: var(--bs-primary);
+    opacity: 1;
+}
+/* Set on <body> so the cursor survives the pointer leaving the 9px handle
+   mid-drag, and the drag never selects table text. */
+body.grid-is-resizing {
+    cursor: col-resize !important;
+    user-select: none !important;
+}
+
+/* Tables outside the grid component (show pages, embedded panels) get the same
+   treatment, so `.table-responsive` keeps its scrollbar as a safety valve but
+   never has anything left to scroll. */
+.table-responsive > table {
+    width: 100%;
+}
+.table-responsive > table > thead > tr > th,
+.table-responsive > table > tbody > tr > td {
+    overflow-wrap: anywhere;
+}
+
+.grid-sort {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    color: inherit;
+    text-decoration: none;
+    font-weight: 600;
+    white-space: nowrap;
+}
+.grid-sort:hover {
+    color: var(--bs-primary);
+    text-decoration: none;
+}
+.grid-sort.is-active {
+    color: var(--bs-primary);
+}
+.grid-sort-icon {
+    display: inline-flex;
+    font-size: 0.72rem;
+    opacity: 0.45;
+    transition: opacity 0.12s ease-in-out;
+}
+.grid-sort:hover .grid-sort-icon,
+.grid-sort.is-active .grid-sort-icon {
+    opacity: 1;
+}
+
+/* ================================================================== *
+ *  Table system polish — enterprise datatable (sticky, tokens, hover)*
+ *  Sticky header · header typography · row hover · striped · numeric*
+ *  responsive actions · pagination · column toggle · loading · empty*
+ * ================================================================== */
+
+/* ── Grid toolbar — tokens for search/status/toolbar gaps ────────── */
+.grid-toolbar .form-control,
+.grid-toolbar .form-select {
+    border-radius: var(--radius-md);
+    font-size: var(--text-sm);
+}
+.grid-toolbar .input-group { border-radius: var(--radius-md); }
+.grid-toolbar .input-group-text {
+    border-radius: var(--radius-md);
+    background: var(--color-bg-subtle);
+}
+.grid-toolbar-actions .btn { border-radius: var(--radius-md); font-size: var(--text-sm); }
+
+/* ── Header typography — subtle, tabular tokens ─────────────────── */
+.table-grid thead th {
+    font-size: var(--text-xs);
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--bs-secondary-color);
+    background: var(--bs-body-bg);
+    border-bottom-width: 1px;
+    border-bottom-color: var(--bs-border-color);
+    white-space: nowrap;
+    vertical-align: middle;
+    padding-block: 0.65rem;
+}
+
+/* ── Sticky header — opt-in via .table-responsive.has-sticky ─────── */
+.table-responsive.has-sticky {
+    max-height: min(68vh, 720px);
+    overflow-y: auto;
+    overflow-x: auto;
+    scrollbar-gutter: stable;
+}
+.table-responsive.has-sticky .table-grid thead th {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    background: var(--bs-body-bg);
+    box-shadow: 0 1px 0 var(--bs-border-color);
+}
+.table-responsive.has-sticky .table-grid thead th:first-child { z-index: 3; }
+.table-responsive.has-sticky::-webkit-scrollbar { width: 8px; height: 8px; }
+.table-responsive.has-sticky::-webkit-scrollbar-thumb {
+    background: var(--bs-border-color);
+    border-radius: var(--radius-full);
+}
+.table-responsive.has-sticky::-webkit-scrollbar-thumb:hover { background: var(--color-border-strong); }
+
+/* ── Body typography + tabular-nums ─────────────────────────────── */
+.table-grid tbody td {
+    font-size: var(--text-sm);
+    vertical-align: middle;
+    padding-block: 0.62rem;
+    border-color: var(--bs-border-color);
+}
+.table-grid tbody td.grid-numeric,
+.table-grid th.grid-numeric {
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.01em;
+}
+/* Fallback: any right-aligned last column with numbers */
+.table-grid tbody td.text-end { font-variant-numeric: tabular-nums; }
+
+/* ── Row hover — subtle primary tint ────────────────────────────── */
+.table-grid tbody tr {
+    transition: background var(--duration-fast) var(--ease-default);
+}
+.table-grid tbody tr:hover {
+    background: color-mix(in srgb, var(--color-primary) 4%, var(--bs-body-bg));
+}
+[data-bs-theme="dark"] .table-grid tbody tr:hover {
+    background: color-mix(in srgb, var(--color-primary) 7%, var(--bs-body-bg));
+}
+
+/* ── Striped tweak — slightly muted ─────────────────────────────── */
+.table-striped > tbody > tr:nth-of-type(odd) > * {
+    --bs-table-accent-bg: color-mix(in srgb, var(--bs-tertiary-bg) 70%, transparent);
+}
+.table-striped.table-grid > tbody > tr:nth-of-type(odd):hover > * {
+    --bs-table-accent-bg: color-mix(in srgb, var(--color-primary) 4%, var(--bs-body-bg));
+}
+
+/* ── Responsive: sticky Actions shadow on mobile scroll ─────────── */
+@media (max-width: 768px) {
+    .table-responsive { -webkit-overflow-scrolling: touch; }
+    .table-responsive.has-sticky { max-height: min(62vh, 560px); }
+    /* Subtle shadow on right edge to hint horizontal scroll */
+    .table-responsive::after {
+        content: "";
+        position: sticky;
+        right: 0;
+        top: 0;
+        bottom: 0;
+        width: 12px;
+        pointer-events: none;
+        background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--bs-border-color) 28%, transparent));
+        opacity: 0;
+        transition: opacity var(--duration-fast) var(--ease-default);
+    }
+    .table-responsive.is-scrollable::after { opacity: 1; }
+}
+
+/* ── Pagination polish — tokens radius, gap, active ─────────────── */
+.grid-pagination .pagination {
+    gap: 2px;
+    margin: 0;
+}
+.grid-pagination .pagination .page-link {
+    border-radius: var(--radius-md);
+    font-size: var(--text-sm);
+    font-weight: 500;
+    border-color: var(--bs-border-color);
+    color: var(--color-text);
+    padding: 0.38rem 0.72rem;
+    line-height: 1.2;
+    transition: background var(--duration-fast) var(--ease-default), border-color var(--duration-fast) var(--ease-default), color var(--duration-fast) var(--ease-default);
+}
+.grid-pagination .pagination .page-link:hover {
+    background: var(--color-bg-muted);
+    border-color: var(--color-border-strong);
+    color: var(--color-text);
+}
+.grid-pagination .pagination .page-item.active .page-link {
+    background: var(--color-primary);
+    border-color: var(--color-primary);
+    color: #fff;
+    box-shadow: 0 1px 2px color-mix(in srgb, var(--color-primary) 22%, transparent);
+}
+.grid-pagination .pagination .page-item.disabled .page-link {
+    background: transparent;
+    color: var(--color-text-faint);
+    border-color: var(--bs-border-color);
+}
+.card-footer .grid-pagination { padding: var(--space-2) var(--space-3); }
+.card-footer:has(.grid-pagination) { padding: 0; background: var(--color-bg-subtle); }
+
+/* ── Column toggle dropdown — radius, shadow, hover ─────────────── */
+.grid-column-toggle-menu {
+    border-radius: var(--radius-lg) !important;
+    box-shadow: var(--shadow-md) !important;
+    border-color: var(--bs-border-color) !important;
+}
+.grid-column-toggle-menu .dropdown-item:hover {
+    background: var(--color-bg-muted);
+}
+.grid-column-toggle-menu .dropdown-item:active {
+    background: color-mix(in srgb, var(--color-primary) 10%, var(--color-bg-muted));
+    color: var(--color-text);
+}
+
+/* ── Bulk bar — selected count + actions ────────────────────────── */
+.grid-bulk-bar {
+    font-size: var(--text-sm);
+    border-color: var(--bs-border-color);
+}
+.grid-bulk-bar .btn { border-radius: var(--radius-md); }
+
+/* ── Checkbox column — compact, centered ────────────────────────── */
+.table-grid th[data-col-index="__check"],
+.table-grid td:has(> input[type="checkbox"]) {
+    text-align: center;
+    vertical-align: middle;
+}
+.table-grid input[type="checkbox"].form-check-input { cursor: pointer; }
+
+/* ── Loading skeleton rows inside table ─────────────────────────── */
+.table-grid tbody .mh-skeleton__line {
+    animation: mh-shimmer var(--duration-slow) var(--ease-default) infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+    .table-grid tbody .mh-skeleton__line { animation: none; opacity: 0.7; }
+}
+
+/* ── Empty state inside table wrapper ───────────────────────────── */
+.table-responsive + .mh-empty-state,
+.table-grid tbody .mh-empty-state {
+    border: 0;
+    box-shadow: none;
+}
+
+/* ================================================================== *
+ *  Core components polish — Stripe/Linear grade tokens (8px system) *
+ *  empty-state · skeleton · status-badge · metric/small-box · alert  *
+ *  confirm-modal · button · card — single source tokens.css         *
+ * ================================================================== */
+
+/* ── Buttons — tokens for radius, weight, gap, transition ─────────── */
+.btn {
+    border-radius: var(--radius-md);
+    font-weight: 500;
+    letter-spacing: 0;
+    transition: background var(--duration-fast) var(--ease-default), border-color var(--duration-fast) var(--ease-default), color var(--duration-fast) var(--ease-default), box-shadow var(--duration-fast) var(--ease-default), transform var(--duration-instant) var(--ease-default);
+}
+.btn:active { transform: translateY(0.5px); }
+.btn .bi { line-height: 1; }
+.btn-primary {
+    --bs-btn-bg: var(--color-primary);
+    --bs-btn-border-color: var(--color-primary);
+    --bs-btn-hover-bg: var(--color-primary-hover);
+    --bs-btn-hover-border-color: var(--color-primary-hover);
+    --bs-btn-active-bg: var(--color-primary-active);
+    --bs-btn-active-border-color: var(--color-primary-active);
+}
+
+/* ── Cards — radius + shadow via tokens ───────────────────────────── */
+.card {
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-sm);
+    border-color: var(--bs-border-color);
+}
+.card-header {
+    border-top-left-radius: var(--radius-lg) !important;
+    border-top-right-radius: var(--radius-lg) !important;
+}
+.card-footer {
+    border-bottom-left-radius: var(--radius-lg) !important;
+    border-bottom-right-radius: var(--radius-lg) !important;
+}
+
+/* ── Small-box / metric cards — tokens gap, shadow, radius ───────── */
+.small-box {
+    border-radius: var(--radius-lg) !important;
+    box-shadow: var(--shadow-sm) !important;
+    overflow: hidden;
+    position: relative;
+}
+.small-box .inner { padding: var(--space-4) var(--space-4) var(--space-3); }
+.small-box h3 { font-size: var(--text-2xl); font-weight: 700; letter-spacing: var(--tracking-tight); line-height: var(--leading-tight); }
+.small-box p { font-size: var(--text-sm); opacity: 0.92; margin-bottom: 0; }
+.small-box .small-box-icon {
+    opacity: 0.18;
+    font-size: 3.25rem;
+    right: var(--space-4);
+    top: var(--space-3);
+    transition: opacity var(--duration-base) var(--ease-default), transform var(--duration-base) var(--ease-default);
+}
+.small-box:hover .small-box-icon { opacity: 0.26; transform: scale(1.03); }
+.small-box .small-box-footer {
+    padding-block: var(--space-2);
+    font-size: var(--text-sm);
+    font-weight: 500;
+    background: color-mix(in srgb, #000 8%, transparent);
+    border-top: 1px solid color-mix(in srgb, #fff 10%, transparent);
+}
+.mh-metric-row {
+    --bs-gutter-x: var(--space-4);
+    row-gap: var(--space-3);
+}
+
+/* ── Empty state — centered card-style ────────────────────────────── */
+.mh-empty-state {
+    background: var(--color-surface);
+    border: 1px dashed color-mix(in srgb, var(--bs-border-color) 85%, transparent);
+}
+.mh-empty-state__icon { box-shadow: 0 1px 2px color-mix(in srgb, var(--color-primary) 14%, transparent); }
+.mh-empty-state__title { letter-spacing: var(--tracking-tight); }
+
+/* ── Skeleton — shimmer + pulse ───────────────────────────────────── */
+.mh-skeleton__line,
+.mh-skeleton__avatar {
+    display: block;
+    background: var(--bs-border-color);
+    position: relative;
+    overflow: hidden;
+}
+.mh-skeleton__line::after,
+.mh-skeleton__avatar::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    background: linear-gradient(90deg, transparent 0%, color-mix(in srgb, var(--bs-body-bg) 62%, transparent) 50%, transparent 100%);
+    animation: mh-shimmer var(--duration-slow) var(--ease-default) infinite;
+}
+.mh-skeleton__avatar::after { border-radius: var(--radius-full); }
+@media (prefers-reduced-motion: reduce) {
+    .mh-skeleton__line::after, .mh-skeleton__avatar::after { animation: none; opacity: 0.7; }
+}
+@keyframes mh-shimmer {
+    100% { transform: translateX(100%); }
+}
+.mh-skeleton--table .mh-skeleton__row { min-height: 1.6rem; }
+.mh-skeleton--card .mh-skeleton__card { animation: mh-skeleton-pulse var(--duration-slow) ease-in-out infinite alternate; }
+@keyframes mh-skeleton-pulse {
+    0% { opacity: 1; }
+    100% { opacity: 0.88; }
+}
+
+/* ── Status badge — subtle + pill polish ──────────────────────────── */
+.mh-badge { vertical-align: middle; white-space: nowrap; }
+.mh-badge--solid { box-shadow: 0 0 0 1px color-mix(in srgb, currentColor 10%, transparent) inset; }
+.mh-badge--subtle { backdrop-filter: saturate(1.05); }
+
+/* ── Flash alert — accent border + enter animation ────────────────── */
+.mh-flash-alert { overflow: hidden; }
+@keyframes mh-flash-in {
+    from { opacity: 0; transform: translateY(-4px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+.mh-flash-alert.btn-close { filter: none; }
+
+/* ── Confirm modal — tokens radius/shadow/icon ────────────────────── */
+.mh-confirm-modal .modal-content {
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-lg);
+    border: 1px solid var(--bs-border-color);
+    overflow: hidden;
+}
+.mh-confirm-modal .modal-header {
+    border-bottom: 1px solid var(--bs-border-color);
+    padding: var(--space-4) var(--space-5);
+    background: var(--color-bg-subtle);
+}
+.mh-confirm-modal .modal-title { font-size: var(--text-base); font-weight: 600; letter-spacing: var(--tracking-tight); }
+.mh-confirm-modal .modal-body { padding: var(--space-5); }
+.mh-confirm-modal .modal-footer {
+    border-top: 1px solid var(--bs-border-color);
+    padding: var(--space-3) var(--space-5);
+    gap: var(--space-2);
+    background: var(--color-bg-subtle);
+}
+.mh-confirm-modal .btn-close { opacity: 0.6; }
+.mh-confirm-modal .btn-close:hover { opacity: 1; }
+
+/* ── Currency — tabular nums ─────────────────────────────────────── */
+.mh-currency { font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+
+/* ================================================================== *
+ *  Form system polish — tokens, 8px rhythm, Stripe/Linear grade     *
+ *  .form-control / .form-select / .form-check / .invalid-feedback   *
+ *  .form-text / .input-group / filter bar / loading / fieldset     *
+ * ================================================================== */
+
+/* ── Form card — header icon circle, body gap, footer, 8px system ── */
+.mh-form-card {
+    border-radius: var(--radius-lg);
+    border-color: var(--bs-border-color);
+    box-shadow: var(--shadow-sm);
+    overflow: hidden;
+}
+.mh-form-card .card-header {
+    background: var(--color-surface);
+    border-bottom: 1px solid var(--bs-border-color);
+    padding: var(--space-3) var(--space-4);
+    gap: var(--space-2);
+}
+.mh-form-card .card-header .card-title {
+    font-size: var(--text-base);
+    font-weight: 600;
+    letter-spacing: var(--tracking-tight);
+    line-height: var(--leading-tight);
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+}
+.mh-form-card .card-header .card-title i {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: var(--radius-full);
+    background: color-mix(in srgb, var(--color-primary) 10%, transparent);
+    color: var(--color-primary);
+    font-size: 0.85rem;
+    flex-shrink: 0;
+}
+.mh-form-card .card-body {
+    padding: var(--space-4);
+}
+.mh-form-card__body {
+    display: grid;
+    gap: var(--space-3);
+}
+/* Preserve row gutters inside the grid wrapper: row is a flex item, gap handled by row+g-* */
+.mh-form-card__body .row { --bs-gutter-x: var(--space-3); --bs-gutter-y: var(--space-3); }
+.mh-form-card__body .row.g-3 { --bs-gutter-x: var(--space-3); --bs-gutter-y: var(--space-3); }
+.mh-form-card__body .row.g-2 { --bs-gutter-x: var(--space-2); --bs-gutter-y: var(--space-2); }
+.mh-form-card__footer {
+    gap: var(--space-2);
+    padding-top: var(--space-3);
+    border-top: 1px solid var(--bs-border-color);
+    margin-top: var(--space-1);
+    position: sticky;
+    bottom: 0;
+    background: var(--color-surface);
+    z-index: 1;
+}
+/* Card without footer — no extra border */
+.mh-form-card:not(:has(.mh-form-card__footer)) .mh-form-card__body { padding-bottom: var(--space-1); }
+
+/* ── Labels + required indicator ─────────────────────────────────── */
+.mh-form-card .form-label,
+.mh-form-field .form-label,
+.form-label {
+    font-size: var(--text-sm);
+    font-weight: 500;
+    color: var(--color-text);
+    margin-bottom: var(--space-1);
+    letter-spacing: var(--tracking-normal);
+    line-height: var(--leading-normal);
+}
+.mh-required {
+    color: var(--color-danger);
+    font-weight: 700;
+    margin-left: 0.2em;
+    line-height: 1;
+}
+.form-label:has(+ .form-control[required])::after,
+.form-label:has(+ .form-select[required])::after {
+    /* CSS fallback if blade asterisk not rendered (e.g. raw HTML) */
+    content: "";
+}
+/* Small muted label variant inside order lines */
+.form-label.small.text-muted { font-size: var(--text-xs); font-weight: 400; }
+
+/* ── Form controls — tokens, 38px height, focus ring, transition ─── */
+.form-control,
+.form-select {
+    font-family: var(--font-sans);
+    font-size: var(--text-sm);
+    line-height: var(--leading-normal);
+    border-radius: var(--radius-md);
+    border-color: var(--bs-border-color);
+    background-color: var(--bs-body-bg);
+    color: var(--bs-body-color);
+    transition: border-color var(--duration-fast) var(--ease-default), box-shadow var(--duration-fast) var(--ease-default), background-color var(--duration-fast) var(--ease-default);
+    box-shadow: none;
+}
+.form-control { min-height: 38px; padding: 0.5rem 0.75rem; }
+.form-select { min-height: 38px; padding-block: 0.5rem; }
+.form-control-sm, .form-select-sm { min-height: 31px; font-size: var(--text-xs); border-radius: var(--radius-sm); }
+.form-control-lg, .form-select-lg { min-height: 44px; font-size: var(--text-base); border-radius: var(--radius-md); }
+.form-control::placeholder { color: var(--bs-secondary-color); opacity: 0.85; }
+.form-control:focus,
+.form-select:focus {
+    border-color: var(--color-primary);
+    box-shadow: 0 0 0 0.2rem color-mix(in srgb, var(--color-primary) 16%, transparent);
+    background-color: var(--bs-body-bg);
+    outline: 0;
+}
+.form-control:disabled, .form-select:disabled { background-color: var(--color-bg-muted); opacity: 0.72; }
+textarea.form-control { min-height: 76px; resize: vertical; line-height: var(--leading-relaxed); }
+
+/* ── Invalid / valid — tokens, consistent feedback ───────────────── */
+.form-control.is-invalid, .form-select.is-invalid, .form-check-input.is-invalid {
+    border-color: var(--color-danger);
+}
+.form-control.is-invalid:focus, .form-select.is-invalid:focus, .form-check-input.is-invalid:focus {
+    border-color: var(--color-danger);
+    box-shadow: 0 0 0 0.2rem color-mix(in srgb, var(--color-danger) 16%, transparent);
+}
+.invalid-feedback {
+    font-size: var(--text-xs);
+    color: var(--color-danger);
+    margin-top: var(--space-1);
+    line-height: var(--leading-normal);
+    display: flex;
+    align-items: flex-start;
+    gap: 0.3em;
+}
+.invalid-feedback::before {
+    content: "\F33B";
+    font-family: "bootstrap-icons";
+    font-size: 0.9em;
+    line-height: 1.4;
+    flex-shrink: 0;
+}
+.form-control.is-invalid ~ .invalid-feedback,
+.form-select.is-invalid ~ .invalid-feedback { display: flex !important; }
+/* Progressive enhancement: :user-invalid (no JS needed, modern browsers) */
+.form-control:user-invalid:not(:placeholder-shown):not(:focus),
+.form-select:user-invalid:not(:focus) {
+    border-color: var(--color-danger);
+}
+.form-control:user-invalid:not(:placeholder-shown):not(:focus) ~ .invalid-feedback { display: flex; }
+
+/* ── Help text ───────────────────────────────────────────────────── */
+.form-text,
+.mh-help-text {
+    font-size: var(--text-xs);
+    color: var(--bs-secondary-color);
+    margin-top: var(--space-1);
+    line-height: var(--leading-normal);
+}
+
+/* ── Input group — radius, focus ring via focus-within ──────────── */
+.input-group { border-radius: var(--radius-md); }
+.input-group .form-control,
+.input-group .form-select,
+.input-group .input-group-text {
+    border-color: var(--bs-border-color);
+    font-size: var(--text-sm);
+}
+.input-group-text {
+    background: var(--color-bg-subtle);
+    color: var(--color-text-muted);
+    font-size: var(--text-sm);
+    border-radius: var(--radius-md);
+    transition: border-color var(--duration-fast) var(--ease-default), background var(--duration-fast) var(--ease-default);
+}
+.input-group:focus-within .input-group-text {
+    border-color: var(--color-primary);
+    background: color-mix(in srgb, var(--color-primary) 6%, var(--color-bg-subtle));
+    color: var(--color-primary);
+}
+.input-group .form-control:focus,
+.input-group .form-select:focus { z-index: 3; }
+
+/* ── Check / radio / switch — accent, tokens ─────────────────────── */
+.form-check-input {
+    width: 1.1em;
+    height: 1.1em;
+    border-color: var(--color-border-strong);
+    background-color: var(--bs-body-bg);
+    transition: background-color var(--duration-fast) var(--ease-default), border-color var(--duration-fast) var(--ease-default), box-shadow var(--duration-fast) var(--ease-default);
+    cursor: pointer;
+}
+.form-check-input:checked {
+    background-color: var(--color-primary);
+    border-color: var(--color-primary);
+}
+.form-check-input:focus {
+    border-color: var(--color-primary);
+    box-shadow: 0 0 0 0.2rem color-mix(in srgb, var(--color-primary) 16%, transparent);
+}
+.form-check-input:checked:focus { box-shadow: 0 0 0 0.2rem color-mix(in srgb, var(--color-primary) 18%, transparent); }
+.form-check-label { font-size: var(--text-sm); color: var(--color-text); cursor: pointer; line-height: var(--leading-normal); }
+.form-switch .form-check-input { width: 2.2em; height: 1.2em; }
+.form-check { margin-bottom: var(--space-1); }
+.form-check:last-child { margin-bottom: 0; }
+
+/* ── Fieldset / section grouping ─────────────────────────────────── */
+.mh-form-card fieldset {
+    border: 0;
+    border-top: 1px solid var(--bs-border-color);
+    padding: var(--space-4) 0 0;
+    margin: var(--space-2) 0 0;
+}
+.mh-form-card fieldset:first-child { border-top: 0; padding-top: 0; margin-top: 0; }
+.mh-form-card legend,
+.mh-form-section-title {
+    font-size: var(--text-sm);
+    font-weight: 600;
+    color: var(--color-text);
+    letter-spacing: var(--tracking-tight);
+    margin-bottom: var(--space-3);
+    float: none;
+    width: auto;
+    padding: 0;
+    line-height: var(--leading-tight);
+}
+.mh-form-section-title i { color: var(--color-primary); }
+.mh-form-card hr { border-color: var(--bs-border-color); opacity: 1; margin-block: var(--space-4); }
+
+/* ── Filter bar polish ───────────────────────────────────────────── */
+.mh-filter-bar {
+    background: var(--color-bg-subtle);
+    border-radius: var(--radius-md) var(--radius-md) 0 0;
+}
+.mh-filter-bar .form-control,
+.mh-filter-bar .form-select { background: var(--bs-body-bg); }
+.mh-filter-search .input-group-text { background: var(--bs-body-bg); }
+.mh-filter-search .form-control::placeholder { color: var(--color-text-faint); }
+.mh-filter-bar .btn-primary { box-shadow: 0 1px 2px color-mix(in srgb, var(--color-primary) 18%, transparent); }
+.mh-filter-bar .dropdown-menu {
+    border-radius: var(--radius-md);
+    border-color: var(--bs-border-color);
+    box-shadow: var(--shadow-md);
+    padding: var(--space-2);
+}
+.mh-filter-bar .dropdown-menu .form-check { padding-block: 0.22rem; }
+.mh-filter-bar .dropdown-menu .form-check-input:checked { background-color: var(--color-primary); border-color: var(--color-primary); }
+.mh-filter-bar .dropdown-menu .form-check-label { font-size: var(--text-sm); }
+.mh-grid-reset {
+    width: 30px; height: 30px; padding: 0;
+    display: inline-flex; align-items: center; justify-content: center;
+    border-radius: var(--radius-md);
+    color: var(--color-text-muted);
+}
+.mh-grid-reset:hover { background: var(--color-bg-muted); color: var(--color-text); border-color: var(--color-border-strong); }
+
+/* ── Loading state — button & form ───────────────────────────────── */
+.btn.is-loading,
+.btn[aria-busy="true"] {
+    position: relative;
+    pointer-events: none;
+    opacity: 0.72;
+}
+.btn.is-loading::after,
+.btn[aria-busy="true"]::after {
+    content: "";
+    position: absolute;
+    width: 1em; height: 1em;
+    border: 2px solid currentColor;
+    border-right-color: transparent;
+    border-radius: 50%;
+    animation: mh-spin 0.6s linear infinite;
+    inset: 0;
+    margin: auto;
+}
+.btn.is-loading > *, .btn[aria-busy="true"] > * { opacity: 0; }
+.mh-form.is-loading,
+.mh-form[aria-busy="true"] { pointer-events: none; opacity: 0.72; }
+@keyframes mh-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+    .btn.is-loading::after, .btn[aria-busy="true"]::after { animation: none; border-right-color: currentColor; opacity: 0.35; }
+}
+
+/* ── Dark mode — inputs respect Bootstrap vars mapped to tokens ──── */
+[data-bs-theme="dark"] .form-control,
+[data-bs-theme="dark"] .form-select,
+[data-bs-theme="dark"] .input-group-text {
+    background-color: var(--bs-body-bg);
+    border-color: var(--bs-border-color);
+    color: var(--bs-body-color);
+}
+[data-bs-theme="dark"] .form-control::placeholder { color: var(--bs-secondary-color); }
+[data-bs-theme="dark"] .mh-form-card .card-header { background: var(--color-surface); }
+[data-bs-theme="dark"] .mh-filter-bar { background: var(--color-bg-subtle); }
+
+/* ── Reduced motion ──────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+    .form-control, .form-select, .form-check-input, .input-group-text, .mh-form-card, .mh-grid-reset { transition: none; }
+}
+
+/* ================================================================== *
+ *  Dashboard polish — metrics, charts, activity timeline, quick     *
+ *  actions (8px system, Stripe/Linear grade, tokens only)           *
+ * ================================================================== */
+
+/* ── Metric strip — tabular-nums, tighter gap ────────────────────── */
+.mh-dashboard-metric .small-box h3 { font-variant-numeric: tabular-nums; letter-spacing: -0.015em; }
+.mh-dashboard-metric .small-box p { letter-spacing: var(--tracking-normal); }
+
+/* ── Chart card — fixed height, responsive, skeleton fallback ─────── */
+.mh-chart-wrap { min-height: 280px; position: relative; }
+.mh-chart-wrap [data-apexchart] { min-height: 280px; }
+.mh-chart-wrap .mh-empty-state { min-height: 280px; display: flex; }
+
+/* ── Quick actions — grid, hover tint ────────────────────────────── */
+.mh-quick-actions .btn-outline-secondary:hover {
+    background: color-mix(in srgb, var(--color-primary) 6%, var(--bs-body-bg));
+    border-color: color-mix(in srgb, var(--color-primary) 18%, var(--bs-border-color));
+    color: var(--color-text);
+}
+.mh-quick-actions .btn-outline-secondary:active {
+    background: color-mix(in srgb, var(--color-primary) 10%, var(--bs-body-bg));
+}
+
+/* ── Activity timeline — subtle left line when >2 items ──────────── */
+.mh-activity-timeline {
+    position: relative;
+    padding-left: var(--space-4);
+}
+.mh-activity-timeline::before {
+    content: "";
+    position: absolute;
+    left: 0.55rem;
+    top: var(--space-2);
+    bottom: var(--space-2);
+    width: 1px;
+    background: var(--bs-border-color);
+    opacity: 0.9;
+}
+[data-bs-theme="dark"] .mh-activity-timeline::before { opacity: 0.6; }
+
+/* ── Dashboard tables — header + row hover already via .table-grid ── */
+.mh-dashboard-table thead th {
+    font-size: var(--text-xs);
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--bs-secondary-color);
+    border-bottom-color: var(--bs-border-color);
+}
+.mh-dashboard-table tbody tr:hover { background: color-mix(in srgb, var(--color-primary) 4%, var(--bs-body-bg)); }
+[data-bs-theme="dark"] .mh-dashboard-table tbody tr:hover { background: color-mix(in srgb, var(--color-primary) 7%, var(--bs-body-bg)); }
