@@ -1,0 +1,12 @@
+{
+  "slug": "snmp-monitor",
+  "name": "SNMP Monitor",
+  "description": "Standalone SNMP monitoring module with centralized collector, time-series storage and admin dashboard.",
+  "version": "1.0.0",
+  "author": "ManageHosting",
+  "namespace": "Modules\\SnmpMonitor\\",
+  "provider": "Modules\\SnmpMonitor\\SnmpMonitor",
+  "capabilities": ["hosting-account-info"],
+  "requires": { "app": ">=1.0.0", "php": ">=8.3" },
+  "permissions": []
+}

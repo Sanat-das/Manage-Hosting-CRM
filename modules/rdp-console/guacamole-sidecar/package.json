@@ -1,0 +1,17 @@
+{
+  "name": "rdp-console-guacamole-sidecar",
+  "version": "1.0.0",
+  "private": true,
+  "type": "commonjs",
+  "description": "guacamole-lite WebSocket sidecar bridging PHP-minted RDP tokens to guacd",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "guacamole-lite": "^1.2.0"
+  }
+}

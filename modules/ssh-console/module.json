@@ -1,0 +1,12 @@
+{
+  "slug": "ssh-console",
+  "name": "SSH Console",
+  "description": "Browser-based SSH terminal (xterm.js over phpseclib) for a hosting account's Linux host, plus per-account SSH connection settings. System monitoring is handled by the standalone snmp-monitor module.",
+  "version": "1.0.0",
+  "author": "ManageHosting",
+  "namespace": "Modules\\SshConsole\\",
+  "provider": "Modules\\SshConsole\\SshConsole",
+  "capabilities": [],
+  "requires": { "app": ">=1.0.0", "php": ">=8.3" },
+  "permissions": []
+}

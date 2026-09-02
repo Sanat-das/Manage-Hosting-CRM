@@ -1,0 +1,12 @@
+{
+  "slug": "rdp-console",
+  "name": "RDP Console",
+  "description": "Browser-based RDP console (Guacamole) for a hosting account's Windows host, plus per-account RDP connection settings served via .rdp download, native launch and password reveal.",
+  "version": "1.0.0",
+  "author": "ManageHosting",
+  "namespace": "Modules\\RdpConsole\\",
+  "provider": "Modules\\RdpConsole\\RdpConsole",
+  "capabilities": ["hosting-account-info"],
+  "requires": { "app": ">=1.0.0", "php": ">=8.3" },
+  "permissions": []
+}
