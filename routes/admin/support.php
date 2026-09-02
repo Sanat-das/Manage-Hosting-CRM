@@ -1,0 +1,153 @@
+<?php
+
+use App\Http\Controllers\Admin\KbController;
+use App\Http\Controllers\Admin\TicketController;
+use App\Http\Controllers\Admin\TicketDepartmentController;
+use Illuminate\Support\Facades\Route;
+
+/*
+|--------------------------------------------------------------------------
+| Admin Support routes — Tickets + Knowledge Base (web)
+|--------------------------------------------------------------------------
+|
+| Self-contained route group for the support domain. Loaded via
+| bootstrap/app.php `withRouting(..., then:)`. Matches the convention used
+| by routes/admin/ssl.php: web + auth + admin middleware, /admin prefix and
+| an `admin.` name prefix.
+|
+| Route names are the sidebar contract in config/adminlte.php and the
+| redirect targets used by the ticket/KB controllers:
+|   admin.tickets.index, admin.tickets.create, admin.kb.index, admin.kb.create
+|
+| Permissions are seeded in InitialDataSeeder:
+|   tickets.view / tickets.create / tickets.edit / tickets.assign
+|   kb.view / kb.create / kb.edit / kb.delete
+*/
+
+Route::middleware(['web', 'auth', 'admin', 'throttle:admin'])
+    ->prefix('admin')
+    ->name('admin.')
+    ->group(function () {
+        // Support departments — configuration, so gated on settings.* rather
+        // than tickets.*: these rows hold mailbox credentials. Registered
+        // before tickets/{ticket} would ever be reached, and on their own
+        // path, so there is no collision with the ticket routes below.
+        Route::get('ticket-departments', [TicketDepartmentController::class, 'index'])
+            ->middleware('permission:settings.view')
+            ->name('ticket-departments.index');
+
+        Route::get('ticket-departments/create', [TicketDepartmentController::class, 'create'])
+            ->middleware('permission:settings.manage')
+            ->name('ticket-departments.create');
+
+        Route::post('ticket-departments', [TicketDepartmentController::class, 'store'])
+            ->middleware('permission:settings.manage')
+            ->name('ticket-departments.store');
+
+        Route::get('ticket-departments/{ticketDepartment}/edit', [TicketDepartmentController::class, 'edit'])
+            ->middleware('permission:settings.manage')
+            ->name('ticket-departments.edit');
+
+        Route::put('ticket-departments/{ticketDepartment}', [TicketDepartmentController::class, 'update'])
+            ->middleware('permission:settings.manage')
+            ->name('ticket-departments.update');
+
+        Route::delete('ticket-departments/{ticketDepartment}', [TicketDepartmentController::class, 'destroy'])
+            ->middleware('permission:settings.manage')
+            ->name('ticket-departments.destroy');
+
+        // Tickets — create must be registered before {ticket}.
+        Route::get('tickets', [TicketController::class, 'index'])
+            ->middleware('permission:tickets.view')
+            ->name('tickets.index');
+
+        Route::get('tickets/create', [TicketController::class, 'create'])
+            ->middleware('permission:tickets.create')
+            ->name('tickets.create');
+
+        Route::post('tickets', [TicketController::class, 'store'])
+            ->middleware('permission:tickets.create')
+            ->name('tickets.store');
+
+        Route::get('tickets/{ticket}/contacts/search', [TicketController::class, 'searchContacts'])
+            ->middleware('permission:tickets.view')
+            ->name('tickets.contacts.search');
+
+        Route::get('tickets/{ticket}', [TicketController::class, 'show'])
+            ->middleware('permission:tickets.view')
+            ->name('tickets.show');
+
+        // Ticket actions — state changes are guarded by the TicketService.
+        Route::post('tickets/{ticket}/reply', [TicketController::class, 'reply'])
+            ->middleware('permission:tickets.edit')
+            ->name('tickets.reply');
+
+        Route::post('tickets/{ticket}/note', [TicketController::class, 'storeNote'])
+            ->middleware('permission:tickets.edit')
+            ->name('tickets.note');
+
+        Route::post('tickets/{ticket}/close', [TicketController::class, 'close'])
+            ->middleware('permission:tickets.edit')
+            ->name('tickets.close');
+
+Route::post('tickets/{ticket}/reopen', [TicketController::class, 'reopen'])
+    ->middleware('permission:tickets.edit')
+    ->name('tickets.reopen');
+
+Route::put('tickets/{ticket}/status', [TicketController::class, 'updateStatus'])
+    ->middleware('permission:tickets.edit')
+    ->name('tickets.status');
+
+        Route::put('tickets/{ticket}/assign', [TicketController::class, 'reassign'])
+            ->middleware('permission:tickets.assign')
+            ->name('tickets.assign');
+
+        Route::post('tickets/{ticket}/transfer', [TicketController::class, 'transfer'])
+            ->middleware('permission:tickets.transfer')
+            ->name('tickets.transfer');
+
+        Route::post('tickets/{ticket}/link-guest', [TicketController::class, 'linkGuest'])
+            ->middleware('permission:tickets.edit')
+            ->name('tickets.linkGuest');
+
+        Route::post('tickets/{ticket}/add-guest-contact', [TicketController::class, 'addGuestAsContact'])
+            ->middleware('permission:tickets.edit')
+            ->name('tickets.addGuestContact');
+
+        Route::get('tickets/{ticket}/attachments/{attachment}', [TicketController::class, 'showAttachment'])
+            ->middleware('permission:tickets.view')
+            ->name('tickets.attachments.show');
+
+        Route::get('tickets/{ticket}/replies/{reply}/original', [TicketController::class, 'showOriginal'])
+            ->middleware('permission:tickets.view')
+            ->name('tickets.replies.original');
+
+        // Knowledge base — create before {article}.
+        Route::get('kb', [KbController::class, 'index'])
+            ->middleware('permission:kb.view')
+            ->name('kb.index');
+
+        Route::get('kb/create', [KbController::class, 'create'])
+            ->middleware('permission:kb.create')
+            ->name('kb.create');
+
+        Route::post('kb', [KbController::class, 'store'])
+            ->middleware('permission:kb.create')
+            ->name('kb.store');
+
+        Route::get('kb/{article}', [KbController::class, 'show'])
+            ->middleware('permission:kb.view')
+            ->name('kb.show');
+
+        Route::get('kb/{article}/edit', [KbController::class, 'edit'])
+            ->middleware('permission:kb.edit')
+            ->name('kb.edit');
+
+        Route::put('kb/{article}', [KbController::class, 'update'])
+            ->middleware('permission:kb.edit')
+            ->name('kb.update');
+
+        Route::delete('kb/{article}', [KbController::class, 'destroy'])
+            ->middleware('permission:kb.delete')
+            ->name('kb.destroy');
+    });
