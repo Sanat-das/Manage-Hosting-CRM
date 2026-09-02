@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ledger Flux — Fiscal Flow Dynamics</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.7.0/p5.min.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600&family=Lora:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --anthropic-dark: #141413;
+            --anthropic-light: #faf9f5;
+            --anthropic-mid-gray: #b0aea5;
+            --anthropic-light-gray: #e8e6dc;
+            --anthropic-orange: #d97757;
+            --anthropic-blue: #6a9bcc;
+            --anthropic-green: #788c5d;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Poppins', sans-serif;
+            background: linear-gradient(135deg, var(--anthropic-light) 0%, #f5f3ee 100%);
+            min-height: 100vh;
+            color: var(--anthropic-dark);
+        }
+        .container { display: flex; min-height: 100vh; padding: 20px; gap: 20px; }
+        .sidebar {
+            width: 320px; flex-shrink: 0;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            padding: 24px; border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(20,20,19,0.1);
+            overflow-y: auto; overflow-x: hidden;
+        }
+        .sidebar h1 { font-family: 'Lora', serif; font-size: 22px; font-weight: 500; color: var(--anthropic-dark); margin-bottom: 6px; }
+        .sidebar .subtitle { color: var(--anthropic-mid-gray); font-size: 13px; margin-bottom: 28px; line-height: 1.45; }
+        .control-section { margin-bottom: 28px; }
+        .control-section h3 { font-size: 15px; font-weight: 600; color: var(--anthropic-dark); margin-bottom: 14px; display: flex; align-items: center; gap: 8px; }
+        .control-section h3::before { content: '•'; color: var(--anthropic-orange); font-weight: bold; }
+        .seed-input {
+            width: 100%; background: var(--anthropic-light); padding: 10px; border-radius: 8px;
+            font-family: 'Courier New', monospace; font-size: 14px; margin-bottom: 10px;
+            border: 1px solid var(--anthropic-light-gray); text-align: center;
+        }
+        .seed-input:focus { outline: none; border-color: var(--anthropic-orange); box-shadow: 0 0 0 2px rgba(217,119,87,0.1); background: white; }
+        .seed-controls { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px; }
+        .regen-button { margin-bottom: 0; }
+        .control-group { margin-bottom: 18px; }
+        .control-group label { display: block; font-size: 13px; font-weight: 500; color: var(--anthropic-dark); margin-bottom: 6px; }
+        .slider-container { display: flex; align-items: center; gap: 10px; }
+        .slider-container input[type="range"] {
+            flex: 1; height: 4px; background: var(--anthropic-light-gray); border-radius: 2px; outline: none; -webkit-appearance: none;
+        }
+        .slider-container input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none; width: 16px; height: 16px; background: var(--anthropic-orange); border-radius: 50%; cursor: pointer; transition: all 0.2s ease;
+        }
+        .slider-container input[type="range"]::-webkit-slider-thumb:hover { transform: scale(1.1); background: #c86641; }
+        .slider-container input[type="range"]::-moz-range-thumb {
+            width: 16px; height: 16px; background: var(--anthropic-orange); border-radius: 50%; border: none; cursor: pointer;
+        }
+        .value-display { font-family: 'Courier New', monospace; font-size: 11px; color: var(--anthropic-mid-gray); min-width: 52px; text-align: right; }
+        .color-group { margin-bottom: 12px; }
+        .color-group label { display: block; font-size: 11px; color: var(--anthropic-mid-gray); margin-bottom: 4px; }
+        .color-picker-container { display: flex; align-items: center; gap: 8px; }
+        .color-picker-container input[type="color"] { width: 32px; height: 32px; border: none; border-radius: 6px; cursor: pointer; background: none; padding: 0; }
+        .color-value { font-family: 'Courier New', monospace; font-size: 11px; color: var(--anthropic-mid-gray); }
+        .button {
+            background: var(--anthropic-orange); color: white; border: none; padding: 10px 14px; border-radius: 6px;
+            font-size: 13px; font-weight: 500; cursor: pointer; transition: all 0.2s ease; width: 100%;
+        }
+        .button:hover { background: #c86641; transform: translateY(-1px); }
+        .button:active { transform: translateY(0); }
+        .button.secondary { background: var(--anthropic-blue); }
+        .button.secondary:hover { background: #5a8bb8; }
+        .button.tertiary { background: var(--anthropic-green); }
+        .button.tertiary:hover { background: #6b7b52; }
+        .button-row { display: flex; gap: 8px; }
+        .button-row .button { flex: 1; }
+        .canvas-area { flex: 1; display: flex; align-items: center; justify-content: center; min-width: 0; }
+        #canvas-container {
+            width: 100%; max-width: 960px; border-radius: 12px; overflow: hidden;
+            box-shadow: 0 20px 40px rgba(20,20,19,0.1); background: white;
+        }
+        #canvas-container canvas { display: block; width: 100% !important; height: auto !important; }
+        .loading { display: flex; align-items: center; justify-content: center; font-size: 15px; color: var(--anthropic-mid-gray); padding: 40px; }
+        .hint { font-size: 11px; color: var(--anthropic-mid-gray); margin-top: 6px; line-height: 1.4; }
+        @media (max-width: 700px) {
+            .container { flex-direction: column; }
+            .sidebar { width: 100%; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="sidebar">
+            <h1>Ledger Flux</h1>
+            <div class="subtitle">Fiscal Flow Dynamics — invoices as currents, GST as bifurcation, settlement as gravity. Each seed is a different quarter's cashflow.</div>
+
+            <div class="control-section">
+                <h3>Seed</h3>
+                <input type="number" id="seed-input" class="seed-input" value="41627" onchange="updateSeed()">
+                <div class="seed-controls">
+                    <button class="button secondary" onclick="previousSeed()">← Prev</button>
+                    <button class="button secondary" onclick="nextSeed()">Next →</button>
+                </div>
+                <button class="button tertiary regen-button" onclick="randomSeedAndUpdate()">↻ Random Quarter</button>
+                <div class="hint">Seed = fiscal quarter hash. Same seed → identical ledger, auditably reproducible.</div>
+            </div>
+
+            <div class="control-section">
+                <h3>Parameters</h3>
+                <div class="control-group">
+                    <label>Invoice Density</label>
+                    <div class="slider-container">
+                        <input type="range" id="particleCount" min="600" max="5200" step="200" value="2400" oninput="updateParam('particleCount', this.value)">
+                        <span class="value-display" id="particleCount-value">2400</span>
+                    </div>
+                </div>
+                <div class="control-group">
+                    <label>Flow Velocity</label>
+                    <div class="slider-container">
+                        <input type="range" id="flowSpeed" min="0.3" max="2.4" step="0.1" value="1.1" oninput="updateParam('flowSpeed', this.value)">
+                        <span class="value-display" id="flowSpeed-value">1.1</span>
+                    </div>
+                </div>
+                <div class="control-group">
+                    <label>GST Turbulence</label>
+                    <div class="slider-container">
+                        <input type="range" id="noiseScale" min="0.003" max="0.018" step="0.001" value="0.007" oninput="updateParam('noiseScale', this.value)">
+                        <span class="value-display" id="noiseScale-value">0.007</span>
+                    </div>
+                </div>
+                <div class="control-group">
+                    <label>Settlement Drift</label>
+                    <div class="slider-container">
+                        <input type="range" id="drift" min="0" max="1.0" step="0.05" value="0.35" oninput="updateParam('drift', this.value)">
+                        <span class="value-display" id="drift-value">0.35</span>
+                    </div>
+                </div>
+                <div class="control-group">
+                    <label>Ledger Curvature</label>
+                    <div class="slider-container">
+                        <input type="range" id="curvature" min="0.2" max="2.2" step="0.1" value="1.0" oninput="updateParam('curvature', this.value)">
+                        <span class="value-display" id="curvature-value">1.0</span>
+                    </div>
+                </div>
+                <div class="control-group">
+                    <label>Trail Persistence</label>
+                    <div class="slider-container">
+                        <input type="range" id="trailAlpha" min="6" max="32" step="1" value="14" oninput="updateParam('trailAlpha', this.value)">
+                        <span class="value-display" id="trailAlpha-value">14</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="control-section">
+                <h3>Colors</h3>
+                <div class="color-group">
+                    <label>Due — Overdue Burn</label>
+                    <div class="color-picker-container">
+                        <input type="color" id="color1" value="#d97757" onchange="updateColor('color1', this.value)">
+                        <span class="color-value" id="color1-value">#d97757</span>
+                    </div>
+                </div>
+                <div class="color-group">
+                    <label>Paid — Settled</label>
+                    <div class="color-picker-container">
+                        <input type="color" id="color2" value="#788c5d" onchange="updateColor('color2', this.value)">
+                        <span class="color-value" id="color2-value">#788c5d</span>
+                    </div>
+                </div>
+                <div class="color-group">
+                    <label>Sent — In Transit</label>
+                    <div class="color-picker-container">
+                        <input type="color" id="color3" value="#6a9bcc" onchange="updateColor('color3', this.value)">
+                        <span class="color-value" id="color3-value">#6a9bcc</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="control-section">
+                <h3>Actions</h3>
+                <div class="button-row">
+                    <button class="button" onclick="resetParameters()">Reset</button>
+                    <button class="button secondary" onclick="downloadPNG()">Save PNG</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="canvas-area">
+            <div id="canvas-container">
+                <div class="loading">Weaving ledger currents…</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // PARAMETERS — tuned fiscal dynamics
+        let params = {
+            seed: 41627,
+            particleCount: 2400,
+            flowSpeed: 1.1,
+            noiseScale: 0.007,
+            drift: 0.35,
+            curvature: 1.0,
+            trailAlpha: 14,
+            colorPalette: ['#d97757', '#788c5d', '#6a9bcc']
+        };
+        let defaultParams = {...params, colorPalette: [...params.colorPalette]};
+        let particles = [];
+        let zOff = 0;
+        let ledgerFont;
+
+        function setup() {
+            let canvas = createCanvas(960, 960);
+            canvas.parent('canvas-container');
+            colorMode(RGB, 255, 255, 255, 1);
+            initializeSystem();
+            let ld = document.querySelector('.loading');
+            if (ld) ld.style.display = 'none';
+        }
+
+        function initializeSystem() {
+            randomSeed(params.seed);
+            noiseSeed(params.seed);
+            zOff = random(1000);
+            particles = [];
+            for (let i = 0; i < params.particleCount; i++) {
+                particles.push(new FiscalParticle(i));
+            }
+            // warm background — paper ledger
+            background(250, 249, 245);
+            // subtle grid — 8px system echo
+            push();
+            stroke(232, 230, 220, 0.45);
+            strokeWeight(0.6);
+            for (let x = 0; x < width; x += 48) line(x, 0, x, height);
+            for (let y = 0; y < height; y += 48) line(0, y, width, y);
+            // header rule like enterprise table
+            stroke(217, 119, 87, 0.18);
+            strokeWeight(1);
+            line(0, 56, width, 56);
+            pop();
+        }
+
+        function draw() {
+            // trail persistence — fiscal memory
+            // translucent wash instead of clear: density accumulates
+            noStroke();
+            fill(250, 249, 245, params.trailAlpha / 100);
+            rect(0, 0, width, height);
+
+            zOff += 0.003 * params.curvature;
+
+            // GST bifurcation zone visual
+            push();
+            noFill();
+            // intra-state: twin vortices at y 1/3 and 2/3 around x center
+            let centerX = width * 0.52;
+            let r = 82 + sin(zOff * 0.6) * 6;
+            stroke(106, 155, 204, 0.07);
+            strokeWeight(1);
+            ellipse(centerX - 58, height * 0.38, r*1.9, r*1.4);
+            ellipse(centerX + 58, height * 0.62, r*1.9, r*1.4);
+            // inter spiral hint
+            stroke(217, 119, 87, 0.06);
+            ellipse(centerX, height*0.5, r*3.2, r*3.2);
+            pop();
+
+            for (let p of particles) {
+                p.update();
+                p.display();
+            }
+
+            // vignette ledger border
+            push();
+            noFill();
+            stroke(20,20,19,0.06);
+            strokeWeight(1);
+            rect(0.5,0.5,width-1,height-1, 12);
+            pop();
+        }
+
+        class FiscalParticle {
+            constructor(idx) {
+                // lifecycle maps to Invoice statuses: 0 draft, 1 sent, 2 paid, 3 overdue, 4 partial
+                let r = random(100);
+                if (r < 12) this.status = 0; // draft — slow, pale
+                else if (r < 58) this.status = 1; // sent — main flow
+                else if (r < 82) this.status = 2; // paid — settling
+                else if (r < 92) this.status = 3; // overdue — turbulent burn
+                else this.status = 4; // partial
+
+                // GST treatment: intra ~60%, inter ~25%, none ~15%
+                let g = random(100);
+                if (g < 60) this.gst = 'intra';
+                else if (g < 85) this.gst = 'inter';
+                else this.gst = 'none';
+
+                // birth: west edge spread, with some already mid-ledger for variety
+                this.pos = createVector(random(-40, width*0.18), random(18, height-18));
+                if (random() < 0.18) this.pos.x = random(width*0.25, width*0.85);
+                this.prev = this.pos.copy();
+                this.vel = createVector(0,0);
+                this.maxAge = random(220, 960);
+                this.age = random(-80, this.maxAge * 0.6);
+                this.baseSpeed = map(this.status, 0,3, 0.45, 1.35, true);
+                if (this.status===2) this.baseSpeed *= 0.78; // paid settles
+                if (this.status===3) this.baseSpeed *= 1.18; // overdue jitter
+                this.weight = random(0.7, 1.6); // maps to total magnitude
+                this.idx = idx;
+            }
+            update() {
+                this.prev.set(this.pos.x, this.pos.y);
+                // curl noise field — divergence-free fiscal current
+                let nScale = params.noiseScale * (0.7 + params.curvature*0.3);
+                let nx = this.pos.x * nScale;
+                let ny = this.pos.y * nScale;
+                // two noise samples for curl
+                let n1 = noise(nx * 0.9, ny * 0.9, zOff);
+                let n2 = noise(nx * 0.9 + 5.2, ny * 0.9 + 1.3, zOff + 2.1);
+                // map to angle via curvature
+                let angle = map(n1, 0, 1, -PI * params.curvature, PI * params.curvature);
+                // drift modulates how much particles deviate from field — fiscal discretion
+                let driftAngle = map(n2, 0,1, -params.drift, params.drift) * PI;
+                let a = angle + driftAngle;
+
+                // GST bifurcation force near center — meticulously crafted double-well
+                let cx = width * 0.52;
+                let cy = height * 0.5;
+                let dx = this.pos.x - cx;
+                let dy = this.pos.y - cy;
+                let distC = sqrt(dx*dx + dy*dy);
+                if (distC < 210) {
+                    let influence = map(distC, 0, 210, 1, 0, true);
+                    influence = pow(influence, 1.35);
+                    if (this.gst === 'intra') {
+                        // twin vortex: attract to two lobes
+                        let targetY = this.pos.y < cy ? height*0.38 : height*0.62;
+                        let ty = targetY - this.pos.y;
+                        let tx = -dx * 0.015;
+                        this.vel.x += (cos(a) * params.flowSpeed * this.baseSpeed + tx) * influence * 0.45;
+                        this.vel.y += (sin(a) * params.flowSpeed * this.baseSpeed + ty*0.008) * influence * 0.45;
+                    } else if (this.gst === 'inter') {
+                        // single spiral shear
+                        let swirl = atan2(dy, dx) + PI/2 + distC*0.008;
+                        this.vel.x += (cos(swirl)*0.9 + cos(a)*0.6) * params.flowSpeed * influence * 0.55;
+                        this.vel.y += (sin(swirl)*0.9 + sin(a)*0.6) * params.flowSpeed * influence * 0.55;
+                    } else {
+                        // none — straight through, slight damping
+                        this.vel.x += cos(a) * params.flowSpeed * this.baseSpeed * 0.9;
+                        this.vel.y += sin(a) * params.flowSpeed * this.baseSpeed * 0.9;
+                    }
+                } else {
+                    this.vel.x += cos(a) * params.flowSpeed * this.baseSpeed * 0.16;
+                    this.vel.y += sin(a) * params.flowSpeed * this.baseSpeed * 0.16;
+                }
+
+                // overdue jitter — high-frequency perturbation
+                if (this.status===3) {
+                    this.vel.x += random(-0.22, 0.22) * params.drift;
+                    this.vel.y += random(-0.22, 0.22) * params.drift;
+                }
+
+                this.vel.mult(0.88); // fiscal viscosity — master-tuned damping
+                this.pos.add(this.vel);
+
+                // subtle settlement gravity for paid particles — drift toward bottom ledger
+                if (this.status===2) {
+                    this.pos.y += 0.18 * (1 - distC/width);
+                }
+
+                this.age++;
+
+                // rebirth with audit trail
+                if (this.pos.x > width+28 || this.pos.x < -28 || this.pos.y > height+28 || this.pos.y < -28 || this.age > this.maxAge) {
+                    // respawn at west edge, preserving status distribution
+                    this.pos.set(random(-28, 8), random(22, height-22));
+                    this.prev.set(this.pos.x, this.pos.y);
+                    this.vel.set(0,0);
+                    this.age = 0;
+                    // occasionally mutate status to simulate status transitions
+                    if (random() < 0.02) {
+                        this.status = floor(random(0,5));
+                    }
+                }
+            }
+            display() {
+                let speed = this.vel.mag();
+                // color by status + speed — velocity-mapped fiscal heat
+                let c;
+                let alpha = 0.52;
+                if (this.status===0) { // draft — muted, desaturated
+                    c = lerpColor(color(params.colorPalette[2]), color(176,174,165), 0.62);
+                    alpha = 0.22 + speed*0.08;
+                } else if (this.status===1) { // sent — in transit blue
+                    c = color(params.colorPalette[2]);
+                    alpha = 0.42 + speed*0.12;
+                    if (this.gst==='inter') c = lerpColor(c, color(params.colorPalette[0]), 0.22);
+                } else if (this.status===2) { // paid — settled green
+                    c = color(params.colorPalette[1]);
+                    alpha = 0.38 + speed*0.05;
+                } else if (this.status===3) { // overdue — burn
+                    c = color(params.colorPalette[0]);
+                    alpha = 0.55 + speed*0.14;
+                } else { // partial — amber blend
+                    c = lerpColor(color(params.colorPalette[0]), color(params.colorPalette[1]), 0.5);
+                    alpha = 0.44;
+                }
+                // weight modulates stroke and alpha — larger invoices more present
+                let sw = map(this.weight, 0.7, 1.6, 0.85, 1.95);
+                // speed modulates stroke weight for expressive trails
+                sw *= map(constrain(speed, 0, 2.2), 0, 2.2, 0.85, 1.55);
+                stroke(red(c), green(c), blue(c), alpha);
+                strokeWeight(sw);
+                strokeCap(ROUND);
+                line(this.prev.x, this.prev.y, this.pos.x, this.pos.y);
+
+                // paid particles leave a tiny settlement dot occasionally
+                if (this.status===2 && this.age % 28 === 0 && random() < 0.14) {
+                    noStroke();
+                    fill(red(c), green(c), blue(c), 0.18);
+                    circle(this.pos.x, this.pos.y, sw*1.8);
+                }
+            }
+        }
+
+        // UI handlers
+        function updateParam(name, value) {
+            let v = parseFloat(value);
+            if (name === 'trailAlpha') v = parseInt(value);
+            if (name === 'particleCount') v = parseInt(value);
+            params[name] = v;
+            let el = document.getElementById(name + '-value');
+            if (el) el.textContent = value;
+            if (name === 'particleCount') {
+                // re-init preserves seed reproducibility — meticulously crafted re-seed
+                initializeSystem();
+            }
+        }
+        function updateColor(id, value) {
+            let idx = {color1:0, color2:1, color3:2}[id];
+            if (idx !== undefined) params.colorPalette[idx] = value;
+            let el = document.getElementById(id + '-value');
+            if (el) el.textContent = value;
+        }
+        function updateSeedDisplay() { document.getElementById('seed-input').value = params.seed; }
+        function updateSeed() {
+            let input = document.getElementById('seed-input');
+            let ns = parseInt(input.value);
+            if (ns && ns > 0) { params.seed = ns; initializeSystem(); } else updateSeedDisplay();
+        }
+        function previousSeed() { params.seed = Math.max(1, params.seed - 1); updateSeedDisplay(); initializeSystem(); }
+        function nextSeed() { params.seed = params.seed + 1; updateSeedDisplay(); initializeSystem(); }
+        function randomSeedAndUpdate() { params.seed = Math.floor(Math.random()*999999)+1; updateSeedDisplay(); initializeSystem(); }
+        function resetParameters() {
+            params = {...defaultParams, colorPalette: [...defaultParams.colorPalette]};
+            document.getElementById('particleCount').value = params.particleCount;
+            document.getElementById('particleCount-value').textContent = params.particleCount;
+            document.getElementById('flowSpeed').value = params.flowSpeed;
+            document.getElementById('flowSpeed-value').textContent = params.flowSpeed;
+            document.getElementById('noiseScale').value = params.noiseScale;
+            document.getElementById('noiseScale-value').textContent = params.noiseScale;
+            document.getElementById('drift').value = params.drift;
+            document.getElementById('drift-value').textContent = params.drift;
+            document.getElementById('curvature').value = params.curvature;
+            document.getElementById('curvature-value').textContent = params.curvature;
+            document.getElementById('trailAlpha').value = params.trailAlpha;
+            document.getElementById('trailAlpha-value').textContent = params.trailAlpha;
+            document.getElementById('color1').value = params.colorPalette[0];
+            document.getElementById('color1-value').textContent = params.colorPalette[0];
+            document.getElementById('color2').value = params.colorPalette[1];
+            document.getElementById('color2-value').textContent = params.colorPalette[1];
+            document.getElementById('color3').value = params.colorPalette[2];
+            document.getElementById('color3-value').textContent = params.colorPalette[2];
+            updateSeedDisplay();
+            initializeSystem();
+        }
+        function downloadPNG() { saveCanvas('ledger-flux-' + params.seed, 'png'); }
+        window.addEventListener('load', function(){ updateSeedDisplay(); });
+    </script>
+</body>
+</html>

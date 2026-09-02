@@ -1,0 +1,43 @@
+# SSH terminal stream — disable buffering/compression for NDJSON stream.
+# Tiny frames (~70 B) otherwise stall in Apache/fastcgi 4-64 KiB buffers.
+# Route matched: /admin/hosting/*/ssh/*/stream
+<IfModule mod_headers.c>
+    <IfModule mod_setenvif.c>
+        SetEnvIf Request_URI "/ssh/[^/]+/stream" no-gzip=1
+        Header set X-Accel-Buffering "no" env=no-gzip
+        Header set Cache-Control "no-cache" env=no-gzip
+    </IfModule>
+</IfModule>
+<IfModule mod_proxy.c>
+    <IfModule mod_setenvif.c>
+        SetEnvIf Request_URI "/ssh/[^/]+/stream" proxy-sendchunked=1
+        SetEnvIf Request_URI "/ssh/[^/]+/stream" proxy-nokeepalive=1
+        SetEnvIf Request_URI "/ssh/[^/]+/stream" no-gzip=1
+    </IfModule>
+</IfModule>
+
+<IfModule mod_rewrite.c>
+    <IfModule mod_negotiation.c>
+        Options -MultiViews -Indexes
+    </IfModule>
+
+    RewriteEngine On
+
+    # Handle Authorization Header
+    RewriteCond %{HTTP:Authorization} .
+    RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
+
+    # Handle X-XSRF-Token Header
+    RewriteCond %{HTTP:x-xsrf-token} .
+    RewriteRule .* - [E=HTTP_X_XSRF_TOKEN:%{HTTP:X-XSRF-Token}]
+
+    # Redirect Trailing Slashes If Not A Folder...
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteCond %{REQUEST_URI} (.+)/$
+    RewriteRule ^ %1 [L,R=301]
+
+    # Send Requests To Front Controller...
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteRule ^ index.php [L]
+</IfModule>
