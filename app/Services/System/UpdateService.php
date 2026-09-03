@@ -910,7 +910,8 @@ class UpdateService
 
         $logCtx = ['zip' => basename($zipPath), 'dest' => $destDir];
 
-        // ── 1. tar (ships with Windows Server 2022, much faster than Expand-Archive) ──
+        // ── 1. tar (ships with Windows Server 2022) — fast but only used when it
+        //        produces no stderr, which means no files were skipped/corrupted.
         $tarCheck = $this->runProcess(['tar', '--version'], 3);
         if ($tarCheck['success']) {
             Log::info('UpdateService: extracting via tar.', $logCtx);
@@ -926,7 +927,8 @@ class UpdateService
                 }
                 $process->wait();
 
-                if ($process->isSuccessful()) {
+                $tarErr = trim($process->getErrorOutput());
+                if ($process->isSuccessful() && $tarErr === '') {
                     $entries = glob($destDir . DIRECTORY_SEPARATOR . '*', GLOB_ONLYDIR);
                     if (! empty($entries)) {
                         Log::info('UpdateService: tar extraction succeeded.', $logCtx);
@@ -934,10 +936,16 @@ class UpdateService
                     }
                 }
 
-                Log::warning('UpdateService: tar extraction failed.', array_merge($logCtx, [
-                    'exit'  => $process->getExitCode(),
-                    'error' => substr($process->getErrorOutput(), 0, 500),
+                Log::warning('UpdateService: tar extraction incomplete/failed — falling through to PowerShell.', array_merge($logCtx, [
+                    'exit'   => $process->getExitCode(),
+                    'stderr' => substr($tarErr, 0, 500),
                 ]));
+
+                // Clean up partially extracted files before retrying
+                if (is_dir($destDir)) {
+                    $this->rrmdir($destDir);
+                    @mkdir($destDir, 0755, true);
+                }
             } catch (Throwable $e) {
                 Log::warning('UpdateService: tar extract exception.', array_merge($logCtx, ['error' => $e->getMessage()]));
             }
