@@ -454,9 +454,6 @@
                     @if ($branch)
                         <span class="small text-muted">Branch: <code>{{ $branch }}</code></span>
                     @endif
-                    @if ($remoteSanitized)
-                        <span class="small text-muted text-break">Remote: <code>{{ $remoteSanitized }}</code></span>
-                    @endif
                     @if ($dirty === true)
                         <span class="badge text-bg-warning">Dirty working tree</span>
                     @elseif ($dirty === false)
@@ -509,7 +506,11 @@
                         </button>
                     </form>
                     @if ($behind > 0 && $status === 'behind')
-                        <button type="button" class="btn btn-warning" data-bs-toggle="modal" data-bs-target="#confirm-update-modal">
+                        <button type="button" class="btn btn-warning" id="start-update-btn"
+                            data-bs-toggle="modal" data-bs-target="#update-progress-modal"
+                            data-behind="{{ $behind }}"
+                            data-from="{{ Str::limit($effectiveCheck['localHash'] ?? '', 7, '') }}"
+                            data-to="{{ Str::limit($effectiveCheck['remoteHash'] ?? '', 7, '') }}">
                             <i class="bi bi-cloud-arrow-up me-1"></i> Update now
                         </button>
                     @endif
@@ -540,34 +541,82 @@
                 @endif
             </x-adminlte-card>
 
-            {{-- Update confirm modal --}}
-            @if ($behind > 0 && $status === 'behind')
-                @php
-                    $fromShort = isset($effectiveCheck['localHash']) && $effectiveCheck['localHash'] ? Str::limit($effectiveCheck['localHash'], 7, '') : ($appInfo['git']['short'] ?? 'unknown');
-                    $toShort = isset($effectiveCheck['remoteHash']) && $effectiveCheck['remoteHash'] ? Str::limit($effectiveCheck['remoteHash'], 7, '') : 'origin/main';
-                    $confirmMsg = "Update " . $behind . " commit(s) " . $fromShort . " → " . $toShort . "? Site will enter maintenance for ~1–2 minutes.";
-                @endphp
-                <x-adminlte.partials.confirm-modal
-                    id="confirm-update-modal"
-                    title="Confirm update"
-                    :message="$confirmMsg"
-                    method="POST"
-                    :action="route('admin.system.update')"
-                    confirm-label="Update now"
-                    confirm-theme="warning"
-                />
-            @else
-                {{-- Render hidden modal placeholder to keep DOM stable when no update available --}}
-                <x-adminlte.partials.confirm-modal
-                    id="confirm-update-modal"
-                    title="Confirm update"
-                    message="No updates available."
-                    method="POST"
-                    :action="route('admin.system.update')"
-                    confirm-label="Update now"
-                    confirm-theme="warning"
-                />
-            @endif
+            {{-- Update progress modal --}}
+            @php
+                $fromShort = isset($effectiveCheck['localHash']) && $effectiveCheck['localHash'] ? Str::limit($effectiveCheck['localHash'], 7, '') : ($appInfo['git']['short'] ?? 'unknown');
+                $toShort   = isset($effectiveCheck['remoteHash']) && $effectiveCheck['remoteHash'] ? Str::limit($effectiveCheck['remoteHash'], 7, '') : 'latest';
+            @endphp
+            <div class="modal fade" id="update-progress-modal" data-bs-backdrop="static" data-bs-keyboard="false" tabindex="-1" aria-labelledby="update-progress-modal-label" aria-hidden="true">
+                <div class="modal-dialog modal-lg modal-dialog-centered">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title" id="update-progress-modal-label"><i class="bi bi-cloud-arrow-up me-2"></i>Apply Update</h5>
+                        </div>
+                        <div class="modal-body">
+                            {{-- Confirm area (shown before update starts) --}}
+                            <div id="update-confirm-area">
+                                <p class="mb-1">Apply <strong>{{ $behind }} commit(s)</strong>? <span class="text-muted small">({{ $fromShort }} → {{ $toShort }})</span></p>
+                                <ul class="small text-muted mb-0">
+                                    <li>Site will be in maintenance for ~1–2 minutes.</li>
+                                    <li>Your existing data will <strong>not</strong> be modified or deleted.</li>
+                                    <li>You can roll back immediately after if needed.</li>
+                                </ul>
+                            </div>
+
+                            {{-- Progress area (shown while running) --}}
+                            <div id="update-progress-area" class="d-none">
+                                <div class="progress mb-3" style="height:8px;" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+                                    <div class="progress-bar progress-bar-striped progress-bar-animated" id="update-progress-bar" style="width:0%"></div>
+                                </div>
+                                <div class="text-center small text-muted mb-3" id="update-status-text">Preparing...</div>
+                                <div class="list-group list-group-flush small">
+                                    <div class="list-group-item d-flex align-items-center gap-2 py-2" id="upstep-fetch">
+                                        <span class="step-icon"><i class="bi bi-circle text-muted"></i></span>
+                                        <span>Fetch latest changes</span>
+                                    </div>
+                                    <div class="list-group-item d-flex align-items-center gap-2 py-2" id="upstep-pull">
+                                        <span class="step-icon"><i class="bi bi-circle text-muted"></i></span>
+                                        <span>Apply update</span>
+                                    </div>
+                                    <div class="list-group-item d-flex align-items-center gap-2 py-2" id="upstep-composer">
+                                        <span class="step-icon"><i class="bi bi-circle text-muted"></i></span>
+                                        <span>Install dependencies</span>
+                                    </div>
+                                    <div class="list-group-item d-flex align-items-center gap-2 py-2" id="upstep-migrate">
+                                        <span class="step-icon"><i class="bi bi-circle text-muted"></i></span>
+                                        <span>Update database schema <span class="text-muted">(existing data preserved)</span></span>
+                                    </div>
+                                    <div class="list-group-item d-flex align-items-center gap-2 py-2" id="upstep-cache">
+                                        <span class="step-icon"><i class="bi bi-circle text-muted"></i></span>
+                                        <span>Clear cache &amp; bring site back online</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {{-- Result area (shown after completion) --}}
+                            <div id="update-result-area" class="d-none mt-3">
+                                <div id="update-result-message" class="alert mb-0"></div>
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" id="update-cancel-btn" data-bs-dismiss="modal">Cancel</button>
+                            <button type="button" class="btn btn-warning" id="begin-update-btn">
+                                <i class="bi bi-cloud-arrow-up me-1"></i> Start Update
+                            </button>
+                            <button type="button" class="btn btn-secondary d-none" id="update-close-btn" data-bs-dismiss="modal">Close</button>
+                            <div id="update-rollback-area" class="d-none">
+                                <form method="POST" action="{{ route('admin.system.rollback') }}" id="rollback-after-update-form">
+                                    @csrf
+                                    <input type="hidden" name="from_hash" id="rollback-target-hash">
+                                    <button type="submit" class="btn btn-outline-warning btn-sm">
+                                        <i class="bi bi-arrow-counterclockwise me-1"></i> Rollback
+                                    </button>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
 
             {{-- History --}}
             <x-adminlte-card icon="bi bi-clock-history" title="Update History">
@@ -585,6 +634,7 @@
                                     <th class="small text-muted">Status</th>
                                     <th class="small text-muted">Duration</th>
                                     <th class="small text-muted">Output</th>
+                                    <th class="small text-muted">Actions</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -638,6 +688,15 @@
                                                 —
                                             @endif
                                         </td>
+                                        <td>
+                                            @if ($statusHist === 'success' && ! empty($from))
+                                                <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-toggle="modal" data-bs-target="#rollback-confirm-modal" data-hash="{{ $from }}" data-short="{{ $from ? Str::limit($from, 7, '') : '?' }}">
+                                                    <i class="bi bi-arrow-counterclockwise me-1"></i>Rollback
+                                                </button>
+                                            @else
+                                                <span class="text-muted">—</span>
+                                            @endif
+                                        </td>
                                     </tr>
                                 @endforeach
                             </tbody>
@@ -646,6 +705,35 @@
                 @endif
             </x-adminlte-card>
         </div>
+
+            {{-- Rollback confirm modal --}}
+            <div class="modal fade" id="rollback-confirm-modal" tabindex="-1" aria-labelledby="rollback-confirm-label" aria-hidden="true">
+                <div class="modal-dialog modal-dialog-centered">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title" id="rollback-confirm-label"><i class="bi bi-arrow-counterclockwise me-2"></i>Confirm Rollback</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                        </div>
+                        <div class="modal-body">
+                            <p>Roll back code to <strong id="rollback-hash-display">—</strong>?</p>
+                            <div class="alert alert-warning small mb-0">
+                                <i class="bi bi-exclamation-triangle me-1"></i>
+                                Code will revert. <strong>Database schema changes are not reversed.</strong> If the rollback causes database errors, run <code>php artisan migrate:rollback</code> via SSH.
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                            <form method="POST" action="{{ route('admin.system.rollback') }}" id="rollback-history-form">
+                                @csrf
+                                <input type="hidden" name="from_hash" id="rollback-history-hash">
+                                <button type="submit" class="btn btn-warning">
+                                    <i class="bi bi-arrow-counterclockwise me-1"></i> Rollback
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            </div>
 
         {{-- Pane: Changelog --}}
         <div class="tab-pane fade @if ($activeTab === 'changelog') show active @endif" id="pane-changelog" role="tabpanel" aria-labelledby="tab-changelog">
@@ -669,20 +757,18 @@
 @push('js')
 <script>
 document.addEventListener('DOMContentLoaded', function () {
-    // Toast for success (mirrors settings)
+    // Toast for success
     var toastEl = document.getElementById('system-save-toast');
     if (toastEl && window.bootstrap && window.bootstrap.Toast) {
-        var toast = window.bootstrap.Toast.getOrCreateInstance(toastEl, { delay: 4000 });
-        toast.show();
+        bootstrap.Toast.getOrCreateInstance(toastEl, { delay: 4000 }).show();
     }
 
-    // Tab persistence: push ?tab= to URL on shown (mirrors settings tab JS)
+    // Tab persistence
     var tabsNav = document.getElementById('system-tabs');
     if (tabsNav) {
         tabsNav.querySelectorAll('[data-bs-toggle="tab"]').forEach(function (tab) {
             tab.addEventListener('shown.bs.tab', function () {
-                var target = tab.getAttribute('data-bs-target') || '';
-                var name = target.replace('#pane-', '');
+                var name = (tab.getAttribute('data-bs-target') || '').replace('#pane-', '');
                 if (!name) return;
                 var url = new URL(window.location.href);
                 url.searchParams.set('tab', name);
@@ -691,33 +777,184 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
-    // Copy buttons for commit hashes / composer hash
+    // Copy buttons
     document.querySelectorAll('.copy-btn').forEach(function (btn) {
         btn.addEventListener('click', function () {
             var text = btn.getAttribute('data-copy') || '';
             if (!text) return;
+            var orig = btn.innerHTML;
+            var done = function () { btn.innerHTML = '<i class="bi bi-check-lg"></i>'; setTimeout(function () { btn.innerHTML = orig; }, 1200); };
             if (navigator.clipboard && navigator.clipboard.writeText) {
-                navigator.clipboard.writeText(text).then(function () {
-                    var orig = btn.innerHTML;
-                    btn.innerHTML = '<i class="bi bi-check-lg"></i>';
-                    setTimeout(function () { btn.innerHTML = orig; }, 1200);
-                });
+                navigator.clipboard.writeText(text).then(done);
             } else {
-                // Fallback
                 var ta = document.createElement('textarea');
-                ta.value = text;
-                ta.style.position = 'fixed';
-                ta.style.opacity = '0';
-                document.body.appendChild(ta);
-                ta.select();
+                ta.value = text; ta.style.cssText = 'position:fixed;opacity:0';
+                document.body.appendChild(ta); ta.select();
                 try { document.execCommand('copy'); } catch (e) {}
-                document.body.removeChild(ta);
-                var orig2 = btn.innerHTML;
-                btn.innerHTML = '<i class="bi bi-check-lg"></i>';
-                setTimeout(function () { btn.innerHTML = orig2; }, 1200);
+                document.body.removeChild(ta); done();
             }
         });
     });
+
+    // ---------------------------------------------------------------
+    // Update progress modal
+    // ---------------------------------------------------------------
+    var startBtn = document.getElementById('start-update-btn');
+    var progressModal = document.getElementById('update-progress-modal');
+    if (startBtn && progressModal) {
+        // modal opened via data-bs-toggle on the button
+        var updateUrl = '{{ route('admin.system.update') }}';
+        var csrfToken = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
+
+        document.getElementById('begin-update-btn').addEventListener('click', function () {
+            // Switch from confirm area to progress area
+            document.getElementById('update-confirm-area').classList.add('d-none');
+            document.getElementById('update-progress-area').classList.remove('d-none');
+            document.getElementById('begin-update-btn').classList.add('d-none');
+            document.getElementById('update-cancel-btn').classList.add('d-none');
+            runUpdate();
+        });
+
+        var STEPS = ['fetch', 'pull', 'composer', 'migrate', 'cache'];
+        var STEP_MAP = { fetch: 'fetch', maintenance: null, pull: 'pull', composer: 'composer', migrate: 'migrate', cache: 'cache' };
+        var lastStep = null;
+
+        function stepEl(id) { return document.getElementById('upstep-' + id); }
+        function setStep(id, state) {
+            var el = stepEl(id); if (!el) return;
+            var icon = el.querySelector('.step-icon');
+            el.classList.remove('list-group-item-success', 'list-group-item-danger');
+            if (state === 'running') {
+                icon.innerHTML = '<span class="spinner-border spinner-border-sm text-primary" role="status"></span>';
+            } else if (state === 'done') {
+                icon.innerHTML = '<i class="bi bi-check-circle-fill text-success"></i>';
+                el.classList.add('list-group-item-success');
+            } else if (state === 'error') {
+                icon.innerHTML = '<i class="bi bi-x-circle-fill text-danger"></i>';
+                el.classList.add('list-group-item-danger');
+            } else {
+                icon.innerHTML = '<i class="bi bi-circle text-muted"></i>';
+            }
+        }
+
+        function setProgress(pct) {
+            var bar = document.getElementById('update-progress-bar');
+            if (bar) { bar.style.width = pct + '%'; bar.setAttribute('aria-valuenow', pct); }
+        }
+        function setStatus(msg) {
+            var el = document.getElementById('update-status-text'); if (el) el.textContent = msg;
+        }
+
+        function handleEvent(ev) {
+            if (ev.progress !== undefined) setProgress(ev.progress);
+            if (ev.message) setStatus(ev.message);
+
+            var stepId = STEP_MAP[ev.step];
+            var isError = ev.step === 'error';
+            var isDone = ev.done;
+
+            if (isError) {
+                if (lastStep) setStep(lastStep, 'error');
+                onFinished(ev, false); return;
+            }
+
+            if (isDone) {
+                if (lastStep) setStep(lastStep, 'done');
+                STEPS.forEach(function (id) { if (stepEl(id) && stepEl(id).querySelector('.bi-circle')) setStep(id, 'done'); });
+                onFinished(ev, true); return;
+            }
+
+            if (stepId) {
+                if (lastStep && lastStep !== stepId) setStep(lastStep, 'done');
+                setStep(stepId, 'running');
+                lastStep = stepId;
+            }
+        }
+
+        function onFinished(ev, success) {
+            var bar = document.getElementById('update-progress-bar');
+            if (bar) {
+                bar.classList.remove('progress-bar-animated', 'bg-warning');
+                bar.classList.add(success ? 'bg-success' : 'bg-danger');
+                bar.style.width = (success ? 100 : (ev.progress || 50)) + '%';
+            }
+            var resultArea = document.getElementById('update-result-area');
+            var resultMsg = document.getElementById('update-result-message');
+            if (resultArea) resultArea.classList.remove('d-none');
+            if (resultMsg) {
+                resultMsg.className = 'alert alert-' + (success ? 'success' : 'danger') + ' mb-0';
+                resultMsg.textContent = (ev && ev.message) ? ev.message : (success ? 'Update complete.' : 'Update failed.');
+            }
+            document.getElementById('update-close-btn').classList.remove('d-none');
+            if (success && ev && ev.from) {
+                var hashInput = document.getElementById('rollback-target-hash');
+                var rollbackArea = document.getElementById('update-rollback-area');
+                if (hashInput) hashInput.value = ev.from;
+                if (rollbackArea) rollbackArea.classList.remove('d-none');
+            }
+        }
+
+        function runUpdate() {
+            STEPS.forEach(function (id) { setStep(id, 'pending'); });
+            lastStep = null; setProgress(5); setStatus('Preparing update...');
+
+            if (typeof ReadableStream !== 'undefined') {
+                fetch(updateUrl, {
+                    method: 'POST',
+                    headers: { 'Accept': 'text/event-stream', 'X-CSRF-TOKEN': csrfToken, 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: '_token=' + encodeURIComponent(csrfToken)
+                }).then(function (resp) {
+                    var reader = resp.body.getReader();
+                    var dec = new TextDecoder();
+                    var buf = '';
+                    function pump() {
+                        reader.read().then(function (chunk) {
+                            if (chunk.done) { return; }
+                            buf += dec.decode(chunk.value, { stream: true });
+                            var parts = buf.split('\n'); buf = parts.pop();
+                            parts.forEach(function (line) {
+                                if (line.startsWith('data: ')) { try { handleEvent(JSON.parse(line.slice(6))); } catch (e) {} }
+                            });
+                            pump();
+                        }).catch(function () {
+                            handleEvent({ step: 'error', message: 'Connection lost. Check Update History for status.', progress: 0, done: true, status: 'unknown' });
+                        });
+                    }
+                    pump();
+                }).catch(function () {
+                    handleEvent({ step: 'error', message: 'Could not connect. Please refresh and check Update History.', progress: 0, done: true, status: 'unknown' });
+                });
+            } else {
+                // Fallback: JSON POST for browsers without ReadableStream
+                setStatus('Updating — please wait, this may take 1–2 minutes...');
+                fetch(updateUrl, {
+                    method: 'POST',
+                    headers: { 'Accept': 'application/json', 'X-CSRF-TOKEN': csrfToken, 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: '_token=' + encodeURIComponent(csrfToken)
+                }).then(function (r) { return r.json(); }).then(function (data) {
+                    STEPS.forEach(function (id) { setStep(id, 'done'); });
+                    handleEvent(Object.assign({ step: data.status === 'success' ? 'done' : 'error', progress: 100, done: true }, data));
+                }).catch(function () { window.location.reload(); });
+            }
+        }
+    }
+
+    // ---------------------------------------------------------------
+    // Rollback confirm modal (from history table)
+    // ---------------------------------------------------------------
+    var rollbackModal = document.getElementById('rollback-confirm-modal');
+    if (rollbackModal) {
+        rollbackModal.addEventListener('show.bs.modal', function (ev) {
+            var btn = ev.relatedTarget;
+            if (!btn) return;
+            var hash = btn.getAttribute('data-hash') || '';
+            var short = btn.getAttribute('data-short') || hash.slice(0, 7);
+            var display = document.getElementById('rollback-hash-display');
+            var input = document.getElementById('rollback-history-hash');
+            if (display) display.textContent = short;
+            if (input) input.value = hash;
+        });
+    }
 });
 </script>
 @endpush

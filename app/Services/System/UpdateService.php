@@ -194,10 +194,12 @@ class UpdateService
     /**
      * Perform the guarded update chain.
      *
+     * @param  callable(string,string,int,bool,array):void|null  $emit  Optional progress emitter: ($step, $message, $progress, $done, $extra)
      * @return array{status: string, message: string, behind: int, from: string|null, to: string|null, branch: string|null, remoteSanitized: string|null, exit: int, durationMs: int, output: string}
      */
-    public function run(User $actor): array
+    public function run(User $actor, ?callable $emit = null): array
     {
+        $emit ??= static function (string $step, string $message, int $progress, bool $done = false, array $extra = []): void {};
         $startedAt = microtime(true);
         $capturedOutput = '';
         $exitCode = 0;
@@ -219,7 +221,7 @@ class UpdateService
         try {
             // Guards (fail fast before any mutation)
             if (! $this->isGitRepo()) {
-                return $this->buildRunResult(
+                $result = $this->buildRunResult(
                     status: 'no_git',
                     message: 'This installation was not deployed via git — cannot run update.',
                     behind: 0,
@@ -231,10 +233,12 @@ class UpdateService
                     startedAt: $startedAt,
                     output: 'Not a git repository.'
                 );
+                $emit('error', $result['message'], 0, true, $result);
+                return $result;
             }
 
             if ($remoteRaw === null || trim($remoteRaw) === '') {
-                return $this->buildRunResult(
+                $result = $this->buildRunResult(
                     status: 'no_remote',
                     message: 'No remote configured — add origin first.',
                     behind: 0,
@@ -246,12 +250,14 @@ class UpdateService
                     startedAt: $startedAt,
                     output: 'No remote origin.'
                 );
+                $emit('error', $result['message'], 0, true, $result);
+                return $result;
             }
 
             if ($this->isDirty() === true) {
                 $excerpt = $this->resolveDirtyExcerpt();
 
-                return $this->buildRunResult(
+                $result = $this->buildRunResult(
                     status: 'dirty',
                     message: 'Working tree has local changes — commit or stash them first.',
                     behind: 0,
@@ -263,16 +269,19 @@ class UpdateService
                     startedAt: $startedAt,
                     output: $excerpt !== '' ? $excerpt : 'Dirty working tree.'
                 );
+                $emit('error', $result['message'], 0, true, $result);
+                return $result;
             }
 
-            // Fetch to know if there is anything to do
+            // Step: Fetch
+            $emit('fetch', 'Fetching latest changes...', 15);
             $fetch = $this->runProcess(['git', 'fetch', 'origin'], 15);
             $appendOutput('git fetch origin', $fetch['output'], $fetch['exit']);
 
             if (! $fetch['success']) {
-                return $this->buildRunResult(
+                $result = $this->buildRunResult(
                     status: 'fetch_failed',
-                    message: 'Could not reach GitHub — fetch failed.',
+                    message: 'Could not reach update server — check network connection.',
                     behind: 0,
                     from: $fromHash,
                     to: null,
@@ -282,6 +291,8 @@ class UpdateService
                     startedAt: $startedAt,
                     output: Str::limit($capturedOutput, self::OUTPUT_LIMIT)
                 );
+                $emit('error', $result['message'], 15, true, $result);
+                return $result;
             }
 
             $behindRes = $this->runProcess(['git', 'rev-list', 'HEAD..origin/main', '--count'], 3);
@@ -304,23 +315,25 @@ class UpdateService
                     output: Str::limit($capturedOutput, self::OUTPUT_LIMIT)
                 );
                 $this->audit($actor, $result, $capturedOutput, $behind);
-
+                $emit('done', $result['message'], 100, true, $result);
                 return $result;
             }
 
-            // Maintenance down
+            // Step: Maintenance mode
+            $emit('maintenance', 'Enabling maintenance mode...', 30);
             $down = $this->runProcess(['php', 'artisan', 'down', '--secret=' . Str::random(16)], 15);
             $appendOutput('php artisan down', $down['output'], $down['exit']);
             $didDown = $down['success'] || str_contains(strtolower($down['output']), 'already');
 
-            // Pull --ff-only
+            // Step: Pull
+            $emit('pull', 'Downloading and applying update...', 45);
             $pull = $this->runProcess(['git', 'pull', '--ff-only', 'origin', 'main'], 60);
             $appendOutput('git pull --ff-only origin main', $pull['output'], $pull['exit']);
 
             if (! $pull['success']) {
-                $message = 'Local branch diverged — resolve manually via SSH: git fetch origin && git reset --hard origin/main (warn: data loss).';
+                $message = 'Update could not be applied — the working directory has uncommitted changes. Please contact support or resolve via SSH.';
                 if (str_contains($pull['output'], 'permission denied') || str_contains(strtolower($pull['output']), 'permission')) {
-                    $message = 'App directory is not writable by the web-server user — fix filesystem permissions and retry.';
+                    $message = 'App directory is not writable — fix filesystem permissions and retry.';
                 }
 
                 $result = $this->buildRunResult(
@@ -336,11 +349,12 @@ class UpdateService
                     output: Str::limit($capturedOutput, self::OUTPUT_LIMIT)
                 );
                 $this->audit($actor, $result, $capturedOutput, $behind);
-
+                $emit('error', $result['message'], 45, true, $result);
                 return $result;
             }
 
-            // Composer install (optional — skip if binary missing)
+            // Step: Composer
+            $emit('composer', 'Installing dependencies...', 60);
             if ($this->composerAvailable()) {
                 $composer = $this->runProcess(['composer', 'install', '--no-dev', '--optimize-autoloader', '--no-interaction'], 120);
                 $appendOutput('composer install --no-dev --optimize-autoloader --no-interaction', $composer['output'], $composer['exit']);
@@ -348,7 +362,7 @@ class UpdateService
                 if (! $composer['success']) {
                     $result = $this->buildRunResult(
                         status: 'failed',
-                        message: 'Update fetched but dependencies failed — run composer install manually. ' . trim(Str::limit($composer['output'], 1500)),
+                        message: 'Update downloaded but dependencies failed — run composer install manually. ' . trim(Str::limit($composer['output'], 1500)),
                         behind: $behind,
                         from: $fromHash,
                         to: $this->resolveLocalHash(),
@@ -359,7 +373,7 @@ class UpdateService
                         output: Str::limit($capturedOutput, self::OUTPUT_LIMIT)
                     );
                     $this->audit($actor, $result, $capturedOutput, $behind);
-
+                    $emit('error', $result['message'], 60, true, $result);
                     return $result;
                 }
             } else {
@@ -370,14 +384,15 @@ class UpdateService
                 }
             }
 
-            // Migrate
+            // Step: Migrate (additive only — existing data is preserved)
+            $emit('migrate', 'Updating database schema (your data is preserved)...', 75);
             $migrate = $this->runProcess(['php', 'artisan', 'migrate', '--force'], 60);
             $appendOutput('php artisan migrate --force', $migrate['output'], $migrate['exit']);
 
             if (! $migrate['success']) {
                 $result = $this->buildRunResult(
                     status: 'failed',
-                    message: 'Migrations failed — restore from backup if needed; migrations are not auto-rolled back. ' . trim(Str::limit($migrate['output'], 1500)),
+                    message: 'Database update failed — your existing data is intact. Rollback the code or contact support. ' . trim(Str::limit($migrate['output'], 1500)),
                     behind: $behind,
                     from: $fromHash,
                     to: $this->resolveLocalHash(),
@@ -388,11 +403,12 @@ class UpdateService
                     output: Str::limit($capturedOutput, self::OUTPUT_LIMIT)
                 );
                 $this->audit($actor, $result, $capturedOutput, $behind);
-
+                $emit('error', $result['message'], 75, true, $result);
                 return $result;
             }
 
-            // Cache clears
+            // Step: Cache clears
+            $emit('cache', 'Clearing application cache...', 88);
             $clears = [
                 ['php', 'artisan', 'optimize:clear'],
                 ['php', 'artisan', 'config:clear'],
@@ -409,7 +425,7 @@ class UpdateService
 
             $result = $this->buildRunResult(
                 status: 'success',
-                message: sprintf('Updated to %s — %d commit(s).', $short, $behind),
+                message: sprintf('Successfully updated to version %s (%d commit(s) applied).', $short, $behind),
                 behind: $behind,
                 from: $fromHash,
                 to: $toHash,
@@ -420,7 +436,7 @@ class UpdateService
                 output: Str::limit($capturedOutput, self::OUTPUT_LIMIT)
             );
             $this->audit($actor, $result, $capturedOutput, $behind);
-
+            $emit('done', $result['message'], 100, true, $result);
             return $result;
         } catch (Throwable $e) {
             Log::error('UpdateService::run failed.', ['error' => $e->getMessage()]);
@@ -428,7 +444,7 @@ class UpdateService
 
             $result = $this->buildRunResult(
                 status: 'unknown',
-                message: 'Update failed: ' . $e->getMessage(),
+                message: 'Update failed unexpectedly. Please contact support.',
                 behind: 0,
                 from: $fromHash,
                 to: $this->resolveLocalHash(),
@@ -442,7 +458,7 @@ class UpdateService
                 $this->audit($actor, $result, $capturedOutput, 0);
             } catch (Throwable) {
             }
-
+            $emit('error', $result['message'], 0, true, $result);
             return $result;
         } finally {
             // Ensure site is back up even when a step failed
@@ -897,6 +913,92 @@ class UpdateService
                 'class' => get_class($e),
             ]);
             return null;
+        }
+    }
+
+    /**
+     * Roll back code to a previous commit hash. Database schema changes are NOT reversed.
+     *
+     * @return array{status: string, message: string, behind: int, from: string|null, to: string|null, branch: string|null, remoteSanitized: string|null, exit: int, durationMs: int, output: string}
+     */
+    public function rollback(string $fromHash, User $actor): array
+    {
+        $startedAt = microtime(true);
+        $capturedOutput = '';
+        $currentHash = $this->resolveLocalHash();
+        $branch = $this->resolveBranch();
+        $remoteRaw = $this->getRemoteRaw();
+        $remoteSanitized = $remoteRaw !== null ? $this->sanitizeRemote($remoteRaw) : null;
+
+        $appendOutput = function (string $label, string $output, int $exit) use (&$capturedOutput): void {
+            $capturedOutput .= sprintf("\n[%s] exit=%d\n%s\n", $label, $exit, trim($output));
+        };
+
+        try {
+            if (! $this->isGitRepo()) {
+                return $this->buildRunResult('no_git', 'Not a git repository — cannot rollback.', 0, $currentHash, null, $branch, $remoteSanitized, 1, $startedAt, 'Not a git repository.');
+            }
+
+            if (! preg_match('/^[0-9a-f]{7,40}$/i', $fromHash)) {
+                return $this->buildRunResult('failed', 'Invalid rollback target hash.', 0, $currentHash, null, $branch, $remoteSanitized, 1, $startedAt, 'Invalid hash.');
+            }
+
+            $down = $this->runProcess(['php', 'artisan', 'down', '--secret=' . Str::random(16)], 15);
+            $appendOutput('php artisan down', $down['output'], $down['exit']);
+
+            $reset = $this->runProcess(['git', 'reset', '--hard', $fromHash], 30);
+            $appendOutput('git reset --hard ' . $fromHash, $reset['output'], $reset['exit']);
+
+            if (! $reset['success']) {
+                return $this->buildRunResult('failed', 'Rollback failed — could not reset to the previous version. Check logs.', 0, $currentHash, null, $branch, $remoteSanitized, $reset['exit'], $startedAt, Str::limit($capturedOutput, self::OUTPUT_LIMIT));
+            }
+
+            if ($this->composerAvailable()) {
+                $composer = $this->runProcess(['composer', 'install', '--no-dev', '--optimize-autoloader', '--no-interaction'], 120);
+                $appendOutput('composer install', $composer['output'], $composer['exit']);
+            }
+
+            foreach ([['php', 'artisan', 'optimize:clear'], ['php', 'artisan', 'config:clear'], ['php', 'artisan', 'view:clear']] as $cmd) {
+                $res = $this->runProcess($cmd, 30);
+                $appendOutput(implode(' ', $cmd), $res['output'], $res['exit']);
+            }
+
+            $restoredHash = $this->resolveLocalHash();
+            $short = $restoredHash !== null ? substr($restoredHash, 0, 7) : substr($fromHash, 0, 7);
+
+            $result = $this->buildRunResult('success', sprintf('Rolled back to version %s. Note: database schema changes were not reversed.', $short), 0, $currentHash, $restoredHash, $branch, $remoteSanitized, 0, $startedAt, Str::limit($capturedOutput, self::OUTPUT_LIMIT));
+
+            try {
+                DB::table('activity_log')->insert([
+                    'user_id' => $actor->id ?? null,
+                    'customer_id' => null,
+                    'action' => 'system.rolledback',
+                    'description' => sprintf('System rolled back from %s to %s', substr((string) $currentHash, 0, 7), $short),
+                    'metadata' => json_encode(['from' => $currentHash, 'to' => $restoredHash, 'status' => 'success', 'duration_ms' => $result['durationMs']]),
+                    'properties' => json_encode(['from' => $currentHash, 'to' => $restoredHash, 'status' => 'success', 'duration_ms' => $result['durationMs']]),
+                    'event' => 'rolledback',
+                    'subject_type' => 'system',
+                    'subject_id' => null,
+                    'ip_address' => request()->ip(),
+                    'user_agent' => request()->userAgent(),
+                    'created_at' => now(),
+                ]);
+            } catch (Throwable) {
+            }
+
+            return $result;
+
+        } catch (Throwable $e) {
+            return $this->buildRunResult('unknown', 'Rollback failed unexpectedly: ' . $e->getMessage(), 0, $currentHash, null, $branch, $remoteSanitized, 1, $startedAt, Str::limit($capturedOutput . "\n" . $e->getMessage(), self::OUTPUT_LIMIT));
+        } finally {
+            try {
+                $up = $this->runProcess(['php', 'artisan', 'up'], 15);
+                if (! $up['success']) {
+                    try { \Illuminate\Support\Facades\Artisan::call('up'); } catch (Throwable) {}
+                }
+            } catch (Throwable) {
+                try { \Illuminate\Support\Facades\Artisan::call('up'); } catch (Throwable) {}
+            }
         }
     }
 

@@ -33,4 +33,8 @@ Route::middleware(['web', 'auth', 'admin', 'throttle:admin'])->prefix('admin')->
     Route::post('system/update', [SystemController::class, 'update'])
         ->middleware('permission:system.update')
         ->name('system.update');
+
+    Route::post('system/rollback', [SystemController::class, 'rollback'])
+        ->middleware('permission:system.update')
+        ->name('system.rollback');
 });

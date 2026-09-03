@@ -13,6 +13,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\View\View;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 use Throwable;
 
 class SystemController extends Controller
@@ -65,10 +66,38 @@ class SystemController extends Controller
     }
 
     /**
-     * @return RedirectResponse|JsonResponse
+     * @return RedirectResponse|JsonResponse|StreamedResponse
      */
-    public function update(Request $request): RedirectResponse|JsonResponse
+    public function update(Request $request): RedirectResponse|JsonResponse|StreamedResponse
     {
+        // Streaming mode: the JS progress UI sends Accept: text/event-stream
+        if (str_contains($request->header('Accept', ''), 'text/event-stream')) {
+            return response()->stream(function () use ($request) {
+                // Disable output buffering so each event flushes immediately
+                while (ob_get_level() > 0) {
+                    ob_end_flush();
+                }
+
+                $emit = function (string $step, string $message, int $progress, bool $done = false, array $extra = []) {
+                    echo 'data: ' . json_encode(array_merge(['step' => $step, 'message' => $message, 'progress' => $progress, 'done' => $done], $extra)) . "\n\n";
+                    flush();
+                };
+
+                try {
+                    $this->updater->run($request->user(), $emit);
+                } catch (Throwable $e) {
+                    report($e);
+                    echo 'data: ' . json_encode(['step' => 'error', 'message' => 'Update failed unexpectedly. Please contact support.', 'progress' => 0, 'done' => true, 'status' => 'unknown']) . "\n\n";
+                    flush();
+                }
+            }, 200, [
+                'Content-Type' => 'text/event-stream',
+                'Cache-Control' => 'no-cache, no-store',
+                'X-Accel-Buffering' => 'no',
+                'X-Content-Type-Options' => 'nosniff',
+            ]);
+        }
+
         try {
             $result = $this->updater->run($request->user());
 
@@ -76,7 +105,6 @@ class SystemController extends Controller
                 return response()->json($result);
             }
 
-            // Success-like statuses redirect with success flash; failures use withErrors
             $successStatuses = ['success', 'up_to_date'];
 
             if (in_array($result['status'] ?? '', $successStatuses, true) && ($result['exit'] ?? 1) === 0) {
@@ -103,6 +131,45 @@ class SystemController extends Controller
 
             return back()
                 ->withErrors(['update' => 'Update failed: ' . $e->getMessage()])
+                ->with('activeTab', 'updates');
+        }
+    }
+
+    /**
+     * @return RedirectResponse|JsonResponse
+     */
+    public function rollback(Request $request): RedirectResponse|JsonResponse
+    {
+        $fromHash = (string) $request->input('from_hash', '');
+
+        try {
+            $result = $this->updater->rollback($fromHash, $request->user());
+
+            if ($request->expectsJson()) {
+                return response()->json($result);
+            }
+
+            if (($result['status'] ?? '') === 'success') {
+                return redirect()
+                    ->route('admin.system.index', ['tab' => 'updates'])
+                    ->with('success', $result['message'])
+                    ->with('update_result', $result)
+                    ->with('activeTab', 'updates');
+            }
+
+            return back()
+                ->withErrors(['update' => $result['message'] ?? 'Rollback failed.'])
+                ->with('update_result', $result)
+                ->with('activeTab', 'updates');
+        } catch (Throwable $e) {
+            report($e);
+
+            if ($request->expectsJson()) {
+                return response()->json(['status' => 'unknown', 'message' => 'Rollback failed: ' . $e->getMessage()], 500);
+            }
+
+            return back()
+                ->withErrors(['update' => 'Rollback failed: ' . $e->getMessage()])
                 ->with('activeTab', 'updates');
         }
     }
