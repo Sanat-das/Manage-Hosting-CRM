@@ -850,9 +850,13 @@ class UpdateService
         }
 
         try {
-            $response = Http::timeout(8)
-                ->withHeaders(['Accept' => 'application/vnd.github.v3+json', 'User-Agent' => 'ManageHosting-CRM'])
-                ->get('https://api.github.com/repos/Sanat-das/Manage-Hosting-CRM/commits', ['per_page' => $limit, 'sha' => 'main']);
+            $caBundle = storage_path('cacert.pem');
+            $client = Http::timeout(8)
+                ->withHeaders(['Accept' => 'application/vnd.github.v3+json', 'User-Agent' => 'ManageHosting-CRM']);
+            if (is_file($caBundle)) {
+                $client = $client->withOptions(['verify' => $caBundle]);
+            }
+            $response = $client->get('https://api.github.com/repos/Sanat-das/Manage-Hosting-CRM/commits', ['per_page' => $limit, 'sha' => 'main']);
 
             if (! $response->successful()) {
                 Log::warning('UpdateService: GitHub API returned non-2xx.', [
