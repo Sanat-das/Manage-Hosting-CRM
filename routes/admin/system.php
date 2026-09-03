@@ -34,6 +34,10 @@ Route::middleware(['web', 'auth', 'admin', 'throttle:admin'])->prefix('admin')->
         ->middleware('permission:system.update')
         ->name('system.update');
 
+    Route::get('system/update/progress', [SystemController::class, 'progressStatus'])
+        ->middleware('permission:system.update')
+        ->name('system.update.progress');
+
     Route::post('system/rollback', [SystemController::class, 'rollback'])
         ->middleware('permission:system.update')
         ->name('system.rollback');

@@ -10,6 +10,7 @@ use App\Services\System\UpdateService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\View\View;
@@ -70,16 +71,21 @@ class SystemController extends Controller
      */
     public function update(Request $request): RedirectResponse|JsonResponse|StreamedResponse
     {
+        $cacheKey = 'system.update_progress.' . $request->user()->id;
+        Cache::forget($cacheKey);
+
         // Streaming mode: the JS progress UI sends Accept: text/event-stream
         if (str_contains($request->header('Accept', ''), 'text/event-stream')) {
-            return response()->stream(function () use ($request) {
+            return response()->stream(function () use ($request, $cacheKey) {
                 // Disable output buffering so each event flushes immediately
                 while (ob_get_level() > 0) {
                     ob_end_flush();
                 }
 
-                $emit = function (string $step, string $message, int $progress, bool $done = false, array $extra = []) {
-                    echo 'data: ' . json_encode(array_merge(['step' => $step, 'message' => $message, 'progress' => $progress, 'done' => $done], $extra)) . "\n\n";
+                $emit = function (string $step, string $message, int $progress, bool $done = false, array $extra = []) use ($cacheKey) {
+                    $data = array_merge(['step' => $step, 'message' => $message, 'progress' => $progress, 'done' => $done], $extra);
+                    Cache::put($cacheKey, $data, 600);
+                    echo 'data: ' . json_encode($data) . "\n\n";
                     flush();
                 };
 
@@ -87,7 +93,9 @@ class SystemController extends Controller
                     $this->updater->run($request->user(), $emit);
                 } catch (Throwable $e) {
                     report($e);
-                    echo 'data: ' . json_encode(['step' => 'error', 'message' => 'Update failed unexpectedly. Please contact support.', 'progress' => 0, 'done' => true, 'status' => 'unknown']) . "\n\n";
+                    $data = ['step' => 'error', 'message' => 'Update failed unexpectedly. Please contact support.', 'progress' => 0, 'done' => true, 'status' => 'unknown'];
+                    Cache::put($cacheKey, $data, 600);
+                    echo 'data: ' . json_encode($data) . "\n\n";
                     flush();
                 }
             }, 200, [
@@ -98,8 +106,13 @@ class SystemController extends Controller
             ]);
         }
 
+        // JSON / form path — emit writes progress to cache for the polling endpoint
+        $emit = function (string $step, string $message, int $progress, bool $done = false, array $extra = []) use ($cacheKey) {
+            Cache::put($cacheKey, array_merge(['step' => $step, 'message' => $message, 'progress' => $progress, 'done' => $done], $extra), 600);
+        };
+
         try {
-            $result = $this->updater->run($request->user());
+            $result = $this->updater->run($request->user(), $emit);
 
             if ($request->expectsJson()) {
                 return response()->json($result);
@@ -133,6 +146,12 @@ class SystemController extends Controller
                 ->withErrors(['update' => 'Update failed: ' . $e->getMessage()])
                 ->with('activeTab', 'updates');
         }
+    }
+
+    public function progressStatus(Request $request): JsonResponse
+    {
+        $data = Cache::get('system.update_progress.' . $request->user()->id);
+        return response()->json($data ?? ['step' => 'waiting', 'progress' => 0, 'message' => 'Waiting...', 'done' => false]);
     }
 
     /**

@@ -889,44 +889,48 @@ document.addEventListener('DOMContentLoaded', function () {
             STEPS.forEach(function (id) { setStep(id, 'pending'); });
             lastStep = null; setProgress(5); setStatus('Preparing update...');
 
-            if (typeof ReadableStream !== 'undefined') {
-                fetch(updateUrl, {
-                    method: 'POST',
-                    headers: { 'Accept': 'text/event-stream', 'X-CSRF-TOKEN': csrfToken, 'Content-Type': 'application/x-www-form-urlencoded' },
-                    body: '_token=' + encodeURIComponent(csrfToken)
-                }).then(function (resp) {
-                    var reader = resp.body.getReader();
-                    var dec = new TextDecoder();
-                    var buf = '';
-                    function pump() {
-                        reader.read().then(function (chunk) {
-                            if (chunk.done) { return; }
-                            buf += dec.decode(chunk.value, { stream: true });
-                            var parts = buf.split('\n'); buf = parts.pop();
-                            parts.forEach(function (line) {
-                                if (line.startsWith('data: ')) { try { handleEvent(JSON.parse(line.slice(6))); } catch (e) {} }
-                            });
-                            pump();
-                        }).catch(function () {
-                            handleEvent({ step: 'error', message: 'Connection lost. Check Update History for status.', progress: 0, done: true, status: 'unknown' });
-                        });
-                    }
-                    pump();
-                }).catch(function () {
-                    handleEvent({ step: 'error', message: 'Could not connect. Please refresh and check Update History.', progress: 0, done: true, status: 'unknown' });
-                });
-            } else {
-                // Fallback: JSON POST for browsers without ReadableStream
-                setStatus('Updating — please wait, this may take 1–2 minutes...');
-                fetch(updateUrl, {
-                    method: 'POST',
-                    headers: { 'Accept': 'application/json', 'X-CSRF-TOKEN': csrfToken, 'Content-Type': 'application/x-www-form-urlencoded' },
-                    body: '_token=' + encodeURIComponent(csrfToken)
-                }).then(function (r) { return r.json(); }).then(function (data) {
-                    STEPS.forEach(function (id) { setStep(id, 'done'); });
-                    handleEvent(Object.assign({ step: data.status === 'success' ? 'done' : 'error', progress: 100, done: true }, data));
-                }).catch(function () { window.location.reload(); });
+            var progressUrl = '{{ route('admin.system.update.progress') }}';
+            var isDone = false;
+            var pollTimer = null;
+
+            function stopPoll() {
+                if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
             }
+
+            function poll() {
+                if (isDone) { stopPoll(); return; }
+                fetch(progressUrl, {
+                    headers: { 'Accept': 'application/json', 'X-CSRF-TOKEN': csrfToken, 'X-Requested-With': 'XMLHttpRequest' }
+                }).then(function (r) { return r.json(); }).then(function (data) {
+                    if (isDone || !data || data.step === 'waiting') return;
+                    handleEvent(data);
+                    if (data.done) { isDone = true; stopPoll(); }
+                }).catch(function () {});
+            }
+
+            // Start polling every 2 seconds for live step updates
+            pollTimer = setInterval(poll, 2000);
+
+            // POST kicks off the update; on IIS the response may arrive late or
+            // after a timeout — the poll above handles intermediate progress regardless.
+            fetch(updateUrl, {
+                method: 'POST',
+                headers: { 'Accept': 'application/json', 'X-CSRF-TOKEN': csrfToken, 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: '_token=' + encodeURIComponent(csrfToken)
+            }).then(function (r) { return r.json(); }).then(function (data) {
+                stopPoll();
+                if (isDone) return;
+                isDone = true;
+                var success = (data.status === 'success' || data.status === 'up_to_date') && (data.exit === undefined || data.exit === 0);
+                if (success) {
+                    STEPS.forEach(function (id) { if (stepEl(id) && stepEl(id).querySelector('.bi-circle')) setStep(id, 'done'); });
+                }
+                handleEvent(Object.assign({ step: success ? 'done' : 'error', progress: success ? 100 : 50, done: true }, data));
+            }).catch(function () {
+                // IIS may close the connection before the update finishes — keep polling
+                if (isDone) return;
+                setStatus('Update running in background, checking status...');
+            });
         }
     }
 
