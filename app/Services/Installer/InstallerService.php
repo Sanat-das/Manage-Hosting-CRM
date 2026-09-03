@@ -241,6 +241,8 @@ class InstallerService
         Artisan::call('config:clear');
 
         $this->applyDatabaseConfig($input);
+        config(['database.default' => 'mysql']);
+        DB::setDefaultConnection('mysql');
         DB::purge('mysql');
         DB::reconnect('mysql');
 
