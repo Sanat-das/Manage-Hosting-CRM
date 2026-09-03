@@ -55,6 +55,7 @@ LEDGER_FLUX_PHILOSOPHY.md
 
 # Sensitive backups and local DB dumps
 /storage/backups/
+/storage/tmp/
 /sql/local.sql
 /sql/local-backup-addon-database-dump.sql
 

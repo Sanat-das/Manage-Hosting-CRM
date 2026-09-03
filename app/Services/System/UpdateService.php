@@ -525,8 +525,8 @@ class UpdateService
         $remoteSanitized = 'https://github.com/Sanat-das/Manage-Hosting-CRM';
         $fromVersion = $this->resolveLocalVersion();
         $rand        = Str::random(8);
-        $tmpDir      = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'mh_update_' . $rand;
-        $zipPath     = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'mh_update_' . $rand . '.zip';
+        $tmpDir      = storage_path('tmp' . DIRECTORY_SEPARATOR . 'mh_update_' . $rand);
+        $zipPath     = storage_path('tmp' . DIRECTORY_SEPARATOR . 'mh_update_' . $rand . '.zip');
         $didDown     = false;
 
         $appendOutput = function (string $label, string $output, int $exit) use (&$capturedOutput): void {
@@ -560,7 +560,8 @@ class UpdateService
                 return $result;
             }
 
-            @mkdir($tmpDir, 0755, true);
+            @mkdir(storage_path('tmp'), 0755, true);
+        @mkdir($tmpDir, 0755, true);
 
             // Step: Download — emit heartbeats every 5s so IIS FastCGI activityTimeout doesn't fire
             $emit('download', 'Downloading latest update from GitHub...', 10);
