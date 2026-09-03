@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use Symfony\Component\Process\PhpExecutableFinder;
 use Symfony\Component\Process\Process;
 use Throwable;
 
@@ -759,21 +760,7 @@ class UpdateService
 
     private function composerAvailable(): bool
     {
-        $res = $this->runProcess(['composer', '--version'], 3);
-
-        if ($res['success']) {
-            return true;
-        }
-
-        // Windows fallback: composer.phar or composer.bat
-        foreach (['composer.phar', 'composer.bat'] as $alt) {
-            $altRes = $this->runProcess([$alt, '--version'], 3);
-            if ($altRes['success']) {
-                return true;
-            }
-        }
-
-        return false;
+        return $this->composerCommand() !== null;
     }
 
     private function sanitizeRemote(string $url): string
@@ -787,6 +774,115 @@ class UpdateService
      * @return array{output: string, exit: int, success: bool}
      */
     private function runProcess(array $cmd, int $timeout = 3): array
+    {
+        return $this->runRaw($this->resolveCommand($cmd), $timeout);
+    }
+
+    /**
+     * Rewrite bare "php" / "composer" into absolute, resolved commands.
+     *
+     * Neither is on PATH for the account IIS/FastCGI runs as, so every artisan
+     * step failed with "'php' is not recognized as an internal or external
+     * command" — including `artisan up`, which is what would have left a site
+     * stuck in maintenance mode. Resolving here rather than at the ~13 call
+     * sites keeps the chains readable and stops the bug from coming back.
+     *
+     * @param  list<string>  $cmd
+     * @return list<string>
+     */
+    private function resolveCommand(array $cmd): array
+    {
+        if ($cmd === []) {
+            return $cmd;
+        }
+
+        if ($cmd[0] === 'php') {
+            $cmd[0] = $this->phpBinary();
+        } elseif ($cmd[0] === 'composer') {
+            $composer = $this->composerCommand();
+            if ($composer !== null) {
+                array_splice($cmd, 0, 1, $composer);
+            }
+        }
+
+        return $cmd;
+    }
+
+    /**
+     * Absolute path to the PHP CLI binary.
+     *
+     * Under FastCGI, PHP_BINARY is php-cgi.exe — which does not behave as a CLI
+     * runner — so the php.exe sitting beside it is preferred.
+     */
+    private function phpBinary(): string
+    {
+        static $resolved = null;
+
+        if ($resolved !== null) {
+            return $resolved;
+        }
+
+        $sibling = dirname(PHP_BINARY) . DIRECTORY_SEPARATOR
+            . (DIRECTORY_SEPARATOR === '\\' ? 'php.exe' : 'php');
+
+        if (is_file($sibling)) {
+            return $resolved = $sibling;
+        }
+
+        $found = (new PhpExecutableFinder())->find(false);
+
+        if (is_string($found) && $found !== '' && is_file($found)) {
+            return $resolved = $found;
+        }
+
+        return $resolved = (PHP_BINARY !== '' ? PHP_BINARY : 'php');
+    }
+
+    /**
+     * Resolved argv prefix for composer, or null when it cannot be found.
+     *
+     * @return list<string>|null
+     */
+    private function composerCommand(): ?array
+    {
+        static $resolved = false;
+
+        if ($resolved !== false) {
+            return $resolved;
+        }
+
+        // A composer.phar shipped with the app needs no PATH at all.
+        $phar = base_path('composer.phar');
+        if (is_file($phar)) {
+            return $resolved = [$this->phpBinary(), $phar];
+        }
+
+        // Probed via runRaw: going through runProcess would recurse back here.
+        foreach (['composer', 'composer.bat', 'composer.phar'] as $candidate) {
+            if ($this->runRaw([$candidate, '--version'], 5)['success']) {
+                return $resolved = [$candidate];
+            }
+        }
+
+        foreach ([
+            'C:\\ProgramData\\ComposerSetup\\bin\\composer.bat',
+            'C:\\ProgramData\\ComposerSetup\\bin\\composer.phar',
+        ] as $path) {
+            if (is_file($path)) {
+                return $resolved = str_ends_with($path, '.phar')
+                    ? [$this->phpBinary(), $path]
+                    : [$path];
+            }
+        }
+
+        return $resolved = null;
+    }
+
+    /**
+     * @param  list<string>  $cmd
+     * @return array{output: string, exit: int, success: bool}
+     */
+    private function runRaw(array $cmd, int $timeout = 3): array
     {
         try {
             $process = new Process($cmd, base_path(), null, null, (float) $timeout);
