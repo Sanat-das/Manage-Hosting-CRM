@@ -26,6 +26,10 @@
             $activeTab = 'about';
         }
         $checkResult = session('check_result') ?? $check;
+        // Resolved once, here, so the About and Updates panes cannot give
+        // different answers about the same install. Must come after
+        // $checkResult, which carries the flash from "Check for updates".
+        $effectiveCheck = $checkResult ?? $check;
         $updateResult = session('update_result');
         // Normalize history to collection
         if (! $history instanceof \Illuminate\Support\Collection) {
@@ -118,9 +122,17 @@
                                         <th class="text-muted small">Version</th>
                                         <td>
                                             <code>{{ $appInfo['version'] ?? 'dev' }}</code>
+                                            @php
+                                                // On a ZIP install git['commit'] and git['short'] are both null, so
+                                                // this button used to copy an empty string next to a version that
+                                                // was displayed correctly. Fall back to the shown version.
+                                                $copyRef = $appInfo['git']['commit'] ?? ($appInfo['git']['short'] ?? ($appInfo['version'] ?? null));
+                                            @endphp
                                             @if (! empty($appInfo['git']['short']))
                                                 <span class="text-muted small ms-1">({{ $appInfo['git']['short'] }})</span>
-                                                <button type="button" class="btn btn-sm btn-outline-secondary ms-2 py-0 px-1 copy-btn" data-copy="{{ $appInfo['git']['commit'] ?? $appInfo['git']['short'] }}" aria-label="Copy commit hash"><i class="bi bi-clipboard"></i></button>
+                                            @endif
+                                            @if (! empty($copyRef))
+                                                <button type="button" class="btn btn-sm btn-outline-secondary ms-2 py-0 px-1 copy-btn" data-copy="{{ $copyRef }}" aria-label="Copy version"><i class="bi bi-clipboard"></i></button>
                                             @endif
                                         </td>
                                     </tr>
@@ -328,9 +340,20 @@
                 </div>
             </div>
 
-            {{-- Git --}}
-            <x-adminlte-card icon="bi bi-git" title="Git">
-                @php $git = $appInfo['git'] ?? []; @endphp
+            {{-- Source (git checkout, or ZIP install) --}}
+            @php
+                $git = $appInfo['git'] ?? [];
+                // A ZIP install has no .git, so every gitInfo() field is null and
+                // this card used to read "—" / "Unknown" while the Updates tab
+                // reported the version and whether an update was pending. Fall
+                // back to the same check the Updates tab uses.
+                $isZipInstall = empty($git['commit']);
+                $srcBranch = $git['branch'] ?? ($effectiveCheck['branch'] ?? null);
+                $srcRemote = $git['remote'] ?? ($effectiveCheck['remoteSanitized'] ?? null);
+                $srcRef = $git['short'] ?? ($effectiveCheck['localHash'] ?? ($appInfo['version'] ?? null));
+                $srcBehind = $git['behind'] ?? (($effectiveCheck['status'] ?? 'unknown') === 'unknown' ? null : ($effectiveCheck['behind'] ?? null));
+            @endphp
+            <x-adminlte-card icon="bi bi-git" title="{{ $isZipInstall ? 'Source (ZIP install)' : 'Git' }}">
                 <div class="row g-3">
                     <div class="col-md-6">
                         <div class="table-responsive">
@@ -339,20 +362,23 @@
                                     <tr>
                                         <th class="text-muted small" style="width: 40%">Branch</th>
                                         <td>
-                                            @if (! empty($git['branch']))
-                                                <code>{{ $git['branch'] }}</code>
+                                            @if (! empty($srcBranch))
+                                                <code>{{ $srcBranch }}</code>
                                             @else
                                                 <span class="text-muted small">—</span>
                                             @endif
                                         </td>
                                     </tr>
                                     <tr>
-                                        <th class="text-muted small">Commit</th>
+                                        <th class="text-muted small">{{ $isZipInstall ? 'Installed version' : 'Commit' }}</th>
                                         <td>
                                             @if (! empty($git['commit']))
                                                 <code>{{ Str::limit($git['commit'], 12, '') }}</code>
                                                 <span class="text-muted small">({{ $git['short'] ?? Str::limit($git['commit'], 7, '') }})</span>
                                                 <button type="button" class="btn btn-sm btn-outline-secondary ms-2 py-0 px-1 copy-btn" data-copy="{{ $git['commit'] }}" aria-label="Copy full commit"><i class="bi bi-clipboard"></i></button>
+                                            @elseif (! empty($srcRef))
+                                                <code>{{ $srcRef }}</code>
+                                                <button type="button" class="btn btn-sm btn-outline-secondary ms-2 py-0 px-1 copy-btn" data-copy="{{ $srcRef }}" aria-label="Copy installed version"><i class="bi bi-clipboard"></i></button>
                                             @else
                                                 <span class="text-muted small">—</span>
                                             @endif
@@ -365,10 +391,13 @@
                                     <tr>
                                         <th class="text-muted small">Dirty</th>
                                         <td>
-                                            @if ($git['dirty'] === true)
+                                            @if (($git['dirty'] ?? null) === true)
                                                 <span class="badge text-bg-warning">Dirty</span>
-                                            @elseif ($git['dirty'] === false)
+                                            @elseif (($git['dirty'] ?? null) === false)
                                                 <span class="badge text-bg-success">Clean</span>
+                                            @elseif ($isZipInstall)
+                                                {{-- No working tree to be dirty: files are replaced wholesale. --}}
+                                                <span class="badge text-bg-secondary">N/A</span>
                                             @else
                                                 <span class="badge text-bg-secondary">Unknown</span>
                                             @endif
@@ -385,8 +414,8 @@
                                     <tr>
                                         <th class="text-muted small" style="width: 40%">Remote</th>
                                         <td class="small text-break">
-                                            @if (! empty($git['remote']))
-                                                <code>{{ $git['remote'] }}</code>
+                                            @if (! empty($srcRemote))
+                                                <code>{{ $srcRemote }}</code>
                                             @else
                                                 <span class="text-muted">—</span>
                                             @endif
@@ -398,6 +427,9 @@
                                             @if (isset($git['ahead']) || isset($git['behind']))
                                                 <span class="badge text-bg-secondary">Ahead {{ $git['ahead'] ?? 0 }}</span>
                                                 <span class="badge text-bg-{{ ($git['behind'] ?? 0) > 0 ? 'warning' : 'success' }} ms-1">Behind {{ $git['behind'] ?? 0 }}</span>
+                                            @elseif ($srcBehind !== null)
+                                                {{-- ZIP install: no local commits can exist ahead of the remote. --}}
+                                                <span class="badge text-bg-{{ $srcBehind > 0 ? 'warning' : 'success' }}">Behind {{ $srcBehind }}</span>
                                             @else
                                                 <span class="text-muted">—</span>
                                             @endif
@@ -406,9 +438,9 @@
                                     <tr>
                                         <th class="text-muted small">Status</th>
                                         <td>
-                                            @if (($git['behind'] ?? 0) > 0)
-                                                <span class="badge text-bg-warning">{{ $git['behind'] }} behind</span>
-                                            @elseif (($git['behind'] ?? null) === 0)
+                                            @if (($srcBehind ?? 0) > 0)
+                                                <span class="badge text-bg-warning">{{ $srcBehind }} behind</span>
+                                            @elseif ($srcBehind === 0)
                                                 <span class="badge text-bg-success">Up to date</span>
                                             @else
                                                 <span class="badge text-bg-secondary">Unknown</span>
@@ -426,7 +458,6 @@
         {{-- Pane: Updates --}}
         <div class="tab-pane fade @if ($activeTab === 'updates') show active @endif" id="pane-updates" role="tabpanel" aria-labelledby="tab-updates">
             @php
-                $effectiveCheck = $checkResult ?? $check;
                 $status = $effectiveCheck['status'] ?? 'unknown';
                 $behind = (int) ($effectiveCheck['behind'] ?? 0);
                 $branch = $effectiveCheck['branch'] ?? ($appInfo['git']['branch'] ?? null);

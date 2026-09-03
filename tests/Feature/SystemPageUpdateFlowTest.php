@@ -9,6 +9,7 @@ use App\Models\Role;
 use App\Models\User;
 use App\Services\System\UpdateService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\ViewErrorBag;
 use Tests\TestCase;
 
 /**
@@ -86,9 +87,90 @@ final class SystemPageUpdateFlowTest extends TestCase
         $this->app->instance(UpdateService::class, $fake);
     }
 
+    /**
+     * A ZIP install's app info: no .git, so every gitInfo() field is null.
+     *
+     * @return array<string, mixed>
+     */
+    private function zipInstallAppInfo(string $version = 'abc1234'): array
+    {
+        return [
+            'app' => ['name' => 'ManageHosting', 'env' => 'production', 'debug' => false, 'url' => 'https://example.test', 'timezone' => 'UTC', 'locale' => 'en', 'installed' => true, 'installedAt' => null, 'maintenance' => false],
+            'version' => $version,
+            'git' => ['branch' => null, 'commit' => null, 'short' => null, 'date' => null, 'dirty' => null, 'remote' => null, 'remoteUrlRaw' => null, 'ahead' => null, 'behind' => null],
+            'health' => ['preflight' => [], 'scheduler' => ['lastTickAt' => null, 'schedulerIsHealthy' => false, 'staleAfter' => 300, 'paused' => false]],
+            'framework' => ['laravel' => '13.0.0', 'php' => PHP_VERSION, 'composerHash' => null, 'packages' => []],
+            'changelog' => '',
+        ];
+    }
+
+    /**
+     * Render the page directly. AppInfoService is final, so rather than weaken
+     * it for testing, feed the blade the data the controller would pass — the
+     * blade is what decides how a ZIP install is described.
+     *
+     * @param  array<string, mixed>  $appInfo
+     * @param  array<string, mixed>  $check
+     */
+    private function renderSystemPage(array $appInfo, array $check, string $tab = 'about'): string
+    {
+        $this->actingAs($this->adminUser());
+
+        return view('admin.system.index', [
+            'appInfo'   => $appInfo,
+            'check'     => $check,
+            'history'   => collect(),
+            'activeTab' => $tab,
+            // Normally shared by ShareErrorsFromSession during a real request.
+            'errors'    => new ViewErrorBag(),
+        ])->render();
+    }
+
     // ------------------------------------------------------------------
     // GET /admin/system — page renders
     // ------------------------------------------------------------------
+
+    public function test_zip_install_about_card_agrees_with_updates_tab_when_up_to_date(): void
+    {
+        // A ZIP install has no git metadata, so the About card used to render
+        // "Unknown" / "—" while the Updates tab reported it as up to date.
+        $html = $this->renderSystemPage(
+            $this->zipInstallAppInfo('abc1234'),
+            $this->checkResult(['status' => 'up_to_date', 'message' => 'Up to date (version abc1234).'])
+        );
+
+        $this->assertStringContainsString('Source (ZIP install)', $html);
+        $this->assertStringContainsString('Up to date', $html);
+        $this->assertStringContainsString('abc1234', $html);
+        $this->assertStringNotContainsString('Unknown</span>', $html, 'The About card must not claim ignorance about an install the Updates tab can describe.');
+    }
+
+    public function test_zip_install_about_card_reports_pending_update_count(): void
+    {
+        $html = $this->renderSystemPage(
+            $this->zipInstallAppInfo('abc1234'),
+            $this->checkResult([
+                'status'  => 'no_git',
+                'behind'  => 3,
+                'commits' => $this->fakeCommits(3),
+            ])
+        );
+
+        $this->assertStringContainsString('3 behind', $html);
+    }
+
+    public function test_git_checkout_about_card_still_uses_git_metadata(): void
+    {
+        // The ZIP fallbacks must not shadow a real checkout's own git state.
+        $appInfo = $this->zipInstallAppInfo('v2.0.0');
+        $appInfo['git'] = ['branch' => 'develop', 'commit' => str_repeat('a', 40), 'short' => 'aaaaaaa', 'date' => '2026-09-03', 'dirty' => true, 'remote' => 'https://example.test/repo.git', 'remoteUrlRaw' => 'https://example.test/repo.git', 'ahead' => 1, 'behind' => 2];
+
+        $html = $this->renderSystemPage($appInfo, $this->checkResult(['status' => 'behind', 'behind' => 2, 'branch' => 'main']));
+
+        $this->assertStringContainsString('develop', $html, 'A real checkout must show its own branch, not the check fallback.');
+        $this->assertStringContainsString('Dirty', $html);
+        $this->assertStringNotContainsString('Source (ZIP install)', $html);
+    }
 
     public function test_up_to_date_badge_renders_on_index(): void
     {
