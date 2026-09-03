@@ -378,21 +378,32 @@ class UpdateService
             $appendOutput('php artisan migrate --force', $migrate['output'], $migrate['exit']);
 
             if (! $migrate['success']) {
-                $result = $this->buildRunResult(
-                    status: 'failed',
-                    message: 'Database update failed — your existing data is intact. Rollback the code or contact support. ' . trim(Str::limit($migrate['output'], 1500)),
-                    behind: $behind,
-                    from: $fromHash,
-                    to: $this->resolveLocalHash(),
-                    branch: $branch,
-                    remoteSanitized: $remoteSanitized,
-                    exit: $migrate['exit'],
-                    startedAt: $startedAt,
-                    output: Str::limit($capturedOutput, self::OUTPUT_LIMIT)
-                );
-                $this->audit($actor, $result, $capturedOutput, $behind);
-                $emit('error', $result['message'], 75, true, $result);
-                return $result;
+                // As in runZip(): the pull above replaced this service on disk,
+                // so retry through a fresh child running the new code before
+                // treating the failure as real.
+                $emit('migrate', 'Retrying with the updated code...', 78);
+                $retry = $this->finalizeWithNewCode();
+                $appendOutput('php artisan system:update:finalize', $retry['output'], $retry['exit']);
+
+                if (! $retry['success']) {
+                    $result = $this->buildRunResult(
+                        status: 'failed',
+                        message: 'Database update failed — your existing data is intact. Code is updated; finish with: php artisan system:update:finalize. ' . trim(Str::limit($migrate['output'], 1500)),
+                        behind: $behind,
+                        from: $fromHash,
+                        to: $this->resolveLocalHash(),
+                        branch: $branch,
+                        remoteSanitized: $remoteSanitized,
+                        exit: $migrate['exit'],
+                        startedAt: $startedAt,
+                        output: Str::limit($capturedOutput, self::OUTPUT_LIMIT)
+                    );
+                    $this->audit($actor, $result, $capturedOutput, $behind);
+                    $emit('error', $result['message'], 75, true, $result);
+                    return $result;
+                }
+
+                $migrate = $retry;
             }
 
             // Step: Cache clears
@@ -410,6 +421,24 @@ class UpdateService
 
             $toHash = $this->resolveLocalHash();
             $short = $toHash !== null ? substr($toHash, 0, 7) : 'unknown';
+
+            if ($this->hasPendingMigrations() === true) {
+                $result = $this->buildRunResult(
+                    status: 'failed',
+                    message: sprintf('Updated to %s but migrations are still pending — finish with: php artisan system:update:finalize', $short),
+                    behind: $behind,
+                    from: $fromHash,
+                    to: $toHash,
+                    branch: $branch,
+                    remoteSanitized: $remoteSanitized,
+                    exit: 1,
+                    startedAt: $startedAt,
+                    output: Str::limit($capturedOutput, self::OUTPUT_LIMIT)
+                );
+                $this->audit($actor, $result, $capturedOutput, $behind);
+                $emit('error', $result['message'], 95, true, $result);
+                return $result;
+            }
 
             $result = $this->buildRunResult(
                 status: 'success',
@@ -659,10 +688,25 @@ class UpdateService
             $appendOutput('php artisan migrate --force', $migrate['output'], $migrate['exit']);
             $checkpoint('step=migrate status=' . ($migrate['success'] ? 'done' : 'failed exit=' . $migrate['exit']));
             if (! $migrate['success']) {
-                $result = $this->buildRunResult('failed', 'Database update failed — your existing data is intact. Contact support. ' . Str::limit($migrate['output'], 500), 0, $fromVersion, null, 'main', $remoteSanitized, $migrate['exit'], $startedAt, $capturedOutput);
-                $this->audit($actor, $result, $capturedOutput, 0);
-                $emit('error', $result['message'], 78, true, $result);
-                return $result;
+                // This process is still running the previous release's logic
+                // (it was loaded before the files above replaced it), so the
+                // failure may be stale logic rather than a real schema problem.
+                // Retry through a fresh child that picks up the deployed code.
+                $checkpoint('step=migrate status=retrying with deployed code');
+                $emit('migrate', 'Retrying with the updated code...', 80);
+                $retry = $this->finalizeWithNewCode();
+                $appendOutput('php artisan system:update:finalize', $retry['output'], $retry['exit']);
+                $checkpoint('step=finalize status=' . ($retry['success'] ? 'done' : 'failed exit=' . $retry['exit']));
+
+                if (! $retry['success']) {
+                    $result = $this->buildRunResult('failed', 'Database update failed — your existing data is intact. Files are updated; finish with: php artisan system:update:finalize. ' . Str::limit($migrate['output'], 500), 0, $fromVersion, null, 'main', $remoteSanitized, $migrate['exit'], $startedAt, $capturedOutput);
+                    $this->audit($actor, $result, $capturedOutput, 0);
+                    $emit('error', $result['message'], 78, true, $result);
+                    return $result;
+                }
+
+                // The retry ran composer, migrate, caches and up already.
+                $migrate = $retry;
             }
 
             // Step: Cache clears
@@ -685,6 +729,20 @@ class UpdateService
             } catch (Throwable) {}
 
             $short  = $toVersion ? substr($toVersion, 0, 7) : 'latest';
+
+            // Don't claim success on a half-updated install: new code against an
+            // old schema is the state that is expensive to discover later.
+            $pending = $this->hasPendingMigrations();
+            $checkpoint('step=verify pending_migrations=' . ($pending === null ? 'unknown' : ($pending ? 'yes' : 'no')));
+
+            if ($pending === true) {
+                $appendOutput('verify', 'Migrations are still pending after the update.', 1);
+                $result = $this->buildRunResult('failed', sprintf('Updated to %s but migrations are still pending — finish with: php artisan system:update:finalize', $short), 0, $fromVersion, $toVersion, 'main', $remoteSanitized, 1, $startedAt, $capturedOutput);
+                $this->audit($actor, $result, $capturedOutput, 0);
+                $emit('error', $result['message'], 95, true, $result);
+                return $result;
+            }
+
             $checkpoint('step=done version=' . $short);
             $result = $this->buildRunResult('success', sprintf('Successfully updated to version %s.', $short), 0, $fromVersion, $toVersion, 'main', $remoteSanitized, 0, $startedAt, $capturedOutput);
             $this->audit($actor, $result, $capturedOutput, 0);
@@ -761,6 +819,122 @@ class UpdateService
     private function composerAvailable(): bool
     {
         return $this->composerCommand() !== null;
+    }
+
+    /**
+     * The post-deploy half of an update: dependencies, schema, caches, up.
+     *
+     * Split out so it can be (a) re-run in a fresh process once new files are
+     * on disk — see finalizeWithNewCode() — and (b) invoked by hand via
+     * `php artisan system:update:finalize` when a run half-completes. Every
+     * step is idempotent, so running it twice is harmless.
+     *
+     * @param  callable(string,string,int,bool,array):void|null  $emit
+     * @return array{status: string, message: string, output: string, exit: int, pending: bool|null}
+     */
+    public function finalize(?callable $emit = null): array
+    {
+        $emit ??= static function (string $step, string $message, int $progress, bool $done = false, array $extra = []): void {};
+        $output = '';
+
+        $append = function (string $label, string $out, int $exit) use (&$output): void {
+            $output .= sprintf("\n[%s] exit=%d\n%s\n", $label, $exit, trim($out));
+            if (mb_strlen($output) > self::OUTPUT_LIMIT) {
+                $output = Str::limit($output, self::OUTPUT_LIMIT);
+            }
+        };
+
+        $fail = function (string $message, int $exit) use (&$output, $emit): array {
+            $result = ['status' => 'failed', 'message' => $message, 'output' => Str::limit($output, self::OUTPUT_LIMIT), 'exit' => $exit, 'pending' => null];
+            $emit('error', $message, 0, true, $result);
+
+            return $result;
+        };
+
+        // Dependencies. vendor/ ships inside the update archive, so a missing
+        // composer is a note rather than a failure.
+        $emit('composer', 'Installing dependencies...', 20);
+        if ($this->composerAvailable()) {
+            $composer = $this->runProcess(['composer', 'install', '--no-dev', '--optimize-autoloader', '--no-interaction'], 300);
+            $append('composer install --no-dev --optimize-autoloader --no-interaction', $composer['output'], $composer['exit']);
+
+            if (! $composer['success']) {
+                return $fail('Dependencies failed to install. ' . trim(Str::limit($composer['output'], 500)), $composer['exit']);
+            }
+        } else {
+            $append('composer install', 'composer not found — skipped (vendor/ ships inside the update archive).', 0);
+        }
+
+        // Schema.
+        $emit('migrate', 'Updating database schema (your data is preserved)...', 55);
+        $migrate = $this->runProcess(['php', 'artisan', 'migrate', '--force'], 300);
+        $append('php artisan migrate --force', $migrate['output'], $migrate['exit']);
+
+        if (! $migrate['success']) {
+            return $fail('Database update failed — your existing data is intact. ' . trim(Str::limit($migrate['output'], 500)), $migrate['exit']);
+        }
+
+        // Caches.
+        $emit('cache', 'Clearing application cache...', 80);
+        foreach ([['php', 'artisan', 'optimize:clear'], ['php', 'artisan', 'config:clear'], ['php', 'artisan', 'view:clear']] as $cmd) {
+            $res = $this->runProcess($cmd, 60);
+            $append(implode(' ', $cmd), $res['output'], $res['exit']);
+        }
+
+        // Make sure the site is serving again.
+        $up = $this->runProcess(['php', 'artisan', 'up'], 15);
+        $append('php artisan up', $up['output'], $up['exit']);
+
+        // Verify rather than assume: a migrate step that "succeeded" but left
+        // migrations pending is exactly the half-updated state we want to catch.
+        $pending = $this->hasPendingMigrations();
+
+        if ($pending === true) {
+            $message = 'Update finished but migrations are still pending — run: php artisan migrate --force';
+            $result  = ['status' => 'incomplete', 'message' => $message, 'output' => Str::limit($output, self::OUTPUT_LIMIT), 'exit' => 1, 'pending' => true];
+            $emit('error', $message, 90, true, $result);
+
+            return $result;
+        }
+
+        $message = 'Post-update steps completed.';
+        $result  = ['status' => 'success', 'message' => $message, 'output' => Str::limit($output, self::OUTPUT_LIMIT), 'exit' => 0, 'pending' => $pending];
+        $emit('done', $message, 100, true, $result);
+
+        return $result;
+    }
+
+    /**
+     * Are there migrations that have not been applied?
+     *
+     * `--pretend` only prints the SQL it would run, so this is read-only.
+     * Returns null when the answer cannot be determined.
+     */
+    private function hasPendingMigrations(): ?bool
+    {
+        $res = $this->runProcess(['php', 'artisan', 'migrate', '--force', '--pretend'], 60);
+
+        if (! $res['success']) {
+            return null;
+        }
+
+        return ! str_contains($res['output'], 'Nothing to migrate');
+    }
+
+    /**
+     * Re-run the post-deploy steps in a fresh process.
+     *
+     * This process loaded UpdateService at boot, before the update replaced it
+     * on disk, so it is still executing the previous release's logic. A fresh
+     * `artisan` child picks up the code that was just deployed — which is how a
+     * fix to this chain takes effect on the run that delivers it rather than
+     * the one after.
+     *
+     * @return array{output: string, exit: int, success: bool}
+     */
+    private function finalizeWithNewCode(int $timeout = 900): array
+    {
+        return $this->runProcess(['php', 'artisan', 'system:update:finalize'], $timeout);
     }
 
     private function sanitizeRemote(string $url): string
