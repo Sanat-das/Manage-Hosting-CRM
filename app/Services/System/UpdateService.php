@@ -616,8 +616,12 @@ class UpdateService
             $checkpoint('step=deploy status=starting');
             $emit('deploy', 'Installing update files...', 55);
             $preserve = ['.env', 'storage', 'install.lock', 'public' . DIRECTORY_SEPARATOR . 'storage'];
+            $deployHeartbeat = function () use ($emit, $checkpoint): void {
+                $checkpoint('step=deploy status=running');
+                $emit('deploy', 'Installing update files...', 55);
+            };
             try {
-                $this->syncDeploy($extractedRoot, $appRoot, $preserve);
+                $this->syncDeploy($extractedRoot, $appRoot, $preserve, $deployHeartbeat);
                 $checkpoint('step=deploy status=done');
                 $appendOutput('sync deploy', 'Files deployed successfully.', 0);
             } catch (Throwable $e) {
@@ -1010,9 +1014,13 @@ class UpdateService
     /**
      * Recursively copy files from $srcDir into $destDir, skipping paths listed in $preserve.
      * $preserve entries are relative to $destDir (e.g. '.env', 'storage', 'install.lock').
+     * $heartbeat is called at most every 5 s to keep IIS FastCGI activityTimeout from firing.
      */
-    private function syncDeploy(string $srcDir, string $destDir, array $preserve): void
+    private function syncDeploy(string $srcDir, string $destDir, array $preserve, ?callable $heartbeat = null): void
     {
+        $heartbeat     ??= static function (): void {};
+        $lastHeartbeat = time();
+
         $sep = DIRECTORY_SEPARATOR;
         $normalizedPreserve = array_map(
             static fn ($p) => rtrim(str_replace(['/', '\\'], $sep, $p), $sep),
@@ -1025,6 +1033,12 @@ class UpdateService
         );
 
         foreach ($iterator as $item) {
+            // Heartbeat every 5 s so IIS FastCGI activityTimeout doesn't fire
+            if (time() - $lastHeartbeat >= 5) {
+                $heartbeat();
+                $lastHeartbeat = time();
+            }
+
             $relativePath = substr($item->getPathname(), strlen($srcDir) + 1);
 
             // Skip any path that matches or is under a preserved prefix
