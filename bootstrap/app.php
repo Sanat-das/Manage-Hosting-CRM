@@ -1,5 +1,25 @@
 <?php
 
+// Must run before Laravel boots: without APP_KEY the app throws before any route is reached.
+(static function () {
+    $base    = dirname(__DIR__);
+    $envPath = $base.'/.env';
+    $example = $base.'/.env.example';
+
+    if (! file_exists($envPath) && file_exists($example)) {
+        copy($example, $envPath);
+    }
+
+    if (file_exists($envPath)) {
+        $content = file_get_contents($envPath);
+        if (preg_match('/^APP_KEY=\s*$/m', $content)) {
+            $key     = 'base64:'.base64_encode(random_bytes(32));
+            $content = preg_replace('/^APP_KEY=\s*$/m', 'APP_KEY='.$key, $content);
+            file_put_contents($envPath, $content);
+        }
+    }
+})();
+
 use App\Http\Middleware\AdminMiddleware;
 use App\Http\Middleware\ClientMiddleware;
 use App\Http\Middleware\EnsureAppInstalled;
