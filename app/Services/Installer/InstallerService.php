@@ -246,6 +246,10 @@ class InstallerService
         // 3. Migrations (idempotent: only pending migrations run).
         Artisan::call('migrate', ['--force' => true]);
 
+        // Switch session and cache to the database driver now that the tables exist.
+        $this->setEnvValue('SESSION_DRIVER', 'database');
+        $this->setEnvValue('CACHE_STORE', 'database');
+
         // 4. RBAC roles and permissions (idempotent, firstOrCreate based).
         Artisan::call('db:seed', [
             '--class' => AdminLteRbacSeeder::class,

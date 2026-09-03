@@ -76,11 +76,13 @@ class InstallerController extends Controller
      */
     private function defaults(): array
     {
+        $dbDatabase = config('database.connections.mysql.database');
+
         return [
             'app_name' => config('adminlte.title', config('app.name')),
             'db_host' => config('database.connections.mysql.host'),
             'db_port' => (string) config('database.connections.mysql.port'),
-            'db_database' => config('database.connections.mysql.database'),
+            'db_database' => $dbDatabase === ':memory:' ? '' : $dbDatabase,
             'db_username' => config('database.connections.mysql.username'),
             'db_password' => (string) config('database.connections.mysql.password'),
         ];
