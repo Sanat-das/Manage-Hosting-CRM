@@ -586,9 +586,12 @@ class UpdateService
             }
 
             // Step: Extract — non-blocking so heartbeats keep IIS activityTimeout from firing
-            $checkpoint('step=extract status=starting');
+            $checkpoint('step=extract status=starting method=auto');
             $emit('extract', 'Unpacking update files...', 30);
-            $extractHeartbeat = function () use ($emit): void {
+            $extractTick = 0;
+            $extractHeartbeat = function () use ($emit, $checkpoint, &$extractTick): void {
+                $extractTick++;
+                $checkpoint('step=extract status=running tick=' . $extractTick . ' elapsed=' . ($extractTick * 5) . 's');
                 $emit('extract', 'Unpacking update files...', 30);
             };
             $extractedRoot = $this->extractZip($zipPath, $tmpDir, $extractHeartbeat);
@@ -905,9 +908,47 @@ class UpdateService
         @mkdir($destDir, 0755, true);
         $heartbeat ??= static function (): void {};
 
-        // ── Non-blocking PowerShell Expand-Archive (Windows Server) ──────────
+        $logCtx = ['zip' => basename($zipPath), 'dest' => $destDir];
+
+        // ── 1. tar (ships with Windows Server 2022, much faster than Expand-Archive) ──
+        $tarCheck = $this->runProcess(['tar', '--version'], 3);
+        if ($tarCheck['success']) {
+            Log::info('UpdateService: extracting via tar.', $logCtx);
+            try {
+                $process = new Process(
+                    ['tar', '-xf', $zipPath, '-C', $destDir],
+                    base_path(), null, null, 300.0
+                );
+                $process->start();
+                while ($process->isRunning()) {
+                    $heartbeat();
+                    sleep(5);
+                }
+                $process->wait();
+
+                if ($process->isSuccessful()) {
+                    $entries = glob($destDir . DIRECTORY_SEPARATOR . '*', GLOB_ONLYDIR);
+                    if (! empty($entries)) {
+                        Log::info('UpdateService: tar extraction succeeded.', $logCtx);
+                        return $entries[0];
+                    }
+                }
+
+                Log::warning('UpdateService: tar extraction failed.', array_merge($logCtx, [
+                    'exit'  => $process->getExitCode(),
+                    'error' => substr($process->getErrorOutput(), 0, 500),
+                ]));
+            } catch (Throwable $e) {
+                Log::warning('UpdateService: tar extract exception.', array_merge($logCtx, ['error' => $e->getMessage()]));
+            }
+        } else {
+            Log::info('UpdateService: tar not available, trying PowerShell.', $logCtx);
+        }
+
+        // ── 2. PowerShell Expand-Archive ─────────────────────────────────────
         $psCheck = $this->runProcess(['powershell', '-Command', 'echo ok'], 5);
         if ($psCheck['success']) {
+            Log::info('UpdateService: extracting via PowerShell Expand-Archive.', $logCtx);
             try {
                 $safeZip  = str_replace("'", "''", $zipPath);
                 $safeDest = str_replace("'", "''", $destDir);
@@ -926,32 +967,35 @@ class UpdateService
                 if ($process->isSuccessful()) {
                     $entries = glob($destDir . DIRECTORY_SEPARATOR . '*', GLOB_ONLYDIR);
                     if (! empty($entries)) {
+                        Log::info('UpdateService: PowerShell extraction succeeded.', $logCtx);
                         return $entries[0];
                     }
                 }
 
-                Log::warning('UpdateService: PowerShell Expand-Archive failed.', [
+                Log::warning('UpdateService: PowerShell Expand-Archive failed.', array_merge($logCtx, [
                     'exit'  => $process->getExitCode(),
                     'error' => substr($process->getErrorOutput(), 0, 500),
-                ]);
+                ]));
             } catch (Throwable $e) {
-                Log::warning('UpdateService: PowerShell extract exception.', ['error' => $e->getMessage()]);
+                Log::warning('UpdateService: PowerShell extract exception.', array_merge($logCtx, ['error' => $e->getMessage()]));
             }
         }
 
-        // ── Fallback: blocking ZipArchive ─────────────────────────────────────
+        // ── 3. Last resort: blocking ZipArchive ──────────────────────────────
         if (! class_exists(\ZipArchive::class)) {
+            Log::warning('UpdateService: ZipArchive not available.', $logCtx);
             return null;
         }
+        Log::info('UpdateService: extracting via ZipArchive (blocking).', $logCtx);
         $zip = new \ZipArchive();
         if ($zip->open($zipPath) !== true) {
+            Log::warning('UpdateService: ZipArchive::open failed.', $logCtx);
             return null;
         }
         $zip->extractTo($destDir);
         $zip->close();
 
         $entries = glob($destDir . DIRECTORY_SEPARATOR . '*', GLOB_ONLYDIR);
-
         return ! empty($entries) ? $entries[0] : null;
     }
 
