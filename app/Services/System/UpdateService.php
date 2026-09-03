@@ -555,10 +555,13 @@ class UpdateService
 
             @mkdir($tmpDir, 0755, true);
 
-            // Step: Download
+            // Step: Download — emit heartbeats every 5s so IIS FastCGI activityTimeout doesn't fire
             $emit('download', 'Downloading latest update from GitHub...', 10);
             $zipUrl    = 'https://api.github.com/repos/Sanat-das/Manage-Hosting-CRM/zipball/main';
-            $downloaded = $this->downloadZip($zipUrl, $zipPath);
+            $heartbeat = function () use ($emit): void {
+                $emit('download', 'Downloading latest update from GitHub...', 10);
+            };
+            $downloaded = $this->downloadZip($zipUrl, $zipPath, $heartbeat);
             $appendOutput('download zip', $downloaded ? 'Downloaded ' . number_format((float) (filesize($zipPath) / 1024 / 1024), 1) . ' MB' : 'Download failed', $downloaded ? 0 : 1);
 
             if (! $downloaded) {
@@ -775,11 +778,59 @@ class UpdateService
         return $ver !== '' ? $ver : 'dev';
     }
 
-    private function downloadZip(string $url, string $destPath): bool
+    /**
+     * Download a ZIP from $url into $destPath.
+     *
+     * Prefers a non-blocking curl child process so the caller can emit SSE heartbeats
+     * every 5 s while waiting — this keeps the IIS FastCGI activityTimeout from firing
+     * during long downloads.  Falls back to Laravel's blocking Http::sink() when curl
+     * is not available.
+     */
+    private function downloadZip(string $url, string $destPath, ?callable $heartbeat = null): bool
     {
+        $heartbeat ??= static function (): void {};
+        $caBundle   = storage_path('cacert.pem');
+
+        // ── Non-blocking curl process (preferred on IIS / Windows Server) ──────
+        $curlBin = $this->findCurlBin();
+        if ($curlBin !== null) {
+            try {
+                $cmd = [
+                    $curlBin, '-L', '--silent', '--show-error',
+                    '-H', 'Accept: application/vnd.github.v3+json',
+                    '-H', 'User-Agent: ManageHosting-CRM',
+                    '-o', $destPath,
+                ];
+                if (is_file($caBundle)) {
+                    array_push($cmd, '--cacert', $caBundle);
+                }
+                $cmd[] = $url;
+
+                $process = new Process($cmd, base_path(), null, null, 300.0);
+                $process->start();
+
+                while ($process->isRunning()) {
+                    $heartbeat();
+                    sleep(5);
+                }
+                $process->wait();
+
+                if ($process->isSuccessful() && is_file($destPath) && filesize($destPath) > 0) {
+                    return true;
+                }
+
+                Log::warning('UpdateService: curl ZIP download failed.', [
+                    'exit'  => $process->getExitCode(),
+                    'error' => substr($process->getErrorOutput(), 0, 500),
+                ]);
+            } catch (Throwable $e) {
+                Log::warning('UpdateService: curl process exception.', ['error' => $e->getMessage()]);
+            }
+        }
+
+        // ── Fallback: blocking Laravel HTTP client ────────────────────────────
         try {
-            $caBundle = storage_path('cacert.pem');
-            $client   = Http::timeout(120)
+            $client = Http::timeout(300)
                 ->withHeaders(['Accept' => 'application/vnd.github.v3+json', 'User-Agent' => 'ManageHosting-CRM']);
             if (is_file($caBundle)) {
                 $client = $client->withOptions(['verify' => $caBundle]);
@@ -792,6 +843,18 @@ class UpdateService
 
             return false;
         }
+    }
+
+    private function findCurlBin(): ?string
+    {
+        foreach (['curl', 'curl.exe'] as $bin) {
+            $res = $this->runProcess([$bin, '--version'], 3);
+            if ($res['success']) {
+                return $bin;
+            }
+        }
+
+        return null;
     }
 
     /**
