@@ -17,6 +17,7 @@ use Illuminate\Database\QueryException;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Crypt;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Session;
 use PDOException;
@@ -193,7 +194,7 @@ class ModuleManager
                 }
             }
         } catch (Throwable $e) {
-            error_log('[modules] boot failed: '.$e->getMessage());
+            Log::warning('[modules] boot failed: '.$e->getMessage());
         }
     }
 
@@ -286,7 +287,7 @@ class ModuleManager
                 // Lookup refresh must never break route registration.
             }
         } catch (Throwable $e) {
-            error_log('[modules] route registration failed: '.$e->getMessage());
+            Log::warning('[modules] route registration failed: '.$e->getMessage());
         }
     }
 
