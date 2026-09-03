@@ -533,6 +533,19 @@ class UpdateService
             $capturedOutput .= sprintf("\n[%s] exit=%d\n%s\n", $label, $exit, trim($output));
         };
 
+        // Allow long-running download+extract+composer on IIS/FastCGI where the default
+        // PHP max_execution_time (30s) would otherwise kill the process mid-download.
+        @set_time_limit(0);
+
+        // Write a "started" sentinel immediately so the log always records that runZip() ran,
+        // even if the process is killed before $capturedOutput is populated.
+        try {
+            $logPath = storage_path('logs/update.log');
+            $logDir  = dirname($logPath);
+            if (! is_dir($logDir)) { @mkdir($logDir, 0755, true); }
+            @file_put_contents($logPath, sprintf("[%s] actor=%s method=zip status=started from=%s\n---\n", now()->toDateTimeString(), (string) ($actor->id ?? 'unknown'), $fromVersion), FILE_APPEND | LOCK_EX);
+        } catch (Throwable) {}
+
         try {
             if (! class_exists(\ZipArchive::class)) {
                 $result = $this->buildRunResult('failed', 'PHP ZipArchive extension is not available — enable the zip extension or update via SSH.', 0, $fromVersion, null, 'main', $remoteSanitized, 1, $startedAt, 'ZipArchive not available.');
@@ -652,15 +665,14 @@ class UpdateService
                 try { \Illuminate\Support\Facades\Artisan::call('up'); } catch (Throwable) {}
             }
 
-            // Log to update.log
-            if (trim($capturedOutput) !== '') {
-                try {
-                    $logPath = storage_path('logs/update.log');
-                    $dir     = dirname($logPath);
-                    if (! is_dir($dir)) { @mkdir($dir, 0755, true); }
-                    @file_put_contents($logPath, sprintf("[%s] actor=%s method=zip from=%s\n%s\n---\n", now()->toDateTimeString(), (string) ($actor->id ?? 'unknown'), $fromVersion, Str::limit($capturedOutput, self::OUTPUT_LIMIT)), FILE_APPEND | LOCK_EX);
-                } catch (Throwable) {}
-            }
+            // Log to update.log (always, even if output is empty — records killed/timed-out runs)
+            try {
+                $logPath = storage_path('logs/update.log');
+                $dir     = dirname($logPath);
+                if (! is_dir($dir)) { @mkdir($dir, 0755, true); }
+                $body = trim($capturedOutput) !== '' ? Str::limit($capturedOutput, self::OUTPUT_LIMIT) : '(no output captured — process may have been killed before first step)';
+                @file_put_contents($logPath, sprintf("[%s] actor=%s method=zip from=%s\n%s\n---\n", now()->toDateTimeString(), (string) ($actor->id ?? 'unknown'), $fromVersion, $body), FILE_APPEND | LOCK_EX);
+            } catch (Throwable) {}
 
             // Clean up temp files
             try {
