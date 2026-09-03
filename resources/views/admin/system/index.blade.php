@@ -556,14 +556,29 @@
                                 </div>
                                 <div class="text-center small text-muted mb-3" id="update-status-text">Preparing...</div>
                                 <div class="list-group list-group-flush small">
-                                    <div class="list-group-item d-flex align-items-center gap-2 py-2" id="upstep-fetch">
-                                        <span class="step-icon"><i class="bi bi-circle text-muted"></i></span>
-                                        <span>Fetch latest changes</span>
-                                    </div>
-                                    <div class="list-group-item d-flex align-items-center gap-2 py-2" id="upstep-pull">
-                                        <span class="step-icon"><i class="bi bi-circle text-muted"></i></span>
-                                        <span>Apply update</span>
-                                    </div>
+                                    @if ($status === 'no_git')
+                                        <div class="list-group-item d-flex align-items-center gap-2 py-2" id="upstep-download">
+                                            <span class="step-icon"><i class="bi bi-circle text-muted"></i></span>
+                                            <span>Download update from GitHub</span>
+                                        </div>
+                                        <div class="list-group-item d-flex align-items-center gap-2 py-2" id="upstep-extract">
+                                            <span class="step-icon"><i class="bi bi-circle text-muted"></i></span>
+                                            <span>Unpack update files</span>
+                                        </div>
+                                        <div class="list-group-item d-flex align-items-center gap-2 py-2" id="upstep-deploy">
+                                            <span class="step-icon"><i class="bi bi-circle text-muted"></i></span>
+                                            <span>Deploy files <span class="text-muted">(.env &amp; data preserved)</span></span>
+                                        </div>
+                                    @else
+                                        <div class="list-group-item d-flex align-items-center gap-2 py-2" id="upstep-fetch">
+                                            <span class="step-icon"><i class="bi bi-circle text-muted"></i></span>
+                                            <span>Fetch latest changes</span>
+                                        </div>
+                                        <div class="list-group-item d-flex align-items-center gap-2 py-2" id="upstep-pull">
+                                            <span class="step-icon"><i class="bi bi-circle text-muted"></i></span>
+                                            <span>Apply update</span>
+                                        </div>
+                                    @endif
                                     <div class="list-group-item d-flex align-items-center gap-2 py-2" id="upstep-composer">
                                         <span class="step-icon"><i class="bi bi-circle text-muted"></i></span>
                                         <span>Install dependencies</span>
@@ -784,8 +799,15 @@ document.addEventListener('DOMContentLoaded', function () {
             runUpdate();
         });
 
-        var STEPS = ['fetch', 'pull', 'composer', 'migrate', 'cache'];
-        var STEP_MAP = { fetch: 'fetch', maintenance: null, pull: 'pull', composer: 'composer', migrate: 'migrate', cache: 'cache' };
+        var isZipInstall = {{ $status === 'no_git' ? 'true' : 'false' }};
+        var STEPS = isZipInstall
+            ? ['download', 'extract', 'deploy', 'composer', 'migrate', 'cache']
+            : ['fetch', 'pull', 'composer', 'migrate', 'cache'];
+        var STEP_MAP = {
+            fetch: 'fetch', maintenance: null, pull: 'pull',
+            download: 'download', extract: 'extract', deploy: 'deploy',
+            composer: 'composer', migrate: 'migrate', cache: 'cache'
+        };
         var lastStep = null;
 
         function stepEl(id) { return document.getElementById('upstep-' + id); }

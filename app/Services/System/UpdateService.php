@@ -537,21 +537,25 @@ class UpdateService
         // PHP max_execution_time (30s) would otherwise kill the process mid-download.
         @set_time_limit(0);
 
-        // Write a "started" sentinel + diagnostics immediately so the log always records
-        // that runZip() ran and gives context even if the process is killed before finally.
-        try {
-            $logPath = storage_path('logs/update.log');
-            $logDir  = dirname($logPath);
-            if (! is_dir($logDir)) { @mkdir($logDir, 0755, true); }
-            $curlDiag   = $this->findCurlBin() ?? 'not found';
-            $tmpSys     = sys_get_temp_dir();
-            $tmpWritable = is_writable($tmpSys) ? 'yes' : 'no';
-            @file_put_contents($logPath, sprintf(
-                "[%s] actor=%s method=zip status=started from=%s curl=%s tmpdir=%s writable=%s zippath=%s\n---\n",
-                now()->toDateTimeString(), (string) ($actor->id ?? 'unknown'), $fromVersion,
-                $curlDiag, $tmpSys, $tmpWritable, $zipPath
-            ), FILE_APPEND | LOCK_EX);
-        } catch (Throwable) {}
+        // Shared log path used by sentinel, step checkpoints, and finally block.
+        $logPath = storage_path('logs/update.log');
+        $logDir  = dirname($logPath);
+        if (! is_dir($logDir)) { @mkdir($logDir, 0755, true); }
+
+        // Checkpoint helper — writes a timestamped line immediately to update.log so every
+        // step is traceable even if the process is killed before finally runs.
+        $checkpoint = static function (string $entry) use ($logPath): void {
+            @file_put_contents($logPath, '[' . date('Y-m-d H:i:s') . '] ' . $entry . "\n", FILE_APPEND | LOCK_EX);
+        };
+
+        // Sentinel — always written first so we know runZip() was invoked.
+        $curlDiag    = $this->findCurlBin() ?? 'not found';
+        $tmpSys      = sys_get_temp_dir();
+        $tmpWritable = is_writable($tmpSys) ? 'yes' : 'no';
+        $checkpoint(sprintf(
+            'actor=%s method=zip status=started from=%s curl=%s tmpdir=%s writable=%s zippath=%s',
+            $actor->id ?? 'unknown', $fromVersion, $curlDiag, $tmpSys, $tmpWritable, $zipPath
+        ));
 
         try {
             if (! class_exists(\ZipArchive::class)) {
@@ -564,13 +568,16 @@ class UpdateService
         @mkdir($tmpDir, 0755, true);
 
             // Step: Download — emit heartbeats every 5s so IIS FastCGI activityTimeout doesn't fire
+            $checkpoint('step=download status=starting');
             $emit('download', 'Downloading latest update from GitHub...', 10);
             $zipUrl    = 'https://api.github.com/repos/Sanat-das/Manage-Hosting-CRM/zipball/main';
             $heartbeat = function () use ($emit): void {
                 $emit('download', 'Downloading latest update from GitHub...', 10);
             };
             $downloaded = $this->downloadZip($zipUrl, $zipPath, $heartbeat);
-            $appendOutput('download zip', $downloaded ? 'Downloaded ' . number_format((float) (filesize($zipPath) / 1024 / 1024), 1) . ' MB' : 'Download failed', $downloaded ? 0 : 1);
+            $sizeMb = is_file($zipPath) ? number_format((float) (filesize($zipPath) / 1024 / 1024), 1) : '0';
+            $checkpoint('step=download status=' . ($downloaded ? 'done size=' . $sizeMb . 'MB' : 'failed'));
+            $appendOutput('download zip', $downloaded ? 'Downloaded ' . $sizeMb . ' MB' : 'Download failed', $downloaded ? 0 : 1);
 
             if (! $downloaded) {
                 $result = $this->buildRunResult('fetch_failed', 'Could not download update from GitHub — check network connection and try again.', 0, $fromVersion, null, 'main', $remoteSanitized, 1, $startedAt, $capturedOutput);
@@ -579,10 +586,10 @@ class UpdateService
             }
 
             // Step: Extract
+            $checkpoint('step=extract status=starting');
             $emit('extract', 'Unpacking update files...', 30);
-            @file_put_contents(storage_path('logs/update.log'), sprintf("[%s] extract-start: zip=%s size=%d\n", now()->toDateTimeString(), $zipPath, is_file($zipPath) ? filesize($zipPath) : 0), FILE_APPEND | LOCK_EX);
             $extractedRoot = $this->extractZip($zipPath, $tmpDir);
-            @file_put_contents(storage_path('logs/update.log'), sprintf("[%s] extract-done: root=%s\n", now()->toDateTimeString(), $extractedRoot ?? 'null'), FILE_APPEND | LOCK_EX);
+            $checkpoint('step=extract status=' . ($extractedRoot !== null ? 'done root=' . basename($extractedRoot) : 'failed'));
             $appendOutput('extract zip', $extractedRoot !== null ? 'Extracted to ' . basename($extractedRoot) : 'Extraction failed', $extractedRoot !== null ? 0 : 1);
 
             if ($extractedRoot === null) {
@@ -592,18 +599,23 @@ class UpdateService
             }
 
             // Step: Maintenance mode
+            $checkpoint('step=maintenance status=starting');
             $emit('maintenance', 'Enabling maintenance mode...', 42);
             $down   = $this->runProcess(['php', 'artisan', 'down', '--secret=' . Str::random(16)], 15);
             $appendOutput('php artisan down', $down['output'], $down['exit']);
             $didDown = $down['success'] || str_contains(strtolower($down['output']), 'already');
+            $checkpoint('step=maintenance status=' . ($didDown ? 'done' : 'warn exit=' . $down['exit']));
 
             // Step: Deploy files (preserve .env, storage/, install.lock)
+            $checkpoint('step=deploy status=starting');
             $emit('deploy', 'Installing update files...', 55);
             $preserve = ['.env', 'storage', 'install.lock', 'public' . DIRECTORY_SEPARATOR . 'storage'];
             try {
                 $this->syncDeploy($extractedRoot, $appRoot, $preserve);
+                $checkpoint('step=deploy status=done');
                 $appendOutput('sync deploy', 'Files deployed successfully.', 0);
             } catch (Throwable $e) {
+                $checkpoint('step=deploy status=failed err=' . $e->getMessage());
                 $appendOutput('sync deploy', $e->getMessage(), 1);
                 $result = $this->buildRunResult('failed', 'File deployment failed: ' . $e->getMessage(), 0, $fromVersion, null, 'main', $remoteSanitized, 1, $startedAt, $capturedOutput);
                 $emit('error', $result['message'], 55, true, $result);
@@ -611,10 +623,12 @@ class UpdateService
             }
 
             // Step: Composer
+            $checkpoint('step=composer status=starting');
             $emit('composer', 'Installing dependencies...', 65);
             if ($this->composerAvailable()) {
                 $composer = $this->runProcess(['composer', 'install', '--no-dev', '--optimize-autoloader', '--no-interaction'], 180);
                 $appendOutput('composer install --no-dev --optimize-autoloader --no-interaction', $composer['output'], $composer['exit']);
+                $checkpoint('step=composer status=' . ($composer['success'] ? 'done' : 'failed exit=' . $composer['exit']));
                 if (! $composer['success']) {
                     $result = $this->buildRunResult('failed', 'Files updated but dependencies failed — run composer install via SSH. ' . Str::limit($composer['output'], 500), 0, $fromVersion, null, 'main', $remoteSanitized, $composer['exit'], $startedAt, $capturedOutput);
                     $this->audit($actor, $result, $capturedOutput, 0);
@@ -622,14 +636,17 @@ class UpdateService
                     return $result;
                 }
             } else {
+                $checkpoint('step=composer status=skipped (not in PATH)');
                 $appendOutput('composer install', 'composer not found in PATH — skipped. Run composer install via SSH.', 0);
                 try { Log::warning('UpdateService: composer not found during ZIP update.'); } catch (Throwable) {}
             }
 
             // Step: Migrate
+            $checkpoint('step=migrate status=starting');
             $emit('migrate', 'Updating database schema (your data is preserved)...', 78);
             $migrate = $this->runProcess(['php', 'artisan', 'migrate', '--force'], 60);
             $appendOutput('php artisan migrate --force', $migrate['output'], $migrate['exit']);
+            $checkpoint('step=migrate status=' . ($migrate['success'] ? 'done' : 'failed exit=' . $migrate['exit']));
             if (! $migrate['success']) {
                 $result = $this->buildRunResult('failed', 'Database update failed — your existing data is intact. Contact support. ' . Str::limit($migrate['output'], 500), 0, $fromVersion, null, 'main', $remoteSanitized, $migrate['exit'], $startedAt, $capturedOutput);
                 $this->audit($actor, $result, $capturedOutput, 0);
@@ -638,11 +655,13 @@ class UpdateService
             }
 
             // Step: Cache clears
+            $checkpoint('step=cache status=starting');
             $emit('cache', 'Clearing application cache...', 88);
             foreach ([['php', 'artisan', 'optimize:clear'], ['php', 'artisan', 'config:clear'], ['php', 'artisan', 'view:clear']] as $cmd) {
                 $res = $this->runProcess($cmd, 30);
                 $appendOutput(implode(' ', $cmd), $res['output'], $res['exit']);
             }
+            $checkpoint('step=cache status=done');
 
             // Write VERSION with the remote commit hash so next check knows the installed version
             $toVersion = null;
@@ -655,6 +674,7 @@ class UpdateService
             } catch (Throwable) {}
 
             $short  = $toVersion ? substr($toVersion, 0, 7) : 'latest';
+            $checkpoint('step=done version=' . $short);
             $result = $this->buildRunResult('success', sprintf('Successfully updated to version %s.', $short), 0, $fromVersion, $toVersion, 'main', $remoteSanitized, 0, $startedAt, $capturedOutput);
             $this->audit($actor, $result, $capturedOutput, 0);
             $emit('done', $result['message'], 100, true, $result);
@@ -678,12 +698,9 @@ class UpdateService
                 try { \Illuminate\Support\Facades\Artisan::call('up'); } catch (Throwable) {}
             }
 
-            // Log to update.log (always, even if output is empty — records killed/timed-out runs)
+            // Log full captured output to update.log (always — records killed/timed-out runs)
             try {
-                $logPath = storage_path('logs/update.log');
-                $dir     = dirname($logPath);
-                if (! is_dir($dir)) { @mkdir($dir, 0755, true); }
-                $body = trim($capturedOutput) !== '' ? Str::limit($capturedOutput, self::OUTPUT_LIMIT) : '(no output captured — process may have been killed before first step)';
+                $body = trim($capturedOutput) !== '' ? Str::limit($capturedOutput, self::OUTPUT_LIMIT) : '(no output — process may have been killed mid-step)';
                 @file_put_contents($logPath, sprintf("[%s] actor=%s method=zip from=%s\n%s\n---\n", now()->toDateTimeString(), (string) ($actor->id ?? 'unknown'), $fromVersion, $body), FILE_APPEND | LOCK_EX);
             } catch (Throwable) {}
 
@@ -803,7 +820,6 @@ class UpdateService
 
         // ── Non-blocking curl process (preferred on IIS / Windows Server) ──────
         $curlBin = $this->findCurlBin();
-        @file_put_contents(storage_path('logs/update.log'), sprintf("[%s] download-attempt: curl=%s\n", now()->toDateTimeString(), $curlBin ?? 'none'), FILE_APPEND | LOCK_EX);
         if ($curlBin !== null) {
             try {
                 $cmd = [
