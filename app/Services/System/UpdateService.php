@@ -537,13 +537,20 @@ class UpdateService
         // PHP max_execution_time (30s) would otherwise kill the process mid-download.
         @set_time_limit(0);
 
-        // Write a "started" sentinel immediately so the log always records that runZip() ran,
-        // even if the process is killed before $capturedOutput is populated.
+        // Write a "started" sentinel + diagnostics immediately so the log always records
+        // that runZip() ran and gives context even if the process is killed before finally.
         try {
             $logPath = storage_path('logs/update.log');
             $logDir  = dirname($logPath);
             if (! is_dir($logDir)) { @mkdir($logDir, 0755, true); }
-            @file_put_contents($logPath, sprintf("[%s] actor=%s method=zip status=started from=%s\n---\n", now()->toDateTimeString(), (string) ($actor->id ?? 'unknown'), $fromVersion), FILE_APPEND | LOCK_EX);
+            $curlDiag   = $this->findCurlBin() ?? 'not found';
+            $tmpSys     = sys_get_temp_dir();
+            $tmpWritable = is_writable($tmpSys) ? 'yes' : 'no';
+            @file_put_contents($logPath, sprintf(
+                "[%s] actor=%s method=zip status=started from=%s curl=%s tmpdir=%s writable=%s zippath=%s\n---\n",
+                now()->toDateTimeString(), (string) ($actor->id ?? 'unknown'), $fromVersion,
+                $curlDiag, $tmpSys, $tmpWritable, $zipPath
+            ), FILE_APPEND | LOCK_EX);
         } catch (Throwable) {}
 
         try {
@@ -793,6 +800,7 @@ class UpdateService
 
         // ── Non-blocking curl process (preferred on IIS / Windows Server) ──────
         $curlBin = $this->findCurlBin();
+        @file_put_contents(storage_path('logs/update.log'), sprintf("[%s] download-attempt: curl=%s\n", now()->toDateTimeString(), $curlBin ?? 'none'), FILE_APPEND | LOCK_EX);
         if ($curlBin !== null) {
             try {
                 $cmd = [
