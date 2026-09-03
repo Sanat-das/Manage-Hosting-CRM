@@ -462,6 +462,12 @@ return [
             'can' => 'cron.view',
         ],
         [
+            'text' => 'About & Updates',
+            'route' => 'admin.system.index',
+            'icon' => 'bi bi-info-circle',
+            'can' => 'system.view',
+        ],
+        [
             'text' => 'Activity Log',
             'route' => 'admin.activity-log.index',
             'icon' => 'bi bi-clock-history',

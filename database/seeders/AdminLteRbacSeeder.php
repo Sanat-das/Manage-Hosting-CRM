@@ -123,6 +123,10 @@ class AdminLteRbacSeeder extends Seeder
             'modules.view' => 'View Modules',
             'modules.manage' => 'Manage Modules',
 
+            // system & about
+            'system.view' => 'View System & About',
+            'system.update' => 'Perform System Updates',
+
             // support
             'tickets.view' => 'View Tickets',
             'tickets.create' => 'Create Tickets',
