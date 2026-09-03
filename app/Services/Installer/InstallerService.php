@@ -232,6 +232,7 @@ class InstallerService
         // 2. Persist the chosen configuration to .env and apply it to this
         //    request's connection manager.
         $this->setEnvValue('APP_NAME', (string) $input['app_name']);
+        $this->setEnvValue('DB_CONNECTION', 'mysql');
         $this->setEnvValue('DB_HOST', (string) $input['db_host']);
         $this->setEnvValue('DB_PORT', (string) $input['db_port']);
         $this->setEnvValue('DB_DATABASE', (string) $input['db_database']);
