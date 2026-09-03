@@ -211,6 +211,32 @@ final class SystemPageUpdateFlowTest extends TestCase
     // Session flash — check result persists through redirect
     // ------------------------------------------------------------------
 
+    public function test_github_rate_limit_fallback_renders_without_crash(): void
+    {
+        // When the GitHub API is rate-limited, UpdateService falls back to the
+        // plain no-git result (behind=0, empty commits). The page must render a
+        // 200 with the no_git badge and the manual-update instructions — no 500.
+        $this->bindFakeUpdater($this->checkResult([
+            'status'          => 'no_git',
+            'message'         => 'This installation was not deployed via git. To update, download the latest ZIP from GitHub, replace files (keep .env, storage/, install.lock), then run composer install --no-dev --optimize-autoloader && php artisan migrate --force && php artisan optimize:clear.',
+            'behind'          => 0,
+            'commits'         => [],
+            'branch'          => null,
+            'remoteSanitized' => null,
+            'remoteUrlRaw'    => null,
+            'dirty'           => null,
+        ]));
+
+        $response = $this->actingAs($this->adminUser())
+            ->get(route('admin.system.index', ['tab' => 'updates']));
+
+        $response->assertOk();
+        $response->assertSee('no_git');
+        $response->assertDontSee('commit(s) behind');
+        $response->assertSee('not deployed via git');
+        $response->assertSee('Check for updates');
+    }
+
     public function test_check_result_from_session_is_used_in_view(): void
     {
         // Bind an up_to_date service but flash a "behind" result into session

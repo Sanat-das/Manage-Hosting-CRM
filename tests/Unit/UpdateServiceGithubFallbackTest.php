@@ -151,4 +151,58 @@ final class UpdateServiceGithubFallbackTest extends TestCase
         $this->assertSame('no_git', $result['status']);
         $this->assertSame(0, $result['behind']);
     }
+
+    public function test_github_rate_limit_403_falls_back_to_plain_no_git(): void
+    {
+        Cache::flush();
+        Http::fake([
+            'api.github.com/*' => Http::response(
+                ['message' => 'API rate limit exceeded', 'documentation_url' => 'https://docs.github.com/rest'],
+                403,
+                ['X-RateLimit-Remaining' => '0', 'X-RateLimit-Reset' => '1725350400']
+            ),
+        ]);
+
+        $result = $this->makeService()->check();
+
+        $this->assertSame('no_git', $result['status']);
+        $this->assertSame(0, $result['behind']);
+        $this->assertEmpty($result['commits']);
+        $this->assertNull($result['remoteHash']);
+        $this->assertStringContainsString('not deployed via git', $result['message']);
+    }
+
+    public function test_github_rate_limit_429_falls_back_to_plain_no_git(): void
+    {
+        Cache::flush();
+        Http::fake([
+            'api.github.com/*' => Http::response(
+                ['message' => 'Too Many Requests'],
+                429,
+                ['Retry-After' => '60']
+            ),
+        ]);
+
+        $result = $this->makeService()->check();
+
+        $this->assertSame('no_git', $result['status']);
+        $this->assertSame(0, $result['behind']);
+        $this->assertEmpty($result['commits']);
+    }
+
+    public function test_rate_limit_response_does_not_throw(): void
+    {
+        Cache::flush();
+        Http::fake([
+            'api.github.com/*' => Http::response(['message' => 'API rate limit exceeded'], 403),
+        ]);
+
+        // Must not throw — controller wraps nothing, so a throw would 500 the page
+        $this->expectNotToPerformAssertions();
+        try {
+            $this->makeService()->check();
+        } catch (\Throwable $e) {
+            $this->fail('check() threw when GitHub rate-limited: ' . $e->getMessage());
+        }
+    }
 }
