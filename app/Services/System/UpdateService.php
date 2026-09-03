@@ -22,7 +22,7 @@ use Throwable;
  * Every git/process interaction uses Symfony Process with an explicit timeout
  * and never leaks an embedded token — remote URLs are always sanitized.
  */
-final class UpdateService
+class UpdateService
 {
     public const OUTPUT_LIMIT = 20000;
 
@@ -510,7 +510,7 @@ final class UpdateService
     // Helpers
     // ------------------------------------------------------------------
 
-    private function isGitRepo(): bool
+    protected function isGitRepo(): bool
     {
         $res = $this->runProcess(['git', 'rev-parse', '--is-inside-work-tree'], 3);
 
