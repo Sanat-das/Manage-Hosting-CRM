@@ -911,18 +911,28 @@ document.addEventListener('DOMContentLoaded', function () {
             // Start polling every 2 seconds for live step updates
             pollTimer = setInterval(poll, 2000);
 
-            // Use the SSE endpoint so PHP calls flush() on every heartbeat — this
-            // resets IIS FastCGI activityTimeout and keeps the process alive for the
-            // full duration of the update.  We do NOT read the response stream here;
-            // the poll above handles all UI updates via the cache-backed progress endpoint.
+            // POST: controller returns {status:'started'} immediately after launching
+            // the update as a detached background process (avoids IIS requestTimeout).
+            // If PowerShell is unavailable the controller falls back to the SSE path
+            // and the response arrives later — both cases are handled here.
             fetch(updateUrl, {
                 method: 'POST',
                 headers: { 'Accept': 'text/event-stream', 'X-CSRF-TOKEN': csrfToken, 'Content-Type': 'application/x-www-form-urlencoded' },
                 body: '_token=' + encodeURIComponent(csrfToken)
-            }).then(function () {
-                // SSE response flushed (all buffered events arrived at once) — poll
-                // will already have set isDone=true if the update completed.
-                if (!isDone) setStatus('Update running in background, checking status...');
+            }).then(function (r) { return r.json(); }).then(function (data) {
+                if (isDone) return;
+                if (data && data.status === 'started') {
+                    // Background process launched — poll handles all progress and completion.
+                    return;
+                }
+                // Synchronous fallback: treat the POST response as the final result.
+                stopPoll();
+                isDone = true;
+                var success = (data.status === 'success' || data.status === 'up_to_date') && (data.exit === undefined || data.exit === 0);
+                if (success) {
+                    STEPS.forEach(function (id) { if (stepEl(id) && stepEl(id).querySelector('.bi-circle')) setStep(id, 'done'); });
+                }
+                handleEvent(Object.assign({ step: success ? 'done' : 'error', progress: success ? 100 : 50, done: true }, data));
             }).catch(function () {
                 if (!isDone) setStatus('Update running in background, checking status...');
             });

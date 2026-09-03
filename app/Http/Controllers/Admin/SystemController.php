@@ -15,6 +15,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\View\View;
 use Symfony\Component\HttpFoundation\StreamedResponse;
+use Symfony\Component\Process\Process;
 use Throwable;
 
 class SystemController extends Controller
@@ -73,6 +74,41 @@ class SystemController extends Controller
     {
         $cacheKey = 'system.update_progress.' . $request->user()->id;
         Cache::forget($cacheKey);
+
+        // Background-process mode: AJAX callers get an immediate response while
+        // the update runs in a fully detached process (not subject to IIS requestTimeout).
+        $isAjax = $request->expectsJson() || str_contains($request->header('Accept', ''), 'text/event-stream');
+        if ($isAjax) {
+            // Prefer php.exe over php-cgi.exe for CLI invocation
+            $phpDir = dirname(PHP_BINARY);
+            $phpBin = is_file($phpDir . DIRECTORY_SEPARATOR . 'php.exe')
+                ? $phpDir . DIRECTORY_SEPARATOR . 'php.exe'
+                : PHP_BINARY;
+
+            $safePhp    = str_replace("'", "''", $phpBin);
+            $safeArtisan = str_replace("'", "''", base_path('artisan'));
+            $actorId    = (int) $request->user()->id;
+
+            $psCmd = "Start-Process -FilePath '$safePhp' -ArgumentList '$safeArtisan','system:run-update','--actor=$actorId' -WindowStyle Hidden";
+
+            $bgProcess = new Process(
+                ['powershell', '-NoProfile', '-NonInteractive', '-Command', $psCmd],
+                base_path(), null, null, 15.0
+            );
+
+            Cache::put($cacheKey, ['step' => 'waiting', 'progress' => 2, 'message' => 'Starting update...', 'done' => false], 600);
+            $bgProcess->run();
+
+            if ($bgProcess->isSuccessful()) {
+                return response()->json(['status' => 'started', 'message' => 'Update started in background.']);
+            }
+
+            // PowerShell unavailable or failed — fall through to synchronous paths below.
+            Log::warning('SystemController: background update launch failed, falling back to synchronous.', [
+                'exit'   => $bgProcess->getExitCode(),
+                'error'  => substr($bgProcess->getErrorOutput(), 0, 300),
+            ]);
+        }
 
         // Streaming mode: the JS progress UI sends Accept: text/event-stream
         if (str_contains($request->header('Accept', ''), 'text/event-stream')) {
