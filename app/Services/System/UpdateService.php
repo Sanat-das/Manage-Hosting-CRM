@@ -498,7 +498,20 @@ final class UpdateService
             return null;
         }
 
-        return trim($res['output']) !== '';
+        $output = trim($res['output']);
+        if ($output === '') {
+            return false;
+        }
+        // Ignore untracked (??) and ignored (!!) — they do not block pull --ff-only
+        foreach (explode("\n", $output) as $line) {
+            $trimmed = ltrim($line);
+            if ($trimmed === '' || str_starts_with($trimmed, '??') || str_starts_with($trimmed, '!!')) {
+                continue;
+            }
+            return true;
+        }
+
+        return false;
     }
 
     private function composerAvailable(): bool

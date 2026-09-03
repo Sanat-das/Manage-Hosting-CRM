@@ -106,10 +106,23 @@ final class AppInfoService
             $date = trim($dateRes['output']);
         }
 
-        // Dirty flag
+        // Dirty flag — ignore untracked/ignored (?? / !!) which do not block pull
         $statusRes = $this->runProcess(['git', 'status', '--porcelain'], 3);
         if ($statusRes['success']) {
-            $dirty = trim($statusRes['output']) !== '';
+            $raw = trim($statusRes['output']);
+            if ($raw === '') {
+                $dirty = false;
+            } else {
+                $dirty = false;
+                foreach (explode("\n", $raw) as $line) {
+                    $t = ltrim($line);
+                    if ($t === '' || str_starts_with($t, '??') || str_starts_with($t, '!!')) {
+                        continue;
+                    }
+                    $dirty = true;
+                    break;
+                }
+            }
         }
 
         // Remote URL (raw + sanitized)
