@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace App\Services\System;
 
 use App\Models\User;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Symfony\Component\Process\Process;
@@ -33,6 +35,31 @@ final class UpdateService
     {
         // Guard: is this even a git repo?
         if (! $this->isGitRepo()) {
+            $api = $this->fetchGithubCommits(5);
+            if ($api !== null && ! empty($api['commits'])) {
+                $latest = $api['commits'][0];
+                $localVersion = trim((string) (is_file(base_path('VERSION')) ? file_get_contents(base_path('VERSION')) : config('app.version', 'dev')));
+                $localVersion = $localVersion !== '' ? $localVersion : 'dev';
+                return [
+                    'status' => 'no_git',
+                    'message' => sprintf(
+                        'This is a ZIP/manual install (local version %s). Latest on GitHub is %s from %s — download the latest ZIP from GitHub, replace files (keep .env, storage/, install.lock), then run composer install --no-dev --optimize-autoloader && php artisan migrate --force && php artisan optimize:clear.',
+                        $localVersion,
+                        $latest['short'] ?? substr($latest['hash'] ?? '', 0, 7),
+                        $latest['date'] ?? 'unknown'
+                    ),
+                    'behind' => count($api['commits']),
+                    'commits' => $api['commits'],
+                    'diffStat' => null,
+                    'localHash' => $localVersion,
+                    'remoteHash' => $api['remoteHash'],
+                    'branch' => 'main',
+                    'remoteSanitized' => 'https://github.com/Sanat-das/Manage-Hosting-CRM',
+                    'remoteUrlRaw' => 'https://github.com/Sanat-das/Manage-Hosting-CRM.git',
+                    'dirty' => null,
+                ];
+            }
+
             return [
                 'status' => 'no_git',
                 'message' => 'This installation was not deployed via git. To update, download the latest ZIP from GitHub, replace files (keep .env, storage/, install.lock), then run composer install --no-dev --optimize-autoloader && php artisan migrate --force && php artisan optimize:clear.',
@@ -803,6 +830,50 @@ final class UpdateService
                 'actor' => $actor->id ?? null,
             ]);
         } catch (Throwable) {
+        }
+    }
+
+    /**
+     * Fetch the last $limit commits from the GitHub API (no auth required for public repos).
+     *
+     * @return array{remoteHash: string, commits: list<array{hash: string, short: string, message: string, author: string, date: string}>}|null
+     */
+    private function fetchGithubCommits(int $limit = 5): ?array
+    {
+        try {
+            $response = Cache::remember('system.github_commits', 300, function () use ($limit) {
+                return Http::timeout(8)
+                    ->withHeaders(['Accept' => 'application/vnd.github.v3+json', 'User-Agent' => 'ManageHosting-CRM'])
+                    ->get("https://api.github.com/repos/Sanat-das/Manage-Hosting-CRM/commits", ['per_page' => $limit, 'sha' => 'main']);
+            });
+
+            if (! $response->successful()) {
+                return null;
+            }
+
+            $items = $response->json();
+            if (! is_array($items)) {
+                return null;
+            }
+
+            $commits = [];
+            foreach ($items as $item) {
+                $hash = $item['sha'] ?? '';
+                $commits[] = [
+                    'hash' => $hash,
+                    'short' => substr($hash, 0, 7),
+                    'message' => $item['commit']['message'] ?? '',
+                    'author' => $item['commit']['author']['name'] ?? '',
+                    'date' => $item['commit']['author']['date'] ?? '',
+                ];
+            }
+
+            return [
+                'remoteHash' => $commits[0]['hash'] ?? null,
+                'commits' => $commits,
+            ];
+        } catch (Throwable) {
+            return null;
         }
     }
 }
