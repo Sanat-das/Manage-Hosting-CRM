@@ -221,20 +221,7 @@ class UpdateService
         try {
             // Guards (fail fast before any mutation)
             if (! $this->isGitRepo()) {
-                $result = $this->buildRunResult(
-                    status: 'no_git',
-                    message: 'This installation was not deployed via git — cannot run update.',
-                    behind: 0,
-                    from: $fromHash,
-                    to: null,
-                    branch: $branch,
-                    remoteSanitized: $remoteSanitized,
-                    exit: 1,
-                    startedAt: $startedAt,
-                    output: 'Not a git repository.'
-                );
-                $emit('error', $result['message'], 0, true, $result);
-                return $result;
+                return $this->runZip($actor, $emit);
             }
 
             if ($remoteRaw === null || trim($remoteRaw) === '') {
@@ -522,6 +509,167 @@ class UpdateService
         }
     }
 
+    /**
+     * ZIP-based update for installations without git.
+     * Downloads the GitHub zipball, extracts it, deploys files (preserving .env / storage / install.lock),
+     * then runs composer install, migrate, and cache clear — the same chain as run().
+     *
+     * @return array{status: string, message: string, behind: int, from: string|null, to: string|null, branch: string|null, remoteSanitized: string|null, exit: int, durationMs: int, output: string}
+     */
+    public function runZip(User $actor, ?callable $emit = null): array
+    {
+        $emit ??= static function (string $step, string $message, int $progress, bool $done = false, array $extra = []): void {};
+        $startedAt   = microtime(true);
+        $capturedOutput = '';
+        $appRoot     = base_path();
+        $remoteSanitized = 'https://github.com/Sanat-das/Manage-Hosting-CRM';
+        $fromVersion = $this->resolveLocalVersion();
+        $rand        = Str::random(8);
+        $tmpDir      = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'mh_update_' . $rand;
+        $zipPath     = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'mh_update_' . $rand . '.zip';
+        $didDown     = false;
+
+        $appendOutput = function (string $label, string $output, int $exit) use (&$capturedOutput): void {
+            $capturedOutput .= sprintf("\n[%s] exit=%d\n%s\n", $label, $exit, trim($output));
+        };
+
+        try {
+            if (! class_exists(\ZipArchive::class)) {
+                $result = $this->buildRunResult('failed', 'PHP ZipArchive extension is not available — enable the zip extension or update via SSH.', 0, $fromVersion, null, 'main', $remoteSanitized, 1, $startedAt, 'ZipArchive not available.');
+                $emit('error', $result['message'], 0, true, $result);
+                return $result;
+            }
+
+            @mkdir($tmpDir, 0755, true);
+
+            // Step: Download
+            $emit('download', 'Downloading latest update from GitHub...', 10);
+            $zipUrl    = 'https://api.github.com/repos/Sanat-das/Manage-Hosting-CRM/zipball/main';
+            $downloaded = $this->downloadZip($zipUrl, $zipPath);
+            $appendOutput('download zip', $downloaded ? 'Downloaded ' . number_format((float) (filesize($zipPath) / 1024 / 1024), 1) . ' MB' : 'Download failed', $downloaded ? 0 : 1);
+
+            if (! $downloaded) {
+                $result = $this->buildRunResult('fetch_failed', 'Could not download update from GitHub — check network connection and try again.', 0, $fromVersion, null, 'main', $remoteSanitized, 1, $startedAt, $capturedOutput);
+                $emit('error', $result['message'], 10, true, $result);
+                return $result;
+            }
+
+            // Step: Extract
+            $emit('extract', 'Unpacking update files...', 30);
+            $extractedRoot = $this->extractZip($zipPath, $tmpDir);
+            $appendOutput('extract zip', $extractedRoot !== null ? 'Extracted to ' . basename($extractedRoot) : 'Extraction failed', $extractedRoot !== null ? 0 : 1);
+
+            if ($extractedRoot === null) {
+                $result = $this->buildRunResult('failed', 'Could not extract update archive. The disk may be full or the download was corrupted.', 0, $fromVersion, null, 'main', $remoteSanitized, 1, $startedAt, $capturedOutput);
+                $emit('error', $result['message'], 30, true, $result);
+                return $result;
+            }
+
+            // Step: Maintenance mode
+            $emit('maintenance', 'Enabling maintenance mode...', 42);
+            $down   = $this->runProcess(['php', 'artisan', 'down', '--secret=' . Str::random(16)], 15);
+            $appendOutput('php artisan down', $down['output'], $down['exit']);
+            $didDown = $down['success'] || str_contains(strtolower($down['output']), 'already');
+
+            // Step: Deploy files (preserve .env, storage/, install.lock)
+            $emit('deploy', 'Installing update files...', 55);
+            $preserve = ['.env', 'storage', 'install.lock', 'public' . DIRECTORY_SEPARATOR . 'storage'];
+            try {
+                $this->syncDeploy($extractedRoot, $appRoot, $preserve);
+                $appendOutput('sync deploy', 'Files deployed successfully.', 0);
+            } catch (Throwable $e) {
+                $appendOutput('sync deploy', $e->getMessage(), 1);
+                $result = $this->buildRunResult('failed', 'File deployment failed: ' . $e->getMessage(), 0, $fromVersion, null, 'main', $remoteSanitized, 1, $startedAt, $capturedOutput);
+                $emit('error', $result['message'], 55, true, $result);
+                return $result;
+            }
+
+            // Step: Composer
+            $emit('composer', 'Installing dependencies...', 65);
+            if ($this->composerAvailable()) {
+                $composer = $this->runProcess(['composer', 'install', '--no-dev', '--optimize-autoloader', '--no-interaction'], 180);
+                $appendOutput('composer install --no-dev --optimize-autoloader --no-interaction', $composer['output'], $composer['exit']);
+                if (! $composer['success']) {
+                    $result = $this->buildRunResult('failed', 'Files updated but dependencies failed — run composer install via SSH. ' . Str::limit($composer['output'], 500), 0, $fromVersion, null, 'main', $remoteSanitized, $composer['exit'], $startedAt, $capturedOutput);
+                    $this->audit($actor, $result, $capturedOutput, 0);
+                    $emit('error', $result['message'], 65, true, $result);
+                    return $result;
+                }
+            } else {
+                $appendOutput('composer install', 'composer not found in PATH — skipped. Run composer install via SSH.', 0);
+                try { Log::warning('UpdateService: composer not found during ZIP update.'); } catch (Throwable) {}
+            }
+
+            // Step: Migrate
+            $emit('migrate', 'Updating database schema (your data is preserved)...', 78);
+            $migrate = $this->runProcess(['php', 'artisan', 'migrate', '--force'], 60);
+            $appendOutput('php artisan migrate --force', $migrate['output'], $migrate['exit']);
+            if (! $migrate['success']) {
+                $result = $this->buildRunResult('failed', 'Database update failed — your existing data is intact. Contact support. ' . Str::limit($migrate['output'], 500), 0, $fromVersion, null, 'main', $remoteSanitized, $migrate['exit'], $startedAt, $capturedOutput);
+                $this->audit($actor, $result, $capturedOutput, 0);
+                $emit('error', $result['message'], 78, true, $result);
+                return $result;
+            }
+
+            // Step: Cache clears
+            $emit('cache', 'Clearing application cache...', 88);
+            foreach ([['php', 'artisan', 'optimize:clear'], ['php', 'artisan', 'config:clear'], ['php', 'artisan', 'view:clear']] as $cmd) {
+                $res = $this->runProcess($cmd, 30);
+                $appendOutput(implode(' ', $cmd), $res['output'], $res['exit']);
+            }
+
+            // Write VERSION with the remote commit hash so next check knows the installed version
+            $toVersion = null;
+            try {
+                $api = $this->fetchGithubCommits(1);
+                $toVersion = $api['remoteHash'] ?? null;
+                if ($toVersion !== null) {
+                    file_put_contents(base_path('VERSION'), substr($toVersion, 0, 7));
+                }
+            } catch (Throwable) {}
+
+            $short  = $toVersion ? substr($toVersion, 0, 7) : 'latest';
+            $result = $this->buildRunResult('success', sprintf('Successfully updated to version %s.', $short), 0, $fromVersion, $toVersion, 'main', $remoteSanitized, 0, $startedAt, $capturedOutput);
+            $this->audit($actor, $result, $capturedOutput, 0);
+            $emit('done', $result['message'], 100, true, $result);
+            return $result;
+
+        } catch (Throwable $e) {
+            Log::error('UpdateService::runZip failed.', ['error' => $e->getMessage()]);
+            $capturedOutput .= "\n[exception] " . $e->getMessage() . "\n";
+            $result = $this->buildRunResult('unknown', 'Update failed unexpectedly. Please contact support.', 0, $fromVersion, null, 'main', $remoteSanitized, 1, $startedAt, Str::limit($capturedOutput, self::OUTPUT_LIMIT));
+            try { $this->audit($actor, $result, $capturedOutput, 0); } catch (Throwable) {}
+            $emit('error', $result['message'], 0, true, $result);
+            return $result;
+        } finally {
+            // Bring site back up even on failure
+            try {
+                $up = $this->runProcess(['php', 'artisan', 'up'], 15);
+                if (! $up['success']) {
+                    try { \Illuminate\Support\Facades\Artisan::call('up'); } catch (Throwable) {}
+                }
+            } catch (Throwable) {
+                try { \Illuminate\Support\Facades\Artisan::call('up'); } catch (Throwable) {}
+            }
+
+            // Log to update.log
+            if (trim($capturedOutput) !== '') {
+                try {
+                    $logPath = storage_path('logs/update.log');
+                    $dir     = dirname($logPath);
+                    if (! is_dir($dir)) { @mkdir($dir, 0755, true); }
+                    @file_put_contents($logPath, sprintf("[%s] actor=%s method=zip from=%s\n%s\n---\n", now()->toDateTimeString(), (string) ($actor->id ?? 'unknown'), $fromVersion, Str::limit($capturedOutput, self::OUTPUT_LIMIT)), FILE_APPEND | LOCK_EX);
+                } catch (Throwable) {}
+            }
+
+            // Clean up temp files
+            try {
+                if (is_file($zipPath)) { @unlink($zipPath); }
+                if (is_dir($tmpDir))   { $this->rrmdir($tmpDir); }
+            } catch (Throwable) {}
+        }
+    }
+
     // ------------------------------------------------------------------
     // Helpers
     // ------------------------------------------------------------------
@@ -606,6 +754,113 @@ class UpdateService
                 'success' => false,
             ];
         }
+    }
+
+    private function resolveLocalVersion(): string
+    {
+        $ver = trim((string) (is_file(base_path('VERSION')) ? file_get_contents(base_path('VERSION')) : config('app.version', 'dev')));
+
+        return $ver !== '' ? $ver : 'dev';
+    }
+
+    private function downloadZip(string $url, string $destPath): bool
+    {
+        try {
+            $caBundle = storage_path('cacert.pem');
+            $client   = Http::timeout(120)
+                ->withHeaders(['Accept' => 'application/vnd.github.v3+json', 'User-Agent' => 'ManageHosting-CRM']);
+            if (is_file($caBundle)) {
+                $client = $client->withOptions(['verify' => $caBundle]);
+            }
+            $response = $client->sink($destPath)->get($url);
+
+            return $response->successful() && is_file($destPath) && filesize($destPath) > 0;
+        } catch (Throwable $e) {
+            Log::warning('UpdateService: ZIP download failed.', ['error' => $e->getMessage()]);
+
+            return false;
+        }
+    }
+
+    /**
+     * Extract a ZIP archive and return the path to the single root directory inside it
+     * (GitHub zipballs always wrap everything in one top-level directory).
+     */
+    private function extractZip(string $zipPath, string $destDir): ?string
+    {
+        $zip = new \ZipArchive();
+        if ($zip->open($zipPath) !== true) {
+            return null;
+        }
+        $zip->extractTo($destDir);
+        $zip->close();
+
+        // Find the one root directory GitHub always creates (owner-repo-{sha}/)
+        $entries = glob($destDir . DIRECTORY_SEPARATOR . '*', GLOB_ONLYDIR);
+        if (empty($entries)) {
+            return null;
+        }
+
+        return $entries[0];
+    }
+
+    /**
+     * Recursively copy files from $srcDir into $destDir, skipping paths listed in $preserve.
+     * $preserve entries are relative to $destDir (e.g. '.env', 'storage', 'install.lock').
+     */
+    private function syncDeploy(string $srcDir, string $destDir, array $preserve): void
+    {
+        $sep = DIRECTORY_SEPARATOR;
+        $normalizedPreserve = array_map(
+            static fn ($p) => rtrim(str_replace(['/', '\\'], $sep, $p), $sep),
+            $preserve
+        );
+
+        $iterator = new \RecursiveIteratorIterator(
+            new \RecursiveDirectoryIterator($srcDir, \RecursiveDirectoryIterator::SKIP_DOTS),
+            \RecursiveIteratorIterator::SELF_FIRST
+        );
+
+        foreach ($iterator as $item) {
+            $relativePath = substr($item->getPathname(), strlen($srcDir) + 1);
+
+            // Skip any path that matches or is under a preserved prefix
+            foreach ($normalizedPreserve as $p) {
+                if ($relativePath === $p || str_starts_with($relativePath, $p . $sep)) {
+                    continue 2;
+                }
+            }
+
+            $destPath = $destDir . $sep . $relativePath;
+
+            if ($item->isDir()) {
+                if (! is_dir($destPath)) {
+                    @mkdir($destPath, 0755, true);
+                }
+            } else {
+                $destParent = dirname($destPath);
+                if (! is_dir($destParent)) {
+                    @mkdir($destParent, 0755, true);
+                }
+                copy($item->getPathname(), $destPath);
+            }
+        }
+    }
+
+    /** Recursively delete a directory. */
+    private function rrmdir(string $dir): void
+    {
+        if (! is_dir($dir)) {
+            return;
+        }
+        $items = new \RecursiveIteratorIterator(
+            new \RecursiveDirectoryIterator($dir, \RecursiveDirectoryIterator::SKIP_DOTS),
+            \RecursiveIteratorIterator::CHILD_FIRST
+        );
+        foreach ($items as $item) {
+            $item->isDir() ? rmdir($item->getPathname()) : unlink($item->getPathname());
+        }
+        rmdir($dir);
     }
 
     private function getRemoteRaw(): ?string

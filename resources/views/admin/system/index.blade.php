@@ -455,7 +455,7 @@
                             <div class="small text-muted">No updates available right now.</div>
                         </div>
                     </div>
-                @elseif ($status === 'behind' && $behind > 0)
+                @elseif (in_array($status, ['behind', 'no_git'], true) && $behind > 0)
                     <div class="d-flex align-items-center gap-3 mb-4 p-3 bg-warning bg-opacity-10 rounded border border-warning border-opacity-25">
                         <i class="bi bi-cloud-arrow-up-fill text-warning fs-3 flex-shrink-0"></i>
                         <div>
@@ -508,7 +508,7 @@
                             <i class="bi bi-arrow-repeat me-1"></i> Check for updates
                         </button>
                     </form>
-                    @if ($behind > 0 && $status === 'behind')
+                    @if ($behind > 0 && in_array($status, ['behind', 'no_git'], true))
                         <button type="button" class="btn btn-warning" id="start-update-btn"
                             data-bs-toggle="modal" data-bs-target="#update-progress-modal"
                             data-behind="{{ $behind }}"
@@ -519,7 +519,7 @@
                     @endif
                 </div>
 
-                @if (in_array($status, ['no_git', 'no_remote'], true))
+                @if ($status === 'no_remote')
                     <div class="alert alert-secondary mt-3 mb-0 small">
                         <i class="bi bi-info-circle me-1"></i>
                         Automatic updates are not available for this installation. Please contact your system administrator.

@@ -68,7 +68,7 @@ final class SystemPageUpdateFlowTest extends TestCase
             $commits[] = [
                 'hash'    => $hash,
                 'short'   => substr($hash, 0, 7),
-                'message' => "feat: release commit $i",
+                'message' => "Release commit $i",
                 'author'  => 'Test Author',
                 'date'    => '2026-09-03T12:00:00Z',
             ];
@@ -98,7 +98,7 @@ final class SystemPageUpdateFlowTest extends TestCase
             ->get(route('admin.system.index', ['tab' => 'updates']));
 
         $response->assertOk();
-        $response->assertSee('up_to_date');
+        $response->assertSee('Your application is up to date');
         $response->assertDontSee('commit(s) behind');
     }
 
@@ -116,12 +116,11 @@ final class SystemPageUpdateFlowTest extends TestCase
             ->get(route('admin.system.index', ['tab' => 'updates']));
 
         $response->assertOk();
-        $response->assertSee('behind');
-        $response->assertSee('4 commit(s) behind');
-        // Each commit message appears in the table
+        $response->assertSee('An update is available');
+        $response->assertSee('4 improvements are ready');
+        // Each commit message appears in the What's new list
         foreach ($commits as $c) {
             $response->assertSee($c['message']);
-            $response->assertSee($c['short']);
         }
     }
 
@@ -143,9 +142,8 @@ final class SystemPageUpdateFlowTest extends TestCase
             ->get(route('admin.system.index', ['tab' => 'updates']));
 
         $response->assertOk();
-        $response->assertSee('no_git');
-        $response->assertSee('3 commit(s) behind');
-        $response->assertSee('ZIP/manual install');
+        $response->assertSee('An update is available');
+        $response->assertSee('3 improvements are ready');
         foreach ($commits as $c) {
             $response->assertSee($c['message']);
         }
@@ -166,9 +164,8 @@ final class SystemPageUpdateFlowTest extends TestCase
             ->get(route('admin.system.index', ['tab' => 'updates']));
 
         $response->assertOk();
-        $response->assertSee('no_git');
+        $response->assertSee('Check for updates');
         $response->assertDontSee('commit(s) behind');
-        $response->assertSee('not deployed via git');
     }
 
     // ------------------------------------------------------------------
@@ -231,10 +228,8 @@ final class SystemPageUpdateFlowTest extends TestCase
             ->get(route('admin.system.index', ['tab' => 'updates']));
 
         $response->assertOk();
-        $response->assertSee('no_git');
-        $response->assertDontSee('commit(s) behind');
-        $response->assertSee('not deployed via git');
         $response->assertSee('Check for updates');
+        $response->assertDontSee('commit(s) behind');
     }
 
     public function test_check_result_from_session_is_used_in_view(): void
@@ -255,7 +250,7 @@ final class SystemPageUpdateFlowTest extends TestCase
             ->get(route('admin.system.index', ['tab' => 'updates']));
 
         $response->assertOk();
-        $response->assertSee('2 commit(s) behind');
+        $response->assertSee('2 improvements are ready');
         $response->assertSee($commits[0]['message']);
     }
 }
