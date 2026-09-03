@@ -911,25 +911,20 @@ document.addEventListener('DOMContentLoaded', function () {
             // Start polling every 2 seconds for live step updates
             pollTimer = setInterval(poll, 2000);
 
-            // POST kicks off the update; on IIS the response may arrive late or
-            // after a timeout — the poll above handles intermediate progress regardless.
+            // Use the SSE endpoint so PHP calls flush() on every heartbeat — this
+            // resets IIS FastCGI activityTimeout and keeps the process alive for the
+            // full duration of the update.  We do NOT read the response stream here;
+            // the poll above handles all UI updates via the cache-backed progress endpoint.
             fetch(updateUrl, {
                 method: 'POST',
-                headers: { 'Accept': 'application/json', 'X-CSRF-TOKEN': csrfToken, 'Content-Type': 'application/x-www-form-urlencoded' },
+                headers: { 'Accept': 'text/event-stream', 'X-CSRF-TOKEN': csrfToken, 'Content-Type': 'application/x-www-form-urlencoded' },
                 body: '_token=' + encodeURIComponent(csrfToken)
-            }).then(function (r) { return r.json(); }).then(function (data) {
-                stopPoll();
-                if (isDone) return;
-                isDone = true;
-                var success = (data.status === 'success' || data.status === 'up_to_date') && (data.exit === undefined || data.exit === 0);
-                if (success) {
-                    STEPS.forEach(function (id) { if (stepEl(id) && stepEl(id).querySelector('.bi-circle')) setStep(id, 'done'); });
-                }
-                handleEvent(Object.assign({ step: success ? 'done' : 'error', progress: success ? 100 : 50, done: true }, data));
+            }).then(function () {
+                // SSE response flushed (all buffered events arrived at once) — poll
+                // will already have set isDone=true if the update completed.
+                if (!isDone) setStatus('Update running in background, checking status...');
             }).catch(function () {
-                // IIS may close the connection before the update finishes — keep polling
-                if (isDone) return;
-                setStatus('Update running in background, checking status...');
+                if (!isDone) setStatus('Update running in background, checking status...');
             });
         }
     }
