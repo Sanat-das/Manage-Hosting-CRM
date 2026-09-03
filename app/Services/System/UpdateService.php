@@ -28,6 +28,14 @@ class UpdateService
     public const OUTPUT_LIMIT = 20000;
 
     /**
+     * How many recent commits to pull from the GitHub API.
+     *
+     * Doubles as the lookback for ZIP installs: the installed commit has to be
+     * findable in this window for "commits behind" to be computable at all.
+     */
+    public const COMMIT_WINDOW = 30;
+
+    /**
      * Read-only check: is the checkout behind origin/main?
      *
      * @return array{status: string, message: string, behind: int, commits: list<array{hash: string, short: string, message: string, author: string, date: string}>, diffStat: string|null, localHash: string|null, remoteHash: string|null, branch: string|null, remoteSanitized: string|null, remoteUrlRaw: string|null, dirty: bool|null}
@@ -36,21 +44,55 @@ class UpdateService
     {
         // Guard: is this even a git repo?
         if (! $this->isGitRepo()) {
-            $api = $this->fetchGithubCommits(5);
+            $api = $this->fetchGithubCommits(self::COMMIT_WINDOW);
             if ($api !== null && ! empty($api['commits'])) {
-                $latest = $api['commits'][0];
-                $localVersion = trim((string) (is_file(base_path('VERSION')) ? file_get_contents(base_path('VERSION')) : config('app.version', 'dev')));
-                $localVersion = $localVersion !== '' ? $localVersion : 'dev';
+                $latest        = $api['commits'][0];
+                $latestShort   = $latest['short'] ?? substr($latest['hash'] ?? '', 0, 7);
+                $localVersion  = $this->resolveLocalVersion();
+
+                // Locate the installed commit in the window. Without a git
+                // checkout this is the only available signal, and "behind" used
+                // to be simply the number of commits fetched — so a ZIP install
+                // advertised an update forever, including straight after one.
+                $behind  = null;
+                $commits = $api['commits'];
+
+                foreach ($api['commits'] as $i => $commit) {
+                    if ($this->isInstalledCommit($localVersion, $commit)) {
+                        $behind  = $i;
+                        $commits = array_slice($api['commits'], 0, $i);
+                        break;
+                    }
+                }
+
+                if ($behind === 0) {
+                    return [
+                        'status' => 'up_to_date',
+                        'message' => sprintf('Up to date (version %s).', $localVersion),
+                        'behind' => 0,
+                        'commits' => [],
+                        'diffStat' => null,
+                        'localHash' => $localVersion,
+                        'remoteHash' => $api['remoteHash'],
+                        'branch' => 'main',
+                        'remoteSanitized' => 'https://github.com/Sanat-das/Manage-Hosting-CRM',
+                        'remoteUrlRaw' => 'https://github.com/Sanat-das/Manage-Hosting-CRM.git',
+                        'dirty' => null,
+                    ];
+                }
+
+                // $behind === null: the installed version is not in the window —
+                // a placeholder like 1.0.0, or an install older than the lookback.
+                // Offer the update, but don't state a commit count we can't back up.
+                $message = $behind === null
+                    ? sprintf('ZIP install (version %s) — update available. Latest is %s from %s.', $localVersion, $latestShort, $latest['date'] ?? 'unknown')
+                    : sprintf('Update available — %d improvement(s) since %s.', $behind, $localVersion);
+
                 return [
                     'status' => 'no_git',
-                    'message' => sprintf(
-                        'This is a ZIP/manual install (local version %s). Latest on GitHub is %s from %s — download the latest ZIP from GitHub, replace files (keep .env, storage/, install.lock), then run composer install --no-dev --optimize-autoloader && php artisan migrate --force && php artisan optimize:clear.',
-                        $localVersion,
-                        $latest['short'] ?? substr($latest['hash'] ?? '', 0, 7),
-                        $latest['date'] ?? 'unknown'
-                    ),
-                    'behind' => count($api['commits']),
-                    'commits' => $api['commits'],
+                    'message' => $message,
+                    'behind' => $behind ?? count($api['commits']),
+                    'commits' => $commits,
                     'diffStat' => null,
                     'localHash' => $localVersion,
                     'remoteHash' => $api['remoteHash'],
@@ -1078,7 +1120,28 @@ class UpdateService
         }
     }
 
-    private function resolveLocalVersion(): string
+    /**
+     * Does $localVersion identify $commit?
+     *
+     * The VERSION file holds the short hash written by the last successful
+     * update, so match it as a prefix of the full SHA. Placeholders such as
+     * "1.0.0" or "dev" identify nothing.
+     *
+     * @param  array{hash?: string, short?: string}  $commit
+     */
+    private function isInstalledCommit(string $localVersion, array $commit): bool
+    {
+        $local = strtolower(trim($localVersion));
+        $hash  = strtolower((string) ($commit['hash'] ?? ''));
+
+        if ($local === '' || $hash === '' || strlen($local) < 7 || ! ctype_xdigit($local)) {
+            return false;
+        }
+
+        return $local === $hash || str_starts_with($hash, $local);
+    }
+
+    protected function resolveLocalVersion(): string
     {
         $ver = trim((string) (is_file(base_path('VERSION')) ? file_get_contents(base_path('VERSION')) : config('app.version', 'dev')));
 
@@ -1598,12 +1661,20 @@ class UpdateService
      */
     private function fetchGithubCommits(int $limit = 5): ?array
     {
+        // Always fetch one fixed window and slice per caller: a single cache key
+        // then serves every limit, and the window has to be wide enough for
+        // check() to locate the installed commit inside it.
+        $slice = static fn (array $result): array => [
+            'remoteHash' => $result['remoteHash'] ?? null,
+            'commits'    => array_slice($result['commits'] ?? [], 0, max(1, $limit)),
+        ];
+
         // Only cache successful results — failed/rate-limited responses must not
         // block retries for 5 minutes.
         if (Cache::has('system.github_commits')) {
             $cached = Cache::get('system.github_commits');
             if (is_array($cached)) {
-                return $cached;
+                return $slice($cached);
             }
         }
 
@@ -1614,7 +1685,7 @@ class UpdateService
             if (is_file($caBundle)) {
                 $client = $client->withOptions(['verify' => $caBundle]);
             }
-            $response = $client->get('https://api.github.com/repos/Sanat-das/Manage-Hosting-CRM/commits', ['per_page' => $limit, 'sha' => 'main']);
+            $response = $client->get('https://api.github.com/repos/Sanat-das/Manage-Hosting-CRM/commits', ['per_page' => self::COMMIT_WINDOW, 'sha' => 'main']);
 
             if (! $response->successful()) {
                 Log::warning('UpdateService: GitHub API returned non-2xx.', [
@@ -1648,7 +1719,7 @@ class UpdateService
 
             Cache::put('system.github_commits', $result, 300);
 
-            return $result;
+            return $slice($result);
         } catch (Throwable $e) {
             Log::warning('UpdateService: GitHub API call failed.', [
                 'error' => $e->getMessage(),

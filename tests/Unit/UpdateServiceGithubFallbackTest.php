@@ -17,10 +17,17 @@ use Tests\TestCase;
  */
 final class UpdateServiceGithubFallbackTest extends TestCase
 {
-    private function makeService(): UpdateService
+    private function makeService(?string $localVersion = null): UpdateService
     {
-        return new class extends UpdateService {
+        return new class($localVersion) extends UpdateService {
+            public function __construct(private readonly ?string $stubVersion = null) {}
+
             protected function isGitRepo(): bool { return false; }
+
+            protected function resolveLocalVersion(): string
+            {
+                return $this->stubVersion ?? parent::resolveLocalVersion();
+            }
         };
     }
 
@@ -52,8 +59,40 @@ final class UpdateServiceGithubFallbackTest extends TestCase
         $this->assertCount(3, $result['commits']);
         $this->assertSame(3, $result['behind']);
         $this->assertNotEmpty($result['remoteHash']);
-        $this->assertStringContainsString('ZIP/manual install', $result['message']);
+        $this->assertStringContainsString('ZIP install', $result['message']);
         $this->assertSame('main', $result['branch']);
+    }
+
+    public function test_zip_install_matching_latest_commit_reports_up_to_date(): void
+    {
+        Http::fake([
+            'api.github.com/*' => Http::response($this->fakeGithubPayload(3), 200),
+        ]);
+
+        // VERSION holds the short hash written by the last successful update.
+        $latestShort = substr(str_pad('0', 40, 'a'), 0, 7);
+
+        $result = $this->makeService($latestShort)->check();
+
+        $this->assertSame('up_to_date', $result['status'], 'A ZIP install on the newest commit must not advertise an update.');
+        $this->assertSame(0, $result['behind']);
+        $this->assertSame([], $result['commits']);
+    }
+
+    public function test_zip_install_counts_only_commits_newer_than_installed(): void
+    {
+        Http::fake([
+            'api.github.com/*' => Http::response($this->fakeGithubPayload(5), 200),
+        ]);
+
+        // Third commit in the list — two newer ones exist above it.
+        $installed = substr(str_pad('2', 40, 'a'), 0, 7);
+
+        $result = $this->makeService($installed)->check();
+
+        $this->assertSame('no_git', $result['status']);
+        $this->assertSame(2, $result['behind']);
+        $this->assertCount(2, $result['commits']);
     }
 
     public function test_no_git_with_api_failure_returns_plain_no_git(): void
