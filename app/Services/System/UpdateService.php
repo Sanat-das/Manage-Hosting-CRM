@@ -840,14 +840,25 @@ class UpdateService
      */
     private function fetchGithubCommits(int $limit = 5): ?array
     {
+        // Only cache successful results — failed/rate-limited responses must not
+        // block retries for 5 minutes.
+        if (Cache::has('system.github_commits')) {
+            $cached = Cache::get('system.github_commits');
+            if (is_array($cached)) {
+                return $cached;
+            }
+        }
+
         try {
-            $response = Cache::remember('system.github_commits', 300, function () use ($limit) {
-                return Http::timeout(8)
-                    ->withHeaders(['Accept' => 'application/vnd.github.v3+json', 'User-Agent' => 'ManageHosting-CRM'])
-                    ->get("https://api.github.com/repos/Sanat-das/Manage-Hosting-CRM/commits", ['per_page' => $limit, 'sha' => 'main']);
-            });
+            $response = Http::timeout(8)
+                ->withHeaders(['Accept' => 'application/vnd.github.v3+json', 'User-Agent' => 'ManageHosting-CRM'])
+                ->get('https://api.github.com/repos/Sanat-das/Manage-Hosting-CRM/commits', ['per_page' => $limit, 'sha' => 'main']);
 
             if (! $response->successful()) {
+                Log::warning('UpdateService: GitHub API returned non-2xx.', [
+                    'status' => $response->status(),
+                    'body'   => substr($response->body(), 0, 300),
+                ]);
                 return null;
             }
 
@@ -860,20 +871,33 @@ class UpdateService
             foreach ($items as $item) {
                 $hash = $item['sha'] ?? '';
                 $commits[] = [
-                    'hash' => $hash,
-                    'short' => substr($hash, 0, 7),
+                    'hash'    => $hash,
+                    'short'   => substr($hash, 0, 7),
                     'message' => $item['commit']['message'] ?? '',
-                    'author' => $item['commit']['author']['name'] ?? '',
-                    'date' => $item['commit']['author']['date'] ?? '',
+                    'author'  => $item['commit']['author']['name'] ?? '',
+                    'date'    => $item['commit']['author']['date'] ?? '',
                 ];
             }
 
-            return [
+            $result = [
                 'remoteHash' => $commits[0]['hash'] ?? null,
-                'commits' => $commits,
+                'commits'    => $commits,
             ];
-        } catch (Throwable) {
+
+            Cache::put('system.github_commits', $result, 300);
+
+            return $result;
+        } catch (Throwable $e) {
+            Log::warning('UpdateService: GitHub API call failed.', [
+                'error' => $e->getMessage(),
+                'class' => get_class($e),
+            ]);
             return null;
         }
+    }
+
+    public function flushApiCache(): void
+    {
+        Cache::forget('system.github_commits');
     }
 }

@@ -515,6 +515,15 @@
                     @endif
                 </div>
 
+                @if ($status === 'no_git' && $behind === 0 && empty($commits))
+                    <div class="alert alert-warning mt-3 mb-2 small py-2">
+                        <i class="bi bi-exclamation-triangle me-1"></i>
+                        GitHub API check could not reach <code>api.github.com</code> — the behind count is unavailable.
+                        Check <code>storage/logs/laravel.log</code> for the reason (TLS, firewall, or rate-limit).
+                        Click <strong>Check for updates</strong> to retry.
+                    </div>
+                @endif
+
                 @if (in_array($status, ['no_git', 'no_remote'], true))
                     <div class="alert alert-secondary mt-3 mb-0">
                         <h6 class="alert-heading small"><i class="bi bi-info-circle me-1"></i> Update instructions (non-git)</h6>

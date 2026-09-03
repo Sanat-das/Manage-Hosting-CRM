@@ -51,6 +51,7 @@ class SystemController extends Controller
      */
     public function check(Request $request): RedirectResponse|JsonResponse
     {
+        $this->updater->flushApiCache();
         $result = $this->updater->check();
 
         if ($request->expectsJson()) {
