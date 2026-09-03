@@ -120,14 +120,4 @@ Route::middleware(['web', 'auth'])->prefix('admin')->name('admin.')->group(funct
         ->name('impersonate.stop');
 });
 
-// Client portal routes
-Route::middleware(['web', 'auth', 'client'])->prefix('client')->name('client.')->group(function () {
-    Route::get('dashboard', [App\Http\Controllers\Client\DashboardController::class, 'index'])
-        ->name('dashboard');
 
-    // Client profile (view + edit own details)
-    Route::get('profile', [App\Http\Controllers\Client\ProfileController::class, 'edit'])
-        ->name('profile');
-    Route::put('profile', [App\Http\Controllers\Client\ProfileController::class, 'update'])
-        ->name('profile.update');
-});
