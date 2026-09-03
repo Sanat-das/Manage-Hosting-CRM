@@ -580,7 +580,9 @@ class UpdateService
 
             // Step: Extract
             $emit('extract', 'Unpacking update files...', 30);
+            @file_put_contents(storage_path('logs/update.log'), sprintf("[%s] extract-start: zip=%s size=%d\n", now()->toDateTimeString(), $zipPath, is_file($zipPath) ? filesize($zipPath) : 0), FILE_APPEND | LOCK_EX);
             $extractedRoot = $this->extractZip($zipPath, $tmpDir);
+            @file_put_contents(storage_path('logs/update.log'), sprintf("[%s] extract-done: root=%s\n", now()->toDateTimeString(), $extractedRoot ?? 'null'), FILE_APPEND | LOCK_EX);
             $appendOutput('extract zip', $extractedRoot !== null ? 'Extracted to ' . basename($extractedRoot) : 'Extraction failed', $extractedRoot !== null ? 0 : 1);
 
             if ($extractedRoot === null) {
@@ -824,13 +826,18 @@ class UpdateService
                 }
                 $process->wait();
 
-                if ($process->isSuccessful() && is_file($destPath) && filesize($destPath) > 0) {
+                $curlExit  = $process->getExitCode();
+                $curlSize  = is_file($destPath) ? filesize($destPath) : 0;
+                $curlError = substr($process->getErrorOutput(), 0, 300);
+                @file_put_contents(storage_path('logs/update.log'), sprintf("[%s] curl-done: exit=%d size=%d err=%s\n", now()->toDateTimeString(), $curlExit ?? -1, $curlSize, $curlError ?: 'none'), FILE_APPEND | LOCK_EX);
+
+                if ($process->isSuccessful() && $curlSize > 0) {
                     return true;
                 }
 
                 Log::warning('UpdateService: curl ZIP download failed.', [
-                    'exit'  => $process->getExitCode(),
-                    'error' => substr($process->getErrorOutput(), 0, 500),
+                    'exit'  => $curlExit,
+                    'error' => $curlError,
                 ]);
             } catch (Throwable $e) {
                 Log::warning('UpdateService: curl process exception.', ['error' => $e->getMessage()]);
