@@ -585,10 +585,13 @@ class UpdateService
                 return $result;
             }
 
-            // Step: Extract
+            // Step: Extract — non-blocking so heartbeats keep IIS activityTimeout from firing
             $checkpoint('step=extract status=starting');
             $emit('extract', 'Unpacking update files...', 30);
-            $extractedRoot = $this->extractZip($zipPath, $tmpDir);
+            $extractHeartbeat = function () use ($emit): void {
+                $emit('extract', 'Unpacking update files...', 30);
+            };
+            $extractedRoot = $this->extractZip($zipPath, $tmpDir, $extractHeartbeat);
             $checkpoint('step=extract status=' . ($extractedRoot !== null ? 'done root=' . basename($extractedRoot) : 'failed'));
             $appendOutput('extract zip', $extractedRoot !== null ? 'Extracted to ' . basename($extractedRoot) : 'Extraction failed', $extractedRoot !== null ? 0 : 1);
 
@@ -892,9 +895,54 @@ class UpdateService
     /**
      * Extract a ZIP archive and return the path to the single root directory inside it
      * (GitHub zipballs always wrap everything in one top-level directory).
+     *
+     * Prefers a non-blocking PowerShell Expand-Archive child process so the caller can
+     * emit SSE heartbeats every 5 s — prevents IIS FastCGI activityTimeout during the
+     * (potentially long) extraction of a large ZIP.  Falls back to ZipArchive.
      */
-    private function extractZip(string $zipPath, string $destDir): ?string
+    private function extractZip(string $zipPath, string $destDir, ?callable $heartbeat = null): ?string
     {
+        @mkdir($destDir, 0755, true);
+        $heartbeat ??= static function (): void {};
+
+        // ── Non-blocking PowerShell Expand-Archive (Windows Server) ──────────
+        $psCheck = $this->runProcess(['powershell', '-Command', 'echo ok'], 5);
+        if ($psCheck['success']) {
+            try {
+                $safeZip  = str_replace("'", "''", $zipPath);
+                $safeDest = str_replace("'", "''", $destDir);
+                $process  = new Process(
+                    ['powershell', '-NoProfile', '-NonInteractive', '-Command',
+                     "Expand-Archive -LiteralPath '" . $safeZip . "' -DestinationPath '" . $safeDest . "' -Force"],
+                    base_path(), null, null, 300.0
+                );
+                $process->start();
+                while ($process->isRunning()) {
+                    $heartbeat();
+                    sleep(5);
+                }
+                $process->wait();
+
+                if ($process->isSuccessful()) {
+                    $entries = glob($destDir . DIRECTORY_SEPARATOR . '*', GLOB_ONLYDIR);
+                    if (! empty($entries)) {
+                        return $entries[0];
+                    }
+                }
+
+                Log::warning('UpdateService: PowerShell Expand-Archive failed.', [
+                    'exit'  => $process->getExitCode(),
+                    'error' => substr($process->getErrorOutput(), 0, 500),
+                ]);
+            } catch (Throwable $e) {
+                Log::warning('UpdateService: PowerShell extract exception.', ['error' => $e->getMessage()]);
+            }
+        }
+
+        // ── Fallback: blocking ZipArchive ─────────────────────────────────────
+        if (! class_exists(\ZipArchive::class)) {
+            return null;
+        }
         $zip = new \ZipArchive();
         if ($zip->open($zipPath) !== true) {
             return null;
@@ -902,13 +950,9 @@ class UpdateService
         $zip->extractTo($destDir);
         $zip->close();
 
-        // Find the one root directory GitHub always creates (owner-repo-{sha}/)
         $entries = glob($destDir . DIRECTORY_SEPARATOR . '*', GLOB_ONLYDIR);
-        if (empty($entries)) {
-            return null;
-        }
 
-        return $entries[0];
+        return ! empty($entries) ? $entries[0] : null;
     }
 
     /**
