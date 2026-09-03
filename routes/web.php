@@ -17,11 +17,11 @@ Route::get('/', function () {
 // Staff / admin login — redirects to the shared Fortify login page.
 Route::get('/admin', fn () => redirect(route('login')))->middleware('guest')->name('admin.login');
 
-// Self-registration (gated by admin setting).
-Route::middleware(['registration.enabled'])->group(function () {
+// Self-registration (gated by admin setting) — both GET and POST are throttled to prevent enumeration/scraping.
+// Login display and submission are throttled via Fortify limiter 'login' (5/min per email|IP) — see FortifyServiceProvider.
+Route::middleware(['registration.enabled', 'throttle:register'])->group(function () {
     Route::get('/register', fn () => view('auth.register'))->name('register');
-    Route::post('/register', [RegisteredUserController::class, 'store'])
-        ->middleware('throttle:register');
+    Route::post('/register', [RegisteredUserController::class, 'store']);
 });
 
 // AdminLTE scaffold routes

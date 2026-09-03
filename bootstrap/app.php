@@ -23,6 +23,7 @@
 use App\Http\Middleware\AdminMiddleware;
 use App\Http\Middleware\ClientMiddleware;
 use App\Http\Middleware\EnsureAppInstalled;
+use App\Http\Middleware\SecurityHeaders;
 use App\Http\Middleware\EnsureCustomerRecord;
 use App\Http\Middleware\EnsureRegistrationEnabled;
 use App\Http\Middleware\PermissionMiddleware;
@@ -92,6 +93,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'app.installed' => EnsureAppInstalled::class,
             'redirect.if.installed' => RedirectIfInstalled::class,
             'registration.enabled' => EnsureRegistrationEnabled::class,
+            'security.headers' => SecurityHeaders::class,
         ]);
 
         $middleware->redirectGuestsTo(function (Request $request) {
@@ -117,6 +119,7 @@ return Application::configure(basePath: dirname(__DIR__))
         // funnelled to the first-run installer wizard.
         $middleware->web(append: [
             EnsureAppInstalled::class,
+            SecurityHeaders::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

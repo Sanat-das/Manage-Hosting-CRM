@@ -956,3 +956,23 @@ textarea.form-control { min-height: 76px; resize: vertical; line-height: var(--l
 }
 .mh-dashboard-table tbody tr:hover { background: color-mix(in srgb, var(--color-primary) 4%, var(--bs-body-bg)); }
 [data-bs-theme="dark"] .mh-dashboard-table tbody tr:hover { background: color-mix(in srgb, var(--color-primary) 7%, var(--bs-body-bg)); }
+
+/* ── Settings hardening grid — equal-height labels + help text ─────────
+   Root cause: 4× col-md-3 with variable label length (e.g. long Strong
+   Password label) and missing help text on 2 cols caused uneven column
+   heights; selects misaligned. Fix: short labels + help text on every col
+   + flex column + min-height for label/help so row stays aligned even
+   when a label wraps on narrow viewports. Moved from inline <style> to
+   here so it is reusable and not scattered. ─────────────────────────── */
+.hardening-grid .form-label {
+    min-height: 1.5em;
+    line-height: 1.25;
+}
+.hardening-grid .form-text {
+    min-height: 2.4em;
+    display: block;
+}
+@media (max-width: 768px) {
+    .hardening-grid .form-label { min-height: 0; }
+    .hardening-grid .form-text { min-height: 0; }
+}

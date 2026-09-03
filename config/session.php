@@ -167,6 +167,10 @@ return [
     | to the server if the browser has a HTTPS connection. This will keep
     | the cookie from being sent to you when it can't be done securely.
     |
+    | Production must set SESSION_SECURE_COOKIE=true and use an https://
+    | APP_URL (optionally APP_FORCE_HTTPS=true behind a TLS proxy). The
+    | SecurityHeaders middleware only sends HSTS when the request is secure.
+    |
     */
 
     'secure' => env('SESSION_SECURE_COOKIE'),

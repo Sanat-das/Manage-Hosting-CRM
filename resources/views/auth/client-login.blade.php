@@ -5,11 +5,18 @@
 
     <form action="{{ route('login') }}" method="post">
         @csrf
+        {{-- Generic throttle / credential error — surfaced via email key without leaking whether the account exists --}}
+        @if($errors->has('email'))
+            <div class="alert alert-danger py-2 small" role="alert" aria-live="polite">
+                {{ $errors->first('email') }}
+            </div>
+        @endif
 
         <div class="input-group mb-3">
             <input type="email" name="email" value="{{ old('email') }}"
                    class="form-control @error('email') is-invalid @enderror"
-                   placeholder="{{ __('adminlte.email') }}" required autofocus>
+                   placeholder="{{ __('adminlte.email') }}" required autofocus
+                   autocomplete="email" aria-label="{{ __('adminlte.email') }}">
             <div class="input-group-text"><span class="bi bi-envelope"></span></div>
             @error('email')<div class="invalid-feedback d-block">{{ $message }}</div>@enderror
         </div>
@@ -17,10 +24,13 @@
         <div class="input-group mb-3">
             <input type="password" name="password"
                    class="form-control @error('password') is-invalid @enderror"
-                   placeholder="{{ __('adminlte.password') }}" required>
+                   placeholder="{{ __('adminlte.password') }}" required
+                   autocomplete="current-password" aria-label="{{ __('adminlte.password') }}">
             <div class="input-group-text"><span class="bi bi-lock-fill"></span></div>
             @error('password')<div class="invalid-feedback d-block">{{ $message }}</div>@enderror
         </div>
+
+        @include('components.math-captcha')
 
         <div class="row">
             <div class="col-8">

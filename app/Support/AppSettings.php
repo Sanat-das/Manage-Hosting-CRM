@@ -311,6 +311,10 @@ class AppSettings
             'lockout_duration' => 'security',
             'force_2fa' => 'security',
             'password_min_length' => 'security',
+            'security_honeypot_enabled' => 'security',
+            'security_headers_enabled' => 'security',
+            'security_strong_password_enabled' => 'security',
+            'security_math_captcha_enabled' => 'security',
             'notify_overdue_invoices' => 'notification',
             'notify_domain_expiry' => 'notification',
             'notify_new_tickets' => 'notification',
@@ -335,9 +339,14 @@ class AppSettings
         }
 
         if (self::$cache === null) {
-            self::$cache = DB::table('settings')
-                ->pluck('setting_value', 'setting_key')
-                ->toArray();
+            try {
+                self::$cache = DB::table('settings')
+                    ->pluck('setting_value', 'setting_key')
+                    ->toArray();
+            } catch (\Throwable) {
+                // Table not yet migrated (e.g. in RefreshDatabase boot) — fall back to default.
+                return $default;
+            }
         }
 
         return self::$cache[$key] ?? $default;

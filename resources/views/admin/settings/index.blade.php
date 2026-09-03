@@ -565,6 +565,38 @@
                         </div>
                     </div>
                 </x-adminlte-card>
+                <x-adminlte-card icon="bi bi-shield-check" title="Login & Registration Hardening">
+                    <div class="row g-3 hardening-grid align-items-stretch">
+                        <div class="col-md-3 d-flex flex-column">
+                            <x-adminlte-select name="settings[security_honeypot_enabled]" label="Honeypot Bot Trap">
+                                <option value="yes" @selected(($settings['security_honeypot_enabled'] ?? 'yes') === 'yes')>Yes</option>
+                                <option value="no" @selected(($settings['security_honeypot_enabled'] ?? 'yes') === 'no')>No</option>
+                            </x-adminlte-select>
+                            <small class="form-text text-muted mt-1">Hidden field that blocks bots on register</small>
+                        </div>
+                        <div class="col-md-3 d-flex flex-column">
+                            <x-adminlte-select name="settings[security_headers_enabled]" label="Security Headers">
+                                <option value="yes" @selected(($settings['security_headers_enabled'] ?? 'yes') === 'yes')>Yes</option>
+                                <option value="no" @selected(($settings['security_headers_enabled'] ?? 'yes') === 'no')>No</option>
+                            </x-adminlte-select>
+                            <small class="form-text text-muted mt-1">HSTS, CSP, X-Frame and related headers</small>
+                        </div>
+                        <div class="col-md-3 d-flex flex-column">
+                            <x-adminlte-select name="settings[security_strong_password_enabled]" label="Strong Password Policy">
+                                <option value="yes" @selected(($settings['security_strong_password_enabled'] ?? 'yes') === 'yes')>Yes</option>
+                                <option value="no" @selected(($settings['security_strong_password_enabled'] ?? 'yes') === 'no')>No</option>
+                            </x-adminlte-select>
+                            <small class="form-text text-muted mt-1">12+ chars, mixed case, symbols, breach check</small>
+                        </div>
+                        <div class="col-md-3 d-flex flex-column">
+                            <x-adminlte-select name="settings[security_math_captcha_enabled]" label="Math Captcha">
+                                <option value="yes" @selected(($settings['security_math_captcha_enabled'] ?? 'no') === 'yes')>Yes</option>
+                                <option value="no" @selected(($settings['security_math_captcha_enabled'] ?? 'no') === 'no')>No</option>
+                            </x-adminlte-select>
+                            <small class="form-text text-muted mt-1">Simple addition/subtraction on login & register</small>
+                        </div>
+                    </div>
+                </x-adminlte-card>
                 @php $lu = $lastUpdated['security'] ?? $lastUpdated['all'] ?? null; @endphp
                 <small class="text-muted d-block mb-2 last-updated" data-section="security">@if($lu)Last updated: {{ \Illuminate\Support\Carbon::parse($lu->created_at)->format('Y-m-d H:i:s') }} — {{ $lu->description }}@else Last updated: never @endif</small>
             </div>

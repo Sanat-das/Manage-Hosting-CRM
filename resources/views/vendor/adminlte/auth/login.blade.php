@@ -22,6 +22,8 @@
             @error('password')<div class="invalid-feedback d-block">{{ $message }}</div>@enderror
         </div>
 
+        @include('components.math-captcha')
+
         <div class="row">
             <div class="col-8">
                 <div class="form-check">
