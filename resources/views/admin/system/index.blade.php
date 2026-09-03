@@ -445,63 +445,66 @@
                 };
             @endphp
 
-            <x-adminlte-card icon="bi bi-cloud-arrow-down" title="Update Status">
-                <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
-                    <span class="badge text-bg-{{ $statusBadge }}">{{ $status }}</span>
-                    @if ($behind > 0)
-                        <span class="badge text-bg-warning">{{ $behind }} commit(s) behind</span>
-                    @endif
-                    @if ($branch)
-                        <span class="small text-muted">Branch: <code>{{ $branch }}</code></span>
-                    @endif
-                    @if ($dirty === true)
-                        <span class="badge text-bg-warning">Dirty working tree</span>
-                    @elseif ($dirty === false)
-                        <span class="badge text-bg-success">Clean</span>
-                    @endif
-                </div>
-
-                @if (! empty($effectiveCheck['message']))
-                    <div class="alert alert-{{ $statusBadge === 'danger' ? 'danger' : ($statusBadge === 'warning' ? 'warning' : 'info') }} mb-3">
-                        {{ $effectiveCheck['message'] }}
-                    </div>
-                @endif
-
-                @if ($behind > 0 && ! empty($commits))
-                    <div class="table-responsive mb-3">
-                        <table class="table table-sm table-hover align-middle mb-0">
-                            <thead>
-                                <tr>
-                                    <th class="small text-muted">Commit</th>
-                                    <th class="small text-muted">Message</th>
-                                    <th class="small text-muted">Author</th>
-                                    <th class="small text-muted">Date</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                @foreach ($commits as $c)
-                                    <tr>
-                                        <td><code class="small">{{ $c['short'] ?? Str::limit($c['hash'] ?? '', 7, '') }}</code> <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-1 copy-btn" data-copy="{{ $c['hash'] ?? '' }}" aria-label="Copy hash"><i class="bi bi-clipboard"></i></button></td>
-                                        <td class="small text-break">{{ $c['message'] ?? '' }}</td>
-                                        <td class="small text-muted">{{ $c['author'] ?? '' }}</td>
-                                        <td class="small text-muted">{{ $c['date'] ?? '' }}</td>
-                                    </tr>
-                                @endforeach
-                            </tbody>
-                        </table>
-                    </div>
-                    @if ($diffStat)
-                        <div class="mb-3">
-                            <div class="small text-muted mb-1">Diff stat</div>
-                            <pre class="mb-0 bg-dark text-light p-2 rounded overflow-auto" style="max-height: 200px; white-space: pre-wrap; word-break: break-word;"><code>{{ $diffStat }}</code></pre>
+            <x-adminlte-card icon="bi bi-cloud-arrow-down" title="Software Updates">
+                {{-- Status banner --}}
+                @if ($status === 'up_to_date')
+                    <div class="d-flex align-items-center gap-3 mb-4 p-3 bg-success bg-opacity-10 rounded border border-success border-opacity-25">
+                        <i class="bi bi-check-circle-fill text-success fs-3 flex-shrink-0"></i>
+                        <div>
+                            <div class="fw-semibold">Your application is up to date</div>
+                            <div class="small text-muted">No updates available right now.</div>
                         </div>
-                    @endif
+                    </div>
+                @elseif ($status === 'behind' && $behind > 0)
+                    <div class="d-flex align-items-center gap-3 mb-4 p-3 bg-warning bg-opacity-10 rounded border border-warning border-opacity-25">
+                        <i class="bi bi-cloud-arrow-up-fill text-warning fs-3 flex-shrink-0"></i>
+                        <div>
+                            <div class="fw-semibold">An update is available</div>
+                            <div class="small text-muted">{{ $behind }} improvement{{ $behind > 1 ? 's are' : ' is' }} ready to install.</div>
+                        </div>
+                    </div>
+                @elseif ($status === 'fetch_failed')
+                    <div class="d-flex align-items-center gap-3 mb-4 p-3 bg-danger bg-opacity-10 rounded border border-danger border-opacity-25">
+                        <i class="bi bi-exclamation-circle-fill text-danger fs-3 flex-shrink-0"></i>
+                        <div>
+                            <div class="fw-semibold">Could not check for updates</div>
+                            <div class="small text-muted">Network error — please try again in a moment.</div>
+                        </div>
+                    </div>
+                @else
+                    <div class="d-flex align-items-center gap-3 mb-4 p-3 bg-secondary bg-opacity-10 rounded border border-secondary border-opacity-25">
+                        <i class="bi bi-arrow-repeat text-secondary fs-3 flex-shrink-0"></i>
+                        <div>
+                            <div class="fw-semibold">Check for updates</div>
+                            <div class="small text-muted">Click the button below to see if a newer version is available.</div>
+                        </div>
+                    </div>
                 @endif
 
+                {{-- What's new --}}
+                @if ($behind > 0 && ! empty($commits))
+                    <div class="mb-4">
+                        <div class="small fw-semibold text-uppercase text-muted letter-spacing-1 mb-2">What's new</div>
+                        <ul class="list-unstyled mb-0">
+                            @foreach ($commits as $c)
+                                @php
+                                    $msg = preg_replace('/^(feat|fix|chore|test|docs|refactor|style|perf|ci|build|revert)(\([^)]+\))?\!?:\s*/i', '', $c['message'] ?? '');
+                                    $msg = Str::ucfirst(Str::limit(trim($msg), 120));
+                                @endphp
+                                <li class="d-flex align-items-start gap-2 mb-2 small">
+                                    <i class="bi bi-check2-circle text-success mt-1 flex-shrink-0"></i>
+                                    <span>{{ $msg }}</span>
+                                </li>
+                            @endforeach
+                        </ul>
+                    </div>
+                @endif
+
+                {{-- Action buttons --}}
                 <div class="d-flex flex-wrap gap-2">
                     <form method="POST" action="{{ route('admin.system.check') }}">
                         @csrf
-                        <button type="submit" class="btn btn-outline-primary">
+                        <button type="submit" class="btn btn-outline-secondary">
                             <i class="bi bi-arrow-repeat me-1"></i> Check for updates
                         </button>
                     </form>
@@ -511,32 +514,15 @@
                             data-behind="{{ $behind }}"
                             data-from="{{ Str::limit($effectiveCheck['localHash'] ?? '', 7, '') }}"
                             data-to="{{ Str::limit($effectiveCheck['remoteHash'] ?? '', 7, '') }}">
-                            <i class="bi bi-cloud-arrow-up me-1"></i> Update now
+                            <i class="bi bi-cloud-arrow-up me-1"></i> Install Update
                         </button>
                     @endif
                 </div>
 
-                @if ($status === 'no_git' && $behind === 0 && empty($commits))
-                    <div class="alert alert-warning mt-3 mb-2 small py-2">
-                        <i class="bi bi-exclamation-triangle me-1"></i>
-                        GitHub API check could not reach <code>api.github.com</code> — the behind count is unavailable.
-                        Check <code>storage/logs/laravel.log</code> for the reason (TLS, firewall, or rate-limit).
-                        Click <strong>Check for updates</strong> to retry.
-                    </div>
-                @endif
-
                 @if (in_array($status, ['no_git', 'no_remote'], true))
-                    <div class="alert alert-secondary mt-3 mb-0">
-                        <h6 class="alert-heading small"><i class="bi bi-info-circle me-1"></i> Update instructions (non-git)</h6>
-                        <p class="small mb-2">This installation was not deployed via git. To update:</p>
-                        <ol class="small mb-2">
-                            <li>Download the latest ZIP from GitHub.</li>
-                            <li>Replace files (keep <code>.env</code>, <code>storage/</code>, <code>install.lock</code>).</li>
-                            <li>Run <code>composer install --no-dev --optimize-autoloader &amp;&amp; php artisan migrate --force &amp;&amp; php artisan optimize:clear</code>.</li>
-                        </ol>
-                        @if ($status === 'no_remote')
-                            <div class="small text-muted">Add remote: <code>git remote add origin https://github.com/Sanat-das/Manage-Hosting-CRM.git</code></div>
-                        @endif
+                    <div class="alert alert-secondary mt-3 mb-0 small">
+                        <i class="bi bi-info-circle me-1"></i>
+                        Automatic updates are not available for this installation. Please contact your system administrator.
                     </div>
                 @endif
             </x-adminlte-card>
@@ -621,19 +607,15 @@
             {{-- History --}}
             <x-adminlte-card icon="bi bi-clock-history" title="Update History">
                 @if ($history->isEmpty())
-                    <div class="text-muted small py-3 text-center">No update history yet.</div>
+                    <div class="text-muted small py-3 text-center">No updates have been applied yet.</div>
                 @else
                     <div class="table-responsive">
                         <table class="table table-sm table-hover align-middle mb-0">
                             <thead>
                                 <tr>
-                                    <th class="small text-muted">Started</th>
-                                    <th class="small text-muted">By</th>
-                                    <th class="small text-muted">From → To</th>
-                                    <th class="small text-muted">Commits</th>
-                                    <th class="small text-muted">Status</th>
-                                    <th class="small text-muted">Duration</th>
-                                    <th class="small text-muted">Output</th>
+                                    <th class="small text-muted">Date</th>
+                                    <th class="small text-muted">Result</th>
+                                    <th class="small text-muted">Details</th>
                                     <th class="small text-muted">Actions</th>
                                 </tr>
                             </thead>
@@ -646,46 +628,33 @@
                                         if (! is_array($props)) $props = [];
                                         $merged = array_merge($props, $meta);
                                         $from = $merged['from'] ?? null;
-                                        $to = $merged['to'] ?? null;
-                                        $behindHist = $merged['behind'] ?? null;
                                         $statusHist = $merged['status'] ?? ($row->event ?? 'unknown');
-                                        $duration = $merged['duration_ms'] ?? null;
                                         $outputExcerpt = $merged['output_excerpt'] ?? $merged['output'] ?? '';
-                                        $triggeredBy = $merged['triggered_by'] ?? $row->user_id ?? '—';
                                         $collapseId = 'history-output-' . ($row->id ?? $loop->index);
                                     @endphp
                                     <tr>
-                                        <td class="small text-muted" style="white-space: nowrap;">{{ $row->created_at ? \Illuminate\Support\Carbon::parse($row->created_at)->format('M j, H:i:s') : '—' }}</td>
-                                        <td class="small">{{ $triggeredBy }}</td>
-                                        <td class="small">
-                                            @if ($from || $to)
-                                                <code>{{ $from ? Str::limit($from, 7, '') : '?' }}</code> → <code>{{ $to ? Str::limit($to, 7, '') : '?' }}</code>
-                                            @else
-                                                <span class="text-muted">—</span>
-                                            @endif
+                                        <td class="small text-muted" style="white-space: nowrap;">
+                                            {{ $row->created_at ? \Illuminate\Support\Carbon::parse($row->created_at)->format('M j, Y g:i A') : '—' }}
                                         </td>
-                                        <td class="small">{{ $behindHist !== null ? $behindHist : '—' }}</td>
                                         <td>
                                             @if ($statusHist === 'success')
-                                                <span class="badge text-bg-success">Success</span>
+                                                <span class="badge text-bg-success"><i class="bi bi-check-lg me-1"></i>Success</span>
                                             @elseif (in_array($statusHist, ['failed', 'fetch_failed'], true))
-                                                <span class="badge text-bg-danger">{{ $statusHist }}</span>
+                                                <span class="badge text-bg-danger"><i class="bi bi-x-lg me-1"></i>Failed</span>
                                             @else
                                                 <span class="badge text-bg-secondary">{{ $statusHist }}</span>
                                             @endif
                                         </td>
-                                        <td class="small">{{ $duration !== null ? number_format((int) $duration) . ' ms' : '—' }}</td>
-                                        <td class="small text-muted">
+                                        <td class="small text-muted" style="max-width: 260px;">
                                             @if (trim((string) $outputExcerpt) !== '')
-                                                {{ Str::limit((string) $outputExcerpt, 500) }}
-                                                @if (mb_strlen((string) $outputExcerpt) > 500)
-                                                    <a class="ms-1" data-bs-toggle="collapse" href="#{{ $collapseId }}" role="button" aria-expanded="false" aria-controls="{{ $collapseId }}">Show</a>
-                                                    <div class="collapse mt-1" id="{{ $collapseId }}">
-                                                        <pre class="mb-0 bg-dark text-light p-2 rounded overflow-auto" style="max-height: 200px; white-space: pre-wrap; word-break: break-word;"><code>{{ Str::limit((string) $outputExcerpt, 20000) }}</code></pre>
-                                                    </div>
-                                                @endif
+                                                <a class="text-decoration-none" data-bs-toggle="collapse" href="#{{ $collapseId }}" role="button" aria-expanded="false">
+                                                    <i class="bi bi-terminal me-1"></i>View log
+                                                </a>
+                                                <div class="collapse mt-1" id="{{ $collapseId }}">
+                                                    <pre class="mb-0 bg-dark text-light p-2 rounded overflow-auto" style="max-height: 200px; font-size: 0.72rem; white-space: pre-wrap; word-break: break-word;"><code>{{ Str::limit((string) $outputExcerpt, 20000) }}</code></pre>
+                                                </div>
                                             @else
-                                                —
+                                                <span class="text-muted">—</span>
                                             @endif
                                         </td>
                                         <td>
