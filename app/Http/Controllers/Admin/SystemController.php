@@ -85,19 +85,47 @@ class SystemController extends Controller
                 ? $phpDir . DIRECTORY_SEPARATOR . 'php.exe'
                 : PHP_BINARY;
 
-            $safePhp    = str_replace("'", "''", $phpBin);
-            $safeArtisan = str_replace("'", "''", base_path('artisan'));
-            $actorId    = (int) $request->user()->id;
+            $actorId = (int) $request->user()->id;
+            $bgLog   = storage_path('logs/update-bg.log');
 
-            $psCmd = "Start-Process -FilePath '$safePhp' -ArgumentList '$safeArtisan','system:run-update','--actor=$actorId' -WindowStyle Hidden";
+            // Argument quoting is not survivable across the PHP -> shell ->
+            // launcher layers on Windows: PowerShell's -ArgumentList joins its
+            // entries with spaces without re-quoting them, and embedded double
+            // quotes are stripped in transit. Either way an install path
+            // containing a space ("C:\Program Files\...", "...\Local Sites\...")
+            // reaches php.exe split in two, and the process dies instantly with
+            // "Could not open input file" and no trace. Writing a .cmd wrapper
+            // keeps every quote inside a file this code generates, leaving the
+            // shell exactly one path to handle.
+            $launcher = storage_path('app/system-update-launch.cmd');
+            file_put_contents($launcher, implode("\r\n", [
+                '@echo off',
+                'cd /d "' . base_path() . '"',
+                '"' . $phpBin . '" "' . base_path('artisan') . '" system:run-update --actor=' . $actorId
+                    . ' > "' . $bgLog . '" 2>&1',
+                '',
+            ]));
 
-            $bgProcess = new Process(
-                ['powershell', '-NoProfile', '-NonInteractive', '-Command', $psCmd],
+            // `start "" /B` detaches: cmd returns immediately and the grandchild
+            // outlives the request. Its output goes to a file rather than an
+            // inherited pipe, so nothing here blocks waiting for EOF.
+            $bgProcess = Process::fromShellCommandline(
+                'start "" /B "' . $launcher . '"',
                 base_path(), null, null, 15.0
             );
 
             Cache::put($cacheKey, ['step' => 'waiting', 'progress' => 2, 'message' => 'Starting update...', 'done' => false], 600);
             $bgProcess->run();
+
+            // Logged unconditionally: on IIS this is the only proof the launch
+            // branch was reached at all, and which php binary it picked.
+            Log::info('SystemController: background update launch attempted.', [
+                'php'     => $phpBin,
+                'actor'   => $actorId,
+                'exit'    => $bgProcess->getExitCode(),
+                'stderr'  => substr(trim($bgProcess->getErrorOutput()), 0, 500),
+                'bgLog'   => $bgLog,
+            ]);
 
             if ($bgProcess->isSuccessful()) {
                 return response()->json(['status' => 'started', 'message' => 'Update started in background.']);
