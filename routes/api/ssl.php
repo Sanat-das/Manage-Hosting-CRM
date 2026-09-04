@@ -15,10 +15,17 @@ use Illuminate\Support\Facades\Route;
 
 Route::middleware('api')->prefix('api')->group(function () {
     Route::middleware('auth:sanctum')->prefix('ssl')->group(function () {
-        Route::get('/', [SslController::class, 'index']);
-        Route::post('/', [SslController::class, 'store']);
-        Route::get('{ssl}', [SslController::class, 'show']);
-        Route::put('{ssl}', [SslController::class, 'update']);
-        Route::delete('{ssl}', [SslController::class, 'destroy']);
+        // Authorization mirrors routes/admin/ssl.php: reads are `hosting.view`,
+        // writes are `settings.edit`.
+        Route::get('/', [SslController::class, 'index'])
+            ->middleware('permission:hosting.view');
+        Route::post('/', [SslController::class, 'store'])
+            ->middleware('permission:settings.edit');
+        Route::get('{ssl}', [SslController::class, 'show'])
+            ->middleware('permission:hosting.view');
+        Route::put('{ssl}', [SslController::class, 'update'])
+            ->middleware('permission:settings.edit');
+        Route::delete('{ssl}', [SslController::class, 'destroy'])
+            ->middleware('permission:settings.edit');
     });
 });

@@ -42,14 +42,26 @@ Route::middleware('api')->prefix('api')->group(function () {
 
     // Knowledge base — Sanctum-protected article browsing + category management
     Route::middleware('auth:sanctum')->prefix('kb')->group(function () {
-        Route::get('/', [ApiKbController::class, 'index']);
-        Route::post('/', [ApiKbController::class, 'store']);
-        Route::get('categories', [ApiKbController::class, 'categories']);
-        Route::post('categories', [ApiKbController::class, 'storeCategory']);
-        Route::delete('categories/{category}', [ApiKbController::class, 'deleteCategory']);
-        Route::get('popular', [ApiKbController::class, 'popular']);
-        Route::get('{article}', [ApiKbController::class, 'show']);
-        Route::put('{article}', [ApiKbController::class, 'update']);
-        Route::delete('{article}', [ApiKbController::class, 'destroy']);
+        // Authorization mirrors routes/admin/support.php (`kb.*`). Unlike the
+        // ticket routes above, KB has no client-facing use on this API — the
+        // client portal reads the KB through its own web routes.
+        Route::get('/', [ApiKbController::class, 'index'])
+            ->middleware('permission:kb.view');
+        Route::post('/', [ApiKbController::class, 'store'])
+            ->middleware('permission:kb.create');
+        Route::get('categories', [ApiKbController::class, 'categories'])
+            ->middleware('permission:kb.view');
+        Route::post('categories', [ApiKbController::class, 'storeCategory'])
+            ->middleware('permission:kb.create');
+        Route::delete('categories/{category}', [ApiKbController::class, 'deleteCategory'])
+            ->middleware('permission:kb.delete');
+        Route::get('popular', [ApiKbController::class, 'popular'])
+            ->middleware('permission:kb.view');
+        Route::get('{article}', [ApiKbController::class, 'show'])
+            ->middleware('permission:kb.view');
+        Route::put('{article}', [ApiKbController::class, 'update'])
+            ->middleware('permission:kb.edit');
+        Route::delete('{article}', [ApiKbController::class, 'destroy'])
+            ->middleware('permission:kb.delete');
     });
 });

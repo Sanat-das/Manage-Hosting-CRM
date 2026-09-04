@@ -21,10 +21,16 @@ use Illuminate\Support\Facades\Route;
 
 Route::middleware('api')->prefix('api')->group(function () {
     Route::middleware('auth:sanctum')->prefix('products')->group(function () {
-        Route::get('/', [ProductController::class, 'index']);
-        Route::post('/', [ProductController::class, 'store']);
-        Route::get('{product}', [ProductController::class, 'show']);
-        Route::put('{product}', [ProductController::class, 'update']);
-        Route::delete('{product}', [ProductController::class, 'destroy']);
+        // Authorization mirrors routes/admin/products.php (`products.*`).
+        Route::get('/', [ProductController::class, 'index'])
+            ->middleware('permission:products.view');
+        Route::post('/', [ProductController::class, 'store'])
+            ->middleware('permission:products.create');
+        Route::get('{product}', [ProductController::class, 'show'])
+            ->middleware('permission:products.view');
+        Route::put('{product}', [ProductController::class, 'update'])
+            ->middleware('permission:products.edit');
+        Route::delete('{product}', [ProductController::class, 'destroy'])
+            ->middleware('permission:products.delete');
     });
 });

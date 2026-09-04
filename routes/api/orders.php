@@ -20,9 +20,14 @@ use Illuminate\Support\Facades\Route;
 
 Route::middleware('api')->prefix('api')->group(function () {
     Route::middleware('auth:sanctum')->prefix('orders')->group(function () {
-        Route::get('/', [OrderController::class, 'index']);
-        Route::post('/', [OrderController::class, 'store']);
-        Route::get('{order}', [OrderController::class, 'show']);
-        Route::put('{order}/status', [OrderController::class, 'updateStatus']);
+        // Authorization mirrors routes/admin/orders.php (`orders.*`).
+        Route::get('/', [OrderController::class, 'index'])
+            ->middleware('permission:orders.view');
+        Route::post('/', [OrderController::class, 'store'])
+            ->middleware('permission:orders.create');
+        Route::get('{order}', [OrderController::class, 'show'])
+            ->middleware('permission:orders.view');
+        Route::put('{order}/status', [OrderController::class, 'updateStatus'])
+            ->middleware('permission:orders.edit');
     });
 });

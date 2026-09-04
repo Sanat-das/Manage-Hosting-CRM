@@ -22,14 +22,22 @@ use Illuminate\Support\Facades\Route;
 
 Route::middleware('api')->prefix('api')->group(function () {
     Route::middleware('auth:sanctum')->prefix('hosting')->name('api.hosting.')->group(function () {
-        Route::get('/', [HostingController::class, 'index'])->name('index');
-        Route::post('/', [HostingController::class, 'store'])->name('store');
-        Route::get('{hostingAccount}', [HostingController::class, 'show'])->name('show');
-        Route::put('{hostingAccount}', [HostingController::class, 'update'])->name('update');
-        Route::delete('{hostingAccount}', [HostingController::class, 'destroy'])->name('destroy');
-
-        Route::post('{hostingAccount}/suspend', [HostingController::class, 'suspend'])->name('suspend');
-        Route::post('{hostingAccount}/unsuspend', [HostingController::class, 'unsuspend'])->name('unsuspend');
-        Route::post('{hostingAccount}/change-package', [HostingController::class, 'changePackage'])->name('change-package');
+        // Authorization mirrors routes/admin/hosting.php (`hosting.*`).
+        Route::get('/', [HostingController::class, 'index'])
+            ->middleware('permission:hosting.view')->name('index');
+        Route::post('/', [HostingController::class, 'store'])
+            ->middleware('permission:hosting.create')->name('store');
+        Route::get('{hostingAccount}', [HostingController::class, 'show'])
+            ->middleware('permission:hosting.view')->name('show');
+        Route::put('{hostingAccount}', [HostingController::class, 'update'])
+            ->middleware('permission:hosting.edit')->name('update');
+        Route::delete('{hostingAccount}', [HostingController::class, 'destroy'])
+            ->middleware('permission:hosting.delete')->name('destroy');
+        Route::post('{hostingAccount}/suspend', [HostingController::class, 'suspend'])
+            ->middleware('permission:hosting.suspend')->name('suspend');
+        Route::post('{hostingAccount}/unsuspend', [HostingController::class, 'unsuspend'])
+            ->middleware('permission:hosting.suspend')->name('unsuspend');
+        Route::post('{hostingAccount}/change-package', [HostingController::class, 'changePackage'])
+            ->middleware('permission:hosting.edit')->name('change-package');
     });
 });

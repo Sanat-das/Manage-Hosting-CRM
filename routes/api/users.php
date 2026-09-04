@@ -24,12 +24,20 @@ use Illuminate\Support\Facades\Route;
 */
 
 Route::middleware('api')->prefix('api')->group(function () {
+    // Authorization mirrors routes/admin/users.php (`users.*`). Without these
+    // gates `auth:sanctum` lets ANY token holder POST a `role=admin` account.
     Route::middleware('auth:sanctum')->group(function () {
-        Route::get('users', [UserController::class, 'index'])->name('api.users.index');
-        Route::post('users', [UserController::class, 'store'])->name('api.users.store');
-        Route::get('users/{user}', [UserController::class, 'show'])->name('api.users.show');
-        Route::put('users/{user}', [UserController::class, 'update'])->name('api.users.update');
-        Route::delete('users/{user}', [UserController::class, 'destroy'])->name('api.users.destroy');
-        Route::post('users/{user}/toggle-status', [UserController::class, 'toggleStatus'])->name('api.users.toggle-status');
+        Route::get('users', [UserController::class, 'index'])
+            ->middleware('permission:users.view')->name('api.users.index');
+        Route::post('users', [UserController::class, 'store'])
+            ->middleware('permission:users.create')->name('api.users.store');
+        Route::get('users/{user}', [UserController::class, 'show'])
+            ->middleware('permission:users.view')->name('api.users.show');
+        Route::put('users/{user}', [UserController::class, 'update'])
+            ->middleware('permission:users.edit')->name('api.users.update');
+        Route::delete('users/{user}', [UserController::class, 'destroy'])
+            ->middleware('permission:users.delete')->name('api.users.destroy');
+        Route::post('users/{user}/toggle-status', [UserController::class, 'toggleStatus'])
+            ->middleware('permission:users.edit')->name('api.users.toggle-status');
     });
 });

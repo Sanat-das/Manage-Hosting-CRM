@@ -72,9 +72,12 @@ class UserController extends Controller
                 'role' => $validated['role'],
                 'first_name' => $validated['first_name'],
                 'last_name' => $validated['last_name'],
-                'phone' => $validated['phone'] ?: null,
-                'company' => $validated['company'] ?: null,
-                'address' => $validated['address'] ?: null,
+                // `nullable` in StaffUserRequest means these keys can be absent
+                // entirely, not just empty — `?:` alone raises an undefined-key
+                // ErrorException and 500s the request.
+                'phone' => ($validated['phone'] ?? null) ?: null,
+                'company' => ($validated['company'] ?? null) ?: null,
+                'address' => ($validated['address'] ?? null) ?: null,
                 'status' => $validated['status'],
             ]);
 
