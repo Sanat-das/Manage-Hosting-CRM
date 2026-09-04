@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Client;
 
 use App\Http\Controllers\Controller;
 use App\Models\TicketAttachment;
+use App\Models\TicketReply;
 use App\Services\TicketService;
 use DomainException;
 use Illuminate\Http\RedirectResponse;
@@ -86,6 +87,14 @@ class TicketController extends Controller
         $ticket = $customer->tickets()
             ->with(['replies.user', 'assignedTo'])
             ->findOrFail($id);
+
+        // Staff internal notes are not a column — TicketService::addNote stores
+        // them as ordinary reply rows distinguished only by a message prefix.
+        // Nothing downstream filters them, so strip them here before the view
+        // ever sees them, mirroring Api\TicketController::show().
+        $ticket->setRelation('replies', $ticket->replies->reject(
+            fn (TicketReply $reply) => str_starts_with((string) $reply->message, TicketService::INTERNAL_NOTE_PREFIX)
+        )->values());
 
         return view('client.tickets.show', compact('ticket'));
     }
