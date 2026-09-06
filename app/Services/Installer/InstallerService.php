@@ -372,6 +372,19 @@ class InstallerService
         $this->setEnvValue('APP_ENV', 'production');
         $this->setEnvValue('APP_DEBUG', 'false');
 
+        // .env.example ships SESSION_SECURE_COOKIE=false so the wizard itself
+        // is usable over plain http — a Secure cookie is discarded by the
+        // browser there, and without a session the installer's own CSRF token
+        // can never round-trip (every submit 419s). Now that the scheme the
+        // admin actually reached this form over is known, put the flag back to
+        // true for an https install. A TLS-terminating proxy that this app is
+        // not configured to trust looks like http from here, so that case
+        // still needs the flag set by hand afterwards.
+        $this->setEnvValue(
+            'SESSION_SECURE_COOKIE',
+            request()->isSecure() ? 'true' : 'false'
+        );
+
         $this->setEnvValue('DB_CONNECTION', 'mysql');
         $this->setEnvValue('DB_HOST', (string) $input['db_host']);
         $this->setEnvValue('DB_PORT', (string) $input['db_port']);

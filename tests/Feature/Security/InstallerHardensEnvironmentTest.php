@@ -111,5 +111,34 @@ class InstallerHardensEnvironmentTest extends TestCase
             $body,
             'InstallerService::run() must set APP_DEBUG=false.'
         );
+
+        $this->assertMatchesRegularExpression(
+            "/setEnvValue\(\s*'SESSION_SECURE_COOKIE',\s*request\(\)->isSecure\(\)/",
+            $body,
+            'InstallerService::run() must set SESSION_SECURE_COOKIE from the request scheme.'
+        );
+    }
+
+    /**
+     * The pre-install environment must not ship a Secure session cookie.
+     *
+     * bootstrap/app.php copies .env.example -> .env before the app boots, so
+     * this file IS the environment the installer wizard runs under. Over plain
+     * http a Secure cookie is discarded by the browser, so the session is lost
+     * between rendering the form and submitting it and every POST /install
+     * fails CSRF with a 419 — the wizard becomes impossible to complete.
+     * run() raises the flag again when the install is done over https.
+     */
+    public function test_env_example_does_not_ship_a_secure_session_cookie(): void
+    {
+        $example = (string) file_get_contents(base_path('.env.example'));
+
+        $this->assertStringContainsString(
+            "SESSION_SECURE_COOKIE=false\n",
+            $example,
+            '.env.example must ship SESSION_SECURE_COOKIE=false or the installer 419s over http.'
+        );
+
+        $this->assertStringNotContainsString('SESSION_SECURE_COOKIE=true', $example);
     }
 }
