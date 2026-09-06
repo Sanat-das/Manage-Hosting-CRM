@@ -51,6 +51,7 @@ class ProvisioningDispatcher
         private readonly ModuleManager $modules,
         private readonly HostingService $hosting,
         private readonly ServerAllocator $servers,
+        private readonly WelcomeMailer $welcome,
     ) {}
 
     /**
@@ -123,13 +124,20 @@ class ProvisioningDispatcher
             'username' => $result->data['username'] ?? null,
         ], static fn ($value) => $value !== null));
 
-        return ProvisioningAttempt::provisioned($result->message, $this->recordEvent(
+        $event = $this->recordEvent(
             $order,
             $service,
             'completed',
             ['module' => $module->slug],
             ['message' => $result->message] + $this->redact($result->data),
-        ));
+        );
+
+        // Deliver the credentials the module just generated. This is the only
+        // point they exist in plaintext - they are redacted out of the event
+        // row above and stored encrypted (or not at all) by the module.
+        $this->welcome->send($order, $service->refresh(), $result->data);
+
+        return ProvisioningAttempt::provisioned($result->message, $event);
     }
 
     /**

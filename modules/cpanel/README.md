@@ -46,16 +46,26 @@ Suspend / unsuspend / terminate map to `suspendacct`, `unsuspendacct` and
 The generated password is stored encrypted in `panel_accounts.password_encrypted`
 (Laravel's `encrypted` cast — write only through the model, never a raw
 `DB::table()->update()`, or reads will throw). It is returned from `provision()`
-so a caller can deliver it, and `ProvisioningDispatcher` redacts it before
-writing the `provisioning_events` audit row.
+and delivered to the customer by `App\Services\Provisioning\WelcomeMailer`;
+`ProvisioningDispatcher` redacts it before writing the `provisioning_events`
+audit row.
 
 `panel_accounts` is a core table shared by all four panel modules, with a
 `panel` discriminator — the row records something living on someone else's
 server, so it has to outlive deactivating the module.
 
-**Not wired yet:** nothing delivers that password to the customer. The product's
-`welcome_email_template_id` is the intended hook. Until that exists, read it
-from the `panel_accounts` row or reset the password in WHM.
+**Delivery:** the welcome email uses the product's `welcome_email_template_id`,
+falling back to the shipped `service_activated` template, and is gated by the
+`hosting_welcome_email_enabled` setting. Place `{{service_credentials}}` in the
+template for a formatted login block, or use `{{service_username}}` /
+`{{service_password}}` / `{{service_ip}}` / `{{service_nameservers}}` /
+`{{control_panel_url}}` individually. A template with none of those still gets
+the block appended, so installs carrying an older `service_activated` body do
+not silently drop the password.
+
+The password never reaches the `emails` audit table: `SendEmail` persists its
+body, so `WelcomeMailer` passes a separately redacted `logBody`. Same reasoning
+as the `provisioning_events` redaction.
 
 ## Notes
 

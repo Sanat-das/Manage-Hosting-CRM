@@ -86,6 +86,18 @@ final class EmailTemplateDefaults
                 ['key' => 'invoices_url', 'label' => 'Invoices URL', 'desc' => 'List'],
                 ['key' => 'login_url', 'label' => 'Login URL', 'desc' => '/login'],
             ],
+            // Populated by WelcomeMailer from the provisioning module's result.
+            // Every one is blank when the module returned no credentials, so a
+            // template using them degrades to a plain activation notice.
+            'Service credentials' => [
+                ['key' => 'service_credentials', 'label' => 'Credentials Block', 'desc' => 'Pre-formatted login details table'],
+                ['key' => 'service_username', 'label' => 'Service Username', 'desc' => 'Panel username'],
+                ['key' => 'service_password', 'label' => 'Service Password', 'desc' => 'Generated password (never logged)'],
+                ['key' => 'service_ip', 'label' => 'Server IP', 'desc' => 'Allocated server IP'],
+                ['key' => 'service_nameservers', 'label' => 'Nameservers', 'desc' => 'ns1..., ns2...'],
+                ['key' => 'control_panel_url', 'label' => 'Control Panel URL', 'desc' => 'https://domain/cpanel'],
+                ['key' => 'activation_date', 'label' => 'Activation Date', 'desc' => 'M j, Y'],
+            ],
             'Other' => [
                 ['key' => 'year', 'label' => 'Year', 'desc' => '2026'],
                 ['key' => 'support_email', 'label' => 'Support Email', 'desc' => 'Alias company_email'],

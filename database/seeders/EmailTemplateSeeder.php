@@ -322,6 +322,8 @@ Your service has been successfully activated. Here are your service details:
   Domain         : {{domain}}
   Activated on   : {{activation_date}}
 
+{{service_credentials}}
+
 You can manage your service at any time by logging in to your account:
 {{app_url}}
 

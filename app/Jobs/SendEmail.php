@@ -31,9 +31,14 @@ class SendEmail implements ShouldQueue
      *                             plain text — `$body` is still stored on the EmailLog row and
      *                             sent as the plain-text alternative part.
      * @param  list<array{disk: string, path: string, filename: string, mimeType: ?string, isInline: bool, contentId: ?string}>  $attachments
-     *                             file paths on disk, not raw bytes — keeps queued job payloads small.
+     *                             file paths on disk, not raw bytes �?" keeps queued job payloads small.
      *                             `isInline`+`contentId` embed the file for a `cid:` reference in `$htmlBody`
      *                             instead of listing it as a downloadable attachment.
+     * @param  ?string  $logBody  what to store on the EmailLog row INSTEAD of `$body`. The sent
+     *                            message is unaffected. Used by mail that legitimately carries a
+     *                            secret the recipient needs but the `emails` table must not keep
+     *                            forever (provisioning credentials — see WelcomeMailer). Null
+     *                            keeps the previous behaviour of logging the body verbatim.
      */
     /**
      * @param string|list<string> $toEmail
@@ -48,8 +53,18 @@ class SendEmail implements ShouldQueue
         public array $bcc = [],
         public ?string $htmlBody = null,
         public array $attachments = [],
+        public ?string $logBody = null,
     ) {
         $this->onQueue('emails');
+    }
+
+    /**
+     * What gets written to the EmailLog row. Always used for both the insert
+     * and the retry lookup, so a redacted body still de-duplicates correctly.
+     */
+    private function loggedBody(): string
+    {
+        return $this->logBody ?? $this->body;
     }
 
     public function handle(): void
@@ -119,7 +134,7 @@ class SendEmail implements ShouldQueue
                     ->when($ccEmails === null, fn ($q) => $q->whereNull('cc_emails'), fn ($q) => $q->where('cc_emails', $ccEmails))
                     ->when($bccEmails === null, fn ($q) => $q->whereNull('bcc_emails'), fn ($q) => $q->where('bcc_emails', $bccEmails))
                     ->where('subject', $this->subject)
-                    ->where('body', $this->body)
+                    ->where('body', $this->loggedBody())
                     ->whereIn('status', ['queued', 'failed'])
                     ->latest('id')
                     ->first();
@@ -139,7 +154,7 @@ class SendEmail implements ShouldQueue
             'cc_emails' => $ccEmails,
             'bcc_emails' => $bccEmails,
             'subject' => $this->subject,
-            'body' => $this->body,
+            'body' => $this->loggedBody(),
             'status' => 'queued',
         ]);
     }
