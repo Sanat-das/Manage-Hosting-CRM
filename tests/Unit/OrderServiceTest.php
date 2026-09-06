@@ -25,7 +25,10 @@ class OrderServiceTest extends TestCase
     {
         parent::setUp();
 
-        $this->service = new OrderService(new HostingService);
+        // Resolved through the container: OrderService also depends on
+        // ProvisioningDispatcher (which depends on ModuleManager), and these
+        // tests exercise the state machine rather than a hand-built graph.
+        $this->service = app(OrderService::class);
     }
 
     public function test_happy_path_writes_history_for_each_hop(): void

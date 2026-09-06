@@ -6,8 +6,8 @@ use App\Exceptions\NoAvailableIpException;
 use App\Models\ActivityLog;
 use App\Models\AuditLog;
 use App\Models\HostingAccount;
-use App\Models\IpAddress;
 use App\Models\Order;
+use App\Services\Provisioning\ServerAllocator;
 use Closure;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -141,7 +141,16 @@ class HostingService
             'customer_id' => $order->customer_id,
             'product_id' => $product->id,
             'order_id' => $order->id,
-            // username is legacy/module-managed — keep null so modules own credentials
+            // The server the service will live on, chosen from the product's
+            // server group (see ServerAllocator). This was left null until
+            // 2026-09-06, so every auto-provisioned account showed "-" for its
+            // server in the admin list and the hosting page had no host to act
+            // on. Null stays possible: no group / no server with capacity is
+            // not a reason to block activation, and the server can be set by
+            // hand afterwards.
+            'server_id' => app(ServerAllocator::class)
+                ->allocate($product, $product->provisioning_module)?->id,
+            // username is legacy/module-managed - keep null so modules own credentials
             'username' => null,
             'domain' => $order->domain_name,
             'status' => self::STATUS_PENDING,
@@ -158,8 +167,12 @@ class HostingService
      * Unique hosting account username derived from the order identity.
      * Distinct from the admin-entered usernames so auto-provisioned accounts
      * can never collide with manual ones.
+     *
+     * Public because ProvisioningDispatcher seeds the order's ServiceInstance
+     * with the same value: the local hosting row and the row a module
+     * provisions from must agree on one identity per order.
      */
-    private function usernameForOrder(Order $order): string
+    public function usernameForOrder(Order $order): string
     {
         return 'ord'.str_pad((string) $order->id, 6, '0', STR_PAD_LEFT);
     }

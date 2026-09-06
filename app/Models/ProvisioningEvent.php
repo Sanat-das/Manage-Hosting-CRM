@@ -11,6 +11,15 @@ class ProvisioningEvent extends Model
 {
     protected $table = 'provisioning_events';
 
+    /**
+     * The table has `created_at` (plus its own `completed_at`) but no
+     * `updated_at` — it is an append-only event log, not a mutable record.
+     * Without this, every insert fails with "no column named updated_at",
+     * which is why ServiceInstanceController's suspend/terminate event rows
+     * never landed.
+     */
+    const UPDATED_AT = null;
+
     protected function casts(): array
     {
         return [

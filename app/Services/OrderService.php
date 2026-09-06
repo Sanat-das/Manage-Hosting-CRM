@@ -6,6 +6,7 @@ use App\Events\OrderCreated;
 use App\Events\OrderPaid;
 use App\Models\Order;
 use App\Models\OrderStatusHistory;
+use App\Services\Provisioning\ProvisioningDispatcher;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use InvalidArgumentException;
@@ -28,7 +29,10 @@ use InvalidArgumentException;
  */
 class OrderService
 {
-    public function __construct(private readonly HostingService $hosting) {}
+    public function __construct(
+        private readonly HostingService $hosting,
+        private readonly ProvisioningDispatcher $provisioning,
+    ) {}
     /**
      * State machine: source status => allowed destination statuses.
      * Terminal states (cancelled / terminated) have no outgoing edges.
@@ -206,11 +210,18 @@ class OrderService
      *  - 'manual' (and any unrecognized value) → the service awaits manual
      *    provisioning: the order moves paid → provisioning, where an admin
      *    completes it through the existing activate flow.
-     *  - automated modules (see AUTO_PROVISION_MODULES) → auto-provision:
-     *    paid → provisioning → active, creating the hosting account (and
-     *    leasing IPs when available) along the way; IP leasing is
-     *    best-effort and never blocks activation. A genuine failure lands
-     *    the order in 'failed' instead.
+     *  - automated modules (see AUTO_PROVISION_MODULES) → paid → provisioning,
+     *    then ProvisioningDispatcher resolves the product's module and calls
+     *    provision(). Success activates the order (creating the hosting
+     *    account and leasing IPs when available; IP leasing is best-effort and
+     *    never blocks activation), a module failure lands it in 'failed'.
+     *
+     * When no module implements the provisioning capability the order still
+     * activates — that is the pre-existing behaviour and the local records
+     * (hosting account, IP lease, billing schedule) are genuinely created —
+     * but the dispatcher writes a `provisioning_events` row recording that
+     * nothing was created remotely, and the status-history note says so.
+     * Previously that case was indistinguishable from a real provision.
      *
      * Call with a pending/paid order after markPaid(). Idempotent for
      * orders already past the paid stage.
@@ -223,7 +234,23 @@ class OrderService
             try {
                 $this->transition($order, Order::STATUS_PROVISIONING, 'Auto-provisioning after invoice payment');
 
-                return $this->transition($order, Order::STATUS_ACTIVE, 'Auto-provisioned on invoice payment');
+                $attempt = $this->provisioning->run($order->refresh());
+
+                if (! $attempt->succeeded()) {
+                    Log::error('Provisioning module reported failure', [
+                        'order_id' => $order->id,
+                        'module' => $module,
+                        'error' => $attempt->message,
+                    ]);
+
+                    return $this->transition(
+                        $order->refresh(),
+                        Order::STATUS_FAILED,
+                        'Provisioning failed: '.$attempt->message,
+                    );
+                }
+
+                return $this->transition($order->refresh(), Order::STATUS_ACTIVE, $attempt->activationNote());
             } catch (\Throwable $e) {
                 Log::error('Auto-provisioning failed after invoice payment', [
                     'order_id' => $order->id,
@@ -246,6 +273,13 @@ class OrderService
             }
         }
 
-        return $this->transition($order, Order::STATUS_PROVISIONING, 'Awaiting manual provisioning after invoice payment');
+        $order = $this->transition($order, Order::STATUS_PROVISIONING, 'Awaiting manual provisioning after invoice payment');
+
+        // Manual products get an event row too, so the provisioning queue in
+        // the admin UI shows everything awaiting an operator, not just the
+        // automated products.
+        $this->provisioning->run($order);
+
+        return $order;
     }
 }
