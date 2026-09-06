@@ -50,7 +50,7 @@ class TicketController extends Controller
         private readonly TicketMailService $mail
     ) {}
 
-    public function index(Request $request): View
+    public function index(Request $request): View|RedirectResponse
     {
         $gridKey = 'admin.tickets.index';
         $user = $request->user();
@@ -205,6 +205,9 @@ class TicketController extends Controller
             'priority' => ['required', Rule::in(array_keys(TicketService::PRIORITIES))],
             'assigned_to' => ['nullable', 'integer', 'exists:users,id'],
             'message' => ['required', 'string', 'max:10000'],
+            'html_body' => ['nullable', 'string', 'max:20000'],
+            'attachments' => ['nullable', 'array', 'max:10'],
+            'attachments.*' => ['file', 'max:25600'],
         ]);
 
         if ($validated['assigned_to'] ?? null) {
@@ -214,8 +217,14 @@ class TicketController extends Controller
             }
         }
 
+        $replyAttributes = array_filter([
+            'html_body' => $validated['html_body'] ?? null,
+            'is_staff' => true,
+            'user_id' => $request->user()?->id,
+        ]);
+
         try {
-            $ticket = $this->tickets->create($validated, $validated['message']);
+            $ticket = $this->tickets->create($validated, $validated['message'], $replyAttributes, $request->file('attachments', []));
         } catch (\Throwable $e) {
             return back()->withInput()->withErrors(['error' => 'Could not create ticket: '.$e->getMessage()]);
         }
@@ -411,7 +420,7 @@ class TicketController extends Controller
      * must not be able to fetch a file by guessing/incrementing another
      * department's ticket id in the URL.
      */
-    public function showAttachment(Request $request, Ticket $ticket, TicketAttachment $attachment): StreamedResponse
+    public function showAttachment(Request $request, Ticket $ticket, TicketAttachment $attachment): \Symfony\Component\HttpFoundation\Response
     {
         abort_unless(
             TicketService::applyVisibility(Ticket::query(), $request->user())->whereKey($ticket->id)->exists(),
@@ -425,9 +434,57 @@ class TicketController extends Controller
 
         abort_unless($disk->exists($attachment->path), 404, 'Attachment file is missing.');
 
+        $mime = $attachment->mime_type ?: 'application/octet-stream';
+        $forceDownload = $request->boolean('download');
+
+        // Modern email client behavior: preview inline when the browser can
+        // render it (images, PDFs, text), otherwise fall back to a download.
+        // `?download=1` always forces the Content-Disposition to attachment.
+        if (! $forceDownload && $this->isInlinePreviewable($mime)) {
+            $content = $disk->get($attachment->path);
+            $size = $disk->size($attachment->path);
+
+            return response($content, 200, [
+                'Content-Type' => $mime,
+                'Content-Disposition' => 'inline; filename="'.$this->sanitizeFilename($attachment->filename).'"',
+                'Content-Length' => (string) $size,
+                'X-Content-Type-Options' => 'nosniff',
+                'Cache-Control' => 'private, max-age=300',
+            ]);
+        }
+
         return $disk->download($attachment->path, $attachment->filename, [
-            'Content-Type' => $attachment->mime_type ?: 'application/octet-stream',
+            'Content-Type' => $mime,
+            'X-Content-Type-Options' => 'nosniff',
         ]);
+    }
+
+    private function isInlinePreviewable(string $mime): bool
+    {
+        $mime = strtolower(trim($mime));
+
+        // SVG and HTML both carry script — never render either inline. Serving
+        // attacker-supplied markup from our own origin with `Content-Type:
+        // text/html` runs it in the viewing staff member's session, and
+        // `nosniff` cannot help when the declared type IS html.
+        if ($mime === 'image/svg+xml' || $mime === 'text/html' || $mime === 'application/xhtml+xml') {
+            return false;
+        }
+
+        if (str_starts_with($mime, 'image/')) {
+            return true;
+        }
+
+        return in_array($mime, [
+            'application/pdf',
+            'text/plain',
+            'text/csv',
+        ], true);
+    }
+
+    private function sanitizeFilename(string $filename): string
+    {
+        return addcslashes($filename, '"\\');
     }
 
     /**

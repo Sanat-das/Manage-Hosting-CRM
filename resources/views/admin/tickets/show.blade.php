@@ -145,7 +145,7 @@
             @if ($ticket->status !== 'closed')
                 @can('tickets.edit')
                     <x-adminlte-card icon="bi bi-reply" title="Reply">
-                        <form method="POST" action="{{ route('admin.tickets.reply', $ticket) }}" enctype="multipart/form-data">
+                        <form id="reply-form" method="POST" action="{{ route('admin.tickets.reply', $ticket) }}" enctype="multipart/form-data">
                             @csrf
                             <div class="position-relative ticket-contact-field" data-field="to" data-single="0" data-search-url="{{ route('admin.tickets.contacts.search', $ticket) }}">
                                 <x-adminlte-input name="to" label="To" value="{{ old('to', $defaultReplyTo) }}"
@@ -172,43 +172,29 @@
                             </div>
 
                             <div class="mb-3">
-                                <label for="reply-message" class="form-label">Reply message</label>
-
-                                {{--
-                                    Progressive enhancement: this textarea is the real form field
-                                    (`message`, required server-side) and the only thing that
-                                    exists at all with JS disabled. `reply-editor.js` hides it and
-                                    replaces it with the toolbar + contenteditable body below,
-                                    syncing plain text back into it and HTML into `#reply-html-body`
-                                    on every edit and again just before submit.
-                                --}}
-                                <textarea name="message" id="reply-message" class="form-control" rows="4"
-                                          placeholder="Type your reply..." required>{{ old('message') }}</textarea>
-
-                                <div id="reply-editor-toolbar" class="btn-toolbar d-none mb-1 mt-2" role="toolbar" aria-label="Formatting">
-                                    <div class="btn-group btn-group-sm me-1 mb-1">
-                                        <button type="button" class="btn btn-outline-secondary" data-cmd="bold" title="Bold"><i class="bi bi-type-bold"></i></button>
-                                        <button type="button" class="btn btn-outline-secondary" data-cmd="italic" title="Italic"><i class="bi bi-type-italic"></i></button>
-                                        <button type="button" class="btn btn-outline-secondary" data-cmd="underline" title="Underline"><i class="bi bi-type-underline"></i></button>
-                                    </div>
-                                    <div class="btn-group btn-group-sm me-1 mb-1">
-                                        <button type="button" class="btn btn-outline-secondary" data-cmd="insertUnorderedList" title="Bullet list"><i class="bi bi-list-ul"></i></button>
-                                        <button type="button" class="btn btn-outline-secondary" data-cmd="insertOrderedList" title="Numbered list"><i class="bi bi-list-ol"></i></button>
-                                    </div>
-                                    <div class="btn-group btn-group-sm me-1 mb-1">
-                                        <button type="button" class="btn btn-outline-secondary" id="reply-editor-link" title="Insert link"><i class="bi bi-link-45deg"></i></button>
-                                        <button type="button" class="btn btn-outline-secondary" id="reply-editor-image" title="Insert image"><i class="bi bi-image"></i></button>
-                                        <button type="button" class="btn btn-outline-secondary" data-cmd="removeFormat" title="Clear formatting"><i class="bi bi-eraser"></i></button>
-                                    </div>
-                                </div>
-                                <div id="reply-editor" class="form-control d-none" style="min-height: 8rem;" contenteditable="true"></div>
-                                <input type="hidden" name="html_body" id="reply-html-body">
+                                <label class="form-label">Reply message</label>
+                                @php
+                                    $sig = auth()->user()?->ticket_signature;
+                                    $sigHtml = $sig ? '<p><br></p><p>--<br>' . str_replace("\n", '<br>', e($sig)) . '</p>' : '';
+                                    $defaultHtml = old('html_body', $sigHtml);
+                                @endphp
+                                <input type="hidden" id="reply-html-body" name="html_body" value="{{ $defaultHtml }}">
+                                <input type="hidden" id="reply-message" name="message" value="{{ old('message') }}">
+                                <trix-editor input="reply-html-body" placeholder="Type your reply..."
+                                             class="{{ $errors->has('message') || $errors->has('html_body') ? 'is-invalid' : '' }}"></trix-editor>
+                                @error('message')
+                                    <div class="text-danger small mt-1">{{ $message }}</div>
+                                @enderror
+                                @error('html_body')
+                                    <div class="text-danger small mt-1">{{ $message }}</div>
+                                @enderror
                             </div>
 
                             <div class="mb-3">
-                                <label for="reply-attachments" class="form-label">Attachments</label>
-                                <input type="file" name="attachments[]" id="reply-attachments" class="form-control" multiple>
-                                <small class="text-muted">Images inserted into the message above are attached automatically.</small>
+                                <label for="reply-attachments" class="form-label">Attachments <span class="text-muted small">(up to 10 files, 25 MB each)</span></label>
+                                <input type="file" name="attachments[]" id="reply-attachments" class="form-control" multiple accept="*/*">
+                                <div id="reply-attachments-list" class="mt-2 d-flex flex-column gap-1"></div>
+
                             </div>
 
                             <button type="submit" class="btn btn-primary">
@@ -217,118 +203,122 @@
                         </form>
                     </x-adminlte-card>
 
+
                     @push('js')
+                        <script src="{{ asset('vendor/trix/trix.js') }}"></script>
                         <script>
+                            document.addEventListener('trix-file-accept', function (e) { e.preventDefault(); });
                             document.addEventListener('DOMContentLoaded', function () {
-                                var textarea = document.getElementById('reply-message');
-                                var toolbar = document.getElementById('reply-editor-toolbar');
-                                var editor = document.getElementById('reply-editor');
-                                var htmlInput = document.getElementById('reply-html-body');
-                                var attachmentsInput = document.getElementById('reply-attachments');
-                                var form = textarea ? textarea.closest('form') : null;
-
-                                if (!textarea || !toolbar || !editor || !htmlInput || !form) {
-                                    return;
-                                }
-
-                                // execCommand is deprecated but has no drop-in replacement with
-                                // this browser support; acceptable for an internal admin tool.
-                                // A future pass can swap the whole editor for a maintained
-                                // library (see .omo/plans/ticket-outlook-style-rework.md Task 6)
-                                // without touching the message/html_body contract this relies on.
-                                if (!document.queryCommandSupported || !document.execCommand) {
-                                    return;
-                                }
-
-                                editor.innerHTML = textarea.value
-                                    ? '<p>' + textarea.value.split('\n').map(escapeHtml).join('</p><p>') + '</p>'
-                                    : '';
-                                textarea.classList.add('d-none');
-                                toolbar.classList.remove('d-none');
-                                editor.classList.remove('d-none');
-
-                                function escapeHtml(text) {
-                                    var div = document.createElement('div');
-                                    div.textContent = text;
-                                    return div.innerHTML;
-                                }
-
-                                function sync() {
-                                    textarea.value = editor.innerText.trim();
-                                    htmlInput.value = editor.innerHTML;
-                                }
-
-                                editor.addEventListener('input', sync);
-
-                                toolbar.querySelectorAll('[data-cmd]').forEach(function (button) {
-                                    button.addEventListener('click', function () {
-                                        editor.focus();
-                                        document.execCommand(button.getAttribute('data-cmd'), false, null);
-                                        sync();
-                                    });
-                                });
-
-                                document.getElementById('reply-editor-link').addEventListener('click', function () {
-                                    var url = prompt('Link URL:');
-                                    if (url) {
-                                        editor.focus();
-                                        document.execCommand('createLink', false, url);
-                                        sync();
-                                    }
-                                });
-
-                                var imagePicker = document.createElement('input');
-                                imagePicker.type = 'file';
-                                imagePicker.accept = 'image/*';
-                                imagePicker.className = 'd-none';
-                                document.body.appendChild(imagePicker);
-
-                                document.getElementById('reply-editor-image').addEventListener('click', function () {
-                                    imagePicker.value = '';
-                                    imagePicker.click();
-                                });
-
-                                imagePicker.addEventListener('change', function () {
-                                    var file = imagePicker.files[0];
-                                    if (!file) {
-                                        return;
-                                    }
-
-                                    // Data-URI embedding, not a `cid:` reference: SendEmail's
-                                    // attachment path always attaches rather than embeds (see
-                                    // app/Jobs/SendEmail.php — Illuminate\Mail\Message::embed()
-                                    // can't pin a CID to match one already in the HTML), so a
-                                    // literal data: URI is what actually renders inline in the
-                                    // sent mail today. The same file is ALSO added to the normal
-                                    // attachments input below so it's saved as a real
-                                    // ticket_attachments row, same as any other attached file.
-                                    var reader = new FileReader();
-                                    reader.onload = function () {
-                                        editor.focus();
-                                        document.execCommand('insertImage', false, reader.result);
-                                        sync();
-                                    };
-                                    reader.readAsDataURL(file);
-
-                                    if (typeof DataTransfer !== 'undefined') {
-                                        var transfer = new DataTransfer();
-                                        for (var i = 0; i < attachmentsInput.files.length; i++) {
-                                            transfer.items.add(attachmentsInput.files[i]);
+                                var replyForm = document.getElementById('reply-form');
+                                if (replyForm) {
+                                    replyForm.addEventListener('submit', function () {
+                                        var editor = replyForm.querySelector('trix-editor');
+                                        var msgInput = document.getElementById('reply-message');
+                                        if (editor && msgInput) {
+                                            msgInput.value = editor.innerText.trim();
                                         }
-                                        transfer.items.add(file);
-                                        attachmentsInput.files = transfer.files;
-                                    }
-                                });
-
-                                form.addEventListener('submit', function (event) {
-                                    sync();
-
-                                    if (textarea.value === '') {
-                                        event.preventDefault();
-                                        editor.focus();
-                                    }
-                                });
+                                    });
+                                }
                             });
+                        </script>
+                        <script>
+                            (function(){
+                                function initAttachmentList(){
+                                    var input = document.getElementById('reply-attachments');
+                                    var list = document.getElementById('reply-attachments-list');
+                                    if (!input || !list) return;
+                                    function formatSize(bytes){
+                                        if (bytes >= 1048576) return (bytes/1048576).toFixed(1)+' MB';
+                                        if (bytes >= 1024) return (bytes/1024).toFixed(1)+' KB';
+                                        return bytes+' B';
+                                    }
+                                    function render(){
+                                        list.innerHTML='';
+                                        if (!input.files || input.files.length===0) return;
+                                        Array.from(input.files).forEach(function(file, idx){
+                                            var row=document.createElement('div');
+                                            row.className='d-flex align-items-center gap-2 p-2 bg-light border rounded';
+                                            var icon='bi-file-earmark';
+                                            var ext=file.name.split('.').pop().toLowerCase();
+                                            if (file.type.startsWith('image/')) icon='bi-file-earmark-image text-success';
+                                            else if (file.type==='application/pdf' || ext==='pdf') icon='bi-file-earmark-pdf text-danger';
+                                            else if (['zip','rar','7z'].includes(ext)) icon='bi-file-earmark-zip text-warning';
+                                            row.innerHTML='<i class="bi '+icon+'"></i><span class="flex-grow-1 text-truncate small" title="'+file.name+'">'+file.name+'</span><span class="text-muted small">'+formatSize(file.size)+'</span><button type="button" class="btn btn-sm btn-outline-danger py-0 px-1" title="Remove" data-idx="'+idx+'"><i class="bi bi-x"></i></button>';
+                                            list.appendChild(row);
+                                        });
+                                    }
+                                    input.addEventListener('change', function(e){
+                                        // Merge newly picked files with already-queued files
+                                        // so the user can add files one by one.
+                                        var incoming = Array.from(input.files);
+                                        if (!incoming.length) { render(); return; }
+                                        var existing = Array.from(input._accumulated || []);
+                                        var merged = existing.slice();
+                                        incoming.forEach(function(f){
+                                            var dup = merged.some(function(g){ return g.name===f.name && g.size===f.size && g.lastModified===f.lastModified; });
+                                            if (!dup) merged.push(f);
+                                        });
+                                        if (merged.length > 10) {
+                                            alert('Maximum 10 files allowed.');
+                                            merged = merged.slice(0, 10);
+                                        }
+                                        var dt = new DataTransfer();
+                                        merged.forEach(function(f){ dt.items.add(f); });
+                                        input.files = dt.files;
+                                        input._accumulated = merged;
+                                        render();
+                                    });
+                                    list.addEventListener('click', function(e){
+                                        var btn=e.target.closest('button[data-idx]');
+                                        if(!btn) return;
+                                        var idx=parseInt(btn.getAttribute('data-idx'),10);
+                                        var dt=new DataTransfer();
+                                        Array.from(input.files).forEach(function(f,i){ if(i!==idx) dt.items.add(f); });
+                                        input.files=dt.files;
+                                        input._accumulated=Array.from(dt.files);
+                                        render();
+                                    });
+                                    // drag & drop on the input area
+                                    var dropZone=input.closest('.mb-3') || input.parentElement;
+                                    if(dropZone){
+                                        ['dragenter','dragover'].forEach(function(ev){
+                                            dropZone.addEventListener(ev, function(e){ e.preventDefault(); input.classList.add('border-primary'); });
+                                        });
+                                        ['dragleave','drop'].forEach(function(ev){
+                                            dropZone.addEventListener(ev, function(e){ input.classList.remove('border-primary'); });
+                                        });
+                                        dropZone.addEventListener('drop', function(e){
+                                            e.preventDefault();
+                                            if(!e.dataTransfer || !e.dataTransfer.files.length) return;
+                                            var dt=new DataTransfer();
+                                            Array.from(input.files).forEach(function(f){ dt.items.add(f); });
+                                            Array.from(e.dataTransfer.files).forEach(function(f){ dt.items.add(f); });
+                                            // cap at 10
+                                            if(dt.files.length>10){
+                                                alert('Maximum 10 files allowed.');
+                                                var dt2=new DataTransfer();
+                                                Array.from(dt.files).slice(0,10).forEach(function(f){ dt2.items.add(f); });
+                                                input.files=dt2.files;
+                                            } else {
+                                                input.files=dt.files;
+                                            }
+                                            render();
+                                            input.dispatchEvent(new Event('change', {bubbles:true}));
+                                        });
+                                    }
+                                    // expose for editor image insertion to reuse
+                                    window.renderReplyAttachmentsList=render;
+                                    // also observe programmatic changes via DataTransfer (editor inserts)
+                                    var lastCount=-1;
+                                    setInterval(function(){
+                                        if(input.files && input.files.length!==lastCount){
+                                            lastCount=input.files.length;
+                                            render();
+                                        }
+                                    }, 500);
+                                }
+                                if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', initAttachmentList); else initAttachmentList();
+                            })();
                         </script>
                     @endpush
                     @push('js')
@@ -590,14 +580,74 @@
                             @endif
                         </div>
 
-                        @if ($reply->attachments->isNotEmpty())
-                            <div class="mt-2">
-                                @foreach ($reply->attachments as $attachment)
-                                    <a href="{{ route('admin.tickets.attachments.show', $attachment) }}"
-                                       class="badge text-bg-light border me-1 text-decoration-none">
-                                        <i class="bi bi-paperclip me-1"></i>{{ $attachment->filename }}
-                                    </a>
-                                @endforeach
+                        @php $visibleAttachments = $reply->attachments->where('is_inline', false); @endphp
+                        @if ($visibleAttachments->isNotEmpty())
+                            <div class="ticket-attachments mt-3">
+                                <div class="d-flex align-items-center gap-1 mb-2 small text-muted">
+                                    <i class="bi bi-paperclip"></i>
+                                    <span>{{ $visibleAttachments->count() }} {{ \Illuminate\Support\Str::plural('attachment', $visibleAttachments->count()) }}</span>
+                                </div>
+                                <div class="d-flex flex-wrap gap-2">
+                                    @foreach ($visibleAttachments as $attachment)
+                                        @php
+                                            $mime = strtolower($attachment->mime_type ?? '');
+                                            $ext = strtolower(pathinfo($attachment->filename ?? '', PATHINFO_EXTENSION));
+                                            $isImage = str_starts_with($mime, 'image/') && $mime !== 'image/svg+xml';
+                                            $isPdf = $mime === 'application/pdf' || $ext === 'pdf';
+                                            // text/html is deliberately absent: it is served as a download, never
+                                            // previewed inline, because an iframe on our origin would run its script.
+                                            $isText = in_array($mime, ['text/plain','text/csv'], true);
+                                            $isPreviewable = $isImage || $isPdf || $isText;
+                                            $previewUrl = route('admin.tickets.attachments.show', [$ticket, $attachment]);
+                                            $downloadUrl = $previewUrl.'?download=1';
+                                            $sizeLabel = null;
+                                            if ($attachment->size_bytes) {
+                                                $bytes = (int) $attachment->size_bytes;
+                                                $sizeLabel = $bytes >= 1048576 ? number_format($bytes/1048576, 1).' MB' : ($bytes >= 1024 ? number_format($bytes/1024, 1).' KB' : $bytes.' B');
+                                            }
+                                            $icon = match(true) {
+                                                $isImage => 'bi-file-earmark-image text-success',
+                                                $isPdf => 'bi-file-earmark-pdf text-danger',
+                                                in_array($ext, ['zip','rar','7z','tar','gz']) => 'bi-file-earmark-zip text-warning',
+                                                in_array($ext, ['doc','docx']) => 'bi-file-earmark-word text-primary',
+                                                in_array($ext, ['xls','xlsx','csv']) => 'bi-file-earmark-excel text-success',
+                                                $ext === 'txt' => 'bi-file-earmark-text text-muted',
+                                                default => 'bi-file-earmark text-secondary',
+                                            };
+                                        @endphp
+                                        <div class="attachment-card d-flex align-items-center gap-2 p-2 bg-white border rounded {{ $isPreviewable ? 'attachment-previewable' : '' }}"
+                                             style="min-width: 220px; max-width: 320px; cursor: {{ $isPreviewable ? 'pointer' : 'default' }};"
+                                             @if($isPreviewable) data-preview-url="{{ $previewUrl }}" data-preview-mime="{{ $mime }}" data-filename="{{ $attachment->filename }}" data-download-url="{{ $downloadUrl }}" @endif>
+                                            <div class="flex-shrink-0 d-flex align-items-center justify-content-center bg-light border rounded overflow-hidden"
+                                                 style="width: 44px; height: 44px;">
+                                                @if($isImage)
+                                                    <img src="{{ $previewUrl }}" alt="{{ $attachment->filename }}" loading="lazy"
+                                                         style="width: 100%; height: 100%; object-fit: cover;">
+                                                @else
+                                                    <i class="bi {{ $icon }} fs-4"></i>
+                                                @endif
+                                            </div>
+                                            <div class="flex-grow-1 min-w-0" style="min-width:0;">
+                                                <div class="text-truncate fw-medium small" title="{{ $attachment->filename }}" style="max-width: 150px;">{{ $attachment->filename }}</div>
+                                                <div class="small text-muted text-truncate">{{ $sizeLabel ?? strtoupper($ext) }}</div>
+                                            </div>
+                                            <div class="d-flex gap-1 flex-shrink-0">
+                                                @if($isPreviewable)
+                                                    <button type="button"
+                                                            class="btn btn-sm btn-light border attachment-preview-btn"
+                                                            data-preview-url="{{ $previewUrl }}" data-preview-mime="{{ $mime }}"
+                                                            data-filename="{{ $attachment->filename }}" data-download-url="{{ $downloadUrl }}"
+                                                            title="Preview">
+                                                        <i class="bi bi-eye"></i>
+                                                    </button>
+                                                @endif
+                                                <a href="{{ $downloadUrl }}" class="btn btn-sm btn-light border" title="Download" download>
+                                                    <i class="bi bi-download"></i>
+                                                </a>
+                                            </div>
+                                        </div>
+                                    @endforeach
+                                </div>
                             </div>
                         @endif
 
@@ -647,7 +697,7 @@
         <div class="col-lg-4">
             {{-- Internal note --}}
             @can('tickets.edit')
-                <x-adminlte-card icon="bi bi-sticky" title="Internal Note">
+                <x-adminlte-card class="mb-3" icon="bi bi-sticky" title="Internal Note">
                     <form method="POST" action="{{ route('admin.tickets.note', $ticket) }}">
                         @csrf
                         <x-adminlte-textarea name="note" label="" rows="3"
@@ -660,7 +710,7 @@
             @endcan
 
             {{-- Ticket info --}}
-            <x-adminlte-card title="Details">
+            <x-adminlte-card class="mb-3" title="Details">
                 <table class="table table-sm table-borderless mb-0">
                     <tbody>
                         <tr><th class="text-muted w-25">Status</th><td><x-adminlte.partials.status-badge :status="$ticket->status" /></td></tr>
@@ -882,6 +932,137 @@
             </div>
         </div>
     @endif
+
+    {{-- Attachment preview modal — Gmail/Outlook style lightbox --}}
+    <div class="modal fade" id="attachmentPreviewModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h6 class="modal-title text-truncate me-2" id="attachmentPreviewTitle" style="max-width: 60%;"></h6>
+                    <div class="ms-auto d-flex align-items-center gap-2">
+                        <a id="attachmentPreviewDownload" href="#" class="btn btn-sm btn-primary" download>
+                            <i class="bi bi-download me-1"></i>Download
+                        </a>
+                        <a id="attachmentPreviewOpen" href="#" target="_blank" rel="noopener" class="btn btn-sm btn-outline-secondary" title="Open in new tab">
+                            <i class="bi bi-box-arrow-up-right"></i>
+                        </a>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                </div>
+                <div class="modal-body p-0 bg-dark d-flex align-items-center justify-content-center" style="min-height: 320px; max-height: 78vh; overflow: auto;">
+                    <img id="attachmentPreviewImage" src="" alt="" style="max-width: 100%; max-height: 74vh; object-fit: contain; display: none;">
+                    <iframe id="attachmentPreviewFrame" src="" style="width: 100%; height: 74vh; border: 0; display: none; background: white;"></iframe>
+                    <div id="attachmentPreviewFallback" class="text-white text-center p-4" style="display: none;">
+                        <i class="bi bi-file-earmark fs-1 d-block mb-2"></i>
+                        <span>Preview not available.</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @push('css')
+        <link rel="stylesheet" href="{{ asset('vendor/trix/trix.css') }}">
+        <style>
+            trix-editor { min-height: 220px; font-size: 0.875rem; line-height: 1.6; border: 1px solid #ced4da; border-radius: 0.25rem; padding: 0.5rem 0.75rem; background: #fff; overflow-y: auto; }
+            trix-editor:focus { border-color: #86b7fe; outline: 0; box-shadow: 0 0 0 0.2rem rgba(13,110,253,.25); }
+            trix-editor.is-invalid { border-color: #dc3545; }
+            trix-toolbar .trix-button-group { border: 1px solid #ced4da; border-radius: 0.2rem; }
+            trix-toolbar .trix-button { border-bottom: none; }
+            trix-toolbar .trix-button.trix-active { background: #e9ecef; }
+        trix-toolbar .trix-button-group--file-tools { display: none; }
+            .attachment-card { transition: box-shadow .15s, border-color .15s; }
+            .attachment-card:hover { border-color: #adb5bd !important; box-shadow: 0 1px 6px rgba(0,0,0,.08); }
+            .attachment-card.attachment-previewable:hover { border-color: #0d6efd !important; }
+        </style>
+    @endpush
+    @push('js')
+        <script>
+            (function () {
+                function initAttachmentPreview() {
+                    var modalEl = document.getElementById('attachmentPreviewModal');
+                    if (!modalEl) return;
+                    var bsModal = (typeof bootstrap !== 'undefined' && bootstrap.Modal) ? new bootstrap.Modal(modalEl) : null;
+                    var titleEl = document.getElementById('attachmentPreviewTitle');
+                    var imgEl = document.getElementById('attachmentPreviewImage');
+                    var frameEl = document.getElementById('attachmentPreviewFrame');
+                    var fallbackEl = document.getElementById('attachmentPreviewFallback');
+                    var dlEl = document.getElementById('attachmentPreviewDownload');
+                    var openEl = document.getElementById('attachmentPreviewOpen');
+
+                    function openPreview(url, mime, filename, downloadUrl) {
+                        titleEl.textContent = filename || '';
+                        dlEl.href = downloadUrl || url + '?download=1';
+                        dlEl.setAttribute('download', filename || '');
+                        openEl.href = url;
+                        imgEl.style.display = 'none';
+                        frameEl.style.display = 'none';
+                        fallbackEl.style.display = 'none';
+                        imgEl.removeAttribute('src');
+                        frameEl.removeAttribute('src');
+                        var m = (mime || '').toLowerCase();
+                        if (m.startsWith('image/') && m !== 'image/svg+xml') {
+                            imgEl.src = url;
+                            imgEl.style.display = 'block';
+                        } else if (m === 'application/pdf' || m.startsWith('text/')) {
+                            frameEl.src = url;
+                            frameEl.style.display = 'block';
+                        } else {
+                            fallbackEl.style.display = 'block';
+                        }
+                        if (bsModal) bsModal.show();
+                        else {
+                            modalEl.style.display = 'block';
+                            modalEl.classList.add('show');
+                            document.body.classList.add('modal-open');
+                            var backdrop = document.createElement('div');
+                            backdrop.className = 'modal-backdrop fade show';
+                            backdrop.id = 'attachment-preview-backdrop';
+                            document.body.appendChild(backdrop);
+                            backdrop.addEventListener('click', function(){ closeFallback(); });
+                        }
+                    }
+                    function closeFallback() {
+                        modalEl.style.display = 'none';
+                        modalEl.classList.remove('show');
+                        document.body.classList.remove('modal-open');
+                        var bd = document.getElementById('attachment-preview-backdrop');
+                        if (bd) bd.remove();
+                        imgEl.removeAttribute('src');
+                        frameEl.removeAttribute('src');
+                    }
+
+                    document.addEventListener('click', function (e) {
+                        var btn = e.target.closest('.attachment-preview-btn');
+                        if (btn) {
+                            e.preventDefault(); e.stopPropagation();
+                            openPreview(btn.dataset.previewUrl, btn.dataset.previewMime, btn.dataset.filename, btn.dataset.downloadUrl);
+                            return;
+                        }
+                        var card = e.target.closest('.attachment-previewable');
+                        if (card && !e.target.closest('a') && !e.target.closest('button')) {
+                            e.preventDefault();
+                            openPreview(card.dataset.previewUrl, card.dataset.previewMime, card.dataset.filename, card.dataset.downloadUrl);
+                        }
+                        if (e.target.closest('[data-bs-dismiss="modal"]') && e.target.closest('#attachmentPreviewModal')) {
+                            if (!bsModal) { e.preventDefault(); closeFallback(); }
+                        }
+                    });
+
+                    modalEl.addEventListener('hidden.bs.modal', function () {
+                        imgEl.removeAttribute('src');
+                        frameEl.removeAttribute('src');
+                    });
+                    // also clean fallback when hidden via our manual backdrop
+                    modalEl.addEventListener('click', function(e){
+                        if (e.target === modalEl && !bsModal) closeFallback();
+                    });
+                }
+                if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initAttachmentPreview);
+                else initAttachmentPreview();
+            })();
+        </script>
+    @endpush
 
     {{-- Transfer department modal --}}
     @can('tickets.transfer')

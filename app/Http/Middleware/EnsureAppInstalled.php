@@ -25,7 +25,11 @@ class EnsureAppInstalled
      */
     public function handle(Request $request, Closure $next): Response
     {
-        if (! InstallerService::lockExists() && ! $request->is('install*')) {
+        // Must use the same predicate as RedirectIfInstalled. If this checked
+        // only the lock file while that one also checks the database, a site
+        // whose install.lock went missing would bounce forever: here to
+        // /install, and there straight back to /.
+        if (! InstallerService::isInstalled() && ! $request->is('install*')) {
             return redirect()->route('install.index');
         }
 

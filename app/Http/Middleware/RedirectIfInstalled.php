@@ -22,7 +22,10 @@ class RedirectIfInstalled
      */
     public function handle(Request $request, Closure $next): Response
     {
-        if (InstallerService::lockExists()) {
+        // isInstalled(), not lockExists(): install.lock is gitignored, so a
+        // deploy that loses it would otherwise reopen this unauthenticated
+        // wizard on a live application with real data in it.
+        if (InstallerService::isInstalled()) {
             return redirect('/');
         }
 

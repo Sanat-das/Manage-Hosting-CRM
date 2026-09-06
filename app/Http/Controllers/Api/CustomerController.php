@@ -62,21 +62,36 @@ class CustomerController extends Controller
 
     public function store(Request $request): JsonResponse
     {
+        if ($request->has('phone_code') || $request->has('phone_number')) {
+            $code = trim((string) $request->input('phone_code', ''));
+            $number = trim((string) $request->input('phone_number', ''));
+            if ($code === '' && $number !== '') $code = '+91';
+            $request->merge(['phone' => $number !== '' ? trim($code.' '.$number) : $code]);
+        }
         $validated = $request->validate([
             'first_name' => ['required', 'string', 'max:255'],
             'last_name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'email', 'max:255', 'unique:users,email'],
             'password' => ['required', 'string', 'min:8', 'regex:/[A-Z]/', 'regex:/[a-z]/', 'regex:/[0-9]/'],
-            'phone' => ['nullable', 'string', 'max:30'],
+            'phone' => ['nullable', 'string', 'max:50'],
+            'phone_code' => ['nullable', 'string', 'max:10'],
+            'phone_number' => ['nullable', 'string', 'max:20'],
             'company' => ['nullable', 'string', 'max:255'],
             'tax_id' => ['nullable', 'string', 'max:100'],
             'address' => ['nullable', 'string', 'max:500'],
+            'address_line1' => ['nullable', 'string', 'max:255'],
+            'address_line2' => ['nullable', 'string', 'max:255'],
+            'city' => ['nullable', 'string', 'max:100'],
+            'state' => ['nullable', 'string', 'max:100'],
+            'postcode' => ['nullable', 'string', 'max:20'],
+            'country' => ['nullable', 'string', 'max:100'],
             'status' => ['sometimes', Rule::in(['active', 'inactive', 'suspended'])],
         ]);
 
         $status = $validated['status'] ?? 'active';
 
         $customer = DB::transaction(function () use ($validated, $status) {
+            $legacy = collect([$validated['address_line1'] ?? null, $validated['address_line2'] ?? null, $validated['city'] ?? null, $validated['state'] ?? null, $validated['postcode'] ?? null, $validated['country'] ?? null])->filter()->implode(', ');
             $user = User::create([
                 'email' => $validated['email'],
                 'password_hash' => Hash::make($validated['password']),
@@ -85,7 +100,13 @@ class CustomerController extends Controller
                 'last_name' => $validated['last_name'],
                 'phone' => $validated['phone'] ?? null,
                 'company' => $validated['company'] ?? null,
-                'address' => $validated['address'] ?? null,
+                'address' => $legacy !== '' ? $legacy : ($validated['address'] ?? null),
+                'address_line1' => $validated['address_line1'] ?? null,
+                'address_line2' => $validated['address_line2'] ?? null,
+                'city' => $validated['city'] ?? null,
+                'state' => $validated['state'] ?? null,
+                'postcode' => $validated['postcode'] ?? null,
+                'country' => $validated['country'] ?? 'India',
                 'status' => $status === 'active' ? 'active' : 'inactive',
             ]);
 
@@ -119,19 +140,37 @@ class CustomerController extends Controller
 
     public function update(Request $request, Customer $customer): JsonResponse
     {
+        if ($request->has('phone_code') || $request->has('phone_number')) {
+            $code = trim((string) $request->input('phone_code', ''));
+            $number = trim((string) $request->input('phone_number', ''));
+            if ($code === '' && $number !== '') $code = '+91';
+            $request->merge(['phone' => $number !== '' ? trim($code.' '.$number) : $code]);
+        }
         $validated = $request->validate([
             'first_name' => ['sometimes', 'string', 'max:255'],
             'last_name' => ['sometimes', 'string', 'max:255'],
             'email' => ['sometimes', 'email', 'max:255', Rule::unique('users', 'email')->ignore($customer->user_id)],
-            'phone' => ['nullable', 'string', 'max:30'],
+            'phone' => ['nullable', 'string', 'max:50'],
+            'phone_code' => ['nullable', 'string', 'max:10'],
+            'phone_number' => ['nullable', 'string', 'max:20'],
             'company' => ['nullable', 'string', 'max:255'],
             'tax_id' => ['nullable', 'string', 'max:100'],
             'address' => ['nullable', 'string', 'max:500'],
+            'address_line1' => ['nullable', 'string', 'max:255'],
+            'address_line2' => ['nullable', 'string', 'max:255'],
+            'city' => ['nullable', 'string', 'max:100'],
+            'state' => ['nullable', 'string', 'max:100'],
+            'postcode' => ['nullable', 'string', 'max:20'],
+            'country' => ['nullable', 'string', 'max:100'],
             'status' => ['sometimes', Rule::in(['active', 'inactive', 'suspended'])],
         ]);
 
         DB::transaction(function () use ($validated, $customer) {
-            $userData = array_intersect_key($validated, array_flip(['first_name', 'last_name', 'email', 'phone', 'company', 'address']));
+            $userData = array_intersect_key($validated, array_flip(['first_name', 'last_name', 'email', 'phone', 'company', 'address', 'address_line1', 'address_line2', 'city', 'state', 'postcode', 'country']));
+            if (isset($validated['address_line1']) || isset($validated['city']) || isset($validated['state'])) {
+                $legacy = collect([$validated['address_line1'] ?? $customer->user->address_line1, $validated['address_line2'] ?? $customer->user->address_line2, $validated['city'] ?? $customer->user->city, $validated['state'] ?? $customer->user->state, $validated['postcode'] ?? $customer->user->postcode, $validated['country'] ?? $customer->user->country])->filter()->implode(', ');
+                if ($legacy !== '') $userData['address'] = $legacy;
+            }
             if (isset($validated['status'])) {
                 $userData['status'] = $validated['status'] === 'active' ? 'active' : 'inactive';
             }
@@ -187,6 +226,13 @@ class CustomerController extends Controller
             'phone' => $customer->user?->phone,
             'company' => $customer->company,
             'tax_id' => $customer->tax_id,
+            'address_line1' => $customer->user?->address_line1,
+            'address_line2' => $customer->user?->address_line2,
+            'city' => $customer->user?->city,
+            'state' => $customer->user?->state,
+            'postcode' => $customer->user?->postcode,
+            'country' => $customer->user?->country,
+            'address' => $customer->user?->formatted_address,
             'balance' => (float) $customer->balance,
             'credit' => (float) $customer->credit,
             'status' => $customer->status,

@@ -11,6 +11,7 @@ export default defineConfig({
                 'resources/js/app.js',
                 'resources/css/adminlte.css',
                 'resources/js/adminlte.js',
+                'resources/css/branding.css',
             ],
             refresh: true,
             fonts: [

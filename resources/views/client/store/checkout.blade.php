@@ -110,13 +110,41 @@
         </div>
     </x-adminlte-card>
 
-    <x-adminlte-card icon="bi bi-person" title="Billing Information">
-        <div class="row">
+    <x-adminlte-card icon="bi bi-geo-alt" title="Billing Information">
+        @php $u = auth()->user(); @endphp
+        <div class="row g-3">
             <div class="col-md-6">
-                <strong>{{ auth()->user()->full_name }}</strong><br>
-                <span class="text-muted">{{ auth()->user()->email }}</span>
+                <div class="border rounded p-3 h-100 bg-light-subtle">
+                    <div class="small text-muted text-uppercase fw-semibold mb-1">Bill to</div>
+                    <div class="fw-semibold">{{ $u->full_name }}</div>
+                    <div class="text-muted small">{{ $u->email }}</div>
+                    @if ($u->phone)<div class="text-muted small"><i class="bi bi-telephone me-1"></i>{{ $u->phone }}</div>@endif
+                    @if ($u->company)<div class="text-muted small"><i class="bi bi-building me-1"></i>{{ $u->company }}</div>@endif
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="border rounded p-3 h-100">
+                    <div class="small text-muted text-uppercase fw-semibold mb-2"><i class="bi bi-geo-alt me-1"></i>Billing Address</div>
+                    @if ($u->formatted_address)
+                        <div class="small">
+                            @if ($u->address_line1)<div>{{ $u->address_line1 }}</div>@endif
+                            @if ($u->address_line2)<div class="text-muted">{{ $u->address_line2 }}</div>@endif
+                            <div>
+                                @if ($u->city){{ $u->city }}@endif
+                                @if ($u->city && $u->state), @endif{{ $u->state ?? '' }}
+                                @if ($u->postcode) — {{ $u->postcode }}@endif
+                            </div>
+                            @if ($u->country)<div class="text-muted">{{ $u->country }}</div>@endif
+                        </div>
+                        <a href="{{ route('client.profile') }}" class="btn btn-sm btn-outline-primary mt-2"><i class="bi bi-pencil me-1"></i>Edit address</a>
+                    @else
+                        <div class="text-muted small mb-2">No billing address on file. Add it so invoices are correctly addressed and GST (CGST/SGST vs IGST) is calculated.</div>
+                        <a href="{{ route('client.profile') }}" class="btn btn-sm btn-primary"><i class="bi bi-plus-lg me-1"></i>Add billing address</a>
+                    @endif
+                </div>
             </div>
         </div>
+        <div class="text-muted small mt-2"><i class="bi bi-info-circle me-1"></i>Address is shown on your invoices. Update it in <a href="{{ route('client.profile') }}">My Profile</a> before placing the order if needed.</div>
     </x-adminlte-card>
 
     <div class="text-end mt-3">

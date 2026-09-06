@@ -1,0 +1,204 @@
+/* ==========================================================================
+   HostVexa — Brand Palette & Overrides
+   Static assets work before DB branding is customized.
+   Loaded after tokens.css / adminlte.css so :root wins via cascade.
+   DB dynamic branding can override via inline style on :root later.
+   Palette: primary #0EA5E9 (sky) · accent #6366F1 (indigo) · navy #0F172A
+   Quality target: Stripe / Linear / Vercel — enterprise, not childish.
+   ========================================================================== */
+
+/* ── 1 · Canonical HostVexa tokens ─────────────────────────────────────── */
+:root {
+  /* brand */
+  --hostvexa-primary: #0ea5e9;
+  --hostvexa-primary-rgb: 14, 165, 233;
+  --hostvexa-primary-hover: #0284c7;
+  --hostvexa-primary-active: #0369a1;
+  --hostvexa-primary-subtle: #f0f9ff;
+  --hostvexa-accent: #6366f1;
+  --hostvexa-accent-rgb: 99, 102, 241;
+  --hostvexa-accent-hover: #4f46e5;
+  --hostvexa-navy: #0f172a;
+  --hostvexa-navy-rgb: 15, 23, 42;
+  --hostvexa-navy-soft: #1e293b;
+  --hostvexa-navy-muted: #334155;
+  /* shape / type */
+  --hostvexa-radius: 8px;
+  --hostvexa-radius-lg: 12px;
+  --hostvexa-radius-xl: 16px;
+  --hostvexa-radius-full: 9999px;
+  --hostvexa-font: "Instrument Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  /* gradient helper (use where a subtle brand gradient is wanted) */
+  --hostvexa-gradient: linear-gradient(135deg, var(--hostvexa-primary) 0%, var(--hostvexa-accent) 100%);
+}
+
+/* ── 2 · Map HostVexa → Bootstrap 5.3 + existing token layer ─────────────
+      tokens.css already defines --color-primary etc. Re-point those so
+      every consumer (Tailwind @theme, adminlte.css, Bootstrap) inherits
+      HostVexa without editing tokens.css. Keep single source via var(). */
+:root {
+  /* Bootstrap core — used by btn-primary, bg-primary, link, focus ring */
+  --bs-primary: var(--hostvexa-primary);
+  --bs-primary-rgb: var(--hostvexa-primary-rgb);
+  --bs-link-color: var(--hostvexa-primary);
+  --bs-link-color-rgb: var(--hostvexa-primary-rgb);
+  --bs-link-hover-color: var(--hostvexa-primary-hover);
+  --bs-link-hover-color-rgb: 2, 132, 199;
+  --bs-focus-ring-color: rgba(var(--hostvexa-primary-rgb), 0.22);
+  /* Existing token bridge — adminlte.css / app.css read these */
+  --color-primary: var(--hostvexa-primary);
+  --color-primary-hover: var(--hostvexa-primary-hover);
+  --color-primary-active: var(--hostvexa-primary-active);
+  --color-primary-subtle: var(--hostvexa-primary-subtle);
+  --color-primary-emphasis: var(--hostvexa-primary-hover);
+  --color-focus-ring: var(--hostvexa-primary);
+}
+
+/* Dark theme — keep primary legible on dark surface (no pure sky at 0.12) */
+[data-bs-theme="dark"] {
+  --bs-primary: #38bdf8; /* sky-400 — AA on oklch(0.14) without glow */
+  --bs-primary-rgb: 56, 189, 248;
+  --bs-link-color: #38bdf8;
+  --bs-link-hover-color: #7dd3fc;
+  --color-primary: #38bdf8;
+  --color-primary-hover: #7dd3fc;
+}
+
+/* ── 3 · Component overrides — minimal, visible, no !important spam ────── */
+
+/* Primary button — tie all states to HostVexa so .btn-primary is never indigo */
+.btn-primary {
+  --bs-btn-bg: var(--hostvexa-primary);
+  --bs-btn-border-color: var(--hostvexa-primary);
+  --bs-btn-hover-bg: var(--hostvexa-primary-hover);
+  --bs-btn-hover-border-color: var(--hostvexa-primary-hover);
+  --bs-btn-active-bg: var(--hostvexa-primary-active);
+  --bs-btn-active-border-color: var(--hostvexa-primary-active);
+  --bs-btn-disabled-bg: var(--hostvexa-primary);
+  --bs-btn-disabled-border-color: var(--hostvexa-primary);
+}
+
+/* Link & focus ring — single source, no per-component overrides needed */
+a { text-underline-offset: 0.18em; }
+a:hover { text-decoration-thickness: from-font; }
+.form-control:focus,
+.form-select:focus,
+.form-check-input:focus {
+  border-color: var(--hostvexa-primary);
+  box-shadow: 0 0 0 0.2rem rgba(var(--hostvexa-primary-rgb), 0.16);
+}
+.btn:focus-visible,
+.page-link:focus-visible,
+.nav-link:focus-visible {
+  box-shadow: 0 0 0 0.2rem rgba(var(--hostvexa-primary-rgb), 0.20);
+  outline: 0;
+}
+
+/* Utilities that Bootstrap generates from --bs-primary — keep in sync */
+.bg-primary { background-color: var(--hostvexa-primary) !important; }
+.text-primary { color: var(--hostvexa-primary) !important; }
+.border-primary { border-color: var(--hostvexa-primary) !important; }
+.badge.bg-primary { background: var(--hostvexa-gradient) !important; }
+
+/* Selection — subtle brand tint */
+::selection { background: rgba(var(--hostvexa-primary-rgb), 0.18); }
+
+/* ── 4 · Sidebar brand — .brand-logo-hostvexa + .brand-image ───────────── */
+.brand-link {
+  gap: 0.65rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  padding-block: 0.85rem;
+}
+.brand-link .brand-image {
+  width: 34px;
+  height: 34px;
+  max-height: 34px;
+  object-fit: contain;
+  border-radius: var(--hostvexa-radius);
+  background: white;
+  padding: 3px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08), 0 1px 8px rgba(14, 165, 233, 0.18);
+  /* override img-circle from config — HostVexa mark is squircle, not circle */
+  /* keep elevation-2 shadow via box-shadow above; remove bootstrap circle clip */
+}
+.brand-link .brand-image.img-circle { border-radius: var(--hostvexa-radius); }
+
+.brand-logo-hostvexa {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.42rem;
+  font-family: var(--hostvexa-font);
+  font-weight: 700;
+  font-size: 1.02rem;
+  letter-spacing: -0.03em;
+  line-height: 1;
+  color: #fff;
+  white-space: nowrap;
+}
+.brand-logo-hostvexa i {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.05em;
+  height: 1.05em;
+  font-size: 0.95em;
+  color: #38bdf8;
+  flex-shrink: 0;
+}
+/* when sidebar is collapsed (sidebar-mini), AdminLTE hides .brand-text — our span remains legible */
+.app-sidebar .brand-text,
+.brand-link .brand-text { font-weight: 600; }
+
+/* Light sidebar variant — brand on white needs navy text */
+.sidebar-light .brand-logo-hostvexa,
+[data-bs-theme="light"] .app-sidebar.bg-body-secondary .brand-logo-hostvexa {
+  color: var(--hostvexa-navy);
+}
+.sidebar-light .brand-logo-hostvexa i,
+[data-bs-theme="light"] .app-sidebar.bg-body-secondary .brand-logo-hostvexa i {
+  color: var(--hostvexa-primary);
+}
+
+/* Auth pages — card-header is white, so white brand text would be invisible. */
+.login-page .brand-logo-hostvexa,
+.register-page .brand-logo-hostvexa,
+.login-box .brand-logo-hostvexa,
+.register-box .brand-logo-hostvexa,
+.card-header .brand-logo-hostvexa {
+  color: var(--hostvexa-navy) !important;
+}
+.login-page .brand-logo-hostvexa i,
+.register-page .brand-logo-hostvexa i,
+.card-header .brand-logo-hostvexa i {
+  color: var(--hostvexa-primary) !important;
+}
+
+/* ── 5 · Auth / email / invoice wordmark helper ───────────────────────────
+      Use <img src="/img/hostvexa-logo.svg" class="hostvexa-wordmark" alt=""> */
+.hostvexa-wordmark {
+  display: inline-block;
+  height: 36px;
+  width: auto;
+  vertical-align: middle;
+}
+.hostvexa-wordmark--sm { height: 28px; }
+.hostvexa-wordmark--lg { height: 44px; }
+
+/* Optional: gradient text utility for marketing headings (not for body) */
+.hostvexa-gradient-text {
+  background: var(--hostvexa-gradient);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+}
+
+/* ── 6 · Scrollbar accent (OverlayScrollbars / webkit) ──────────────────── */
+*::-webkit-scrollbar-thumb:hover { background: var(--hostvexa-navy-muted); }
+.os-scrollbar .os-scrollbar-handle { background: rgba(14, 165, 233, 0.28); }
+.os-scrollbar .os-scrollbar-handle:hover { background: rgba(14, 165, 233, 0.42); }
+
+/* ── 7 · Print — force navy text for invoices ───────────────────────────── */
+@media print {
+  .brand-logo-hostvexa { color: var(--hostvexa-navy) !important; }
+}

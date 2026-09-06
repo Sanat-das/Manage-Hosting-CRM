@@ -81,6 +81,10 @@ class UserController extends Controller
 
         try {
             $user = DB::transaction(function () use ($validated) {
+                $legacy = collect([$validated['address_line1'] ?? null, $validated['address_line2'] ?? null, $validated['city'] ?? null, $validated['state'] ?? null, $validated['postcode'] ?? null, $validated['country'] ?? null])->filter()->implode(', ');
+                if ($legacy === '') {
+                    $legacy = $this->blankToNull($validated['address'] ?? null);
+                }
                 $user = User::create([
                     'email' => $validated['email'],
                     'password_hash' => Hash::make($validated['password']),
@@ -89,7 +93,13 @@ class UserController extends Controller
                     'last_name' => $validated['last_name'],
                     'phone' => $this->blankToNull($validated['phone'] ?? null),
                     'company' => $this->blankToNull($validated['company'] ?? null),
-                    'address' => $this->blankToNull($validated['address'] ?? null),
+                    'address' => $legacy,
+                    'address_line1' => $this->blankToNull($validated['address_line1'] ?? null),
+                    'address_line2' => $this->blankToNull($validated['address_line2'] ?? null),
+                    'city' => $this->blankToNull($validated['city'] ?? null),
+                    'state' => $this->blankToNull($validated['state'] ?? null),
+                    'postcode' => $this->blankToNull($validated['postcode'] ?? null),
+                    'country' => $this->blankToNull($validated['country'] ?? null),
                     'status' => $validated['status'],
                 ]);
 
@@ -156,13 +166,21 @@ class UserController extends Controller
         try {
             DB::transaction(function () use ($validated, $user, $roleChanged) {
                 $data = [];
-                foreach (['first_name', 'last_name', 'email', 'phone', 'company', 'address', 'role', 'status'] as $key) {
+                foreach (['first_name', 'last_name', 'email', 'phone', 'company', 'address', 'address_line1', 'address_line2', 'city', 'state', 'postcode', 'country', 'role', 'status'] as $key) {
                     if (array_key_exists($key, $validated)) {
                         $data[$key] = $validated[$key] ?? null;
                     }
                 }
 
-                foreach (['phone', 'company', 'address'] as $key) {
+                // compile legacy address when structured fields are present
+                if (array_intersect_key($validated, array_flip(['address_line1','address_line2','city','state','postcode','country'])) !== []) {
+                    $legacy = collect([$validated['address_line1'] ?? $user->address_line1, $validated['address_line2'] ?? $user->address_line2, $validated['city'] ?? $user->city, $validated['state'] ?? $user->state, $validated['postcode'] ?? $user->postcode, $validated['country'] ?? $user->country])->filter()->implode(', ');
+                    if ($legacy !== '') {
+                        $data['address'] = $legacy;
+                    }
+                }
+
+                foreach (['phone', 'company', 'address', 'address_line1', 'address_line2', 'city', 'state', 'postcode', 'country'] as $key) {
                     if (array_key_exists($key, $data) && $data[$key] === '') {
                         $data[$key] = null;
                     }

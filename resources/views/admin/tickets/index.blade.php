@@ -24,15 +24,6 @@
         <x-adminlte-alert theme="danger" dismissible>{{ session('error') }}</x-adminlte-alert>
     @endif
 
-    <x-adminlte.partials.metric-cards :items="[
-        ['title' => $stats->get('open', 0), 'text' => 'Open', 'icon' => 'bi bi-envelope-open', 'theme' => 'primary'],
-        ['title' => $stats->get('answered', 0), 'text' => 'Answered', 'icon' => 'bi bi-reply', 'theme' => 'info'],
-        ['title' => $stats->get('customer_reply', 0), 'text' => 'Customer-Reply', 'icon' => 'bi bi-chat-dots', 'theme' => 'danger'],
-        ['title' => $stats->get('on_hold', 0), 'text' => 'On Hold', 'icon' => 'bi bi-pause-circle', 'theme' => 'warning'],
-        ['title' => $stats->get('in_progress', 0), 'text' => 'In Progress', 'icon' => 'bi bi-hourglass-split', 'theme' => 'info'],
-        ['title' => $stats->get('closed', 0), 'text' => 'Closed', 'icon' => 'bi bi-x-circle', 'theme' => 'secondary'],
-    ]" />
-
     <x-adminlte.partials.datatable
         icon="bi bi-ticket"
         title="All Tickets"

@@ -38,18 +38,19 @@
         </div>
     </div>
 
+    @php
+        $createPaymentType = (string) old('payment_type', 'recurring');
+        $createCycle = $createPaymentType === 'one_time'
+            ? 'one_time'
+            : (string) old('billing_cycle', 'monthly');
+        $optionPricingHidden = $createPaymentType === 'free';
+    @endphp
+
     @forelse ($availableGroups as $group)
         @php
             $isContinuous = in_array($group->type, $continuousTypes, true);
             $attached = ! empty(old("option_groups.{$group->id}.selected"));
             $overrideOn = $attached && ! empty(old("option_groups.{$group->id}.override_defaults"));
-            // Option pricing follows the selected payment type / default billing
-            // cycle; free products keep the groups attachable but unpriced.
-            $createPaymentType = (string) old('payment_type', 'recurring');
-            $createCycle = $createPaymentType === 'one_time'
-                ? 'one_time'
-                : (string) old('billing_cycle', 'monthly');
-            $optionPricingHidden = $createPaymentType === 'free';
         @endphp
 
         <div id="option-card-{{ $group->id }}"

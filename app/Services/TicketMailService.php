@@ -8,6 +8,7 @@ use App\Models\Ticket;
 use App\Models\TicketDepartment;
 use App\Models\TicketReply;
 use App\Support\AppSettings;
+use App\Support\Branding;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
@@ -45,6 +46,27 @@ final class TicketMailService
     private const SUBJECT_TAG_PATTERN = '/\[([A-Za-z0-9][A-Za-z0-9\-_\/]{1,30})\]/';
 
     /**
+     * Template names for the "ticket opened" mail, most specific first.
+     *
+     * `support_ticket_opened` is what EmailTemplateSeeder actually ships and
+     * what an admin edits in the UI. This used to look up `ticket_created`
+     * alone — a name no seeder has ever created — so every acknowledgement
+     * silently fell through to the hardcoded default and the admin-editable
+     * template was dead. Both names are accepted so an installation that did
+     * hand-create `ticket_created` keeps working.
+     *
+     * @var list<string>
+     */
+    private const CREATED_TEMPLATES = ['ticket_created', 'support_ticket_opened'];
+
+    /**
+     * Template names for the "staff replied" mail, most specific first.
+     *
+     * @var list<string>
+     */
+    private const REPLY_TEMPLATES = ['support_ticket_reply', 'ticket_reply'];
+
+    /**
      * Email the customer their ticket's opening message.
      *
      * @return bool false when the ticket has no reachable customer address
@@ -53,7 +75,7 @@ final class TicketMailService
     {
         $reply = $ticket->replies()->orderBy('id')->first();
 
-        return $this->sendToCustomer($ticket, $reply, 'ticket_created');
+        return $this->sendToCustomer($ticket, $reply, self::CREATED_TEMPLATES);
     }
 
     /**
@@ -63,16 +85,23 @@ final class TicketMailService
      */
     public function sendReply(Ticket $ticket, TicketReply $reply): bool
     {
-        return $this->sendToCustomer($ticket, $reply, 'support_ticket_reply');
+        return $this->sendToCustomer($ticket, $reply, self::REPLY_TEMPLATES);
     }
 
     /**
      * Subject line carrying the ticket reference, with no double-tagging when
-     * the stored subject already contains one (tickets opened from an email).
+     * the subject already contains one (tickets opened from an email).
+     *
+     * `$override` is the admin-configured template subject, already rendered.
+     * It is used in place of the stored ticket subject when set — the template
+     * editor offers a subject field, and ignoring it meant every ticket mail
+     * went out with the raw ticket subject no matter what was configured. The
+     * `[TKT-…]` tag is still forced on either way: it is load-bearing for
+     * inbound matching, not decoration.
      */
-    public function taggedSubject(Ticket $ticket): string
+    public function taggedSubject(Ticket $ticket, ?string $override = null): string
     {
-        $subject = (string) $ticket->subject;
+        $subject = trim((string) $override) !== '' ? trim((string) $override) : (string) $ticket->subject;
         $tag = '['.$ticket->ticket_no.']';
 
         return str_contains($subject, $tag) ? $subject : $tag.' '.$subject;
@@ -105,8 +134,10 @@ final class TicketMailService
     /**
      * Build and queue the mail, recording its Message-ID on the reply it came
      * from so a response can be threaded back.
+     *
+     * @param  list<string>  $templateNames  candidate template names, most specific first
      */
-    private function sendToCustomer(Ticket $ticket, ?TicketReply $reply, string $templateName): bool
+    private function sendToCustomer(Ticket $ticket, ?TicketReply $reply, array $templateNames): bool
     {
         // A staff compose form may have set an explicit To (edited from the
         // default) plus Cc/Bcc; anything it left blank falls back to exactly
@@ -170,20 +201,27 @@ final class TicketMailService
         // recipients are dispatched as an array — Mail::to handles both.
         $toForDispatch = count($effectiveTos) === 1 ? $effectiveTos[0] : $effectiveTos;
 
+        $template = $this->resolveTemplate($templateNames);
+        $variables = $this->templateVariables($ticket, $reply);
+
         SendEmail::dispatch(
             $toForDispatch,
-            $this->taggedSubject($ticket),
-            $this->body($ticket, $reply, $templateName),
+            $this->taggedSubject($ticket, $template !== null ? $this->render((string) $template->subject, $variables) : null),
+            $this->body($ticket, $reply, $template, $variables),
             $departmentAddress,
             array_filter([
                 'messageId' => $messageId,
                 'inReplyTo' => $inReplyTo,
                 'references' => $references,
                 'replyTo' => $this->replyToAddress($ticket),
+                // Explicit marker so inbound parser knows this is a user-initiated
+                // ticket reply, not an auto-generated message. SendEmail will
+                // also add X-Auto-Response-Suppress for Exchange.
+                'autoSubmitted' => 'no',
             ]),
             $effectiveCc,
             $effectiveBcc,
-            $reply?->is_staff ? $reply->html_body : null,
+            $reply?->is_staff ? $this->htmlBodyFor($ticket, $reply) : null,
             $reply?->is_staff ? $this->attachmentsFor($reply) : []
         );
 
@@ -333,27 +371,75 @@ final class TicketMailService
     }
 
     /**
-     * Body: the admin-managed template when one is active, otherwise a plain
-     * default — a missing template must never silence ticket mail. The reply
-     * text itself is always appended, so the customer can answer in context.
+     * The first active template among the candidate names, or null when none
+     * of them exist — a missing template must never silence ticket mail.
+     *
+     * @param  list<string>  $names
      */
-    private function body(Ticket $ticket, ?TicketReply $reply, string $templateName): string
+    private function resolveTemplate(array $names): ?EmailTemplate
     {
-        $name = $ticket->customer?->full_name ?: 'there';
-        $message = trim((string) ($reply?->message ?? ''));
+        foreach ($names as $name) {
+            $template = EmailTemplate::query()
+                ->where('name', $name)
+                ->where('status', 'active')
+                ->first();
 
-        $template = EmailTemplate::query()
-            ->where('name', $templateName)
-            ->where('status', 'active')
-            ->first();
+            if ($template !== null) {
+                return $template;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Every placeholder the shipped ticket templates actually use.
+     *
+     * This used to supply only name/ticket_no/subject/message, so the seeded
+     * bodies mailed customers a literal `{{app_url}}`, `{{company_name}}` and
+     * friends. The set matches InvoiceEmailService's vocabulary so one
+     * placeholder means the same thing in every template an admin edits.
+     *
+     * @return array<string, string>
+     */
+    private function templateVariables(Ticket $ticket, ?TicketReply $reply): array
+    {
+        $appName = Branding::appName();
+        $companyName = trim((string) AppSettings::get('company_name')) ?: $appName;
+        $companyEmail = trim((string) AppSettings::get('company_email'))
+            ?: trim((string) AppSettings::get('mail_from_address'))
+            ?: (string) config('mail.from.address', '');
+
+        return [
+            'name' => $ticket->display_name ?: 'there',
+            'customer_name' => $ticket->display_name ?: 'there',
+            'ticket_no' => (string) $ticket->ticket_no,
+            'subject' => (string) $ticket->subject,
+            'department' => TicketService::departmentLabel((string) $ticket->department),
+            'status' => (string) $ticket->status,
+            'priority' => (string) $ticket->priority,
+            'message' => trim((string) ($reply?->message ?? '')),
+            'app_name' => $appName,
+            'app_url' => rtrim((string) config('app.url', url('/')), '/'),
+            'company_name' => $companyName,
+            'company_email' => $companyEmail,
+        ];
+    }
+
+    /**
+     * Plain-text body: the admin-managed template when one is active,
+     * otherwise a plain default. The reply text itself is always appended, so
+     * the customer can answer in context.
+     *
+     * @param  array<string, string>  $variables
+     */
+    private function body(Ticket $ticket, ?TicketReply $reply, ?EmailTemplate $template, array $variables): string
+    {
+        $name = $variables['name'];
+        $message = $variables['message'];
 
         if ($template !== null) {
-            $intro = $this->render((string) $template->body, [
-                'name' => $name,
-                'ticket_no' => (string) $ticket->ticket_no,
-                'subject' => (string) $ticket->subject,
-                'message' => $message,
-            ]);
+            $intro = $this->render((string) $template->body, $variables);
         } else {
             $intro = "Hi {$name},\n\nThere is an update on your support ticket {$ticket->ticket_no} ({$ticket->subject}).";
         }
@@ -377,6 +463,40 @@ final class TicketMailService
         $parts[] = self::REPLY_MARKER;
 
         return implode("\n\n", $parts);
+    }
+
+    /**
+     * HTML part for a staff reply, carrying the same trailer as the plain-text
+     * part.
+     *
+     * The raw `html_body` used to be shipped alone, which meant the HTML half
+     * of the message had no department signature and — far worse — no
+     * {@see self::REPLY_MARKER}. Mail clients quote the HTML part, so a
+     * customer's answer came back with nothing for `stripQuotedText()` to cut
+     * against and the whole thread was re-appended on every round trip.
+     */
+    private function htmlBodyFor(Ticket $ticket, TicketReply $reply): ?string
+    {
+        $html = $reply->html_body;
+
+        if ($html === null || trim($html) === '') {
+            return null;
+        }
+
+        $parts = [$html, '<p>'.e('Reply to this email to add to the ticket.').'</p>'];
+
+        $signature = $this->departmentSignature($ticket);
+
+        if ($signature !== null) {
+            $parts[] = '<p>--<br>'.nl2br(e($signature)).'</p>';
+        }
+
+        // Same literal string as the text part: TicketMailParser::stripQuotedText()
+        // keys off it exactly, and it must survive an HTML-to-text conversion,
+        // so it goes out as its own visible paragraph rather than a comment.
+        $parts[] = '<p>'.e(self::REPLY_MARKER).'</p>';
+
+        return implode("\n", $parts);
     }
 
     /**
@@ -415,13 +535,12 @@ final class TicketMailService
     /**
      * Replies must land in the mailbox the fetch command reads for THIS
      * ticket's department, so a Sales thread comes back to the Sales inbox.
-     * Falls back to the global IMAP account, then the From address.
+     * Falls back to the From address.
      */
     private function replyToAddress(Ticket $ticket): ?string
     {
         $candidates = [
             $this->departmentAddress($ticket),
-            AppSettings::get('imap_username'),
             AppSettings::get('mail_from_address'),
         ];
 

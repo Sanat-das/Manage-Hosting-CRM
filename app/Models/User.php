@@ -15,7 +15,7 @@ use Illuminate\Notifications\Notifiable;
 use Laravel\Fortify\TwoFactorAuthenticatable;
 use Laravel\Sanctum\HasApiTokens;
 
-#[Fillable(['email', 'password_hash', 'role', 'first_name', 'last_name', 'phone', 'company', 'address', 'status', 'two_factor_secret', 'two_factor_recovery_codes', 'two_factor_confirmed_at'])]
+#[Fillable(['email', 'password_hash', 'role', 'first_name', 'last_name', 'phone', 'company', 'address', 'address_line1', 'address_line2', 'city', 'state', 'postcode', 'country', 'status', 'two_factor_secret', 'two_factor_recovery_codes', 'two_factor_confirmed_at', 'ticket_signature'])]
 #[Hidden(['password_hash', 'two_factor_secret', 'two_factor_recovery_codes', 'remember_token'])]
 class User extends Authenticatable
 {
@@ -100,5 +100,31 @@ class User extends Authenticatable
             'role' => 'string',
             'last_login_at' => 'datetime',
         ];
+    }
+
+    /**
+     * Ecommerce formatted address - combines structured fields, falls back to legacy address.
+     */
+    public function getFormattedAddressAttribute(): ?string
+    {
+        $parts = array_filter([
+            $this->address_line1,
+            $this->address_line2,
+            $this->city,
+            $this->state,
+            $this->postcode,
+            $this->country,
+        ], fn ($v) => $v !== null && $v !== '');
+
+        if ($parts !== []) {
+            return implode(', ', $parts);
+        }
+
+        return $this->address ?: null;
+    }
+
+    public function getBillingAddressLineAttribute(): ?string
+    {
+        return $this->formatted_address;
     }
 }

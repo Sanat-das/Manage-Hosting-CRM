@@ -29,13 +29,24 @@ final class ScheduleInspector
     /** Cache key stamped by RecordScheduledTaskRun on every `schedule:run`. */
     public const HEARTBEAT_KEY = 'cron.scheduler.last_tick';
 
+    /** Explicit health for tickets:fetch-mail — last successful IMAP poll. */
+    public const TICKETS_HEALTH_KEY = 'cron.tickets.last_success';
+    public const TICKETS_HEALTH_STATUS_KEY = 'cron.tickets.last_status';
+    public const TICKETS_HEALTH_FAILED_AT_KEY = 'cron.tickets.last_failed_at';
+
     /**
-     * A scheduler that ticks every minute is considered stale after this long.
-     * Generous enough to absorb a slow tick or a machine under load, short
-     * enough that a Task Scheduler entry that stopped is obvious within
-     * minutes rather than at the next missed daily job.
+     * Scheduler heartbeat staleness: schedule:run should fire every minute, so
+     * 5 minutes is generous enough for load but short enough to catch a dead
+     * Task Scheduler entry within minutes.
      */
     public const STALE_AFTER_SECONDS = 300;
+
+    /**
+     * Tickets fetch is everyFiveMinutes — allow 15 minutes (3 missed polls)
+     * before considering the IMAP pipeline stale, even though the scheduler
+     * itself may still be ticking.
+     */
+    public const TICKETS_STALE_AFTER_SECONDS = 900;
 
     public function __construct(
         private readonly Application $app,
@@ -166,6 +177,63 @@ final class ScheduleInspector
 
         return $lastTick !== null
             && $lastTick->diffInSeconds(Carbon::now(), absolute: true) <= self::STALE_AFTER_SECONDS;
+    }
+
+    /** When tickets:fetch-mail last succeeded, or null if it never has. */
+    public function ticketsLastSuccessAt(): ?Carbon
+    {
+        try {
+            $stamp = Cache::get(self::TICKETS_HEALTH_KEY);
+        } catch (Throwable) {
+            return null;
+        }
+
+        return $stamp === null ? null : Carbon::parse($stamp);
+    }
+
+    public function ticketsLastFailedAt(): ?Carbon
+    {
+        try {
+            $stamp = Cache::get(self::TICKETS_HEALTH_FAILED_AT_KEY);
+        } catch (Throwable) {
+            return null;
+        }
+
+        return $stamp === null ? null : Carbon::parse($stamp);
+    }
+
+    /**
+     * True when tickets:fetch-mail has succeeded recently. Unlike
+     * schedulerIsHealthy(), this catches a dead IMAP connection while the
+     * scheduler is still ticking — the exact gap the heartbeat alone misses.
+     * Returns null when there is no data yet (e.g. task disabled or never
+     * run), so callers can distinguish "unknown" from "healthy/unhealthy".
+     */
+    public function ticketsMailIsHealthy(): ?bool
+    {
+        $lastSuccess = $this->ticketsLastSuccessAt();
+
+        if ($lastSuccess === null) {
+            // Fall back to CronTaskRun history for installs that haven't yet
+            // populated the new cache key (or where cache was flushed).
+            try {
+                $lastRun = CronTaskRun::query()
+                    ->where('task_key', 'tickets:fetch-mail')
+                    ->where('status', CronTaskRun::STATUS_SUCCESS)
+                    ->orderByDesc('id')
+                    ->first();
+                if ($lastRun !== null && $lastRun->finished_at !== null) {
+                    $lastSuccess = Carbon::parse($lastRun->finished_at);
+                }
+            } catch (Throwable) {
+            }
+
+            if ($lastSuccess === null) {
+                return null;
+            }
+        }
+
+        return $lastSuccess->diffInSeconds(Carbon::now(), absolute: true) <= self::TICKETS_STALE_AFTER_SECONDS;
     }
 
     /**

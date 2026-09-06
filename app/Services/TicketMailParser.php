@@ -13,6 +13,7 @@ use App\Support\AppSettings;
 use App\Support\InboundEmail;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
@@ -74,6 +75,19 @@ final class TicketMailParser
         'mailer-daemon', 'postmaster', 'no-reply', 'noreply', 'donotreply', 'do-not-reply', 'bounce', 'bounces',
     ];
 
+    /**
+     * New tickets one sender may open per hour before the flood guard stops
+     * believing them. Overridable via the `imap_max_new_tickets_per_hour`
+     * setting; high enough that a genuinely busy customer is never caught.
+     */
+    private const DEFAULT_NEW_TICKETS_PER_HOUR = 20;
+
+    /**
+     * Lines that may follow a `-- ` marker and still be read as a signature
+     * rather than as the customer continuing to write.
+     */
+    private const MAX_SIGNATURE_LINES = 10;
+
     public function __construct(private readonly TicketService $tickets) {}
 
     /**
@@ -95,14 +109,25 @@ final class TicketMailParser
             return $this->result(self::STATUS_IGNORED, $reason);
         }
 
-        if ($email->messageId !== '' && $this->alreadyProcessed($email->messageId)) {
+        if ($reason = $this->selfLoopReason($email)) {
+            return $this->result(self::STATUS_IGNORED, $reason);
+        }
+
+        // Mail without a Message-ID used to skip the duplicate check entirely,
+        // so a message whose Seen flag failed to stick was re-imported on every
+        // poll. A fingerprint of the parts that identify the message stands in:
+        // stable across re-fetches of the SAME mail (Date is a header, not a
+        // receive time) but different for a genuine second message.
+        $messageId = $email->messageId !== '' ? $email->messageId : $this->fingerprintMessageId($email);
+
+        if ($this->alreadyProcessed($messageId)) {
             return $this->result(self::STATUS_DUPLICATE, 'Message-ID already recorded on a reply.');
         }
 
         $ticket = $this->matchTicket($email);
 
         if ($ticket === null) {
-            return $this->openTicket($email, $dryRun, $mailboxDepartment);
+            return $this->openTicket($email, $dryRun, $mailboxDepartment, $messageId);
         }
 
         $author = $this->authorFor($ticket, $email);
@@ -138,11 +163,11 @@ final class TicketMailParser
             $ticket->refresh();
         }
 
-        return DB::transaction(function () use ($ticket, $author, $message, $email) {
+        return DB::transaction(function () use ($ticket, $author, $message, $email, $messageId) {
             $reply = $this->tickets->reply($ticket, $author, $message);
 
             $reply->forceFill([
-                'email_message_id' => $email->messageId !== '' ? Str::limit($email->messageId, 191, '') : null,
+                'email_message_id' => Str::limit($messageId, 191, ''),
                 'email_in_reply_to' => $email->inReplyTo !== null ? Str::limit($email->inReplyTo, 191, '') : null,
                 'from_email' => $email->fromEmail !== '' ? Str::limit($email->fromEmail, 191, '') : null,
                 'html_body' => $email->htmlBody,
@@ -167,7 +192,7 @@ final class TicketMailParser
      *
      * @return array{status: string, reason: string, reply: ?TicketReply, ticket: ?Ticket}
      */
-    private function openTicket(InboundEmail $email, bool $dryRun, ?string $mailboxDepartment): array
+    private function openTicket(InboundEmail $email, bool $dryRun, ?string $mailboxDepartment, string $messageId): array
     {
         $department = $this->departmentFor($mailboxDepartment);
 
@@ -188,6 +213,10 @@ final class TicketMailParser
             return $this->result(self::STATUS_EMPTY, 'Nothing left after stripping quoted history.');
         }
 
+        if ($reason = $this->floodReason($email)) {
+            return $this->result(self::STATUS_IGNORED, $reason);
+        }
+
         $customer = $this->customerFor($email, $dryRun);
 
         // Guest handling: when no customer found and auto-create is off, create as guest ticket instead of holding for review
@@ -200,13 +229,14 @@ final class TicketMailParser
                     "Would open a {$department->name} guest ticket for {$email->fromEmail} (unknown sender)"
                 );
             }
+
             return $this->result(
                 self::STATUS_WOULD_OPEN_TICKET,
                 "Would open a {$department->name} ticket for {$email->fromEmail}"
             );
         }
 
-        return DB::transaction(function () use ($email, $department, $customer, $isGuest, $message) {
+        return DB::transaction(function () use ($email, $department, $customer, $isGuest, $message, $messageId) {
             $ticketData = [
                 'subject' => $this->subjectFor($email),
                 'department' => $department->slug,
@@ -220,7 +250,7 @@ final class TicketMailParser
             }
 
             $ticket = $this->tickets->create($ticketData, $message, [
-                'email_message_id' => $email->messageId !== '' ? Str::limit($email->messageId, 191, '') : null,
+                'email_message_id' => Str::limit($messageId, 191, ''),
                 'email_in_reply_to' => $email->inReplyTo !== null ? Str::limit($email->inReplyTo, 191, '') : null,
                 'from_email' => $email->fromEmail !== '' ? Str::limit($email->fromEmail, 191, '') : null,
                 'html_body' => $email->htmlBody,
@@ -277,7 +307,17 @@ final class TicketMailParser
             return $default;
         }
 
-        return TicketDepartment::query()->enabled()->ordered()->first();
+        $fallback = TicketDepartment::query()->enabled()->ordered()->first();
+
+        if ($fallback !== null) {
+            Log::warning('TicketMailParser department fallback used — no default department; picked first enabled.', [
+                'fallback_department' => $fallback->slug,
+                'fallback_name' => $fallback->name,
+                'requested_mailbox_department' => $mailboxDepartment,
+            ]);
+        }
+
+        return $fallback;
     }
 
     /**
@@ -384,31 +424,70 @@ final class TicketMailParser
      * customer text, which is worse than leaving a few quoted lines behind.
      * Only the marker we ship and the two near-universal quote openers cut the
      * body; beyond that just trailing `>` blocks and signatures are dropped.
+     *
+     * Handles both top-posted (reply before quote, common) and bottom-posted
+     * (reply after quote, e.g. "On ... wrote:\n> quote\nThis is a reply")
+     * clients: if nothing survives before the first quote header, the text
+     * after the quoted block is used instead.
      */
     public function stripQuotedText(string $body): string
     {
         $body = str_replace(["\r\n", "\r"], "\n", $body);
 
-        // Our own marker is authoritative when present.
+        // The marker ends OUR trailer — nothing we send follows it — so the two
+        // sides are read separately rather than the second being thrown away.
+        //
+        // This used to `substr($body, 0, $markerAt)` before anything else, which
+        // destroyed the reply of every customer who typed UNDER the quoted
+        // history: their words live after the marker, the text before it is all
+        // quoted, and the result was an empty body. An empty body is dropped
+        // (STATUS_EMPTY) and the mail is flagged Seen, so the reply vanished
+        // with nothing to show for it. It looked intermittent because it only
+        // hit customers whose client bottom-posts.
+        $beforeMarker = $body;
+        $afterMarker = '';
+
         if (($markerAt = strpos($body, TicketMailService::REPLY_MARKER)) !== false) {
-            $body = substr($body, 0, $markerAt);
+            $beforeMarker = substr($body, 0, $markerAt);
+            $afterMarker = substr($body, $markerAt + strlen(TicketMailService::REPLY_MARKER));
         }
 
-        $lines = explode("\n", $body);
+        // Top-posted: what they wrote sits above the history. The common case.
+        $topPosted = $this->textBeforeQuotedHistory($beforeMarker);
+
+        if ($topPosted !== '') {
+            return $topPosted;
+        }
+
+        // Bottom-posted: nothing above the history, so take what is unquoted
+        // below our trailer.
+        $bottomPosted = $this->textOutsideQuotedHistory($afterMarker);
+
+        if ($bottomPosted !== '') {
+            return $bottomPosted;
+        }
+
+        // Neither side yielded anything: the reply may be interleaved through
+        // the quoted block, so keep everything that is not quoted history.
+        return $this->textOutsideQuotedHistory($body);
+    }
+
+    /**
+     * Everything up to the first quoted-history opener — a top-posted reply.
+     */
+    private function textBeforeQuotedHistory(string $body): string
+    {
         $kept = [];
 
-        foreach ($lines as $line) {
-            $trimmed = trim($line);
-
-            if (preg_match('/^-{2,}\s*Original Message\s*-{2,}$/i', $trimmed)
-                || preg_match('/^_{10,}$/', $trimmed)
-                || preg_match('/^On .{0,200}\bwrote:$/i', $trimmed)
-                || preg_match('/^-- $/', $line)) {
+        foreach (explode("\n", $body) as $line) {
+            if ($this->isQuoteHeader(trim($line))) {
                 break;
             }
 
             $kept[] = $line;
         }
+
+        $kept = $this->dropTrailingSignature($kept);
 
         // Drop any quoted block left dangling at the end.
         while ($kept !== [] && (trim((string) end($kept)) === '' || str_starts_with(trim((string) end($kept)), '>'))) {
@@ -416,6 +495,89 @@ final class TicketMailParser
         }
 
         return trim(implode("\n", $kept));
+    }
+
+    /**
+     * Everything that is not quoted history — used for the bottom-posted and
+     * interleaved shapes, where there is no single clean cut point.
+     */
+    private function textOutsideQuotedHistory(string $body): string
+    {
+        $kept = [];
+
+        foreach (explode("\n", $body) as $line) {
+            $trimmed = trim($line);
+
+            if ($this->isQuoteHeader($trimmed)
+                || str_starts_with($trimmed, '>')
+                || str_contains($line, TicketMailService::REPLY_MARKER)) {
+                continue;
+            }
+
+            $kept[] = $line;
+        }
+
+        // Same signature rule as the top-posted path — a `-- ` in the middle of
+        // what the customer wrote is a separator, not the end of the message.
+        $kept = $this->dropTrailingSignature($kept);
+
+        while ($kept !== [] && trim((string) end($kept)) === '') {
+            array_pop($kept);
+        }
+
+        while ($kept !== [] && trim((string) $kept[0]) === '') {
+            array_shift($kept);
+        }
+
+        return trim(implode("\n", $kept));
+    }
+
+    /**
+     * A line that opens the quoted history of the message being replied to.
+     */
+    private function isQuoteHeader(string $trimmed): bool
+    {
+        return preg_match('/^-{2,}\s*Original Message\s*-{2,}$/i', $trimmed) === 1
+            || preg_match('/^_{10,}$/', $trimmed) === 1
+            || preg_match('/^On .{0,200}\bwrote:$/i', $trimmed) === 1;
+    }
+
+    /**
+     * Drop an RFC 3676 `-- ` signature block, but only when it really is one.
+     *
+     * The main loop used to `break` at the first `-- ` line, which silently
+     * truncated every message where a customer used a dash rule as a separator
+     * — everything they wrote below it was thrown away. A signature is the
+     * LAST such marker and has only a few lines after it; anything longer is
+     * the customer still talking.
+     *
+     * @param  list<string>  $lines
+     * @return list<string>
+     */
+    private function dropTrailingSignature(array $lines): array
+    {
+        $markerAt = null;
+
+        foreach ($lines as $index => $line) {
+            if (preg_match('/^-- $/', $line)) {
+                $markerAt = $index;
+            }
+        }
+
+        if ($markerAt === null) {
+            return $lines;
+        }
+
+        $following = array_slice($lines, $markerAt + 1);
+
+        // Trailing blanks do not make a signature look longer than it is.
+        while ($following !== [] && trim((string) end($following)) === '') {
+            array_pop($following);
+        }
+
+        return count($following) <= self::MAX_SIGNATURE_LINES
+            ? array_slice($lines, 0, $markerAt)
+            : $lines;
     }
 
     /**
@@ -449,6 +611,138 @@ final class TicketMailParser
         return TicketReply::query()
             ->where('email_message_id', Str::limit($messageId, 191, ''))
             ->exists();
+    }
+
+    /**
+     * A stand-in Message-ID for mail that arrived without one.
+     *
+     * Built from the headers that identify the message rather than from when
+     * we happened to read it, so re-polling the same mail produces the same id
+     * and `alreadyProcessed()` catches it — while a genuine second message
+     * (different Date, or different text) gets its own. Shaped like a real
+     * Message-ID because it is stored in the same column and can end up in an
+     * outbound References header.
+     */
+    private function fingerprintMessageId(InboundEmail $email): string
+    {
+        $fingerprint = sha1(implode("\n", [
+            strtolower(trim($email->fromEmail)),
+            trim($email->subject),
+            trim((string) $email->header('date')),
+            trim($email->body),
+        ]));
+
+        return 'no-message-id-'.$fingerprint.'@'.parse_url((string) config('app.url'), PHP_URL_HOST).'';
+    }
+
+    /**
+     * Why this sender is opening too many tickets to keep believing them.
+     *
+     * Only reached from {@see self::openTicket()}, so a reply to an existing
+     * ticket is never throttled — this caps NEW tickets, and with them the
+     * user/customer rows auto-registration would create. Without it a mail
+     * flood turns into an unbounded write loop: one ticket, one user and one
+     * customer per message, every five minutes, forever.
+     */
+    private function floodReason(InboundEmail $email): ?string
+    {
+        $from = strtolower(trim($email->fromEmail));
+
+        if ($from === '') {
+            return null;
+        }
+
+        $cap = max(1, (int) (AppSettings::get('imap_max_new_tickets_per_hour') ?? self::DEFAULT_NEW_TICKETS_PER_HOUR));
+
+        $recent = Ticket::query()
+            ->where('created_at', '>=', now()->subHour())
+            ->whereHas('replies', fn ($query) => $query->whereRaw('LOWER(from_email) = ?', [$from]))
+            ->count();
+
+        if ($recent < $cap) {
+            return null;
+        }
+
+        Log::warning('Ticket mail flood guard tripped — sender is opening tickets faster than the cap allows.', [
+            'from' => $email->fromEmail,
+            'opened_last_hour' => $recent,
+            'cap' => $cap,
+        ]);
+
+        return "Flood guard: {$email->fromEmail} has opened {$recent} tickets in the last hour (cap {$cap}) — left for a human.";
+    }
+
+    /**
+     * Guard against mail loops: if the From address matches any configured
+     * department or global mailbox username, this is our own outbound being
+     * read back (e.g. BCC to self, inbox copy). Dropping it prevents
+     * tickets:fetch-mail from re-importing ticket replies we just sent via
+     * queue:work --queue=emails.
+     */
+    private function selfLoopReason(InboundEmail $email): ?string
+    {
+        $from = strtolower(trim($email->fromEmail));
+        if ($from === '') {
+            return null;
+        }
+
+        foreach ($this->knownMailboxUsernames() as $mailboxUser) {
+            if (strtolower(trim($mailboxUser)) === $from) {
+                return "Self-loop guard: From {$email->fromEmail} matches configured mailbox {$mailboxUser} — own outbound, ignored.";
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function knownMailboxUsernames(): array
+    {
+        try {
+            $usernames = [];
+
+            // Also cover the From address — outbound ticket mail uses
+            // department email as From and may match From header on loopback.
+            $fromAddress = trim((string) AppSettings::get('mail_from_address'));
+            if ($fromAddress !== '') {
+                $usernames[] = $fromAddress;
+            }
+
+            $deptUsernames = TicketDepartment::query()
+                ->enabled()
+                ->whereNotNull('email_address')
+                ->where('email_address', '!=', '')
+                ->pluck('email_address')
+                ->all();
+
+            foreach ($deptUsernames as $addr) {
+                $addr = trim((string) $addr);
+                if ($addr !== '') {
+                    $usernames[] = $addr;
+                }
+            }
+
+            // Department IMAP usernames may differ from email_address (login vs sender).
+            $deptImapUsers = TicketDepartment::query()
+                ->enabled()
+                ->whereNotNull('imap_username')
+                ->where('imap_username', '!=', '')
+                ->pluck('imap_username')
+                ->all();
+
+            foreach ($deptImapUsers as $u) {
+                $u = trim((string) $u);
+                if ($u !== '') {
+                    $usernames[] = $u;
+                }
+            }
+
+            return array_values(array_unique(array_map('strtolower', $usernames)));
+        } catch (\Throwable) {
+            return [];
+        }
     }
 
     /**
@@ -549,6 +843,17 @@ final class TicketMailParser
 
         if ($user !== null && $this->tickets->isStaff($user)) {
             return $user;
+        }
+
+        // Guest ticket: the From address that opened it (guest_email) is the owner.
+        // Allow even without a User row — synthesize a client user so the reply
+        // is stored as a customer reply (is_staff false, user_id null if no account).
+        if ($ticket->isGuest() && $emailLower !== '' && strtolower(trim((string) $ticket->guest_email)) === $emailLower) {
+            if ($user !== null) {
+                return $user;
+            }
+
+            return new User(['email' => $email->fromEmail, 'role' => 'client']);
         }
 
         return null;

@@ -51,6 +51,11 @@ class InstallerService
         'bootstrap/cache',
     ];
 
+    /**
+     * Memoized result of the databaseProvisioned() probe for this request.
+     */
+    private static ?bool $provisioned = null;
+
     public function envPath(): string
     {
         return base_path('.env');
@@ -85,6 +90,120 @@ class InstallerService
     public static function lockExists(): bool
     {
         return is_file(self::lockPath());
+    }
+
+    /**
+     * Whether the application is installed, for gating purposes.
+     *
+     * install.lock alone is not a sufficient control. It is gitignored, so any
+     * deploy that does not preserve it — a fresh checkout, a restore from
+     * backup, a file sync that skips ignored paths — silently reopens the
+     * unauthenticated installer on a live application, letting anyone rewrite
+     * .env and create an administrator.
+     *
+     * So the lock is backed by a second, data-derived signal: an already
+     * provisioned database. The file is checked first and short-circuits, so
+     * the database probe never runs on a normally installed site.
+     *
+     * Both EnsureAppInstalled and RedirectIfInstalled must consult THIS method
+     * rather than lockExists(), or the two disagree when the lock is missing
+     * but the database is live and bounce the visitor between / and /install
+     * forever.
+     */
+    public static function isInstalled(): bool
+    {
+        return self::lockExists() || self::databaseProvisioned();
+    }
+
+    /**
+     * Whether the configured database already holds an installed application.
+     *
+     * Deliberately conservative: any failure to prove otherwise returns false
+     * so a genuine first run is never blocked. Memoized per request because
+     * this sits behind middleware on every web request once the lock is gone.
+     */
+    public static function databaseProvisioned(): bool
+    {
+        if (self::$provisioned !== null) {
+            return self::$provisioned;
+        }
+
+        try {
+            $connection = DB::connection();
+
+            // A pre-install .env points at sqlite :memory:, which has no tables
+            // and must not be mistaken for an install.
+            self::$provisioned = $connection->getSchemaBuilder()->hasTable('users')
+                && $connection->table('users')->exists();
+        } catch (\Throwable) {
+            // No database configured / unreachable / not migrated — treat as a
+            // fresh install so the wizard stays reachable.
+            self::$provisioned = false;
+        }
+
+        return self::$provisioned;
+    }
+
+    /**
+     * Reset the memoized provisioning probe (tests, and immediately after a
+     * successful install so the new state is observed in the same request).
+     */
+    public static function forgetProvisionedCache(): void
+    {
+        self::$provisioned = null;
+    }
+
+    /**
+     * Whether a submitted database host is safe to use.
+     *
+     * verifyConnection() interpolates the host straight into a PDO DSN, which
+     * is a semicolon-delimited key=value list — so an unfiltered host can
+     * append its own DSN parameters (unix_socket=... being the interesting
+     * one). This endpoint is unauthenticated pre-install, so the host is also
+     * an outbound-connection primitive; restricting it to a bare hostname or
+     * IP removes both.
+     */
+    public static function isValidDatabaseHost(string $host): bool
+    {
+        $host = trim($host);
+
+        if ($host === '' || strlen($host) > 100) {
+            return false;
+        }
+
+        // Anything that could terminate or extend a DSN parameter.
+        if (preg_match('/[;=\s\/\\\\\'"]/', $host) === 1) {
+            return false;
+        }
+
+        // Bracketed IPv6, e.g. [::1].
+        $ip = (str_starts_with($host, '[') && str_ends_with($host, ']'))
+            ? substr($host, 1, -1)
+            : $host;
+
+        if (filter_var($ip, FILTER_VALIDATE_IP) !== false) {
+            return ! self::isLinkLocalIp($ip);
+        }
+
+        // Otherwise it must be a plain hostname / FQDN.
+        return preg_match(
+            '/^(?=.{1,253}$)[A-Za-z0-9]([A-Za-z0-9\-]{0,61}[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9\-]{0,61}[A-Za-z0-9])?)*$/',
+            $host
+        ) === 1;
+    }
+
+    /**
+     * Link-local addresses: 169.254.0.0/16 and fe80::/10.
+     *
+     * This is the cloud instance-metadata range. Private LAN ranges
+     * (10/8, 172.16/12, 192.168/16) are deliberately NOT blocked — a database
+     * server on the local network is the normal deployment for this app, and
+     * blocking it would break legitimate installs to stop a weak primitive.
+     */
+    private static function isLinkLocalIp(string $ip): bool
+    {
+        return str_starts_with($ip, '169.254.')
+            || str_starts_with(strtolower($ip), 'fe80:');
     }
 
     /**
@@ -219,6 +338,17 @@ class InstallerService
      */
     public function run(array $input): void
     {
+        // 0. Refuse to re-install over a live application. The middleware
+        //    already gates the route, but this is the destructive step — it
+        //    rewrites .env (including DB_*) and creates an administrator — so
+        //    it carries its own check rather than trusting the caller.
+        if (self::isInstalled()) {
+            throw new RuntimeException(
+                'This application is already installed. Refusing to run the installer again. '
+                .'If you are intentionally reinstalling, drop the application database first.'
+            );
+        }
+
         // 1. Verify the submitted credentials without touching the live
         //    connection (a failed attempt must not break the session).
         $this->verifyConnection(
@@ -232,6 +362,16 @@ class InstallerService
         // 2. Persist the chosen configuration to .env and apply it to this
         //    request's connection manager.
         $this->setEnvValue('APP_NAME', (string) $input['app_name']);
+
+        // Harden the environment the moment the app becomes a real install.
+        // bootstrap/app.php seeds .env from .env.example, which ships
+        // APP_ENV=local + APP_DEBUG=true for developer convenience; left in
+        // place those turn every unhandled exception into a stack trace
+        // exposing DB_PASSWORD/APP_KEY, and they relax framework and package
+        // guards that key off the environment name.
+        $this->setEnvValue('APP_ENV', 'production');
+        $this->setEnvValue('APP_DEBUG', 'false');
+
         $this->setEnvValue('DB_CONNECTION', 'mysql');
         $this->setEnvValue('DB_HOST', (string) $input['db_host']);
         $this->setEnvValue('DB_PORT', (string) $input['db_port']);
@@ -329,6 +469,14 @@ class InstallerService
         string $username,
         string $password
     ): void {
+        // Defence in depth: run() is public and takes raw input, so the host is
+        // re-checked here rather than trusting the controller's validation to
+        // be the only caller. Without this the interpolation below would accept
+        // DSN parameter injection.
+        if (! self::isValidDatabaseHost($host)) {
+            throw new RuntimeException('The database host must be a plain hostname or IP address.');
+        }
+
         $dsn = "mysql:host={$host};port={$port};charset=utf8mb4";
 
         try {

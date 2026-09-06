@@ -21,8 +21,27 @@
     @yield('adminlte_css')
 @endif
 
-{{-- Compiled AdminLTE + Bootstrap from Vite pipeline --}}
-@vite(['resources/css/adminlte.css', 'resources/js/adminlte.js'])
+{{-- Compiled AdminLTE + Bootstrap from Vite pipeline — branding.css last so :root wins --}}
+@vite(['resources/css/adminlte.css', 'resources/css/branding.css', 'resources/js/adminlte.js'])
+
+{{-- HostVexa branding: dynamic favicon, OG, theme-color, and primary/accent CSS overrides --}}
+@php
+    $_branding = $branding ?? \App\Support\Branding::all();
+    $_brandingFavicon = $_branding['favicon_url'] ?? \App\Support\Branding::faviconUrl();
+    $_brandingOg = $_branding['og_url'] ?? \App\Support\Branding::ogUrl();
+    $_brandingPrimary = $_branding['primary_color'] ?? \App\Support\Branding::primaryColor();
+    $_brandingAccent = $_branding['accent_color'] ?? \App\Support\Branding::accentColor();
+    $_brandingAppName = $_branding['app_name'] ?? config('app.name', 'HostVexa');
+    $_brandingInline = \App\Support\Branding::inlineStyle();
+@endphp
+<link rel="icon" type="image/svg+xml" href="{{ $_brandingFavicon }}">
+<link rel="alternate icon" href="{{ $_brandingFavicon }}">
+<meta name="theme-color" content="{{ $_brandingPrimary }}">
+<meta property="og:site_name" content="{{ $_brandingAppName }}">
+<meta property="og:image" content="{{ $_brandingOg }}">
+@if($_brandingInline !== '')
+<style id="hostvexa-branding-override">:root{!! $_brandingInline !!}</style>
+@endif
 
 @if ($rtl)
     {{-- AdminLTE ships a prebuilt RTL stylesheet; published by adminlte:install. --}}

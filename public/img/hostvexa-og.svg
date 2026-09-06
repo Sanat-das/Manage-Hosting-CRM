@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" role="img" aria-label="HostVexa — Hosting Management Platform">
+  <defs>
+    <linearGradient id="og-bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0F172A"/>
+      <stop offset="100%" stop-color="#1e293b"/>
+    </linearGradient>
+    <linearGradient id="og-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0EA5E9"/>
+      <stop offset="100%" stop-color="#6366F1"/>
+    </linearGradient>
+    <radialGradient id="og-glow" cx="72%" cy="28%" r="55%">
+      <stop offset="0%" stop-color="#6366F1" stop-opacity="0.18"/>
+      <stop offset="100%" stop-color="#0EA5E9" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="1200" height="630" fill="url(#og-bg)"/>
+  <rect width="1200" height="630" fill="url(#og-glow)"/>
+  <!-- subtle grid -->
+  <g stroke="white" stroke-opacity="0.04" stroke-width="1">
+    <line x1="0" y1="157" x2="1200" y2="157"/><line x1="0" y1="315" x2="1200" y2="315"/><line x1="0" y1="472" x2="1200" y2="472"/>
+    <line x1="300" y1="0" x2="300" y2="630"/><line x1="600" y1="0" x2="600" y2="630"/><line x1="900" y1="0" x2="900" y2="630"/>
+  </g>
+  <!-- centered lockup -->
+  <g transform="translate(600,285)">
+    <!-- mark -->
+    <g transform="translate(-44,-44)">
+      <rect width="88" height="88" rx="20" fill="url(#og-grad)"/>
+      <g fill="white">
+        <rect x="19" y="22" width="50" height="13" rx="4" fill-opacity="0.97"/>
+        <rect x="19" y="38.5" width="50" height="13" rx="4" fill-opacity="0.97"/>
+        <rect x="19" y="55" width="50" height="13" rx="4" fill-opacity="0.97"/>
+        <circle cx="61" cy="28.5" r="2.2" fill="white"/>
+        <circle cx="61" cy="45" r="2.2" fill="white"/>
+        <circle cx="61" cy="61.5" r="2.4" fill="#34d399" stroke="white" stroke-width="1.2"/>
+      </g>
+    </g>
+    <!-- wordmark -->
+    <text text-anchor="middle" y="78" font-family="'Instrument Sans', Inter, ui-sans-serif, system-ui, sans-serif" font-size="52" font-weight="700" letter-spacing="-0.035em" fill="white">Host<tspan font-weight="600" fill="#38bdf8">Vexa</tspan></text>
+    <text text-anchor="middle" y="106" font-family="'Instrument Sans', Inter, ui-sans-serif, system-ui, sans-serif" font-size="15" font-weight="500" letter-spacing="0.22em" fill="#94a3b8">HOSTING MANAGEMENT PLATFORM</text>
+  </g>
+  <!-- bottom accent line -->
+  <rect y="626" width="1200" height="4" fill="url(#og-grad)"/>
+</svg>

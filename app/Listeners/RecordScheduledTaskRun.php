@@ -150,13 +150,45 @@ class RecordScheduledTaskRun
         $this->guard(function (): void {
             Cache::forever(ScheduleInspector::HEARTBEAT_KEY, Carbon::now()->toIso8601String());
 
-            // At most once an hour, on the tick that lands in minute zero.
-            if (Carbon::now()->minute === 0) {
-                CronTaskRun::query()
-                    ->where('started_at', '<', Carbon::now()->subDays(self::RETENTION_DAYS))
-                    ->delete();
-            }
+            $this->pruneOldRunsIfDue();
         });
+    }
+
+    /**
+     * Retention cleanup independent of the heartbeat minute — the old
+     * minute===0 guard could miss an entire hour if the scheduler never
+     * ticked on :00 (e.g. machine was asleep, schedule:run took >60s and
+     * skipped that tick). We now use a cache-guarded hourly throttle so
+     * pruning happens roughly once an hour regardless of which minute we
+     * happen to land on, and it also self-heals if a tick was missed.
+     */
+    private function pruneOldRunsIfDue(): void
+    {
+        $lastPruneKey = 'cron.runs.last_prune_at';
+        try {
+            $lastPruneRaw = Cache::get($lastPruneKey);
+            $lastPrune = $lastPruneRaw !== null ? Carbon::parse($lastPruneRaw) : null;
+            if ($lastPrune !== null && $lastPrune->diffInMinutes(Carbon::now(), absolute: true) < 60) {
+                // Also keep the legacy minute-0 fast path: if we ARE on :00 we
+                // allow pruning even within the hour to preserve old behaviour
+                // for tests that freeze time at :00.
+                if (Carbon::now()->minute !== 0) {
+                    return;
+                }
+            }
+        } catch (Throwable) {
+            // If cache is unavailable, still attempt pruning — missing a prune
+            // is worse than pruning too often.
+        }
+
+        try {
+            CronTaskRun::query()
+                ->where('started_at', '<', Carbon::now()->subDays(self::RETENTION_DAYS))
+                ->delete();
+            Cache::forever($lastPruneKey, Carbon::now()->toIso8601String());
+        } catch (Throwable $e) {
+            Log::warning('Cron run history prune failed.', ['error' => $e->getMessage()]);
+        }
     }
 
     private function close(
@@ -179,11 +211,12 @@ class RecordScheduledTaskRun
         }
 
         $finishedAt = Carbon::now();
+        $isSuccess = ! $failed && ($exitCode === null || $exitCode === 0);
 
         $run->forceFill([
-            'status' => $failed || ($exitCode !== null && $exitCode !== 0)
-                ? CronTaskRun::STATUS_FAILED
-                : CronTaskRun::STATUS_SUCCESS,
+            'status' => $isSuccess
+                ? CronTaskRun::STATUS_SUCCESS
+                : CronTaskRun::STATUS_FAILED,
             'exit_code' => $exitCode,
             'finished_at' => $finishedAt,
             'runtime_ms' => $runtimeMs ?? ($run->started_at !== null
@@ -191,6 +224,26 @@ class RecordScheduledTaskRun
                 : null),
             'message' => $message ?? $run->message,
         ])->save();
+
+        // Explicit health for tickets:fetch-mail — the scheduler heartbeat
+        // alone would look healthy even while IMAP is dead, because
+        // schedule:run ticks every minute regardless of whether the mailbox
+        // was reachable. Store last success/failure separately so the admin
+        // page can surface "scheduler ticking but tickets fetch dead".
+        if ($key === 'tickets:fetch-mail') {
+            try {
+                if ($isSuccess) {
+                    Cache::forever(ScheduleInspector::TICKETS_HEALTH_KEY, $finishedAt->toIso8601String());
+                    Cache::forever(ScheduleInspector::TICKETS_HEALTH_STATUS_KEY, 'ok');
+                } else {
+                    // Do not overwrite last_success on failure, but record status.
+                    Cache::forever(ScheduleInspector::TICKETS_HEALTH_STATUS_KEY, 'failed');
+                    Cache::forever(ScheduleInspector::TICKETS_HEALTH_FAILED_AT_KEY, $finishedAt->toIso8601String());
+                }
+            } catch (Throwable $e) {
+                Log::warning('Tickets mail health could not be recorded.', ['error' => $e->getMessage()]);
+            }
+        }
     }
 
     /**

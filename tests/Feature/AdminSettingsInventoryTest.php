@@ -13,11 +13,12 @@ use Tests\TestCase;
 /**
  * Baseline inventory guard for admin/settings.
  *
- * - Captures the 193 name="settings[*]" keys rendered by
+ * - Captures the 199 name="settings[*]" keys rendered by
  *   resources/views/admin/settings/index.blade.php (84 baseline + 94 task-8 typed
- *   surfaced + 11 imap_* for ticket email piping + 4 security hardening toggles)
+ *   surfaced + 3 imap_* policy keys for ticket email piping + 4 security hardening
+ *   toggles + 6 branding_* keys added with BrandingSettings + 8 company split)
  *   and asserts the set is unchanged after refactors (no drop/rename).
- * - Guards GET query count: 1 legacy settings pluck + 16 typed group loads = <=17.
+ * - Guards GET query count: 1 legacy settings pluck + 17 typed group loads = <=19.
  *   Ensures SettingsController::loadAll() does not introduce N+1 per-key queries.
  */
 class AdminSettingsInventoryTest extends TestCase
@@ -25,14 +26,13 @@ class AdminSettingsInventoryTest extends TestCase
     use RefreshDatabase;
 
     /**
-     * Baseline set - 193 keys rendered by admin/settings/index.blade.php (84 + 94 typed + 11 imap + 4 security hardening).
-     * Documented verbatim so any drop or rename fails this test.
-     * Sorted alphabetically for diff stability; source order is the blade file.
-     * v2: 2026-08-24 Task 8 surfaced remaining 94 TYPED_KEYS (all 160 typed + 18 legacy).
-     * v3: 2026-08-28 added the 11 imap_* keys (Incoming Mail card, ticket email piping + inbound policy).
-     * v4: 2026-09-03 added 4 security hardening toggles (honeypot, headers, strong password, math captcha).
-     * Legacy default_currency kept disabled (deprecated alias for typed currency in Billing) - no duplicate editable.
-     */
+      * Baseline set - 199 keys rendered by admin/settings/index.blade.php (84 + 94 typed + 3 imap policy + 4 security hardening + 6 branding + 8 company split).
+      * Global Incoming Mail host/user/pwd removed in department-only refactor (9 keys dropped).
+      * Documented verbatim so any drop or rename fails this test.
+      * Sorted alphabetically for diff stability; source order is the blade file.
+      * v6: 2026-09-05 removed 9 global imap_* (host/port/user/pwd/encryption/folder/validate/enabled/delete) — department-only; kept 2 policy keys.
+      * v7: 2026-09-05 added imap_max_new_tickets_per_hour (inbound flood cap) — 3 policy keys.
+      */
     public const BASELINE_KEYS = [
         'analytics_anonymize_ip',
         'analytics_daily_report',
@@ -60,6 +60,12 @@ class AdminSettingsInventoryTest extends TestCase
         'automation_terminate_after_due_days',
         'automation_welcome_email',
         'automation_workflows_enabled',
+        'branding_accent_color',
+        'branding_app_name',
+        'branding_footer_text',
+        'branding_primary_color',
+        'branding_sidebar_theme',
+        'branding_tagline',
         'catalog_allow_preorders',
         'catalog_bundle_discount_default',
         'catalog_currency_symbol',
@@ -74,9 +80,17 @@ class AdminSettingsInventoryTest extends TestCase
         'catalog_show_out_of_stock',
         'catalog_show_reviews',
         'company_address',
+        'company_address_line1',
+        'company_address_line2',
+        'company_city',
+        'company_country',
         'company_email',
         'company_name',
         'company_phone',
+        'company_phone_code',
+        'company_phone_number',
+        'company_postcode',
+        'company_state',
         'cpanel_api_token',
         'cpanel_enabled',
         'cpanel_host',
@@ -132,15 +146,7 @@ class AdminSettingsInventoryTest extends TestCase
         'hosting_welcome_email_enabled',
         'imap_auto_create_customers',
         'imap_default_department',
-        'imap_delete_after_fetch',
-        'imap_enabled',
-        'imap_encryption',
-        'imap_folder',
-        'imap_host',
-        'imap_password',
-        'imap_port',
-        'imap_username',
-        'imap_validate_cert',
+        'imap_max_new_tickets_per_hour',
         'inventory_auto_restock',
         'inventory_low_stock_threshold',
         'inventory_notify_low_stock',
@@ -257,14 +263,14 @@ class AdminSettingsInventoryTest extends TestCase
         $expected = self::BASELINE_KEYS;
         sort($expected);
 
-        $this->assertCount(193, $keys, 'Baseline field count changed - expected 193 name="settings[*]" keys. Got: ' . implode(', ', $keys));
+        $this->assertCount(199, $keys, 'Baseline field count changed - expected 199 name="settings[*]" keys. Got: ' . implode(', ', $keys));
         $this->assertSame($expected, $keys, 'Baseline field set changed - keys were dropped, renamed, or added.');
     }
 
     public function test_get_query_count_is_bounded_and_has_no_n_plus_one(): void
     {
         // 1 legacy settings pluck in middleware (security hardening toggles) + 1 legacy pluck in
-        // SettingsController::loadAll() + 16 typed group loads (distinct classes in AppSettings::TYPED_KEYS) = 18.
+        // SettingsController::loadAll() + 17 typed group loads (distinct classes in AppSettings::TYPED_KEYS, now includes branding) = 19.
         // Guard against N+1 per-key queries (would be ~160+ queries if each TYPED_KEYS entry hit DB).
         DB::enableQueryLog();
 
@@ -288,9 +294,9 @@ class AdminSettingsInventoryTest extends TestCase
         $settingCount = count($settingQueries);
 
         $this->assertLessThanOrEqual(
-            18,
+            19,
             $settingCount,
-            "GET admin.settings.index issued {$settingCount} setting queries (expected <=18 = 2 plucks + 16 typed groups). "
+            "GET admin.settings.index issued {$settingCount} setting queries (expected <=19 = 2 plucks + 17 typed groups). "
             . "Total queries: {$totalCount}. Possible N+1. Queries: " . json_encode(array_column($settingQueries, 'query'))
         );
 

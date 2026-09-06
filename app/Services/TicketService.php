@@ -15,6 +15,7 @@ use App\Models\TicketTransfer;
 use App\Models\User;
 use DomainException;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 
@@ -160,9 +161,9 @@ class TicketService
      *                                                 sender's Message-ID, so it has to be stored
      *                                                 by the time the listener builds that mail.
      */
-    public function create(array $data, string $message, array $replyAttributes = []): Ticket
+    public function create(array $data, string $message, array $replyAttributes = [], array $attachments = []): Ticket
     {
-        return DB::transaction(function () use ($data, $message, $replyAttributes) {
+        return DB::transaction(function () use ($data, $message, $replyAttributes, $attachments) {
             $customer = null;
             $guestEmail = $data['guest_email'] ?? null;
             $guestName = $data['guest_name'] ?? null;
@@ -191,7 +192,7 @@ class TicketService
                 'last_reply_at' => now(),
             ]);
 
-            TicketReply::create([
+            $reply = TicketReply::create([
                 'ticket_id' => $ticket->id,
                 'user_id' => $userId,
                 'message' => $message,
@@ -199,7 +200,13 @@ class TicketService
                 ...$replyAttributes,
             ]);
 
-            TicketCreated::dispatch($ticket);
+            $this->storeUploadedAttachments($reply, $attachments);
+
+            // Queued AFTER the transaction commits. The listeners send mail, and
+            // a worker on a non-database queue can pick that job up while this
+            // transaction is still open — mailing a customer about a ticket that
+            // is not visible yet, or one that a later failure rolls back.
+            DB::afterCommit(fn () => TicketCreated::dispatch($ticket));
 
             return $ticket;
         });
@@ -299,7 +306,9 @@ class TicketService
                 'last_reply_at' => now(),
             ]);
 
-            TicketReplyEvent::dispatch($ticket, $reply);
+            // See create(): the mail these listeners queue must never precede
+            // the commit of the reply it describes.
+            DB::afterCommit(fn () => TicketReplyEvent::dispatch($ticket, $reply));
 
             return $reply;
         });
@@ -405,15 +414,26 @@ class TicketService
     }
 
     /**
-     * Assign a staff member. Moves the ticket to 'open'; staff can move it to
-     * 'in_progress' separately via {@see self::setStatus()} once they start
-     * working it.
+     * Assign a staff member.
      *
-     * @throws DomainException when the user does not exist, is a client, or
-     *                         is not a member of the ticket's department
+     * Assignment is a routing decision, not a workflow one, so it deliberately
+     * leaves `status` alone — WHMCS behaves the same way. Forcing 'open' here
+     * used to erase the fact that a ticket was sitting in 'customer_reply'
+     * (waiting on staff) or 'on_hold', and assigning a CLOSED ticket silently
+     * reopened it without going through {@see self::reopen()} or leaving any
+     * trace. Staff move the ticket to 'in_progress' themselves via
+     * {@see self::setStatus()} once they start working it.
+     *
+     * @throws DomainException when the ticket is closed, or the user does not
+     *                         exist, is a client, or is not a member of the
+     *                         ticket's department
      */
     public function assign(Ticket $ticket, ?int $userId): Ticket
     {
+        if ($ticket->status === self::STATUS_CLOSED) {
+            throw new DomainException('Closed tickets must be reopened before they can be assigned.');
+        }
+
         if ($userId !== null) {
             $user = User::find($userId);
             if ($user === null) {
@@ -427,12 +447,64 @@ class TicketService
             }
         }
 
-        $ticket->update([
-            'assigned_to' => $userId,
-            'status' => self::STATUS_OPEN,
-        ]);
+        $ticket->update(['assigned_to' => $userId]);
 
         return $ticket;
+    }
+
+    /**
+     * The staff who should hear about activity on this ticket.
+     *
+     * The assignee first, then everyone in the ticket's department, and only
+     * if neither exists does it fall back to admins. Notifications used to go
+     * to `role = 'admin'` alone, which meant the person actually holding the
+     * ticket — and every non-admin member of the department that owns it —
+     * was never told a customer had replied.
+     *
+     * @param  int|null  $excludeUserId  the author of the activity; nobody needs
+     *                                   a notification about their own reply
+     * @return Collection<int, User>
+     */
+    public function staffRecipientsFor(Ticket $ticket, ?int $excludeUserId = null): Collection
+    {
+        $recipients = new Collection;
+
+        if ($ticket->assigned_to !== null) {
+            $assignee = User::find($ticket->assigned_to);
+
+            if ($assignee !== null && $this->isStaff($assignee)) {
+                $recipients->push($assignee);
+            }
+        }
+
+        $slug = (string) $ticket->department;
+
+        if ($slug !== '') {
+            try {
+                $department = TicketDepartment::query()->where('slug', $slug)->first();
+
+                if ($department !== null) {
+                    foreach ($department->staff as $member) {
+                        $recipients->push($member);
+                    }
+                }
+            } catch (\Throwable $e) {
+                // No pivot table yet (fresh install mid-migrate) — fall through
+                // to the admin fallback rather than losing the notification.
+            }
+        }
+
+        if ($recipients->isEmpty()) {
+            $recipients = User::query()->where('role', 'admin')->get();
+        }
+
+        return $recipients
+            ->filter(fn (User $user) => $this->isStaff($user))
+            ->when($excludeUserId !== null, fn (Collection $users) => $users->reject(
+                fn (User $user) => $user->id === $excludeUserId
+            ))
+            ->unique('id')
+            ->values();
     }
 
     /**
@@ -471,7 +543,7 @@ class TicketService
      * 10 steps in one DB::transaction:
      * 1) reject closed, 2) validate target enabled, 3) reject same, 4) validate assignTo in target,
      * 5) capture from, 6) resolve assigned_to (clear if not in target else keep/override),
-     * 7) update department, 8) create TicketTransfer, 9) addNote, 10) keep status open.
+     * 7) update department, 8) create TicketTransfer, 9) addNote, 10) leave status as it was.
      *
      * @throws DomainException
      */
@@ -520,10 +592,14 @@ class TicketService
                 $newAssigned = $assignTo !== null ? $assignTo : $ticket->assigned_to;
             }
 
+            // Status is deliberately untouched: moving a ticket between desks
+            // says nothing about who it is waiting on. Forcing 'open' here used
+            // to discard 'customer_reply' / 'on_hold', so a transferred ticket
+            // arrived at the new department looking like nobody was waiting on
+            // it. Closed tickets are already rejected above.
             $ticket->update([
                 'department' => $targetSlug,
                 'assigned_to' => $newAssigned,
-                'status' => self::STATUS_OPEN,
             ]);
 
             TicketTransfer::create([
@@ -562,24 +638,63 @@ class TicketService
      */
     private function nextTicketNumber(): string
     {
-        $setting = Setting::query()
+        $setting = $this->lockedCounterRow();
+
+        $next = max(1, (int) ($setting->setting_value ?? 1));
+        $prefix = (string) (Setting::where('setting_key', 'ticket_prefix')->value('setting_value') ?? 'TKT-');
+
+        // `tickets.ticket_no` is UNIQUE, and the counter can drift out of step
+        // with it — an imported ticket, a hand-edited setting, a restored
+        // backup. Walking forward to the first free number turns what was a
+        // raw QueryException in the user's face into a correct ticket. Bounded
+        // so a pathological gap cannot spin.
+        for ($attempt = 0; $attempt < 100; $attempt++) {
+            $candidate = $prefix.str_pad((string) $next, 5, '0', STR_PAD_LEFT);
+
+            if (! Ticket::query()->where('ticket_no', $candidate)->exists()) {
+                $setting->update(['setting_value' => (string) ($next + 1)]);
+
+                return $candidate;
+            }
+
+            $next++;
+        }
+
+        throw new DomainException('Could not allocate a free ticket number after 100 attempts.');
+    }
+
+    /**
+     * The `ticket_next_number` row, locked for the rest of this transaction.
+     *
+     * `lockForUpdate()` on a row that does not exist locks nothing, so two
+     * concurrent first-ever tickets both used to read "1" and the second lost
+     * to the unique index. The row is created first — tolerating a concurrent
+     * creator — and only then locked, so there is always something to lock.
+     */
+    private function lockedCounterRow(): Setting
+    {
+        $existing = Setting::query()
             ->where('setting_key', 'ticket_next_number')
             ->lockForUpdate()
             ->first();
 
-        $next = max(1, (int) ($setting?->setting_value ?? 1));
-        $prefix = (string) (Setting::where('setting_key', 'ticket_prefix')->value('setting_value') ?? 'TKT-');
-
-        if ($setting !== null) {
-            $setting->update(['setting_value' => (string) ($next + 1)]);
-        } else {
-            Setting::create([
-                'setting_key' => 'ticket_next_number',
-                'setting_value' => (string) ($next + 1),
-                'group' => 'support',
-            ]);
+        if ($existing !== null) {
+            return $existing;
         }
 
-        return $prefix.str_pad((string) $next, 5, '0', STR_PAD_LEFT);
+        try {
+            Setting::create([
+                'setting_key' => 'ticket_next_number',
+                'setting_value' => '1',
+                'group' => 'support',
+            ]);
+        } catch (\Throwable $e) {
+            // Someone else created it between the select and the insert.
+        }
+
+        return Setting::query()
+            ->where('setting_key', 'ticket_next_number')
+            ->lockForUpdate()
+            ->firstOrFail();
     }
 }

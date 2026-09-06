@@ -19,6 +19,16 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
  */
 class TicketController extends Controller
 {
+    /**
+     * Statuses the portal's status filter accepts. Mirrors the WHMCS-style
+     * enum in the tickets table (migration 2026_09_01_000001).
+     *
+     * @var list<string>
+     */
+    private const FILTERABLE_STATUSES = [
+        'open', 'answered', 'customer_reply', 'on_hold', 'in_progress', 'closed',
+    ];
+
     public function __construct(private readonly TicketService $tickets) {}
 
     public function index(Request $request): View
@@ -26,7 +36,12 @@ class TicketController extends Controller
         $customer = $request->user()->customer;
         abort_unless($customer, 404);
 
+        // Only a real status filters anything — an unknown value used to be
+        // passed straight into the where and silently returned an empty list,
+        // which reads as "you have no tickets" rather than "bad filter".
         $status = $request->query('status');
+        $status = is_string($status) && in_array($status, self::FILTERABLE_STATUSES, true) ? $status : null;
+
         $search = trim((string) $request->query('search'));
 
         $tickets = $customer->tickets()
@@ -104,7 +119,7 @@ class TicketController extends Controller
      * customer actually owns — `$customer->tickets()->findOrFail()` is the
      * same ownership check `show()` uses, not just the attachment's own id.
      */
-    public function showAttachment(Request $request, int $id, TicketAttachment $attachment): StreamedResponse
+    public function showAttachment(Request $request, int $id, TicketAttachment $attachment): \Symfony\Component\HttpFoundation\Response
     {
         $customer = $request->user()->customer;
         abort_unless($customer, 404);
@@ -117,9 +132,49 @@ class TicketController extends Controller
 
         abort_unless($disk->exists($attachment->path), 404, 'Attachment file is missing.');
 
+        $mime = $attachment->mime_type ?: 'application/octet-stream';
+        $forceDownload = $request->boolean('download');
+
+        if (! $forceDownload && $this->isInlinePreviewable($mime)) {
+            $content = $disk->get($attachment->path);
+            $size = $disk->size($attachment->path);
+
+            return response($content, 200, [
+                'Content-Type' => $mime,
+                'Content-Disposition' => 'inline; filename="'.$this->sanitizeFilename($attachment->filename).'"',
+                'Content-Length' => (string) $size,
+                'X-Content-Type-Options' => 'nosniff',
+                'Cache-Control' => 'private, max-age=300',
+            ]);
+        }
+
         return $disk->download($attachment->path, $attachment->filename, [
-            'Content-Type' => $attachment->mime_type ?: 'application/octet-stream',
+            'Content-Type' => $mime,
+            'X-Content-Type-Options' => 'nosniff',
         ]);
+    }
+
+    /**
+     * SVG and HTML both carry script, and an inline `text/html` response on
+     * our own origin runs it in the viewing customer's session - `nosniff`
+     * cannot help when the declared type IS html. Mirrors
+     * Admin\TicketController::isInlinePreviewable().
+     */
+    private function isInlinePreviewable(string $mime): bool
+    {
+        $mime = strtolower(trim($mime));
+        if ($mime === 'image/svg+xml' || $mime === 'text/html' || $mime === 'application/xhtml+xml') {
+            return false;
+        }
+        if (str_starts_with($mime, 'image/')) {
+            return true;
+        }
+        return in_array($mime, ['application/pdf', 'text/plain', 'text/csv'], true);
+    }
+
+    private function sanitizeFilename(string $filename): string
+    {
+        return addcslashes($filename, '"\\');
     }
 
     public function reply(Request $request, int $id): RedirectResponse
@@ -131,10 +186,12 @@ class TicketController extends Controller
 
         $validated = $request->validate([
             'message' => ['required', 'string', 'max:5000'],
+            'attachments' => ['nullable', 'array', 'max:10'],
+            'attachments.*' => ['file', 'max:25600'],
         ]);
 
         try {
-            $this->tickets->reply($ticket, $request->user(), $validated['message']);
+            $this->tickets->reply($ticket, $request->user(), $validated['message'], [], $request->file('attachments', []));
         } catch (DomainException $e) {
             return back()->withErrors(['error' => $e->getMessage()]);
         }

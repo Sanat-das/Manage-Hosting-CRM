@@ -33,7 +33,20 @@ class InstallerController extends Controller
     {
         $validated = $request->validate([
             'app_name' => ['required', 'string', 'max:60'],
-            'db_host' => ['required', 'string', 'max:100'],
+            'db_host' => [
+                'required',
+                'string',
+                'max:100',
+                // A bare hostname or IP only. The host is interpolated into a
+                // PDO DSN, so characters like ';' would let this unauthenticated
+                // form append DSN parameters; link-local (metadata) addresses
+                // are refused. Private LAN hosts stay allowed.
+                function (string $attribute, mixed $value, \Closure $fail): void {
+                    if (! InstallerService::isValidDatabaseHost((string) $value)) {
+                        $fail('The database host must be a plain hostname or IP address.');
+                    }
+                },
+            ],
             'db_port' => ['required', 'integer', 'between:1,65535'],
             'db_database' => ['required', 'string', 'max:64'],
             'db_username' => ['required', 'string', 'max:64'],

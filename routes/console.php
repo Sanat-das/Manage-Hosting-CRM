@@ -55,12 +55,17 @@ Schedule::command('domains:sync-pricing')
     ->withoutOverlapping()
     ->runInBackground();
 
-// Ticket email piping. The command no-ops in seconds when Incoming Mail is
-// disabled, so it is safe to schedule unconditionally; withoutOverlapping
-// keeps a slow mailbox from stacking runs.
+// Ticket email piping. Mailboxes are per-department (Support > Departments);
+// with none configured the command reports "nothing to poll" and exits in
+// seconds, so it is safe to schedule unconditionally. withoutOverlapping keeps
+// a slow mailbox from stacking runs.
+// Expires after 10 min (2 missed polls) so a crashed/ hung IMAP lock does
+// not block the mailbox for 24h (Laravel's default 1440 min). Uses its own
+// mutex name — distinct from queue-emails-cron — so the two email-related
+// tasks never block each other even though both touch mail.
 Schedule::command('tickets:fetch-mail')
     ->everyFiveMinutes()
-    ->withoutOverlapping()
+    ->withoutOverlapping(10)
     ->runInBackground();
 
 /*
@@ -73,10 +78,14 @@ Schedule::command('tickets:fetch-mail')
 | or cron) enqueues the batches, and `php artisan queue:work --queue=snmp-poll
 | --tries=1 --timeout=120 --max-jobs=500 --max-time=3600` executes them.
 |
-| Deliberately NOT chained: onOneServer() requires a central redis cache
-| (the default file cache cannot share locks across servers) and
-| runInBackground() requires pcntl/posix, which Windows PHP does not ship.
+| Deliberately NOT using onOneServer(): it requires a central redis cache
+| (the default file cache cannot share locks across servers).
 | withoutOverlapping() alone already prevents overlapping runs per machine.
+|
+| runInBackground() is simply not needed here - these dispatch jobs and return
+| immediately. It is NOT unavailable on Windows: Illuminate's CommandBuilder
+| has an explicit `start /b cmd /v:on /c` branch for windows_os() and never
+| touches pcntl/posix, which is why the mail/billing tasks below use it.
 |
 */
 
@@ -113,6 +122,93 @@ Schedule::command('ssh:prune')
     ->everyFifteenMinutes()
     ->withoutOverlapping()
     ->runInBackground();
+
+/**
+ * Atomic helper for cron-emails-health.json — both the drain callbacks and
+ * the heartbeat closure write the same file and can overlap (queue:work every
+ * minute vs heartbeat every five). Without locking one write can corrupt the
+ * other's JSON. FILE_APPEND is never used; we replace the file atomically
+ * with LOCK_EX so readers either see the old or the new content, never a
+ * half-write.
+ */
+if (! function_exists('__cron_atomic_write_health')) {
+    function __cron_atomic_write_health(array $patch, bool $replace = false): void
+    {
+        $path = storage_path('app/cron-emails-health.json');
+        $dir = dirname($path);
+        if (! is_dir($dir)) {
+            @mkdir($dir, 0755, true);
+        }
+        // Open with c+ so we can lock even when the file does not yet exist.
+        $handle = @fopen($path, 'c+');
+        if ($handle === false) {
+            return;
+        }
+        try {
+            if (! flock($handle, LOCK_EX)) {
+                return;
+            }
+            $existing = [];
+            $raw = stream_get_contents($handle);
+            if ($raw !== false && trim($raw) !== '') {
+                $decoded = json_decode($raw, true);
+                if (is_array($decoded)) {
+                    $existing = $decoded;
+                }
+            }
+            $payload = $replace ? $patch : array_merge($existing, $patch);
+            // Truncate + rewrite atomically under the lock.
+            ftruncate($handle, 0);
+            rewind($handle);
+            fwrite($handle, json_encode($payload, JSON_PRETTY_PRINT));
+            fflush($handle);
+            flock($handle, LOCK_UN);
+        } finally {
+            fclose($handle);
+        }
+    }
+}
+
+// `default` is polled alongside `emails`: it had no worker at all, so any job
+// queued without an explicit queue name sat in the table forever. Order is
+// priority order — mail drains first.
+Schedule::command('queue:work --queue=emails,default --sleep=3 --tries=3 --stop-when-empty --max-time=50')
+    ->everyMinute()
+    ->withoutOverlapping(5)
+    ->name('queue-emails-cron')
+    ->onSuccess(function () {
+        try {
+            $remaining = \Illuminate\Support\Facades\DB::table('jobs')->where('queue', 'emails')->count();
+            $failed = \Illuminate\Support\Facades\DB::table('failed_jobs')->count();
+            \Illuminate\Support\Facades\Log::info('queue-emails-cron drained', ['remaining' => $remaining, 'failed' => $failed]);
+            __cron_atomic_write_health(['last_run' => now()->toIso8601String(), 'remaining' => $remaining, 'failed' => $failed, 'status' => 'ok']);
+        } catch (\Throwable $e) {
+        }
+    })
+    ->onFailure(function () {
+        try {
+            \Illuminate\Support\Facades\Log::warning('queue-emails-cron failed');
+            __cron_atomic_write_health(['last_run' => now()->toIso8601String(), 'status' => 'failed']);
+        } catch (\Throwable $e) {
+        }
+    });
+
+Schedule::call(function () {
+    try {
+        $jobs = \Illuminate\Support\Facades\DB::table('jobs')->where('queue', 'emails')->count();
+        $failed = \Illuminate\Support\Facades\DB::table('failed_jobs')->count();
+        $queueOk = $jobs < 20 && $failed === 0;
+        \Illuminate\Support\Facades\Log::info('emails-queue-heartbeat', ['jobs' => $jobs, 'failed' => $failed, 'ok' => $queueOk]);
+        __cron_atomic_write_health([
+            'heartbeat_at' => now()->toIso8601String(),
+            'heartbeat_jobs' => $jobs,
+            'heartbeat_failed' => $failed,
+            'heartbeat_ok' => $queueOk,
+        ]);
+    } catch (\Throwable $e) {
+        \Illuminate\Support\Facades\Log::warning('emails-queue-heartbeat failed', ['error' => $e->getMessage()]);
+    }
+})->everyFiveMinutes()->name('emails-queue-heartbeat')->withoutOverlapping(10);
 
 /*
 |--------------------------------------------------------------------------

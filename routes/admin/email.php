@@ -41,6 +41,18 @@ Route::middleware(['web', 'auth', 'admin', 'throttle:admin'])->prefix('admin')->
         ->middleware('permission:email.manage')
         ->name('email-templates.destroy');
 
+    Route::post('email-templates/{emailTemplate}/reset', [EmailTemplateController::class, 'reset'])
+        ->middleware('permission:email.manage')
+        ->name('email-templates.reset');
+
+    Route::post('email-templates/{emailTemplate}/preview', [EmailTemplateController::class, 'preview'])
+        ->middleware('permission:email.view')
+        ->name('email-templates.preview');
+
+    Route::post('email-templates/{emailTemplate}/send-test', [EmailTemplateController::class, 'sendTest'])
+        ->middleware('permission:email.manage')
+        ->name('email-templates.send-test');
+
     // Email Logs
     Route::get('email-logs', [EmailLogController::class, 'index'])
         ->middleware('permission:email.view')

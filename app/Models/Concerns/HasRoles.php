@@ -47,6 +47,10 @@ trait HasRoles
      */
     public function hasPermission(string $permission): bool
     {
+        if ($this->isAdmin()) {
+            return true;
+        }
+
         if ($this->roles()
             ->whereHas('permissions', fn ($query) => $query->where('name', $permission))
             ->exists()) {

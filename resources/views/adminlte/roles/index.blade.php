@@ -43,19 +43,29 @@
 
         @forelse ($roles as $role)
             <tr>
-                <td><a href="{{ route('adminlte.roles.edit', $role) }}" class="table-link"><strong>{{ $role->name }}</strong></a></td>
+                <td>
+                    @if ($role->name === 'admin')
+                        <strong>{{ $role->name }}</strong>
+                    @else
+                        <a href="{{ route('adminlte.roles.edit', $role) }}" class="table-link"><strong>{{ $role->name }}</strong></a>
+                    @endif
+                </td>
                 <td class="text-muted">{{ $role->label ?? '—' }}</td>
                 <td><span class="badge text-bg-secondary">{{ $role->permissions_count }}</span></td>
                 <td class="text-end">
                     <div class="table-actions">
-                        <a href="{{ route('adminlte.roles.edit', $role) }}"
-                           class="btn btn-sm btn-outline-secondary btn-icon" aria-label="{{ __('adminlte.edit') }}" title="Edit">
-                            <i class="bi bi-pencil"></i>
-                        </a>
-                        <button type="button" class="btn btn-sm btn-outline-danger btn-icon" aria-label="{{ __('adminlte.delete') }}" title="Delete"
-                                data-bs-toggle="modal" data-bs-target="#delete-role-{{ $role->id }}">
-                            <i class="bi bi-trash"></i>
-                        </button>
+                        @if ($role->name !== 'admin')
+                            <a href="{{ route('adminlte.roles.edit', $role) }}"
+                               class="btn btn-sm btn-outline-secondary btn-icon" aria-label="{{ __('adminlte.edit') }}" title="Edit">
+                                <i class="bi bi-pencil"></i>
+                            </a>
+                            <button type="button" class="btn btn-sm btn-outline-danger btn-icon" aria-label="{{ __('adminlte.delete') }}" title="Delete"
+                                    data-bs-toggle="modal" data-bs-target="#delete-role-{{ $role->id }}">
+                                <i class="bi bi-trash"></i>
+                            </button>
+                        @else
+                            <span class="text-muted small fst-italic">protected</span>
+                        @endif
                     </div>
                 </td>
             </tr>
@@ -65,12 +75,14 @@
     </x-adminlte.partials.datatable>
 
     @foreach ($roles as $role)
-        <x-adminlte.partials.confirm-modal
-            :id="'delete-role-' . $role->id"
-            :title="__('adminlte.delete')"
-            :message="__('adminlte.confirm_delete')"
-            :action="route('adminlte.roles.destroy', $role)"
-            :confirm-label="__('adminlte.delete')"
-        />
+        @if ($role->name !== 'admin')
+            <x-adminlte.partials.confirm-modal
+                :id="'delete-role-' . $role->id"
+                :title="__('adminlte.delete')"
+                :message="__('adminlte.confirm_delete')"
+                :action="route('adminlte.roles.destroy', $role)"
+                :confirm-label="__('adminlte.delete')"
+            />
+        @endif
     @endforeach
 @stop

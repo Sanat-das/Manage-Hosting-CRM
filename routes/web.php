@@ -49,9 +49,11 @@ Route::middleware(['web', 'auth', 'admin', 'throttle:admin'])->prefix('admin')->
         ->middleware('permission:dashboard.view')
         ->name('dashboard');
 
-    // Admin self-service profile (2FA management)
+    // Admin self-service profile (2FA management, signature)
     Route::get('profile', [ProfileController::class, 'edit'])
         ->name('profile');
+    Route::post('profile', [ProfileController::class, 'update'])
+        ->name('profile.update');
 
     // Admin impersonation (admin → client session switching)
     Route::post('impersonate/{user}', [ImpersonationController::class, 'start'])

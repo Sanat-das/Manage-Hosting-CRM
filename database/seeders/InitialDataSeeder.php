@@ -13,6 +13,7 @@ class InitialDataSeeder extends Seeder
 {
     public function run(): void
     {
+        $this->call(EmailTemplateSeeder::class);
         if (! DB::table('users')->where('email', 'admin@localhost.com')->exists()) {
             DB::table('users')->insert([
                 'email' => 'admin@localhost.com',

@@ -54,12 +54,7 @@ class SendEmail implements ShouldQueue
 
     public function handle(): void
     {
-        $log = EmailLog::create([
-            'to_email' => is_array($this->toEmail) ? implode(', ', $this->toEmail) : $this->toEmail,
-            'subject' => $this->subject,
-            'body' => $this->body,
-            'status' => 'queued',
-        ]);
+        $log = $this->resolveLog();
 
         try {
             if ($this->htmlBody !== null || $this->attachments !== []) {
@@ -69,6 +64,18 @@ class SendEmail implements ShouldQueue
                 Mail::raw($this->body, function ($message) {
                     $message->to($this->toEmail)
                         ->subject($this->subject);
+
+                    // Cc/Bcc belong on BOTH paths. They used to be applied only
+                    // in sendRich(), so a plain-text ticket reply with a Cc
+                    // reached the To alone and the sender was told it had gone
+                    // out — a silent delivery failure, not a visible one.
+                    if ($this->cc !== []) {
+                        $message->cc($this->cc);
+                    }
+
+                    if ($this->bcc !== []) {
+                        $message->bcc($this->bcc);
+                    }
 
                     if ($this->fromEmail) {
                         $message->from($this->fromEmail);
@@ -80,9 +87,61 @@ class SendEmail implements ShouldQueue
 
             $log->update(['status' => 'sent']);
         } catch (\Throwable $e) {
-            $log->update(['status' => 'failed', 'error' => $e->getMessage()]);
+            $attempts = method_exists($this, 'attempts') ? $this->attempts() : 1;
+            $errorWithAttempt = $attempts > 1 ? "[attempt {$attempts}] {$e->getMessage()}" : $e->getMessage();
+            $log->update(['status' => 'failed', 'error' => $errorWithAttempt]);
             throw $e;
         }
+    }
+
+    /**
+     * Avoid creating a duplicate EmailLog row on retries. Laravel re-executes
+     * handle() up to `tries` times with the SAME job instance / payload, so a
+     * naive create() would leave 3 rows for one logical send. On attempt >1 we
+     * reuse the most recent matching row (same recipient + subject + body) that
+     * is still in a non-sent state; only the first attempt (or when no match is
+     * found) creates a new row.
+     */
+    private function resolveLog(): EmailLog
+    {
+        $toEmail = is_array($this->toEmail) ? implode(', ', $this->toEmail) : $this->toEmail;
+        $ccEmails = $this->cc !== [] ? implode(', ', $this->cc) : null;
+        $bccEmails = $this->bcc !== [] ? implode(', ', $this->bcc) : null;
+
+        try {
+            $attempts = method_exists($this, 'attempts') ? $this->attempts() : 1;
+            if ($attempts > 1) {
+                // `where('cc_emails', null)` compiles to `= NULL`, which matches
+                // nothing — the null case has to go through whereNull or every
+                // retry of a plain message would create a fresh row.
+                $existing = EmailLog::query()
+                    ->where('to_email', $toEmail)
+                    ->when($ccEmails === null, fn ($q) => $q->whereNull('cc_emails'), fn ($q) => $q->where('cc_emails', $ccEmails))
+                    ->when($bccEmails === null, fn ($q) => $q->whereNull('bcc_emails'), fn ($q) => $q->where('bcc_emails', $bccEmails))
+                    ->where('subject', $this->subject)
+                    ->where('body', $this->body)
+                    ->whereIn('status', ['queued', 'failed'])
+                    ->latest('id')
+                    ->first();
+                if ($existing !== null) {
+                    // Mark retry so the row reflects the latest attempt without duplication.
+                    $existing->update(['status' => 'queued', 'error' => null]);
+
+                    return $existing;
+                }
+            }
+        } catch (\Throwable) {
+            // Fall through to create.
+        }
+
+        return EmailLog::create([
+            'to_email' => $toEmail,
+            'cc_emails' => $ccEmails,
+            'bcc_emails' => $bccEmails,
+            'subject' => $this->subject,
+            'body' => $this->body,
+            'status' => 'queued',
+        ]);
     }
 
     /**
@@ -155,12 +214,25 @@ class SendEmail implements ShouldQueue
      */
     private function applyHeaders(mixed $message): void
     {
-        if ($this->headers === []) {
-            return;
-        }
+        // Ticket mail is transactional and must not be re-imported if it loops
+        // back into the polled INBOX (BCC to self, inbox copy). Setting
+        // Auto-Submitted lets TicketMailParser's AUTOMATED_HEADERS drop it via
+        // the auto-submitted guard, and the self-loop username guard is the
+        // second line of defence. For ticket messages (those with a custom
+        // Message-ID) we set auto-submitted:no explicitly; for all other mail
+        // we do not override a value the caller may have set.
+        $isTicketMail = ! empty($this->headers['messageId']);
 
         if (! empty($this->headers['replyTo'])) {
             $message->replyTo($this->headers['replyTo']);
+        }
+
+        // If caller did not provide headers at all but this is ticket mail
+        // (detected via messageId set separately), we still need the
+        // Auto-Submitted header. So we handle headers even when the array is
+        // otherwise empty for ticket mail.
+        if ($this->headers === [] && ! $isTicketMail) {
+            return;
         }
 
         $headers = $message->getSymfonyMessage()->getHeaders();
@@ -176,6 +248,28 @@ class SendEmail implements ShouldQueue
 
         if (! empty($this->headers['references'])) {
             $headers->addIdHeader('References', (array) $this->headers['references']);
+        }
+
+        // Explicit autoSubmitted from caller (TicketMailService sends 'no').
+        if (! empty($this->headers['autoSubmitted'])) {
+            if (! $headers->has('Auto-Submitted')) {
+                $headers->addTextHeader('Auto-Submitted', (string) $this->headers['autoSubmitted']);
+            }
+        } elseif ($isTicketMail) {
+            // Ensure ticket outbound is not treated as auto-generated on re-import.
+            // Value "no" is the RFC 3834 signal that this is NOT auto-submitted;
+            // TicketMailParser's regex /^(?!no\b).+/i treats "no" as human mail
+            // so the message can still be imported when legitimately replied to,
+            // while any actual auto-reply (auto-replied, auto-generated) is
+            // dropped. We explicitly set it so downstream filters know this was
+            // a user-initiated ticket reply, not a bounce.
+            if (! $headers->has('Auto-Submitted')) {
+                $headers->addTextHeader('Auto-Submitted', 'no');
+            }
+        }
+
+        if ($isTicketMail && ! $headers->has('X-Auto-Response-Suppress')) {
+            $headers->addTextHeader('X-Auto-Response-Suppress', 'OOF, AutoReply');
         }
     }
 }

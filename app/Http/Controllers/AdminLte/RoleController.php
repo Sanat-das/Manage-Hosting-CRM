@@ -72,6 +72,7 @@ class RoleController extends Controller
     public function edit(Role $role): View
     {
         $this->authorizeManage();
+        $this->denyIfProtected($role);
 
         $permissions = Permission::orderBy('name')->get();
         $grouped = $this->groupedPermissions($permissions);
@@ -83,6 +84,7 @@ class RoleController extends Controller
     public function update(Request $request, Role $role): RedirectResponse
     {
         $this->authorizeManage();
+        $this->denyIfProtected($role);
 
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255', 'unique:adminlte_roles,name,'.$role->id],
@@ -105,11 +107,17 @@ class RoleController extends Controller
     public function destroy(Role $role): RedirectResponse
     {
         $this->authorizeManage();
+        $this->denyIfProtected($role);
 
         $role->delete();
 
         return redirect()->route('adminlte.roles.index')
             ->with('status', __('adminlte.role_deleted'));
+    }
+
+    private function denyIfProtected(Role $role): void
+    {
+        abort_if($role->name === 'admin', 403, 'The admin role cannot be modified.');
     }
 
     private function authorizeManage(): void

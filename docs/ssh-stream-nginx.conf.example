@@ -1,0 +1,78 @@
+# SSH terminal streaming — disable buffering for the NDJSON stream route.
+#
+# Why: without this, tiny NDJSON frames (~70 B heartbeats / prompt lines)
+# sit in Apache's mod_proxy_fcgi / nginx fastcgi/proxy buffers (4-64 KiB)
+# until a full buffer fills. The controller no longer pads frames to 64 KiB;
+# instead headers (X-Accel-Buffering: no, Content-Encoding: none, chunked
+# Transfer-Encoding) plus the server config below make flush() sufficient.
+# Frontend skips whitespace-only lines, so no view change needed.
+#
+# Place this file alongside your vhost / server config and reload.
+#
+# ─────────────────────────────────────────────────────────────────
+# NGINX + PHP-FPM (recommended)
+# ─────────────────────────────────────────────────────────────────
+# Put inside your server { } — adjust the prefix to your route.
+# The Linux VPS stream route is: GET /admin/hosting/{hostingAccount}/ssh/{token}/stream
+# If using a prefix like /admin, matching /ssh/ and /stream is sufficient.
+#
+# location ~ ^/admin/hosting/[0-9]+/ssh/[^/]+/stream {
+#     # FastCGI (php-fpm) — no buffering at nginx layer
+#     fastcgi_buffering off;
+#     fastcgi_keep_conn on;
+#     # Also disable gzip for this route
+#     gzip off;
+#
+#     # If you front nginx with another proxy (e.g. Cloudflare Tunnel),
+#     # also need:
+#     proxy_buffering off;
+#     proxy_cache off;
+#
+#     # Hand off to your normal fastcgi/php block (include or passthrough).
+#     # Example when using fastcgi_pass:
+#     # include fastcgi_params;
+#     # fastcgi_pass php:9000;
+# }
+#
+# Alternative — global, simpler: disable fastcgi buffering for all streams
+# if your nginx is dedicated to this app:
+#   fastcgi_buffering off;  # in http { } or server { }
+#
+# ─────────────────────────────────────────────────────────────────
+# APACHE + mod_proxy_fcgi / php-fpm (Laragon, XAMPP, Ubuntu)
+# ─────────────────────────────────────────────────────────────────
+# No extra file if you use public/.htaccess (see snippet below). For
+# vhost-level config instead, add inside <VirtualHost>:
+#
+#   <LocationMatch "^/admin/hosting/[0-9]+/ssh/[^/]+/stream">
+#       # mod_proxy_fcgi — Apache 2.4.31+
+#       ProxyFCGISetEnvIf true no-gzip
+#       # Prevent Apache from buffering the chunked stream
+#       SetEnv proxy-nokeepalive 1
+#       SetEnv proxy-sendchunked 1
+#   </LocationMatch>
+#
+# And ensure zlib.output_compression is Off in php.ini for this pool.
+# The controller also sets: ini_set('zlib.output_compression','0'),
+# ini_set('output_buffering','0'), apache_setenv('no-gzip','1'),
+# and response headers: X-Accel-Buffering: no, Content-Encoding: none,
+# Transfer-Encoding: chunked — so the PHP side is already correct.
+#
+# ─────────────────────────────────────────────────────────────────
+# HTACCESS (versioned in public/.htaccess — see comment there)
+# ─────────────────────────────────────────────────────────────────
+# The .htaccess snippet applies the same: no gzip + no buffering hint
+# for the stream route, effective on Apache without vhost edits.
+#
+# ─────────────────────────────────────────────────────────────────
+# VERIFICATION
+# ─────────────────────────────────────────────────────────────────
+# curl -i -N "https://your-app/admin/hosting/1/ssh/<token>/stream?cols=80&rows=24" \
+#   -H "Cookie: ..." -H "X-CSRF-TOKEN: ..." | cat -v
+# Expect: headers include
+#   Content-Type: application/x-ndjson
+#   Cache-Control: no-store, no-cache, must-revalidate
+#   X-Accel-Buffering: no
+#   Content-Encoding: none
+#   Transfer-Encoding: chunked
+# and NDJSON lines arrive < 200 ms without 64 KiB padding.

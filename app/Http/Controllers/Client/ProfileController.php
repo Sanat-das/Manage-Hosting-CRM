@@ -63,16 +63,33 @@ class ProfileController extends Controller
     public function update(Request $request): RedirectResponse
     {
         $user = $request->user();
+        if ($request->has('phone_code') || $request->has('phone_number')) {
+            $code = trim((string) $request->input('phone_code', ''));
+            $number = trim((string) $request->input('phone_number', ''));
+            if ($code === '' && $number !== '') $code = '+91';
+            $request->merge(['phone' => $number !== '' ? trim($code.' '.$number) : $code]);
+        }
 
         $validated = $request->validate([
             'first_name' => ['required', 'string', 'max:255'],
             'last_name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'email', 'max:255', Rule::unique('users', 'email')->ignore($user->id)],
-            'phone' => ['nullable', 'string', 'max:30'],
+            'phone' => ['nullable', 'string', 'max:50'],
             'company' => ['nullable', 'string', 'max:255'],
+            'address_line1' => ['nullable', 'string', 'max:255'],
+            'address_line2' => ['nullable', 'string', 'max:255'],
+            'city' => ['nullable', 'string', 'max:100'],
+            'state' => ['nullable', 'string', 'max:100'],
+            'postcode' => ['nullable', 'string', 'max:20'],
+            'country' => ['nullable', 'string', 'max:100'],
             'address' => ['nullable', 'string', 'max:500'],
             'password' => ['nullable', 'string', 'min:8', 'confirmed', 'regex:/[A-Z]/', 'regex:/[a-z]/', 'regex:/[0-9]/'],
         ]);
+
+        $legacy = collect([$validated['address_line1'] ?? null, $validated['address_line2'] ?? null, $validated['city'] ?? null, $validated['state'] ?? null, $validated['postcode'] ?? null, $validated['country'] ?? null])->filter()->implode(', ');
+        if ($legacy === '') {
+            $legacy = $validated['address'] ?? null;
+        }
 
         $user->update([
             'first_name' => $validated['first_name'],
@@ -80,7 +97,13 @@ class ProfileController extends Controller
             'email' => $validated['email'],
             'phone' => $validated['phone'] ?? null,
             'company' => $validated['company'] ?? null,
-            'address' => $validated['address'] ?? null,
+            'address' => $legacy,
+            'address_line1' => $validated['address_line1'] ?? null,
+            'address_line2' => $validated['address_line2'] ?? null,
+            'city' => $validated['city'] ?? null,
+            'state' => $validated['state'] ?? null,
+            'postcode' => $validated['postcode'] ?? null,
+            'country' => $validated['country'] ?? null,
         ]);
 
         if (! empty($validated['password'])) {

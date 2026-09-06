@@ -8,12 +8,20 @@ use App\Models\User;
 use App\Notifications\TicketReplyNotification;
 use App\Services\NotificationPreferenceService;
 use App\Services\TicketMailService;
+use App\Services\TicketService;
 
 /**
  * Notify the counterparty when a support ticket receives a reply.
  *
- * A staff reply notifies the ticket's customer; a customer reply notifies
- * admin users. Gated through NotificationPreferenceService (type "ticket.reply").
+ * A staff reply notifies the ticket's customer; a customer reply notifies the
+ * staff who own the ticket. Gated through NotificationPreferenceService
+ * (type "ticket.reply").
+ *
+ * "Who owns the ticket" is {@see TicketService::staffRecipientsFor()}: the
+ * assignee and the ticket's department, falling back to admins only when
+ * neither exists. This used to notify `role = 'admin'` and nothing else, so
+ * the person actually holding the ticket — and every non-admin member of the
+ * department that owns it — was never told the customer had answered.
  *
  * Only the staff branch sends mail. Staff work the tickets in the admin UI and
  * get the in-app notification there, and emailing them would put our own
@@ -30,6 +38,7 @@ class SendTicketReplyNotification
     public function __construct(
         private readonly NotificationPreferenceService $prefs,
         private readonly TicketMailService $mail,
+        private readonly TicketService $tickets,
     ) {}
 
     public function handle(TicketReply $event): void
@@ -54,13 +63,14 @@ class SendTicketReplyNotification
             return;
         }
 
-        // Customer replied → notify admin users.
-        User::query()
-            ->where('role', 'admin')
-            ->get()
-            ->each(function (User $admin) use ($ticket) {
-                if ($this->prefs->isEnabled($admin, 'ticket.reply')) {
-                    $admin->notify(new TicketReplyNotification($ticket, false));
+        // Customer replied → notify the staff who own this ticket. The author
+        // is excluded: a staff member filing a reply on a customer's behalf
+        // does not need telling about it.
+        $this->tickets
+            ->staffRecipientsFor($ticket, $event->reply->user_id)
+            ->each(function (User $staff) use ($ticket) {
+                if ($this->prefs->isEnabled($staff, 'ticket.reply')) {
+                    $staff->notify(new TicketReplyNotification($ticket, false));
                 }
             });
     }

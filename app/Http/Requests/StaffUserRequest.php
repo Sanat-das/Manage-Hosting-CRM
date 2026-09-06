@@ -24,6 +24,16 @@ class StaffUserRequest extends FormRequest
         return true;
     }
 
+    protected function prepareForValidation(): void
+    {
+        if ($this->has('phone_code') || $this->has('phone_number')) {
+            $code = trim((string) $this->input('phone_code', ''));
+            $number = trim((string) $this->input('phone_number', ''));
+            if ($code === '' && $number !== '') $code = '+91';
+            $this->merge(['phone' => $number !== '' ? trim($code.' '.$number) : $code]);
+        }
+    }
+
     public function rules(): array
     {
         $isCreate = $this->isMethod('post');
@@ -39,8 +49,16 @@ class StaffUserRequest extends FormRequest
                 Rule::unique('users', 'email')->ignore($this->route('user')?->id),
             ],
             'phone' => ['nullable', 'string', 'max:50'],
+            'phone_code' => ['nullable', 'string', 'max:10'],
+            'phone_number' => ['nullable', 'string', 'max:20'],
             'company' => ['nullable', 'string', 'max:255'],
             'address' => ['nullable', 'string', 'max:500'],
+            'address_line1' => ['nullable', 'string', 'max:255'],
+            'address_line2' => ['nullable', 'string', 'max:255'],
+            'city' => ['nullable', 'string', 'max:100'],
+            'state' => ['nullable', 'string', 'max:100'],
+            'postcode' => ['nullable', 'string', 'max:20'],
+            'country' => ['nullable', 'string', 'max:100'],
             // `client` is deliberately excluded: client accounts are managed
             // through the dedicated customer module (admin.customers.*).
             'role' => [$isCreate ? 'required' : 'sometimes', Rule::in(['admin', 'staff', 'support', 'sales', 'marketing'])],

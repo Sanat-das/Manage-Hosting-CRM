@@ -1,0 +1,13 @@
+{
+    "slug": "ok-module",
+    "name": "OK Module",
+    "version": "1.0.0",
+    "description": "Healthy fixture module for the module-system feature tests.",
+    "namespace": "Tests\\Fixtures\\Modules\\OkModule\\",
+    "provider": "Tests\\Fixtures\\Modules\\OkModule\\OkModule",
+    "capabilities": ["provisioning"],
+    "requires": {
+        "app": ">=1.0.0",
+        "php": ">=8.0"
+    }
+}

@@ -54,8 +54,7 @@
                                   value="{{ old('email', $customer->user?->email) }}" required />
             </div>
             <div class="col-md-6">
-                <x-adminlte-input name="phone" label="Phone" placeholder="+91 98765 43210"
-                                  value="{{ old('phone', $customer->user?->phone) }}" />
+                <x-ui.phone-input name="phone" label="Phone Number" :value="old('phone', $customer->user?->phone)" placeholder="98007 44827" />
             </div>
         </div>
 
@@ -70,8 +69,53 @@
             </div>
         </div>
 
-        <x-adminlte-textarea name="address" label="Address" rows="2"
-                             placeholder="Billing address (optional)">{{ old('address', $customer->user?->address) }}</x-adminlte-textarea>
+        <div class="border rounded p-3 mb-3 bg-light-subtle">
+            <div class="d-flex align-items-center gap-2 mb-3">
+                <i class="bi bi-geo-alt text-primary"></i>
+                <h6 class="mb-0 fw-semibold">Billing Address</h6>
+                <span class="text-muted small ms-1">— standard e-commerce fields, shown on invoices</span>
+            </div>
+
+            <div class="row">
+                <div class="col-md-6">
+                    <x-adminlte-input name="address_line1" label="Street address" placeholder="House no., street name, area"
+                                      value="{{ old('address_line1', $customer->user?->address_line1) }}" />
+                </div>
+                <div class="col-md-6">
+                    <x-adminlte-input name="address_line2" label="Apartment / Suite (optional)" placeholder="Apartment, suite, floor, landmark"
+                                      value="{{ old('address_line2', $customer->user?->address_line2) }}" />
+                </div>
+            </div>
+
+            <div class="row">
+                <div class="col-md-4">
+                    <x-adminlte-input name="city" label="City" placeholder="e.g. Mumbai"
+                                      value="{{ old('city', $customer->user?->city) }}" />
+                </div>
+                <div class="col-md-4">
+                    <x-adminlte-input name="state" label="State / Province" placeholder="e.g. Maharashtra"
+                                      value="{{ old('state', $customer->user?->state) }}" />
+                </div>
+                <div class="col-md-4">
+                    <x-adminlte-input name="postcode" label="Postcode / ZIP" placeholder="e.g. 400001"
+                                      value="{{ old('postcode', $customer->user?->postcode) }}" />
+                </div>
+            </div>
+
+            <div class="row">
+                <div class="col-md-6">
+                    <x-adminlte-select name="country" label="Country">
+                        @php $countries = ['India','United States','United Kingdom','Canada','Australia','Singapore','United Arab Emirates','Germany','France','Other']; @endphp
+                        @foreach ($countries as $c)
+                            <option value="{{ $c }}" @selected(old('country', $customer->user?->country ?? 'India') === $c)>{{ $c }}</option>
+                        @endforeach
+                    </x-adminlte-select>
+                </div>
+                <div class="col-md-6 d-flex align-items-end">
+                    <div class="form-text mb-3 w-100">State drives GST (CGST/SGST vs IGST). Postcode validates shipping/tax.</div>
+                </div>
+            </div>
+        </div>
 
         <x-adminlte-select name="status" label="Status">
             @foreach (['active' => 'Active', 'inactive' => 'Inactive', 'suspended' => 'Suspended'] as $value => $label)

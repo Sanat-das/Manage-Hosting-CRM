@@ -3,6 +3,7 @@
 use App\Settings\AnalyticsSettings;
 use App\Settings\AutomationSettings;
 use App\Settings\BillingSettings;
+use App\Settings\BrandingSettings;
 use App\Settings\CatalogSettings;
 use App\Settings\CronSettings;
 use App\Settings\DomainSettings;
@@ -46,6 +47,7 @@ return [
         CronSettings::class,
         RoleSettings::class,
         UserSettings::class,
+        BrandingSettings::class,
     ],
 
     /*

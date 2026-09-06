@@ -1,0 +1,35 @@
+[Unit]
+Description=ManageHosting Queue Worker - emails queue
+Documentation=https://laravel.com/docs/queues
+After=network.target mysql.service mariadb.service
+Wants=network-online.target
+# If using Redis for queues, also wait for redis: After=redis-server.service
+
+[Service]
+Type=simple
+# Run as the web user - change if your app runs as a different user
+User=www-data
+Group=www-data
+# Absolute path to the app on the server. Update this for your deploy path.
+WorkingDirectory=/var/www/managehosting
+# Use full PHP binary path so systemd does not depend on $PATH
+ExecStart=/usr/bin/php /var/www/managehosting/artisan queue:work --queue=emails --sleep=3 --tries=3 --max-time=3600 --rest=0
+# Laravel queue workers should always restart - they exit on --max-time by design
+Restart=always
+RestartSec=5
+# Kill the worker gracefully on stop (SIGTERM lets it finish the current job)
+KillMode=process
+KillSignal=SIGTERM
+TimeoutStopSec=60
+# Logging - journald. View with: journalctl -u managehosting-queue-emails -f
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=managehosting-queue-emails
+# Hardening (optional but recommended)
+NoNewPrivileges=true
+PrivateTmp=true
+# Ensure queue worker sees .env
+EnvironmentFile=-/var/www/managehosting/.env
+
+[Install]
+WantedBy=multi-user.target

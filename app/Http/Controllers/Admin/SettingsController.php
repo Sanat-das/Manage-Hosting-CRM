@@ -160,6 +160,109 @@ class SettingsController extends Controller
             $request->merge(['settings' => []]);
         }
 
+        // --- Branding file uploads (logo/favicon) ---
+        // Must run BEFORE typed rules so injected branding_*_path values validate as strings,
+        // not files. Supports both top-level inputs (branding_logo) and nested
+        // settings[branding_logo] naming — blade uses top-level for clarity.
+        $brandingFileRules = [];
+        if ($request->hasFile('branding_logo')) {
+            $brandingFileRules['branding_logo'] = ['nullable', 'file', 'mimes:svg,png,jpg,jpeg,webp', 'max:2048'];
+        }
+        if ($request->hasFile('branding_favicon')) {
+            $brandingFileRules['branding_favicon'] = ['nullable', 'file', 'mimes:svg,png,jpg,jpeg,webp,ico', 'max:1024'];
+        }
+        if ($request->hasFile('settings.branding_logo')) {
+            $brandingFileRules['settings.branding_logo'] = ['nullable', 'file', 'mimes:svg,png,jpg,jpeg,webp', 'max:2048'];
+        }
+        if ($request->hasFile('settings.branding_favicon')) {
+            $brandingFileRules['settings.branding_favicon'] = ['nullable', 'file', 'mimes:svg,png,jpg,jpeg,webp,ico', 'max:1024'];
+        }
+        if ($brandingFileRules !== []) {
+            try {
+                $request->validate($brandingFileRules);
+            } catch (ValidationException $e) {
+                // Force back to Branding tab so the file error is visible
+                $e->redirectTo = route('admin.settings.index', ['tab' => 'branding']);
+                throw $e;
+            }
+            try {
+                if ($request->hasFile('branding_logo')) {
+                    $payload['branding_logo_path'] = $request->file('branding_logo')->store('branding', 'public');
+                } elseif ($request->hasFile('settings.branding_logo')) {
+                    $payload['branding_logo_path'] = $request->file('settings.branding_logo')->store('branding', 'public');
+                }
+                if ($request->hasFile('branding_favicon')) {
+                    $payload['branding_favicon_path'] = $request->file('branding_favicon')->store('branding', 'public');
+                } elseif ($request->hasFile('settings.branding_favicon')) {
+                    $payload['branding_favicon_path'] = $request->file('settings.branding_favicon')->store('branding', 'public');
+                }
+                $request->merge(['settings' => $payload]);
+            } catch (\Throwable $e) {
+                report($e);
+            }
+        }
+
+        // --- Company phone normalization (ecommerce phone-input parity) ---
+        // Phone-input sends _code + _number plus a hidden combined value. Normalize
+        // exactly like CustomerController::normalizePhone so company_phone is stored
+        // as "+91 9876543210" and the split fields never reach validation/persistence.
+        $hasPhoneSplit = isset($payload['company_phone_code']) || isset($payload['company_phone_number']);
+        // also support top-level split fields if phone-input was used without settings[] prefix
+        if (! $hasPhoneSplit && ($request->has('company_phone_code') || $request->has('company_phone_number') || $request->has('phone_code') || $request->has('phone_number'))) {
+            $code = trim((string) ($request->input('company_phone_code', $request->input('phone_code', ''))));
+            $number = trim((string) ($request->input('company_phone_number', $request->input('phone_number', ''))));
+            if ($code !== '' || $number !== '') {
+                if ($code === '' && $number !== '') $code = '+91';
+                $payload['company_phone'] = $number !== '' ? trim($code.' '.$number) : $code;
+            }
+        } elseif ($hasPhoneSplit) {
+            $code = trim((string) ($payload['company_phone_code'] ?? ''));
+            $number = trim((string) ($payload['company_phone_number'] ?? ''));
+            // hidden combined may already be correct (JS synced); prefer split when present
+            if ($code !== '' || $number !== '') {
+                if ($code === '' && $number !== '') $code = '+91';
+                $payload['company_phone'] = $number !== '' ? trim($code.' '.$number) : $code;
+            }
+            unset($payload['company_phone_code'], $payload['company_phone_number']);
+        }
+        // legacy top-level phone split for non-settings forms — merge into payload
+        if (isset($payload['phone_code']) || isset($payload['phone_number'])) {
+            $code = trim((string) ($payload['phone_code'] ?? ''));
+            $number = trim((string) ($payload['phone_number'] ?? ''));
+            if ($code !== '' || $number !== '') {
+                if ($code === '' && $number !== '') $code = '+91';
+                $payload['company_phone'] = $number !== '' ? trim($code.' '.$number) : $code;
+            }
+            unset($payload['phone_code'], $payload['phone_number']);
+        }
+        if ($hasPhoneSplit || isset($payload['company_phone'])) {
+            $request->merge(['settings' => $payload]);
+        }
+
+        // --- Company address legacy sync (ecommerce sundered -> single string) ---
+        // When sundered fields are submitted, keep the legacy company_address in sync
+        // so InvoiceEmailService (which reads company_address) continues to work without
+        // code changes. Uses same compile logic as CustomerController::compileLegacyAddress.
+        $hasSundered = isset($payload['company_address_line1']) || isset($payload['company_city']) || isset($payload['company_state']) || isset($payload['company_postcode']) || isset($payload['company_country']) || isset($payload['company_address_line2']);
+        if ($hasSundered) {
+            $legacyParts = array_filter([
+                $payload['company_address_line1'] ?? null,
+                $payload['company_address_line2'] ?? null,
+                $payload['company_city'] ?? null,
+                $payload['company_state'] ?? null,
+                $payload['company_postcode'] ?? null,
+                $payload['company_country'] ?? null,
+            ], fn ($v) => $v !== null && trim((string) $v) !== '');
+            $compiled = $legacyParts !== [] ? implode(', ', array_map(fn ($v) => trim((string) $v), $legacyParts)) : null;
+            // Only overwrite legacy if sundered produced something, or if legacy was blank (allow clearing via sundered empty)
+            if ($compiled !== null) {
+                $payload['company_address'] = $compiled;
+            } elseif (($payload['company_address'] ?? null) === null || trim((string) ($payload['company_address'] ?? '')) === '') {
+                // sundered empty and legacy empty -> keep as null so Option A keeps old; do nothing
+            }
+            $request->merge(['settings' => $payload]);
+        }
+
         $rules = ['settings' => ['present', 'array']];
 
         foreach ($payload as $key => $value) {
@@ -245,31 +348,43 @@ class SettingsController extends Controller
             }
         }
         if ($changes !== []) {
-            $sectionForAudit = $request->has('save_all') ? 'all' : ($tab ?: 'all');
-            $changedKeys = array_keys($changes);
-            $description = $sectionForAudit === 'all'
-                ? 'Settings updated (all): changed ' . implode(', ', $changedKeys)
-                : 'Settings updated (' . $sectionForAudit . '): changed ' . implode(', ', $changedKeys);
-            $properties = [
-                'section' => $sectionForAudit,
-                'changed_keys' => $changedKeys,
-                'changes' => $changes,
-            ];
             try {
-                \DB::table('activity_log')->insert([
-                    'user_id' => auth()->id(),
-                    'customer_id' => null,
-                    'action' => 'settings.updated',
-                    'description' => $description,
-                    'metadata' => json_encode($properties),
-                    'properties' => json_encode($properties),
-                    'event' => 'updated',
-                    'subject_type' => 'setting',
-                    'subject_id' => null,
-                    'ip_address' => $request->ip(),
-                    'user_agent' => $request->userAgent(),
-                    'created_at' => now(),
-                ]);
+                $keyToSectionMap = AppSettings::keyToSection();
+                $now = now();
+                $userId = auth()->id();
+                $ip = $request->ip();
+                $ua = $request->userAgent();
+
+                // Group changed keys by their owning section so each tab's "Last updated"
+                // shows only its own keys, even when Save All is used.
+                $bySection = [];
+                foreach ($changes as $k => $diff) {
+                    $sec = $keyToSectionMap[$k] ?? ($tab ?: 'general');
+                    $bySection[$sec][$k] = $diff;
+                }
+
+                foreach ($bySection as $sec => $secChanges) {
+                    $secKeys = array_keys($secChanges);
+                    $properties = [
+                        'section' => $sec,
+                        'changed_keys' => $secKeys,
+                        'changes' => $secChanges,
+                    ];
+                    \DB::table('activity_log')->insert([
+                        'user_id' => $userId,
+                        'customer_id' => null,
+                        'action' => 'settings.updated',
+                        'description' => 'Settings updated (' . $sec . '): changed ' . implode(', ', $secKeys),
+                        'metadata' => json_encode($properties),
+                        'properties' => json_encode($properties),
+                        'event' => 'updated',
+                        'subject_type' => 'setting',
+                        'subject_id' => null,
+                        'ip_address' => $ip,
+                        'user_agent' => $ua,
+                        'created_at' => $now,
+                    ]);
+                }
             } catch (\Throwable $e) {
                 // Audit must never break settings save.
                 report($e);
@@ -429,9 +544,9 @@ class SettingsController extends Controller
      * Keys holding a secret: masked on read, and a blank submission keeps the
      * stored value rather than wiping it.
      *
-     * Covers every EncryptedCast property on IntegrationSettings plus the two
-     * mailbox passwords, which are stored plain (EmailSettings declares no
-     * casts) and so are only ever protected by this masking.
+     * Covers every EncryptedCast property on IntegrationSettings plus
+     * smtp_password (plain, no casts). Department IMAP passwords live in
+     * ticket_departments, not settings.
      *
      * @return list<string>
      */
@@ -440,7 +555,6 @@ class SettingsController extends Controller
         return array_values(array_unique([
             ...array_keys(IntegrationSettings::casts()),
             'smtp_password',
-            'imap_password',
         ]));
     }
 
@@ -555,7 +669,7 @@ class SettingsController extends Controller
         }
 
         // Mask encrypted secrets — never expose plaintext in HTML.
-        // Covers EncryptedCast properties dynamically plus the mailbox passwords.
+        // Covers EncryptedCast properties dynamically plus smtp_password.
         foreach ($this->secretKeys() as $secret) {
             if (array_key_exists($secret, $rows)) {
                 $rows[$secret] = '';

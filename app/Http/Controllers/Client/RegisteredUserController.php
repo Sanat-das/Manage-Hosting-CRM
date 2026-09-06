@@ -70,6 +70,14 @@ class RegisteredUserController extends Controller
 
         RateLimiter::hit($throttleKey, 60);
 
+        // Normalize phone from split flag dropdown + number inputs
+        if ($request->has('phone_code') || $request->has('phone_number')) {
+            $code = trim((string) $request->input('phone_code', ''));
+            $number = trim((string) $request->input('phone_number', ''));
+            if ($code === '' && $number !== '') $code = '+91';
+            $request->merge(['phone' => $number !== '' ? trim($code.' '.$number) : $code]);
+        }
+
         // Password strength gated by security_strong_password_enabled toggle (default: enabled).
         $passwordRule = AppSettings::bool('security_strong_password_enabled', true)
             ? Password::min(12)->letters()->mixedCase()->numbers()->symbols()->uncompromised()
@@ -83,6 +91,15 @@ class RegisteredUserController extends Controller
             'email' => ['required', 'string', 'email', 'max:255'],
             'password' => ['required', 'string', $passwordRule, 'confirmed'],
             'password_confirmation' => ['nullable', 'string'],
+            'phone' => ['nullable', 'string', 'max:50'],
+            'company' => ['nullable', 'string', 'max:255'],
+            'address_line1' => ['nullable', 'string', 'max:255'],
+            'address_line2' => ['nullable', 'string', 'max:255'],
+            'city' => ['nullable', 'string', 'max:100'],
+            'state' => ['nullable', 'string', 'max:100'],
+            'postcode' => ['nullable', 'string', 'max:20'],
+            'country' => ['nullable', 'string', 'max:100'],
+            'address' => ['nullable', 'string', 'max:500'],
             'website' => $honeypotEnabled ? ['nullable', 'max:0'] : ['nullable', 'string', 'max:255'],
             'math_captcha' => ['nullable', 'string'],
         ]);
@@ -94,6 +111,15 @@ class RegisteredUserController extends Controller
                 'email' => $validated['email'],
                 'password' => $validated['password'],
                 'password_confirmation' => $validated['password_confirmation'] ?? null,
+                'phone' => $validated['phone'] ?? null,
+                'company' => $validated['company'] ?? null,
+                'address_line1' => $validated['address_line1'] ?? null,
+                'address_line2' => $validated['address_line2'] ?? null,
+                'city' => $validated['city'] ?? null,
+                'state' => $validated['state'] ?? null,
+                'postcode' => $validated['postcode'] ?? null,
+                'country' => $validated['country'] ?? null,
+                'address' => $validated['address'] ?? null,
             ]);
         } catch (\Illuminate\Validation\ValidationException $e) {
             // Validation failed inside CreatesNewUsers — keep throttle hit for brute-force accounting.

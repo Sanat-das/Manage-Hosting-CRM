@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="HostVexa mark">
+  <defs>
+    <linearGradient id="hv-grad" x1="0%" y1="0%" x2="100%" y2="100%" gradientUnits="objectBoundingBox">
+      <stop offset="0%" stop-color="#0EA5E9"/>
+      <stop offset="100%" stop-color="#6366F1"/>
+    </linearGradient>
+    <linearGradient id="hv-grad-soft" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0EA5E9" stop-opacity="0.12"/>
+      <stop offset="100%" stop-color="#6366F1" stop-opacity="0.12"/>
+    </linearGradient>
+  </defs>
+  <!-- outer squircle -->
+  <rect width="64" height="64" rx="16" fill="url(#hv-grad)"/>
+  <!-- subtle inner highlight for depth -->
+  <rect width="64" height="64" rx="16" fill="none" stroke="white" stroke-opacity="0.10" stroke-width="1.2"/>
+  <!-- stacked server blades — white, rounded, with status indicator -->
+  <g fill="white">
+    <!-- top blade -->
+    <rect x="14" y="14.5" width="36" height="9.5" rx="3" fill-opacity="0.96"/>
+    <circle cx="44.5" cy="19.25" r="1.9" fill="#0F172A" fill-opacity="0.14"/>
+    <circle cx="44.5" cy="19.25" r="1.05" fill="white" fill-opacity="0.95"/>
+    <rect x="18.5" y="17.2" width="14" height="1.7" rx="0.85" fill="#0F172A" fill-opacity="0.08"/>
+    <rect x="18.5" y="20.1" width="9" height="1.35" rx="0.67" fill="#0F172A" fill-opacity="0.06"/>
+    <!-- middle blade -->
+    <rect x="14" y="27.2" width="36" height="9.5" rx="3" fill-opacity="0.96"/>
+    <circle cx="44.5" cy="31.95" r="1.9" fill="#0F172A" fill-opacity="0.14"/>
+    <circle cx="44.5" cy="31.95" r="1.05" fill="white" fill-opacity="0.95"/>
+    <rect x="18.5" y="29.9" width="14" height="1.7" rx="0.85" fill="#0F172A" fill-opacity="0.08"/>
+    <rect x="18.5" y="32.8" width="9" height="1.35" rx="0.67" fill="#0F172A" fill-opacity="0.06"/>
+    <!-- bottom blade -->
+    <rect x="14" y="39.9" width="36" height="9.5" rx="3" fill-opacity="0.96"/>
+    <circle cx="44.5" cy="44.65" r="1.9" fill="#0F172A" fill-opacity="0.14"/>
+    <circle cx="44.5" cy="44.65" r="1.05" fill="#10B981" fill-opacity="0.95"/>
+    <rect x="18.5" y="42.6" width="14" height="1.7" rx="0.85" fill="#0F172A" fill-opacity="0.08"/>
+    <rect x="18.5" y="45.5" width="9" height="1.35" rx="0.67" fill="#0F172A" fill-opacity="0.06"/>
+  </g>
+</svg>

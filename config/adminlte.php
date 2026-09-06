@@ -20,9 +20,9 @@ return [
     |
     */
 
-    'title' => 'Hosting CRM',
+    'title' => 'HostVexa',
     'title_prefix' => '',
-    'title_postfix' => '',
+    'title_postfix' => ' | Hosting Management Platform',
 
     /*
     |--------------------------------------------------------------------------
@@ -57,10 +57,10 @@ return [
     |
     */
 
-    'logo' => '<i class="bi bi-cloud"></i> Hosting CRM',
-    'logo_img' => false,
-    'logo_img_class' => 'brand-image opacity-75 shadow',
-    'logo_img_alt' => 'AdminLTE Logo',
+    'logo' => '<span class="brand-logo-hostvexa"><i class="bi bi-hdd-rack"></i> HostVexa</span>',
+    'logo_img' => 'img/hostvexa-mark.svg',
+    'logo_img_class' => 'brand-image img-circle elevation-2',
+    'logo_img_alt' => 'HostVexa',
 
     /*
     |--------------------------------------------------------------------------
@@ -120,8 +120,8 @@ return [
     |
     */
 
-    'footer_left' => 'Copyright &copy; '.date('Y').' Hosting CRM. All rights reserved.',
-    'footer_right' => 'Powered by Laravel & AdminLTE',
+    'footer_left' => 'Copyright &copy; '.date('Y').' HostVexa — Hosting Management Platform. All rights reserved.',
+    'footer_right' => 'HostVexa <span class="text-muted">v'.trim((string) @file_get_contents(base_path('VERSION'))).'</span>',
     'preloader' => false,
     'control_sidebar' => false,
     'control_sidebar_theme' => 'dark',

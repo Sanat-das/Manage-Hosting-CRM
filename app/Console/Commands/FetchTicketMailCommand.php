@@ -3,7 +3,6 @@
 namespace App\Console\Commands;
 
 use App\Services\TicketMailParser;
-use App\Settings\EmailSettings;
 use App\Support\InboundAttachment;
 use App\Support\InboundEmail;
 use App\Support\MailboxConfig;
@@ -13,15 +12,14 @@ use Webklex\PHPIMAP\ClientManager;
 use Webklex\PHPIMAP\Message;
 
 /**
- * Poll the support mailboxes and file replies onto their tickets.
+ * Poll the department mailboxes and file replies onto their tickets.
  *
  * Transport only: every decision about what a message means belongs to
  * TicketMailParser, which is why that half is testable without a mail server.
  *
- * Follows the WHMCS model of one mailbox per support department, plus the
- * global Settings > Email > Incoming Mail inbox for installs that run a single
- * address. Mailboxes are de-duplicated by host+port+user+folder before polling:
- * two configurations pointing at one inbox would import every message twice.
+ * One mailbox per support department (Support > Departments). Mailboxes are
+ * de-duplicated by host+port+user+folder before polling: two departments
+ * pointing at one inbox would import every message twice.
  *
  * A department's inbox only supplies context — which desk the mail arrived at.
  * It never overrides the department of a ticket a reply matched, so a customer
@@ -37,21 +35,36 @@ class FetchTicketMailCommand extends Command
     protected $signature = 'tickets:fetch-mail
         {--limit=50 : Maximum messages to process per mailbox in one run}
         {--department= : Poll only this department slug}
-        {--dry-run : Apply every rule and report, but write nothing and leave the mailbox untouched}
-        {--force : Run even when the Enable Ticket Email Fetch setting is off}';
+        {--dry-run : Apply every rule and report, but write nothing and leave the mailbox untouched}';
 
     protected $description = 'Fetch customer replies from the ticket mailboxes and add them to their tickets';
 
-    public function handle(TicketMailParser $parser, EmailSettings $settings): int
+    /**
+     * Outcomes that leave the message UNREAD in the mailbox, because a person
+     * still has to deal with it.
+     *
+     * STATUS_EMPTY belongs here: "nothing left after stripping quoted history"
+     * is a parser that could not find the reply, not a message with nothing in
+     * it. Flagging those Seen consumed real customer replies and left only a
+     * counter behind — the mail was gone from the inbox and never reached the
+     * ticket, which is indistinguishable from it never arriving.
+     *
+     * @var list<string>
+     */
+    private const NEEDS_A_HUMAN = [
+        TicketMailParser::STATUS_UNMATCHED,
+        TicketMailParser::STATUS_UNKNOWN_SENDER,
+        TicketMailParser::STATUS_EMPTY,
+    ];
+
+    public function handle(TicketMailParser $parser): int
     {
         $mailboxes = MailboxConfig::listForFetch(
-            $settings,
             (string) $this->option('department'),
-            (bool) $this->option('force'),
         );
 
         if ($mailboxes === []) {
-            return $this->reportNothingToPoll($settings);
+            return $this->reportNothingToPoll();
         }
 
         $dryRun = (bool) $this->option('dry-run');
@@ -74,6 +87,29 @@ class FetchTicketMailCommand extends Command
 
         $this->info(($dryRun ? '[dry run] ' : '')."Processed {$total} message(s) across ".count($mailboxes)." mailbox(es): {$summary}.");
 
+        if (! $dryRun) {
+            // A healthy run used to write nothing anywhere: the only log lines
+            // came from failures, so "inbound is fine" and "inbound has not run
+            // since Tuesday" looked identical from outside. Outbound already
+            // has this (queue-emails-cron + cron-emails-health.json); this is
+            // the matching signal for the inbound half.
+            $this->recordHealth([
+                'last_run' => now()->toIso8601String(),
+                'mailboxes' => count($mailboxes),
+                'mailboxes_failed' => $failed,
+                'processed' => $total,
+                'counts' => $counts,
+                'status' => $failed > 0 ? 'degraded' : 'ok',
+            ]);
+
+            Log::info('tickets:fetch-mail completed.', [
+                'mailboxes' => count($mailboxes),
+                'mailboxes_failed' => $failed,
+                'processed' => $total,
+                'counts' => $counts,
+            ]);
+        }
+
         if ($failed > 0) {
             $this->error("{$failed} of ".count($mailboxes).' mailbox(es) could not be polled.');
 
@@ -84,11 +120,49 @@ class FetchTicketMailCommand extends Command
     }
 
     /**
-     * Distinguish "nothing configured" from "configured but unusable", because
-     * the first is a normal state for a scheduled command and the second is an
-     * error an admin has to fix.
+     * Replace `storage/app/cron-tickets-health.json` with the outcome of this
+     * run. Deliberately a whole-file replace under an exclusive lock, matching
+     * the outbound health file: a reader sees either the previous run or this
+     * one, never a half-written mixture.
+     *
+     * @param  array<string, mixed>  $payload
      */
-    private function reportNothingToPoll(EmailSettings $settings): int
+    private function recordHealth(array $payload): void
+    {
+        try {
+            $path = storage_path('app/cron-tickets-health.json');
+            $directory = dirname($path);
+
+            if (! is_dir($directory)) {
+                @mkdir($directory, 0755, true);
+            }
+
+            $handle = @fopen($path, 'c+');
+
+            if ($handle === false) {
+                return;
+            }
+
+            try {
+                if (! flock($handle, LOCK_EX)) {
+                    return;
+                }
+
+                ftruncate($handle, 0);
+                rewind($handle);
+                fwrite($handle, (string) json_encode($payload, JSON_PRETTY_PRINT));
+                fflush($handle);
+                flock($handle, LOCK_UN);
+            } finally {
+                fclose($handle);
+            }
+        } catch (\Throwable $e) {
+            // Health reporting must never be the reason a poll fails.
+            report($e);
+        }
+    }
+
+    private function reportNothingToPoll(): int
     {
         if ($only = trim((string) $this->option('department'))) {
             $this->error("Department \"{$only}\" has no enabled mailbox of its own.");
@@ -96,13 +170,7 @@ class FetchTicketMailCommand extends Command
             return self::FAILURE;
         }
 
-        if (($settings->imap_enabled || $this->option('force')) && trim($settings->imap_host) === '') {
-            $this->error('Incoming mail is enabled but no IMAP host is configured (Settings > Email > Incoming Mail).');
-
-            return self::FAILURE;
-        }
-
-        $this->comment('No ticket mailboxes configured. Enable Incoming Mail in Settings > Email, or give a department its own mailbox.');
+        $this->comment('No ticket mailboxes configured. Add a mailbox to a department in Support > Departments.');
 
         return self::SUCCESS;
     }
@@ -174,8 +242,7 @@ class FetchTicketMailCommand extends Command
             $counts[$result['status']] = ($counts[$result['status']] ?? 0) + 1;
             $this->line(sprintf('  [%s] %s', $result['status'], $result['reason']));
 
-            if ($result['status'] === TicketMailParser::STATUS_UNMATCHED
-                || $result['status'] === TicketMailParser::STATUS_UNKNOWN_SENDER) {
+            if (in_array($result['status'], self::NEEDS_A_HUMAN, true)) {
                 Log::warning('Ticket mail needs a human.', [
                     'status' => $result['status'],
                     'reason' => $result['reason'],
@@ -199,19 +266,24 @@ class FetchTicketMailCommand extends Command
     /**
      * Flag a processed message.
      *
-     * Anything a human still has to deal with — no matching ticket, or a
-     * sender we will not post as — is deliberately left UNREAD so it stays
-     * visible in the mailbox instead of disappearing into an audit log.
+     * Anything a human still has to deal with — no matching ticket, a sender we
+     * will not post as, or a body the parser could not find a reply in — is
+     * deliberately left UNREAD so it stays visible in the mailbox instead of
+     * disappearing into an audit log. See {@see self::NEEDS_A_HUMAN}.
      */
     private function finish(Message $message, string $status, bool $deleteAfterFetch): void
     {
-        if (in_array($status, [TicketMailParser::STATUS_UNMATCHED, TicketMailParser::STATUS_UNKNOWN_SENDER], true)) {
+        if (in_array($status, self::NEEDS_A_HUMAN, true)) {
             return;
         }
 
         try {
             if ($deleteAfterFetch) {
-                $message->delete();
+                // Explicit because it matters: IMAP DELETE only sets the
+                // \Deleted flag, and without the expunge the message stays in
+                // the folder. It is webklex's default, stated here so the
+                // behaviour survives a library upgrade that changes it.
+                $message->delete(expunge: true);
 
                 return;
             }

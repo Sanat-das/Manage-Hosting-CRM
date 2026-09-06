@@ -4,14 +4,14 @@ namespace App\Support;
 
 use App\Models\TicketDepartment;
 use App\Settings\EmailSettings;
+use Illuminate\Support\Facades\Log;
 
 /**
- * One inbox for the ticket fetcher to poll, from either source: the global
- * Settings > Email > Incoming Mail configuration, or a support department that
- * has its own.
+ * One inbox per support department that has its own IMAP mailbox.
  *
- * Exists so FetchTicketMailCommand has a single shape to loop over and does not
- * branch on where the credentials came from.
+ * Department-only since global Incoming Mail was removed — every mailbox
+ * belongs to a department, which keeps routing unambiguous (which desk the mail
+ * arrived at) and removes the shared-inbox duplicate-import trap.
  */
 final class MailboxConfig
 {
@@ -31,26 +31,42 @@ final class MailboxConfig
     ) {}
 
     /**
-     * Every inbox the fetcher should poll: departments carrying their own,
-     * plus the global mailbox, minus duplicates.
+     * Every inbox the fetcher should poll — one per enabled department that
+     * has a mailbox configured. De-duplicated by host:port:user:folder so two
+     * departments accidentally pointed at the same inbox don't import twice.
      *
-     * Departments are collected first on purpose, so a department pointing at
-     * the same inbox as the global settings wins the de-duplication and keeps
-     * its own label. Sharing an inbox is otherwise the WHMCS duplicate-import
-     * trap — both configurations would read every message.
-     *
-     * @param  string|null  $onlyDepartment  restrict to one department slug; the global mailbox is then skipped
-     * @param  bool  $force  include the global mailbox even when Incoming Mail is switched off
+     * @param  string|null|object  $onlyDepartment  restrict to one department slug; legacy EmailSettings as first arg is ignored for BC
+     * @param  string|null  $legacyDepartment
      * @return list<self>
      */
-    public static function listForFetch(EmailSettings $settings, ?string $onlyDepartment = null, bool $force = false): array
+    public static function listForFetch(mixed $a = null, mixed $b = null, mixed $c = null): array
     {
+        // BC: old signature was listForFetch(EmailSettings $settings, ?string $onlyDepartment, bool $force)
+        // new is listForFetch(?string $onlyDepartment). Handle both.
+        $onlyDepartment = null;
+        if ($a instanceof EmailSettings) {
+            $onlyDepartment = $b;
+        } elseif (is_string($a) || $a === null) {
+            $onlyDepartment = $a;
+            // if called as listForFetch('sales') where $a is string, $b is null — correct
+            // if called as listForFetch($settings, 'sales'), $a is object, handled above
+        }
         $only = trim((string) $onlyDepartment);
         $mailboxes = [];
         $seen = [];
 
         $add = function (self $mailbox) use (&$mailboxes, &$seen): void {
-            if ($mailbox->host === '' || isset($seen[$mailbox->key()])) {
+            if ($mailbox->host === '') {
+                return;
+            }
+            if (isset($seen[$mailbox->key()])) {
+                Log::warning('Mailbox duplicate suppressed — already polling same host:port:user:folder.', [
+                    'suppressed' => $mailbox->label,
+                    'key' => $mailbox->key(),
+                    'username' => $mailbox->username,
+                    'host' => $mailbox->host,
+                ]);
+
                 return;
             }
 
@@ -64,28 +80,23 @@ final class MailboxConfig
             ->when($only !== '', fn ($query) => $query->where('slug', $only))
             ->ordered()
             ->get()
-            ->each(fn (TicketDepartment $department) => $add(self::fromDepartment($department)));
-
-        if ($only === '' && ($settings->imap_enabled || $force)) {
-            $add(self::fromSettings($settings));
-        }
+            ->each(function (TicketDepartment $department) use ($add): void {
+                // One unreadable department must not cost every other desk its
+                // inbound mail. Building a config reads the stored credential,
+                // and anything that throws there used to escape all the way out
+                // of tickets:fetch-mail, so a single bad row stopped ALL
+                // inbound ticket mail rather than just its own.
+                try {
+                    $add(self::fromDepartment($department));
+                } catch (\Throwable $e) {
+                    Log::error('Mailbox skipped — its configuration could not be read.', [
+                        'department' => $department->slug,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
+            });
 
         return $mailboxes;
-    }
-
-    public static function fromSettings(EmailSettings $settings): self
-    {
-        return new self(
-            label: 'Global mailbox',
-            host: trim($settings->imap_host),
-            port: $settings->imap_port > 0 ? $settings->imap_port : 993,
-            encryption: $settings->imap_encryption,
-            validateCert: $settings->imap_validate_cert,
-            username: (string) $settings->imap_username,
-            password: (string) $settings->imap_password,
-            folder: trim($settings->imap_folder) !== '' ? trim($settings->imap_folder) : 'INBOX',
-            deleteAfterFetch: $settings->imap_delete_after_fetch,
-        );
     }
 
     public static function fromDepartment(TicketDepartment $department): self
@@ -125,9 +136,9 @@ final class MailboxConfig
     }
 
     /**
-     * Identity used to skip an inbox already polled in this run — a department
-     * pointed at the same inbox as the global mailbox would otherwise import
-     * every message twice.
+     * Identity used to skip an inbox already polled in this run — two
+     * departments pointed at the same inbox would otherwise import every
+     * message twice.
      */
     public function key(): string
     {

@@ -57,6 +57,15 @@
     "src": "resources/css/app.css",
     "isEntry": true
   },
+  "resources/css/branding.css": {
+    "file": "assets/branding-AOw7ubVS.css",
+    "name": "branding",
+    "names": [
+      "branding.css"
+    ],
+    "src": "resources/css/branding.css",
+    "isEntry": true
+  },
   "resources/js/adminlte.js": {
     "file": "assets/adminlte-oIQylmpO.js",
     "name": "adminlte",

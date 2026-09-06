@@ -40,6 +40,12 @@
         <div>{{ $invoice->customer->full_name ?? 'N/A' }}</div>
         @if ($invoice->customer?->user)
             <div>{{ $invoice->customer->user->email }}</div>
+            @if ($invoice->customer->user->formatted_address)
+                <div style="color:#555; margin-top:4px;">{{ $invoice->customer->user->formatted_address }}</div>
+            @endif
+            @if ($invoice->customer->tax_id)
+                <div style="color:#555;">GSTIN: {{ $invoice->customer->tax_id }}</div>
+            @endif
         @endif
     </div>
 

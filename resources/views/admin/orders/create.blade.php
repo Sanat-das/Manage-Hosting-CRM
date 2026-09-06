@@ -391,8 +391,51 @@
                                        minlength="8" placeholder="Min 8 chars, with upper, lower & number" required>
                             </div>
                             <div class="col-md-6">
-                                <label class="form-label small" for="qc-phone">Phone</label>
-                                <input type="text" class="form-control form-control-sm" id="qc-phone" name="phone">
+                                <label class="form-label small" for="qc-phone_number">Phone Number</label>
+                                <div class="input-group input-group-sm" id="qc-phone-group" style="flex-wrap: nowrap;">
+                                    <select id="qc-phone_code" name="phone_code" class="form-select form-select-sm" style="max-width: 110px; flex: 0 0 110px;">
+                                        <option value="+91" selected>🇮🇳 India +91</option>
+                                        <option value="+1">🇺🇸 US +1</option>
+                                        <option value="+44">🇬🇧 UK +44</option>
+                                        <option value="+93">🇦🇫 Afghanistan +93</option>
+                                        <option value="+355">🇦🇱 Albania +355</option>
+                                        <option value="+213">🇩🇿 Algeria +213</option>
+                                        <option value="+61">🇦🇺 Australia +61</option>
+                                        <option value="+880">🇧🇩 Bangladesh +880</option>
+                                        <option value="+973">🇧🇭 Bahrain +973</option>
+                                        <option value="+55">🇧🇷 Brazil +55</option>
+                                        <option value="+1">🇨🇦 Canada +1</option>
+                                        <option value="+86">🇨🇳 China +86</option>
+                                        <option value="+33">🇫🇷 France +33</option>
+                                        <option value="+49">🇩🇪 Germany +49</option>
+                                        <option value="+852">🇭🇰 Hong Kong +852</option>
+                                        <option value="+62">🇮🇩 Indonesia +62</option>
+                                        <option value="+39">🇮🇹 Italy +39</option>
+                                        <option value="+81">🇯🇵 Japan +81</option>
+                                        <option value="+254">🇰🇪 Kenya +254</option>
+                                        <option value="+965">🇰🇼 Kuwait +965</option>
+                                        <option value="+60">🇲🇾 Malaysia +60</option>
+                                        <option value="+977">🇳🇵 Nepal +977</option>
+                                        <option value="+64">🇳🇿 New Zealand +64</option>
+                                        <option value="+234">🇳🇬 Nigeria +234</option>
+                                        <option value="+968">🇴🇲 Oman +968</option>
+                                        <option value="+92">🇵🇰 Pakistan +92</option>
+                                        <option value="+63">🇵🇭 Philippines +63</option>
+                                        <option value="+974">🇶🇦 Qatar +974</option>
+                                        <option value="+7">🇷🇺 Russia +7</option>
+                                        <option value="+966">🇸🇦 Saudi Arabia +966</option>
+                                        <option value="+65">🇸🇬 Singapore +65</option>
+                                        <option value="+27">🇿🇦 South Africa +27</option>
+                                        <option value="+34">🇪🇸 Spain +34</option>
+                                        <option value="+94">🇱🇰 Sri Lanka +94</option>
+                                        <option value="+66">🇹🇭 Thailand +66</option>
+                                        <option value="+90">🇹🇷 Turkey +90</option>
+                                        <option value="+971">🇦🇪 UAE +971</option>
+                                        <option value="+84">🇻🇳 Vietnam +84</option>
+                                    </select>
+                                    <input type="tel" inputmode="numeric" class="form-control form-control-sm" id="qc-phone_number" name="phone_number" placeholder="98007 44827" style="margin-left: -1px;">
+                                </div>
+                                <input type="hidden" name="phone" id="qc-phone">
                             </div>
                             <div class="col-md-6">
                                 <label class="form-label small" for="qc-company">Company</label>
@@ -405,6 +448,39 @@
                                     <option value="inactive">Inactive</option>
                                     <option value="suspended">Suspended</option>
                                 </select>
+                            </div>
+                            <div class="col-12">
+                                <div class="border rounded p-2 bg-light-subtle">
+                                    <div class="d-flex align-items-center gap-2 mb-2">
+                                        <i class="bi bi-geo-alt text-primary small"></i>
+                                        <small class="fw-semibold">Billing Address <span class="fw-normal text-muted">(optional)</span></small>
+                                    </div>
+                                    <div class="row g-2">
+                                        <div class="col-12">
+                                            <input type="text" name="address_line1" class="form-control form-control-sm" placeholder="Street address — House no., street, area" autocomplete="street-address">
+                                        </div>
+                                        <div class="col-12">
+                                            <input type="text" name="address_line2" class="form-control form-control-sm" placeholder="Apartment, suite, landmark (optional)" autocomplete="address-line2">
+                                        </div>
+                                        <div class="col-6">
+                                            <input type="text" name="city" class="form-control form-control-sm" placeholder="City" autocomplete="address-level2">
+                                        </div>
+                                        <div class="col-6">
+                                            <input type="text" name="state" class="form-control form-control-sm" placeholder="State / Province" autocomplete="address-level1">
+                                        </div>
+                                        <div class="col-6">
+                                            <input type="text" name="postcode" class="form-control form-control-sm" placeholder="Postcode / ZIP" autocomplete="postal-code">
+                                        </div>
+                                        <div class="col-6">
+                                            <select name="country" class="form-select form-select-sm">
+                                                @php $qcCountries = ['India','United States','United Kingdom','Canada','Australia','Singapore','United Arab Emirates','Germany','France','Other']; @endphp
+                                                @foreach ($qcCountries as $c)
+                                                    <option value="{{ $c }}" @selected($c === 'India')>{{ $c }}</option>
+                                                @endforeach
+                                            </select>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </form>
@@ -1082,7 +1158,13 @@
                     });
                 }
 
+                // sync modal phone hidden before submit
+                function syncQcPhone(){ const c=document.getElementById('qc-phone_code'), n=document.getElementById('qc-phone_number'), h=document.getElementById('qc-phone'); if(c&&n&&h){ const code=(c.value||'').trim(); const num=(n.value||'').trim(); h.value = num ? (code+' '+num) : code; } }
+                document.getElementById('qc-phone_code')?.addEventListener('change', syncQcPhone);
+                document.getElementById('qc-phone_number')?.addEventListener('input', syncQcPhone);
+                syncQcPhone();
                 quickSave?.addEventListener('click', function () {
+                    syncQcPhone();
                     const form = quickForm.querySelector('form');
                     if (!form) return;
                     const data = new FormData(form);

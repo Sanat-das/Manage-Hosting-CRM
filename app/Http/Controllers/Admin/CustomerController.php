@@ -110,6 +110,7 @@ class CustomerController extends Controller
 
     public function store(Request $request): RedirectResponse
     {
+        $this->normalizePhone($request);
         $validated = $request->validate([
             'first_name' => ['required', 'string', 'max:255'],
             'last_name' => ['required', 'string', 'max:255'],
@@ -118,15 +119,22 @@ class CustomerController extends Controller
                 'required', 'string', 'min:8', 'confirmed',
                 'regex:/[A-Z]/', 'regex:/[a-z]/', 'regex:/[0-9]/',
             ],
-            'phone' => ['nullable', 'string', 'max:30'],
+            'phone' => ['nullable', 'string', 'max:50'],
             'company' => ['nullable', 'string', 'max:255'],
             'tax_id' => ['nullable', 'string', 'max:100'],
+            'address_line1' => ['nullable', 'string', 'max:255'],
+            'address_line2' => ['nullable', 'string', 'max:255'],
+            'city' => ['nullable', 'string', 'max:100'],
+            'state' => ['nullable', 'string', 'max:100'],
+            'postcode' => ['nullable', 'string', 'max:20'],
+            'country' => ['nullable', 'string', 'max:100'],
             'address' => ['nullable', 'string', 'max:500'],
             'status' => ['required', Rule::in(['active', 'inactive', 'suspended'])],
         ]);
 
         try {
             $customer = DB::transaction(function () use ($validated) {
+                $legacyAddress = $this->compileLegacyAddress($validated);
                 $user = User::create([
                     'email' => $validated['email'],
                     'password_hash' => Hash::make($validated['password']),
@@ -135,7 +143,13 @@ class CustomerController extends Controller
                     'last_name' => $validated['last_name'],
                     'phone' => $validated['phone'] ?? null,
                     'company' => $validated['company'] ?? null,
-                    'address' => $validated['address'] ?? null,
+                    'address' => $legacyAddress,
+                    'address_line1' => $validated['address_line1'] ?? null,
+                    'address_line2' => $validated['address_line2'] ?? null,
+                    'city' => $validated['city'] ?? null,
+                    'state' => $validated['state'] ?? null,
+                    'postcode' => $validated['postcode'] ?? null,
+                    'country' => $validated['country'] ?? 'India',
                     'status' => $validated['status'] === 'active' ? 'active' : 'inactive',
                 ]);
 
@@ -143,6 +157,7 @@ class CustomerController extends Controller
                     'user_id' => $user->id,
                     'company' => $validated['company'] ?? null,
                     'tax_id' => $validated['tax_id'] ?? null,
+                    'state_code' => $this->resolveStateCode($validated['state'] ?? null),
                     'balance' => 0,
                     'credit' => 0,
                     'status' => $validated['status'],
@@ -169,6 +184,7 @@ class CustomerController extends Controller
      */
     public function quickStore(Request $request): JsonResponse
     {
+        $this->normalizePhone($request);
         try {
             $validated = $request->validate([
                 'first_name' => ['required', 'string', 'max:255'],
@@ -178,9 +194,15 @@ class CustomerController extends Controller
                     'required', 'string', 'min:8',
                     'regex:/[A-Z]/', 'regex:/[a-z]/', 'regex:/[0-9]/',
                 ],
-                'phone' => ['nullable', 'string', 'max:30'],
+                'phone' => ['nullable', 'string', 'max:50'],
                 'company' => ['nullable', 'string', 'max:255'],
                 'tax_id' => ['nullable', 'string', 'max:100'],
+                'address_line1' => ['nullable', 'string', 'max:255'],
+                'address_line2' => ['nullable', 'string', 'max:255'],
+                'city' => ['nullable', 'string', 'max:100'],
+                'state' => ['nullable', 'string', 'max:100'],
+                'postcode' => ['nullable', 'string', 'max:20'],
+                'country' => ['nullable', 'string', 'max:100'],
                 'address' => ['nullable', 'string', 'max:500'],
                 'status' => ['sometimes', Rule::in(['active', 'inactive', 'suspended'])],
             ]);
@@ -193,6 +215,7 @@ class CustomerController extends Controller
 
         $customer = DB::transaction(function () use ($validated) {
             $status = $validated['status'] ?? 'active';
+            $legacyAddress = $this->compileLegacyAddress($validated);
 
             $user = User::create([
                 'email' => $validated['email'],
@@ -202,7 +225,13 @@ class CustomerController extends Controller
                 'last_name' => $validated['last_name'],
                 'phone' => $validated['phone'] ?? null,
                 'company' => $validated['company'] ?? null,
-                'address' => $validated['address'] ?? null,
+                'address' => $legacyAddress,
+                'address_line1' => $validated['address_line1'] ?? null,
+                'address_line2' => $validated['address_line2'] ?? null,
+                'city' => $validated['city'] ?? null,
+                'state' => $validated['state'] ?? null,
+                'postcode' => $validated['postcode'] ?? null,
+                'country' => $validated['country'] ?? 'India',
                 'status' => $status === 'active' ? 'active' : 'inactive',
             ]);
 
@@ -210,6 +239,7 @@ class CustomerController extends Controller
                 'user_id' => $user->id,
                 'company' => $validated['company'] ?? null,
                 'tax_id' => $validated['tax_id'] ?? null,
+                'state_code' => $this->resolveStateCode($validated['state'] ?? null),
                 'balance' => 0,
                 'credit' => 0,
                 'status' => $status,
@@ -271,32 +301,47 @@ class CustomerController extends Controller
 
     public function update(Request $request, Customer $customer): RedirectResponse
     {
+        $this->normalizePhone($request);
         $validated = $request->validate([
             'first_name' => ['required', 'string', 'max:255'],
             'last_name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'email', 'max:255', Rule::unique('users', 'email')->ignore($customer->user_id)],
-            'phone' => ['nullable', 'string', 'max:30'],
+            'phone' => ['nullable', 'string', 'max:50'],
             'company' => ['nullable', 'string', 'max:255'],
             'tax_id' => ['nullable', 'string', 'max:100'],
+            'address_line1' => ['nullable', 'string', 'max:255'],
+            'address_line2' => ['nullable', 'string', 'max:255'],
+            'city' => ['nullable', 'string', 'max:100'],
+            'state' => ['nullable', 'string', 'max:100'],
+            'postcode' => ['nullable', 'string', 'max:20'],
+            'country' => ['nullable', 'string', 'max:100'],
             'address' => ['nullable', 'string', 'max:500'],
             'status' => ['required', Rule::in(['active', 'inactive', 'suspended'])],
         ]);
 
         try {
             DB::transaction(function () use ($validated, $customer) {
+                $legacyAddress = $this->compileLegacyAddress($validated);
                 $customer->user->update([
                     'email' => $validated['email'],
                     'first_name' => $validated['first_name'],
                     'last_name' => $validated['last_name'],
                     'phone' => $validated['phone'] ?? null,
                     'company' => $validated['company'] ?? null,
-                    'address' => $validated['address'] ?? null,
+                    'address' => $legacyAddress,
+                    'address_line1' => $validated['address_line1'] ?? null,
+                    'address_line2' => $validated['address_line2'] ?? null,
+                    'city' => $validated['city'] ?? null,
+                    'state' => $validated['state'] ?? null,
+                    'postcode' => $validated['postcode'] ?? null,
+                    'country' => $validated['country'] ?? 'India',
                     'status' => $validated['status'] === 'active' ? 'active' : 'inactive',
                 ]);
 
                 $customer->update([
                     'company' => $validated['company'] ?? null,
                     'tax_id' => $validated['tax_id'] ?? null,
+                    'state_code' => $this->resolveStateCode($validated['state'] ?? null),
                     'status' => $validated['status'],
                 ]);
 
@@ -309,6 +354,67 @@ class CustomerController extends Controller
         return redirect()
             ->route('admin.customers.show', $customer)
             ->with('success', "Customer {$customer->display_id} updated.");
+    }
+
+    private function compileLegacyAddress(array $validated): ?string
+    {
+        $parts = array_filter([
+            $validated['address_line1'] ?? null,
+            $validated['address_line2'] ?? null,
+            $validated['city'] ?? null,
+            $validated['state'] ?? null,
+            $validated['postcode'] ?? null,
+            $validated['country'] ?? null,
+        ], fn ($v) => $v !== null && $v !== '');
+
+        if ($parts !== []) {
+            return implode(', ', $parts);
+        }
+
+        return $validated['address'] ?? null;
+    }
+
+    private function resolveStateCode(?string $state): ?string
+    {
+        if ($state === null || trim($state) === '') {
+            return null;
+        }
+
+        $map = [
+            'andhra pradesh' => 'AP', 'arunachal pradesh' => 'AR', 'assam' => 'AS', 'bihar' => 'BR',
+            'chhattisgarh' => 'CG', 'goa' => 'GA', 'gujarat' => 'GJ', 'haryana' => 'HR',
+            'himachal pradesh' => 'HP', 'jharkhand' => 'JH', 'karnataka' => 'KA', 'kerala' => 'KL',
+            'madhya pradesh' => 'MP', 'maharashtra' => 'MH', 'manipur' => 'MN', 'meghalaya' => 'ML',
+            'mizoram' => 'MZ', 'nagaland' => 'NL', 'odisha' => 'OR', 'punjab' => 'PB',
+            'rajasthan' => 'RJ', 'sikkim' => 'SK', 'tamil nadu' => 'TN', 'telangana' => 'TG',
+            'tripura' => 'TR', 'uttar pradesh' => 'UP', 'uttarakhand' => 'UK', 'west bengal' => 'WB',
+            'delhi' => 'DL', 'jammu and kashmir' => 'JK', 'ladakh' => 'LA',
+        ];
+
+        $key = strtolower(trim($state));
+        if (isset($map[$key])) {
+            return $map[$key];
+        }
+
+        return strtoupper(substr(trim($state), 0, 2));
+    }
+
+    private function normalizePhone(Request $request): void
+    {
+        if ($request->has('phone_code') || $request->has('phone_number')) {
+            $code = trim((string) $request->input('phone_code', ''));
+            $number = trim((string) $request->input('phone_number', ''));
+            // if hidden phone already correct and code/number empty, keep hidden
+            if ($code === '' && $number === '') {
+                return;
+            }
+            // default to +91 if code missing but number present
+            if ($code === '' && $number !== '') {
+                $code = '+91';
+            }
+            $combined = $number !== '' ? trim($code.' '.$number) : $code;
+            $request->merge(['phone' => $combined]);
+        }
     }
 
     public function destroy(Request $request, Customer $customer): RedirectResponse
@@ -420,7 +526,7 @@ class CustomerController extends Controller
             'first_name' => ['required', 'string', 'max:255'],
             'last_name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'email', 'max:255'],
-            'phone' => ['nullable', 'string', 'max:30'],
+            'phone' => ['nullable', 'string', 'max:50'],
             'role' => ['nullable', 'string', 'max:100'],
             'is_primary' => ['sometimes', 'boolean'],
         ]);
@@ -464,7 +570,7 @@ class CustomerController extends Controller
             'first_name' => ['required', 'string', 'max:255'],
             'last_name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'email', 'max:255'],
-            'phone' => ['nullable', 'string', 'max:30'],
+            'phone' => ['nullable', 'string', 'max:50'],
             'role' => ['nullable', 'string', 'max:100'],
             'is_primary' => ['sometimes', 'boolean'],
             'status' => ['sometimes', Rule::in(['active', 'inactive'])],

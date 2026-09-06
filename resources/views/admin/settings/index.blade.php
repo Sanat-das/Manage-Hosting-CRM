@@ -74,7 +74,7 @@
         }
     @endphp
 
-    <form method="POST" action="{{ route('admin.settings.update') }}" id="settings-form">
+    <form method="POST" action="{{ route('admin.settings.update') }}" id="settings-form" enctype="multipart/form-data">
         @csrf
         <input type="hidden" name="active_tab" id="active-tab-input" value="{{ $activeTab }}">
 
@@ -84,10 +84,10 @@
                 $sectionsByGroup[$s['group']][] = $s;
             }
         @endphp
-        <div class="row g-0" id="settings-layout">
+        <div class="row g-0 align-items-start" id="settings-layout">
             {{-- Sidebar: search, grouped nav, save --}}
             <div class="col-lg-3 col-xl-2" id="settings-sidebar-col">
-                <div class="settings-sidebar sticky-top pe-3 pb-4" style="top: 56px; max-height: calc(100vh - 70px); overflow-y: auto;">
+                <div class="settings-sidebar pe-3 pb-4">
                     {{-- Search --}}
                     <div class="mb-3" id="settings-search-wrap">
                         <div class="input-group input-group-sm">
@@ -133,7 +133,7 @@
                         <i class="bi bi-check-lg me-1"></i> Save All Settings
                     </button>
                     <small id="save-all-concurrency-note" class="text-muted d-block text-center" style="font-size:0.75rem;">
-                        <i class="bi bi-people me-1"></i> Changes save immediately
+                        <i class="bi bi-people me-1"></i> Changes save immediately — coordinate with team when editing at the same time
                     </small>
                 </div>
             </div>
@@ -184,36 +184,431 @@
                     </div>
                 </x-adminlte-card>
                 @php $lu = $lastUpdated['portal'] ?? $lastUpdated['all'] ?? null; @endphp
-                <small class="text-muted d-block mb-2 last-updated" data-section="portal">@if($lu)Last updated: {{ \Illuminate\Support\Carbon::parse($lu->created_at)->format('Y-m-d H:i:s') }} — {{ $lu->description }}@else Last updated: never @endif</small>
+                <small class="text-muted d-block mb-2 last-updated" data-section="portal">@if($lu)Last updated: {{ \Illuminate\Support\Carbon::parse($lu->created_at)->format('Y-m-d H:i:s') }} — <span title="{{ $lu->description }}">{{ \Illuminate\Support\Str::limit($lu->description, 120) }}</span>@else Last updated: never @endif</small>
+            </div>
+
+            {{-- Branding --}}
+            <div class="tab-pane fade @if ($activeTab === 'branding') show active @endif" id="pane-branding" role="tabpanel" aria-labelledby="tab-branding">
+                <x-adminlte-card icon="bi bi-palette" title="Branding — HostVexa">
+                    @php
+                        $brandingData = $branding ?? \App\Support\Branding::all();
+                        $brandingLogoUrl = $brandingData['logo_url'] ?? asset('img/hostvexa-logo.svg');
+                        $brandingFaviconUrl = $brandingData['favicon_url'] ?? asset('img/hostvexa-favicon.svg');
+                        $brandingPrimary = old('settings.branding_primary_color', $settings['branding_primary_color'] ?? '#0EA5E9');
+                        $brandingAccent = old('settings.branding_accent_color', $settings['branding_accent_color'] ?? '#6366F1');
+                        // Normalize to hex with hash for color input
+                        if (! preg_match('/^#[0-9A-Fa-f]{6}$/', (string) $brandingPrimary)) { $brandingPrimary = '#0EA5E9'; }
+                        if (! preg_match('/^#[0-9A-Fa-f]{6}$/', (string) $brandingAccent)) { $brandingAccent = '#6366F1'; }
+                    @endphp
+                    <div class="row">
+                        <div class="col-md-4">
+                            <x-adminlte-input name="settings[branding_app_name]" label="App Name *"
+                                value="{{ old('settings.branding_app_name', $settings['branding_app_name'] ?? 'HostVexa') }}"
+                                maxlength="50" required />
+                            <small class="form-text text-muted">Shown in sidebar, title, emails</small>
+                            @error('settings.branding_app_name')
+                                <span class="invalid-feedback d-block" role="alert">{{ $message }}</span>
+                            @enderror
+                        </div>
+                        <div class="col-md-8">
+                            <x-adminlte-input name="settings[branding_tagline]" label="Tagline"
+                                value="{{ old('settings.branding_tagline', $settings['branding_tagline'] ?? 'Hosting Management Platform') }}"
+                                maxlength="100" />
+                            <small class="form-text text-muted">Only in browser title/meta, e.g. Hosting Management Platform</small>
+                            @error('settings.branding_tagline')
+                                <span class="invalid-feedback d-block" role="alert">{{ $message }}</span>
+                            @enderror
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-3">
+                            <label for="branding_primary_color" class="form-label">Primary Color</label>
+                            <div class="input-group">
+                                <input type="color" id="branding_primary_color_picker" value="{{ $brandingPrimary }}" class="form-control form-control-color" style="max-width:3rem;padding:0.2rem;" title="Pick primary color">
+                                <input type="text" name="settings[branding_primary_color]" id="branding_primary_color"
+                                    value="{{ old('settings.branding_primary_color', $settings['branding_primary_color'] ?? '#0EA5E9') }}"
+                                    placeholder="#0EA5E9" maxlength="7" pattern="^#[0-9A-Fa-f]{6}$"
+                                    class="form-control @error('settings.branding_primary_color') is-invalid @enderror">
+                            </div>
+                            @error('settings.branding_primary_color')
+                                <span class="invalid-feedback d-block" role="alert">{{ $message }}</span>
+                            @enderror
+                            <small class="form-text text-muted">Hex #RRGGBB — suggested <code>#0EA5E9</code></small>
+                        </div>
+                        <div class="col-md-3">
+                            <label for="branding_accent_color" class="form-label">Accent Color</label>
+                            <div class="input-group">
+                                <input type="color" id="branding_accent_color_picker" value="{{ $brandingAccent }}" class="form-control form-control-color" style="max-width:3rem;padding:0.2rem;" title="Pick accent color">
+                                <input type="text" name="settings[branding_accent_color]" id="branding_accent_color"
+                                    value="{{ old('settings.branding_accent_color', $settings['branding_accent_color'] ?? '#6366F1') }}"
+                                    placeholder="#6366F1" maxlength="7" pattern="^#[0-9A-Fa-f]{6}$"
+                                    class="form-control @error('settings.branding_accent_color') is-invalid @enderror">
+                            </div>
+                            @error('settings.branding_accent_color')
+                                <span class="invalid-feedback d-block" role="alert">{{ $message }}</span>
+                            @enderror
+                            <small class="form-text text-muted">Hex #RRGGBB — suggested <code>#6366F1</code></small>
+                        </div>
+                        <div class="col-md-3">
+                            @php $sidebarThemeCurrent = old('settings.branding_sidebar_theme', $settings['branding_sidebar_theme'] ?? ''); @endphp
+                            <x-adminlte-select name="settings[branding_sidebar_theme]" label="Sidebar Theme">
+                                <option value="" @selected($sidebarThemeCurrent === '')>Use default</option>
+                                <option value="dark" @selected($sidebarThemeCurrent === 'dark')>Dark — navy #0F172A</option>
+                                <option value="light" @selected($sidebarThemeCurrent === 'light')>Light</option>
+                            </x-adminlte-select>
+                            <small class="form-text text-muted">Overrides General sidebar theme for brand.</small>
+                        </div>
+                        <div class="col-md-3 d-flex align-items-end">
+                            <div class="w-100">
+                                <label class="form-label">Preview</label>
+                                <div id="branding-preview-card" class="rounded d-flex align-items-center gap-2 px-3 py-2" style="background:#0F172A;color:#fff;min-height:44px;border:1px solid #1e293b;">
+                                    <img id="branding-preview-logo" src="{{ $brandingLogoUrl }}" alt="Logo preview" style="height:24px;width:auto;object-fit:contain;background:rgba(255,255,255,0.08);border-radius:4px;padding:2px;">
+                                    <span id="branding-preview-name" class="fw-semibold small">{{ old('settings.branding_app_name', $settings['branding_app_name'] ?? 'HostVexa') }}</span>
+                                    <span class="ms-auto d-inline-flex gap-1">
+                                        <span id="branding-preview-primary" class="rounded-circle d-inline-block" style="width:18px;height:18px;background:{{ $brandingPrimary }};border:2px solid rgba(255,255,255,0.5);" title="Primary"></span>
+                                        <span id="branding-preview-accent" class="rounded-circle d-inline-block" style="width:18px;height:18px;background:{{ $brandingAccent }};border:2px solid rgba(255,255,255,0.5);" title="Accent"></span>
+                                    </span>
+                                </div>
+                                <small class="form-text text-muted">How logo + colors look in the header.</small>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row mt-2">
+                        <div class="col-md-6">
+                            <label class="form-label">Logo</label>
+                            <div class="d-flex align-items-center gap-3 mb-2 p-2 border rounded" style="background:var(--bs-tertiary-bg, #f8f9fa);">
+                                <img src="{{ $brandingLogoUrl }}" alt="Current logo" style="height:36px;width:auto;max-width:140px;object-fit:contain;background:#fff;border-radius:4px;padding:4px;border:1px solid #dee2e6;">
+                                <div class="small text-muted">
+                                    Current: <code class="small">{{ $settings['branding_logo_path'] ?? '' ?: 'img/hostvexa-logo.svg (default)' }}</code><br>
+                                    <span>Upload SVG, PNG, JPG or WEBP — max 2 MB.</span>
+                                </div>
+                                <img src="{{ $brandingFaviconUrl }}" alt="Favicon preview" style="height:16px;width:16px;object-fit:contain;" class="ms-auto d-none d-md-block" title="Favicon">
+                            </div>
+                            <input type="file" name="branding_logo" id="branding_logo"
+                                accept="image/svg+xml,image/png,image/jpeg,image/webp,.ico"
+                                class="form-control @error('branding_logo') is-invalid @enderror @error('settings.branding_logo') is-invalid @enderror">
+                            @error('branding_logo')
+                                <span class="invalid-feedback d-block" role="alert">{{ $message }}</span>
+                            @enderror
+                            @error('settings.branding_logo')
+                                <span class="invalid-feedback d-block" role="alert">{{ $message }}</span>
+                            @enderror
+                            @error('settings.branding_logo_path')
+                                <span class="invalid-feedback d-block" role="alert">{{ $message }}</span>
+                            @enderror
+                            <small class="form-text text-muted">Choose a new logo to replace the current. Leave empty to keep existing.</small>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Favicon</label>
+                            <div class="d-flex align-items-center gap-3 mb-2 p-2 border rounded" style="background:var(--bs-tertiary-bg, #f8f9fa);">
+                                <img src="{{ $brandingFaviconUrl }}" alt="Current favicon" style="height:32px;width:32px;object-fit:contain;background:#fff;border-radius:4px;padding:4px;border:1px solid #dee2e6;">
+                                <div class="small text-muted">
+                                    Current: <code class="small">{{ $settings['branding_favicon_path'] ?? '' ?: 'img/hostvexa-favicon.svg (default)' }}</code><br>
+                                    <span>SVG, PNG, JPG, WEBP or ICO — max 1 MB.</span>
+                                </div>
+                            </div>
+                            <input type="file" name="branding_favicon" id="branding_favicon"
+                                accept="image/svg+xml,image/png,image/jpeg,image/webp,.ico"
+                                class="form-control @error('branding_favicon') is-invalid @enderror @error('settings.branding_favicon') is-invalid @enderror">
+                            @error('branding_favicon')
+                                <span class="invalid-feedback d-block" role="alert">{{ $message }}</span>
+                            @enderror
+                            @error('settings.branding_favicon')
+                                <span class="invalid-feedback d-block" role="alert">{{ $message }}</span>
+                            @enderror
+                            @error('settings.branding_favicon_path')
+                                <span class="invalid-feedback d-block" role="alert">{{ $message }}</span>
+                            @enderror
+                            <small class="form-text text-muted">Browser tab icon. Leave empty to keep existing.</small>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-8">
+                            <label for="branding_footer_text" class="form-label">Footer Text</label>
+                            <input type="text" name="settings[branding_footer_text]" id="branding_footer_text"
+                                value="{{ old('settings.branding_footer_text', $settings['branding_footer_text'] ?? '© {year} HostVexa. All rights reserved.') }}"
+                                maxlength="255" placeholder="© {year} HostVexa. All rights reserved."
+                                class="form-control @error('settings.branding_footer_text') is-invalid @enderror">
+                            @error('settings.branding_footer_text')
+                                <span class="invalid-feedback d-block" role="alert">{{ $message }}</span>
+                            @enderror
+                            <small class="form-text text-muted">Use <code>{year}</code> for dynamic year. Shown in footer bar.</small>
+                        </div>
+                    </div>
+                    <script>
+                        (function(){
+                            var pPicker = document.getElementById('branding_primary_color_picker');
+                            var pInput = document.getElementById('branding_primary_color');
+                            var aPicker = document.getElementById('branding_accent_color_picker');
+                            var aInput = document.getElementById('branding_accent_color');
+                            var pPreview = document.getElementById('branding-preview-primary');
+                            var aPreview = document.getElementById('branding-preview-accent');
+                            var nameInput = document.querySelector('[name="settings[branding_app_name]"]');
+                            var namePreview = document.getElementById('branding-preview-name');
+                            if(pPicker && pInput){
+                                pPicker.addEventListener('input', function(){ pInput.value = pPicker.value; if(pPreview) pPreview.style.background = pPicker.value; });
+                                pInput.addEventListener('input', function(){ if(/^#[0-9A-Fa-f]{6}$/.test(pInput.value)){ pPicker.value = pInput.value; if(pPreview) pPreview.style.background = pInput.value; } });
+                            }
+                            if(aPicker && aInput){
+                                aPicker.addEventListener('input', function(){ aInput.value = aPicker.value; if(aPreview) aPreview.style.background = aPicker.value; });
+                                aInput.addEventListener('input', function(){ if(/^#[0-9A-Fa-f]{6}$/.test(aInput.value)){ aPicker.value = aInput.value; if(aPreview) aPreview.style.background = aInput.value; } });
+                            }
+                            if(nameInput && namePreview){
+                                nameInput.addEventListener('input', function(){ namePreview.textContent = nameInput.value || 'HostVexa'; });
+                            }
+                            var logoFile = document.getElementById('branding_logo');
+                            var logoPreview = document.getElementById('branding-preview-logo');
+                            if(logoFile && logoPreview){
+                                logoFile.addEventListener('change', function(){
+                                    if(logoFile.files && logoFile.files[0]){
+                                        var url = URL.createObjectURL(logoFile.files[0]);
+                                        logoPreview.src = url;
+                                    }
+                                });
+                            }
+                        })();
+                    </script>
+                </x-adminlte-card>
+                @php $lu = $lastUpdated['branding'] ?? $lastUpdated['all'] ?? null; @endphp
+                <small class="text-muted d-block mb-2 last-updated" data-section="branding">@if($lu)Last updated: {{ \Illuminate\Support\Carbon::parse($lu->created_at)->format('Y-m-d H:i:s') }} — <span title="{{ $lu->description }}">{{ \Illuminate\Support\Str::limit($lu->description, 120) }}</span>@else Last updated: never @endif</small>
             </div>
 
             {{-- General --}}
             <div class="tab-pane fade @if ($activeTab === 'general') show active @endif" id="pane-general" role="tabpanel" aria-labelledby="tab-general">
-                <x-adminlte-card icon="bi bi-gear" title="General Settings">
-                    <div class="row">
+                <x-adminlte-card icon="bi bi-building" title="Company Information">
+                    <div class="row g-3">
                         <div class="col-md-6">
-                            <x-adminlte-input name="settings[company_name]" label="Company Name"
-                                value="{{ old('settings.company_name', $settings['company_name'] ?? '') }}" />
+                            <label for="company_name" class="form-label fw-semibold">Company Name</label>
+                            <div class="input-group">
+                                <span class="input-group-text"><i class="bi bi-building" aria-hidden="true"></i></span>
+                                <input type="text" name="settings[company_name]" id="company_name"
+                                    value="{{ old('settings.company_name', $settings['company_name'] ?? '') }}"
+                                    placeholder="HostVexa Pvt Ltd"
+                                    maxlength="255"
+                                    class="form-control @error('settings.company_name') is-invalid @enderror">
+                            </div>
+                            @error('settings.company_name')
+                                <span class="invalid-feedback d-block" role="alert">{{ $message }}</span>
+                            @enderror
+                            <small class="form-text text-muted">Legal name as it appears on invoices</small>
                         </div>
                         <div class="col-md-6">
-                            <x-adminlte-input name="settings[company_email]" label="Company Email" type="email"
-                                value="{{ old('settings.company_email', $settings['company_email'] ?? '') }}" />
+                            <label for="company_email" class="form-label fw-semibold">Company Email</label>
+                            <div class="input-group">
+                                <span class="input-group-text"><i class="bi bi-envelope" aria-hidden="true"></i></span>
+                                <input type="email" name="settings[company_email]" id="company_email"
+                                    value="{{ old('settings.company_email', $settings['company_email'] ?? '') }}"
+                                    placeholder="billing@example.com"
+                                    maxlength="255"
+                                    class="form-control @error('settings.company_email') is-invalid @enderror">
+                            </div>
+                            @error('settings.company_email')
+                                <span class="invalid-feedback d-block" role="alert">{{ $message }}</span>
+                            @enderror
+                            <small class="form-text text-muted">Support / billing contact — used in <code>@{{company_email}}</code></small>
                         </div>
                     </div>
-                    <div class="row">
-                        <div class="col-md-6">
-                            <x-adminlte-input name="settings[company_phone]" label="Company Phone"
-                                value="{{ old('settings.company_phone', $settings['company_phone'] ?? '') }}">
-                                <small class="form-text text-muted">(leave blank to keep current; to clear, contact admin)</small>
-                            </x-adminlte-input>
+                    @php
+                        $companyPhoneRaw = old('settings.company_phone', $settings['company_phone'] ?? '');
+                        $cpSelectedDial = '+91';
+                        $cpNumberPart = '';
+                        if (preg_match('/^\s*(\+\d{1,4})\s*(.*)\s*$/', trim((string) $companyPhoneRaw), $m)) {
+                            $cpSelectedDial = $m[1];
+                            $cpNumberPart = trim($m[2]);
+                        } elseif (trim((string) $companyPhoneRaw) !== '') {
+                            $cpNumberPart = trim((string) $companyPhoneRaw);
+                        }
+                        $cpOldCode = old('settings.company_phone_code', old('settings.phone_code'));
+                        $cpOldNum = old('settings.company_phone_number', old('settings.phone_number'));
+                        if ($cpOldCode) $cpSelectedDial = $cpOldCode;
+                        if ($cpOldNum !== null) $cpNumberPart = $cpOldNum;
+                        if (old('company_phone_code')) $cpSelectedDial = old('company_phone_code');
+                        if (old('company_phone_number') !== null) $cpNumberPart = old('company_phone_number');
+                        $cpCountries = [
+                            ['code' => 'IN', 'name' => 'India', 'native' => 'भारत', 'dial' => '+91', 'flag' => '🇮🇳'],
+                            ['code' => 'US', 'name' => 'United States', 'native' => '', 'dial' => '+1', 'flag' => '🇺🇸'],
+                            ['code' => 'GB', 'name' => 'United Kingdom', 'native' => '', 'dial' => '+44', 'flag' => '🇬🇧'],
+                            ['code' => 'AU', 'name' => 'Australia', 'native' => '', 'dial' => '+61', 'flag' => '🇦🇺'],
+                            ['code' => 'CA', 'name' => 'Canada', 'native' => '', 'dial' => '+1', 'flag' => '🇨🇦'],
+                            ['code' => 'AE', 'name' => 'United Arab Emirates', 'native' => 'الإمارات', 'dial' => '+971', 'flag' => '🇦🇪'],
+                            ['code' => 'SG', 'name' => 'Singapore', 'native' => '', 'dial' => '+65', 'flag' => '🇸🇬'],
+                            ['code' => 'DE', 'name' => 'Germany', 'native' => 'Deutschland', 'dial' => '+49', 'flag' => '🇩🇪'],
+                            ['code' => 'FR', 'name' => 'France', 'native' => '', 'dial' => '+33', 'flag' => '🇫🇷'],
+                            ['code' => 'BD', 'name' => 'Bangladesh', 'native' => 'বাংলাদেশ', 'dial' => '+880', 'flag' => '🇧🇩'],
+                            ['code' => 'NP', 'name' => 'Nepal', 'native' => 'नेपाल', 'dial' => '+977', 'flag' => '🇳🇵'],
+                            ['code' => 'PK', 'name' => 'Pakistan', 'native' => 'پاکستان', 'dial' => '+92', 'flag' => '🇵🇰'],
+                            ['code' => 'LK', 'name' => 'Sri Lanka', 'native' => 'ශ්‍රී ලංකාව', 'dial' => '+94', 'flag' => '🇱🇰'],
+                            ['code' => 'SA', 'name' => 'Saudi Arabia', 'native' => 'المملكة العربية السعودية', 'dial' => '+966', 'flag' => '🇸🇦'],
+                            ['code' => 'MY', 'name' => 'Malaysia', 'native' => '', 'dial' => '+60', 'flag' => '🇲🇾'],
+                            ['code' => 'CN', 'name' => 'China', 'native' => '中国', 'dial' => '+86', 'flag' => '🇨🇳'],
+                            ['code' => 'JP', 'name' => 'Japan', 'native' => '日本', 'dial' => '+81', 'flag' => '🇯🇵'],
+                        ];
+                        $cpDials = array_column($cpCountries, 'dial');
+                        if (!in_array($cpSelectedDial, $cpDials, true)) {
+                            $cpCountries[] = ['code' => 'OT', 'name' => 'Other', 'native' => '', 'dial' => $cpSelectedDial, 'flag' => '🏳️'];
+                        }
+                    @endphp
+                    {{-- Company Phone — customer phone-input parity (code select + number) --}}
+                    <div class="mb-3" id="company-phone-field">
+                        <label class="form-label fw-semibold">Mobile / Phone <span class="text-muted fw-normal">(Company)</span></label>
+                        <div class="input-group" style="flex-wrap: nowrap;">
+                            <select id="company_phone_code" name="settings[company_phone_code]" class="form-select" style="max-width: 160px; flex: 0 0 160px; cursor: pointer; border-top-right-radius: 0; border-bottom-right-radius: 0;" aria-label="Country code">
+                                @foreach($cpCountries as $c)
+                                    <option value="{{ $c['dial'] }}" @selected($cpSelectedDial === $c['dial'])>{{ $c['flag'] }} {{ $c['name'] }} {{ $c['dial'] }}</option>
+                                @endforeach
+                            </select>
+                            <input type="tel" inputmode="numeric" autocomplete="tel" id="company_phone_number" name="settings[company_phone_number]" class="form-control @error('settings.company_phone') is-invalid @enderror" value="{{ $cpNumberPart }}" placeholder="98007 44827" style="border-top-left-radius: 0; border-bottom-left-radius: 0; margin-left: -1px;">
                         </div>
-                        <div class="col-md-6">
-                            <x-adminlte-input name="settings[company_address]" label="Company Address"
-                                value="{{ old('settings.company_address', $settings['company_address'] ?? '') }}">
-                                <small class="form-text text-muted">(leave blank to keep current; to clear, contact admin)</small>
-                            </x-adminlte-input>
+                        <input type="hidden" name="settings[company_phone]" id="company_phone_hidden" value="{{ old('settings.company_phone', $settings['company_phone'] ?? '') }}">
+                        @error('settings.company_phone')
+                            <span class="invalid-feedback d-block" role="alert">{{ $message }}</span>
+                        @enderror
+                        <div class="d-flex justify-content-between align-items-center mt-1">
+                            <small class="form-text text-muted">Select country flag and enter number without leading 0 — same as customer phone.</small>
+                            <small class="text-muted" id="company_phone_hint" aria-live="polite"></small>
                         </div>
                     </div>
+
+                    {{-- Company Address — sundered ecommerce format (same fields as customer) --}}
+                    @php
+                        $caLegacy = old('settings.company_address', $settings['company_address'] ?? '');
+                        $caHasSundered = trim((string)($settings['company_address_line1'] ?? '') . ($settings['company_city'] ?? '') . ($settings['company_state'] ?? '')) !== '';
+                    @endphp
+                    @if(!$caHasSundered && trim((string)$caLegacy) !== '')
+                        <div class="alert alert-info py-2 small mb-2">
+                            <i class="bi bi-info-circle me-1"></i> Migrating from legacy address: <code>{{ Str::limit($caLegacy, 120) }}</code> — split it into the fields below and save. It will replace the legacy line on invoices.
+                        </div>
+                    @endif
+                    <div class="border rounded p-3 mb-3 bg-light-subtle">
+                        <div class="d-flex align-items-center gap-2 mb-3">
+                            <i class="bi bi-geo-alt text-primary"></i>
+                            <h6 class="mb-0 fw-semibold">Company Address</h6>
+                            <span class="text-muted small ms-1">— standard e-commerce fields, shown on invoices</span>
+                        </div>
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label for="company_address_line1" class="form-label">Street address</label>
+                                <input type="text" name="settings[company_address_line1]" id="company_address_line1" value="{{ old('settings.company_address_line1', $settings['company_address_line1'] ?? '') }}" placeholder="House no., street name, area" maxlength="255" class="form-control @error('settings.company_address_line1') is-invalid @enderror">
+                                @error('settings.company_address_line1') <span class="invalid-feedback d-block" role="alert">{{ $message }}</span> @enderror
+                            </div>
+                            <div class="col-md-6">
+                                <label for="company_address_line2" class="form-label">Apartment / Suite <span class="text-muted">(optional)</span></label>
+                                <input type="text" name="settings[company_address_line2]" id="company_address_line2" value="{{ old('settings.company_address_line2', $settings['company_address_line2'] ?? '') }}" placeholder="Apartment, suite, floor, landmark" maxlength="255" class="form-control @error('settings.company_address_line2') is-invalid @enderror">
+                                @error('settings.company_address_line2') <span class="invalid-feedback d-block" role="alert">{{ $message }}</span> @enderror
+                            </div>
+                        </div>
+                        <div class="row g-3 mt-1">
+                            <div class="col-md-4">
+                                <label for="company_city" class="form-label">City</label>
+                                <input type="text" name="settings[company_city]" id="company_city" value="{{ old('settings.company_city', $settings['company_city'] ?? '') }}" placeholder="e.g. Mumbai" maxlength="100" class="form-control @error('settings.company_city') is-invalid @enderror">
+                                @error('settings.company_city') <span class="invalid-feedback d-block" role="alert">{{ $message }}</span> @enderror
+                            </div>
+                            <div class="col-md-4">
+                                <label for="company_state" class="form-label">State / Province</label>
+                                <input type="text" name="settings[company_state]" id="company_state" value="{{ old('settings.company_state', $settings['company_state'] ?? '') }}" placeholder="e.g. Maharashtra" maxlength="100" class="form-control @error('settings.company_state') is-invalid @enderror">
+                                @error('settings.company_state') <span class="invalid-feedback d-block" role="alert">{{ $message }}</span> @enderror
+                            </div>
+                            <div class="col-md-4">
+                                <label for="company_postcode" class="form-label">Postcode / ZIP</label>
+                                <input type="text" name="settings[company_postcode]" id="company_postcode" value="{{ old('settings.company_postcode', $settings['company_postcode'] ?? '') }}" placeholder="e.g. 400001" maxlength="20" class="form-control @error('settings.company_postcode') is-invalid @enderror">
+                                @error('settings.company_postcode') <span class="invalid-feedback d-block" role="alert">{{ $message }}</span> @enderror
+                            </div>
+                        </div>
+                        <div class="row g-3 mt-1">
+                            <div class="col-md-6">
+                                <label for="company_country" class="form-label">Country</label>
+                                @php $companyCountryCurrent = old('settings.company_country', $settings['company_country'] ?? 'India'); @endphp
+                                <select name="settings[company_country]" id="company_country" class="form-select @error('settings.company_country') is-invalid @enderror">
+                                    @php $cCountries = ['India','United States','United Kingdom','Canada','Australia','Singapore','United Arab Emirates','Germany','France','Other']; @endphp
+                                    @foreach ($cCountries as $cIn)
+                                        <option value="{{ $cIn }}" @selected($companyCountryCurrent === $cIn)>{{ $cIn }}</option>
+                                    @endforeach
+                                </select>
+                                @error('settings.company_country') <span class="invalid-feedback d-block" role="alert">{{ $message }}</span> @enderror
+                            </div>
+                            <div class="col-md-6 d-flex align-items-end">
+                                <div class="form-text mb-2 w-100">State drives GST (CGST/SGST vs IGST). Postcode validates shipping/tax — same rules as customer address.</div>
+                            </div>
+                        </div>
+                        {{-- Keep legacy field hidden for graceful fallback — synced in controller if empty --}}
+                        <input type="hidden" name="settings[company_address]" value="{{ old('settings.company_address', $settings['company_address'] ?? '') }}">
+                    </div>
+
+                    {{-- Live invoice header preview — mirrors InvoiceEmailService handling --}}
+                    <div class="mt-3 p-3 border rounded-3" id="company-preview" style="background: var(--bs-tertiary-bg, #f8f9fa);">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <small class="text-uppercase fw-semibold text-muted" style="letter-spacing:0.06em;font-size:0.7rem;">Invoice header preview</small>
+                            <small class="text-muted" style="font-size:0.7rem;"><i class="bi bi-eye me-1"></i>How it looks on invoices</small>
+                        </div>
+                        <div class="bg-white border rounded p-3 shadow-sm" style="font-size:0.9rem;line-height:1.5;">
+                            <div class="fw-bold" id="preview_company_name">{{ $settings['company_name'] ?? 'Your Company Name' }}</div>
+                            <div class="text-muted small" id="preview_company_address" style="white-space: pre-line;">{{ ($settings['company_address'] ?? '') !== '' ? $settings['company_address'] : (trim(implode(', ', array_filter([$settings['company_address_line1'] ?? null, $settings['company_address_line2'] ?? null, $settings['company_city'] ?? null, $settings['company_state'] ?? null, $settings['company_postcode'] ?? null, $settings['company_country'] ?? null]))) ?: '123 Business Park, Mumbai, Maharashtra — 400001, India') }}</div>
+                            <div class="small mt-1 text-muted">
+                                <span id="preview_company_email"><i class="bi bi-envelope me-1"></i>{{ $settings['company_email'] ?? 'billing@example.com' }}</span>
+                                <span class="mx-2">·</span>
+                                <span id="preview_company_phone"><i class="bi bi-telephone me-1"></i>{{ $settings['company_phone'] ?? '+91 98765 43210' }}</span>
+                            </div>
+                        </div>
+                    </div>
+                    <script>
+                        (function(){
+                            var codeSel = document.getElementById('company_phone_code');
+                            var numInput = document.getElementById('company_phone_number');
+                            var hidden = document.getElementById('company_phone_hidden');
+                            var phoneHint = document.getElementById('company_phone_hint');
+                            var pName = document.getElementById('preview_company_name');
+                            var pEmail = document.getElementById('preview_company_email');
+                            var pPhone = document.getElementById('preview_company_phone');
+                            var pAddr = document.getElementById('preview_company_address');
+                            var nameInput = document.getElementById('company_name');
+                            var emailInput = document.getElementById('company_email');
+                            var addrIds = ['company_address_line1','company_address_line2','company_city','company_state','company_postcode','company_country'];
+                            function syncPhone(){
+                                if(!codeSel || !numInput || !hidden) return;
+                                var code = (codeSel.value||'').trim();
+                                var num = (numInput.value||'').trim().replace(/\s+/g,' ');
+                                hidden.value = num ? (code+' '+num) : code;
+                                if(phoneHint){
+                                    var v = hidden.value.trim();
+                                    if(v==='' || v===code && num===''){ phoneHint.textContent=''; phoneHint.className='text-muted'; }
+                                    else {
+                                        var digits = hidden.value.replace(/\D/g,'').length;
+                                        var ok = /^[\+\d][\d\s\-\.\(\)]{6,49}$/.test(hidden.value) && digits>=7 && digits<=15;
+                                        phoneHint.textContent = ok ? '✓ valid' : digits<7 ? digits+' digits — need 7+' : 'check format';
+                                        phoneHint.className = ok ? 'text-success' : 'text-warning';
+                                    }
+                                }
+                                if(pPhone) pPhone.innerHTML = '<i class="bi bi-telephone me-1"></i>' + (hidden.value.trim() || '+91 98765 43210');
+                            }
+                            function updateAddrPreview(){
+                                if(!pAddr) return;
+                                var parts = [];
+                                addrIds.forEach(function(id){
+                                    var el = document.getElementById(id);
+                                    if(el && el.value.trim()!=='') parts.push(el.value.trim());
+                                });
+                                var txt = parts.length ? parts.join(', ') : '123 Business Park, Mumbai, Maharashtra — 400001, India';
+                                pAddr.textContent = txt;
+                            }
+                            function updatePreview(){
+                                if(pName && nameInput) pName.textContent = nameInput.value.trim() || 'Your Company Name';
+                                if(pEmail && emailInput) pEmail.innerHTML = '<i class="bi bi-envelope me-1"></i>' + (emailInput.value.trim() || 'billing@example.com');
+                            }
+                            if(codeSel) codeSel.addEventListener('change', syncPhone);
+                            if(numInput) numInput.addEventListener('input', syncPhone);
+                            var form = document.getElementById('settings-form');
+                            if(form) form.addEventListener('submit', syncPhone);
+                            syncPhone();
+                            addrIds.forEach(function(id){
+                                var el = document.getElementById(id);
+                                if(el) el.addEventListener('input', updateAddrPreview);
+                                if(el && el.tagName==='SELECT') el.addEventListener('change', updateAddrPreview);
+                            });
+                            if(nameInput) nameInput.addEventListener('input', updatePreview);
+                            if(emailInput) emailInput.addEventListener('input', updatePreview);
+                            updateAddrPreview(); updatePreview();
+                        })();
+                    </script>
                     <div class="row">
                         <div class="col-md-4">
                             {{-- Deprecated alias: default_currency is legacy untyped; typed currency lives in Billing --}}
@@ -248,7 +643,7 @@
                     </div>
                 </x-adminlte-card>
                 @php $lu = $lastUpdated['general'] ?? $lastUpdated['all'] ?? null; @endphp
-                <small class="text-muted d-block mb-2 last-updated" data-section="general">@if($lu)Last updated: {{ \Illuminate\Support\Carbon::parse($lu->created_at)->format('Y-m-d H:i:s') }} — {{ $lu->description }}@else Last updated: never @endif</small>
+                <small class="text-muted d-block mb-2 last-updated" data-section="general">@if($lu)Last updated: {{ \Illuminate\Support\Carbon::parse($lu->created_at)->format('Y-m-d H:i:s') }} — <span title="{{ $lu->description }}">{{ \Illuminate\Support\Str::limit($lu->description, 120) }}</span>@else Last updated: never @endif</small>
             </div>
 
             {{-- Billing (includes Support ticket_prefix/ticket_next_number + legacy billing keys + typed currency) --}}
@@ -321,7 +716,7 @@
                     </details>
                 </x-adminlte-card>
                 @php $lu = $lastUpdated['billing'] ?? $lastUpdated['all'] ?? null; @endphp
-                <small class="text-muted d-block mb-2 last-updated" data-section="billing">@if($lu)Last updated: {{ \Illuminate\Support\Carbon::parse($lu->created_at)->format('Y-m-d H:i:s') }} — {{ $lu->description }}@else Last updated: never @endif</small>
+                <small class="text-muted d-block mb-2 last-updated" data-section="billing">@if($lu)Last updated: {{ \Illuminate\Support\Carbon::parse($lu->created_at)->format('Y-m-d H:i:s') }} — <span title="{{ $lu->description }}">{{ \Illuminate\Support\Str::limit($lu->description, 120) }}</span>@else Last updated: never @endif</small>
             </div>
 
             {{-- Email --}}
@@ -408,92 +803,25 @@
                     </div>
                 </x-adminlte-card>
 
-                {{-- Incoming mail: the mailbox `tickets:fetch-mail` polls so customer
-                     replies land back on their ticket. Inert until Enabled = Yes and a
-                     host is set. --}}
-                <x-adminlte-card icon="bi bi-inbox" title="Incoming Mail (Ticket Replies)">
-                    <div class="row">
-                        <div class="col-md-3">
-                            <x-adminlte-select name="settings[imap_enabled]" label="Enable Ticket Email Fetch">
-                                <option value="yes" @selected(($settings['imap_enabled'] ?? 'no') === 'yes')>Yes</option>
-                                <option value="no" @selected(($settings['imap_enabled'] ?? 'no') === 'no')>No</option>
-                            </x-adminlte-select>
-                            <small class="form-text text-muted">Runs every 5 minutes via the scheduler</small>
-                        </div>
-                        <div class="col-md-5">
-                            <x-adminlte-input name="settings[imap_host]" label="IMAP Host"
-                                value="{{ old('settings.imap_host', $settings['imap_host'] ?? '') }}" />
-                        </div>
-                        <div class="col-md-2">
-                            <x-adminlte-input name="settings[imap_port]" label="IMAP Port" type="number" min="1" max="65535"
-                                value="{{ old('settings.imap_port', $settings['imap_port'] ?? '993') }}">
-                                <small class="form-text text-muted">993 SSL / 143 plain</small>
-                            </x-adminlte-input>
-                        </div>
-                        <div class="col-md-2">
-                            <x-adminlte-select name="settings[imap_encryption]" label="Encryption">
-                                <option value="ssl" @selected(($settings['imap_encryption'] ?? 'ssl') === 'ssl')>SSL</option>
-                                <option value="tls" @selected(($settings['imap_encryption'] ?? '') === 'tls')>TLS</option>
-                                <option value="none" @selected(($settings['imap_encryption'] ?? '') === 'none')>None</option>
-                            </x-adminlte-select>
+                {{-- Ticket email policy — department mailboxes are now the sole inbound path.
+                     Global Incoming Mail host/user has been removed; each department owns
+                     its mailbox in Support > Departments. --}}
+                <x-adminlte-card icon="bi bi-inbox" title="Ticket Email Policy">
+                    <div class="alert alert-info d-flex align-items-start gap-2 mb-3" role="alert" style="border-left: 3px solid var(--color-info);">
+                        <i class="bi bi-info-circle flex-shrink-0 mt-1" aria-hidden="true"></i>
+                        <div class="small" style="line-height: var(--leading-normal);">
+                            Inbound mail is now <strong>per-department only</strong>. Configure each mailbox in
+                            <a href="{{ route('admin.ticket-departments.index') }}">Support &rsaquo; Departments</a> — every enabled department with a mailbox is polled every 5 minutes.
+                            No global mailbox is used.
                         </div>
                     </div>
-                    <div class="row">
-                        <div class="col-md-6">
-                            <x-adminlte-input name="settings[imap_username]" label="IMAP Username"
-                                value="{{ old('settings.imap_username', $settings['imap_username'] ?? '') }}">
-                                <small class="form-text text-muted">Also used as the Reply-To on ticket mail</small>
-                            </x-adminlte-input>
-                        </div>
-                        <div class="col-md-6">
-                            <div class="mb-3">
-                                <label for="imap_password" class="form-label">IMAP Password</label>
-                                <div class="input-group">
-                                    <input type="password" name="settings[imap_password]" id="imap_password"
-                                        value="" placeholder="Leave blank to keep current" class="form-control @error('settings.imap_password') is-invalid @enderror" autocomplete="new-password">
-                                    <button type="button" class="btn btn-outline-secondary encrypted-reveal-btn" data-target="imap_password" aria-pressed="false" aria-label="Reveal masked value for IMAP Password">Reveal</button>
-                                </div>
-                                @error('settings.imap_password')
-                                    <span class="invalid-feedback d-block" role="alert">{{ $message }}</span>
-                                @enderror
-                                <small class="form-text text-muted">Masked — leave blank to keep current</small>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="row">
-                        <div class="col-md-4">
-                            <x-adminlte-input name="settings[imap_folder]" label="Folder"
-                                value="{{ old('settings.imap_folder', $settings['imap_folder'] ?? 'INBOX') }}">
-                                <small class="form-text text-muted">Usually INBOX</small>
-                            </x-adminlte-input>
-                        </div>
-                        <div class="col-md-4">
-                            <x-adminlte-select name="settings[imap_validate_cert]" label="Validate Certificate">
-                                <option value="yes" @selected(($settings['imap_validate_cert'] ?? 'yes') === 'yes')>Yes</option>
-                                <option value="no" @selected(($settings['imap_validate_cert'] ?? 'yes') === 'no')>No</option>
-                            </x-adminlte-select>
-                            <small class="form-text text-muted">Only turn off for a self-signed mail server</small>
-                        </div>
-                        <div class="col-md-4">
-                            <x-adminlte-select name="settings[imap_delete_after_fetch]" label="Delete After Fetch">
-                                <option value="yes" @selected(($settings['imap_delete_after_fetch'] ?? 'no') === 'yes')>Yes</option>
-                                <option value="no" @selected(($settings['imap_delete_after_fetch'] ?? 'no') === 'no')>No</option>
-                            </x-adminlte-select>
-                            <small class="form-text text-muted">No = leave read messages in the mailbox</small>
-                        </div>
-                    </div>
-
-                    {{-- Policy for mail that matches no existing ticket. Which department
-                         a new ticket lands in comes from the mailbox it arrived in; these
-                         two cover the shared mailbox and the unknown-sender question. --}}
-                    <hr class="my-3">
                     <div class="row">
                         <div class="col-md-4">
                             <x-adminlte-select name="settings[imap_auto_create_customers]" label="Register Unknown Senders">
-                                <option value="yes" @selected(($settings['imap_auto_create_customers'] ?? 'yes') === 'yes')>Yes</option>
-                                <option value="no" @selected(($settings['imap_auto_create_customers'] ?? 'yes') === 'no')>No</option>
+                                <option value="yes" @selected(($settings['imap_auto_create_customers'] ?? 'no') === 'yes')>Yes</option>
+                                <option value="no" @selected(($settings['imap_auto_create_customers'] ?? 'no') === 'no')>No</option>
                             </x-adminlte-select>
-                            <small class="form-text text-muted">No = hold their mail for review instead of opening a ticket</small>
+                            <small class="form-text text-muted">No = create guest ticket (no new customer account) — recommended</small>
                         </div>
                         <div class="col-md-4">
                             <x-adminlte-select name="settings[imap_default_department]" label="Default Department">
@@ -502,28 +830,39 @@
                                     <option value="{{ $slug }}" @selected(($settings['imap_default_department'] ?? '') === $slug)>{{ $label }}</option>
                                 @endforeach
                             </x-adminlte-select>
-                            <small class="form-text text-muted">For the global mailbox only — department mailboxes use their own</small>
+                            <small class="form-text text-muted">Fallback when a mailbox has no department — blank = is_default / first enabled</small>
                             @php
                                 $imapDefaultDeptSlug = $settings['imap_default_department'] ?? '';
                             @endphp
                             @if ($imapDefaultDeptSlug !== '' && ! array_key_exists($imapDefaultDeptSlug, \App\Services\TicketService::departments()))
                                 <small class="form-text text-warning">
                                     <i class="bi bi-exclamation-triangle me-1" aria-hidden="true"></i>
-                                    The stored default department is disabled or no longer exists — mail falls back to the default/first enabled department instead.
+                                    The stored default department is disabled — mail falls back to the default/first enabled department instead.
                                 </small>
                             @endif
                         </div>
-                        <div class="col-md-4 d-flex align-items-center">
+                        <div class="col-md-4">
+                            <x-adminlte-input name="settings[imap_max_new_tickets_per_hour]"
+                                              label="New Ticket Limit (per sender, per hour)"
+                                              type="number"
+                                              min="1"
+                                              max="1000"
+                                              :value="$settings['imap_max_new_tickets_per_hour'] ?? 20"/>
+                            <small class="form-text text-muted">Replies are never limited — this caps how many new tickets one address can open. Mail over the limit is left unread for a human.</small>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-12">
                             <small class="form-text text-muted">
                                 <i class="bi bi-info-circle me-1" aria-hidden="true"></i>
-                                Whether a desk accepts new tickets by email at all is set per department in
+                                Whether a desk accepts new tickets by email is set per department in
                                 <a href="{{ route('admin.ticket-departments.index') }}">Support &rsaquo; Departments</a>.
                             </small>
                         </div>
                     </div>
                 </x-adminlte-card>
                 @php $lu = $lastUpdated['email'] ?? $lastUpdated['all'] ?? null; @endphp
-                <small class="text-muted d-block mb-2 last-updated" data-section="email">@if($lu)Last updated: {{ \Illuminate\Support\Carbon::parse($lu->created_at)->format('Y-m-d H:i:s') }} — {{ $lu->description }}@else Last updated: never @endif</small>
+                <small class="text-muted d-block mb-2 last-updated" data-section="email">@if($lu)Last updated: {{ \Illuminate\Support\Carbon::parse($lu->created_at)->format('Y-m-d H:i:s') }} — <span title="{{ $lu->description }}">{{ \Illuminate\Support\Str::limit($lu->description, 120) }}</span>@else Last updated: never @endif</small>
             </div>
 
             {{-- Security --}}
@@ -598,7 +937,7 @@
                     </div>
                 </x-adminlte-card>
                 @php $lu = $lastUpdated['security'] ?? $lastUpdated['all'] ?? null; @endphp
-                <small class="text-muted d-block mb-2 last-updated" data-section="security">@if($lu)Last updated: {{ \Illuminate\Support\Carbon::parse($lu->created_at)->format('Y-m-d H:i:s') }} — {{ $lu->description }}@else Last updated: never @endif</small>
+                <small class="text-muted d-block mb-2 last-updated" data-section="security">@if($lu)Last updated: {{ \Illuminate\Support\Carbon::parse($lu->created_at)->format('Y-m-d H:i:s') }} — <span title="{{ $lu->description }}">{{ \Illuminate\Support\Str::limit($lu->description, 120) }}</span>@else Last updated: never @endif</small>
             </div>
 
             {{-- Notifications --}}
@@ -637,7 +976,7 @@
                     </div>
                 </x-adminlte-card>
                 @php $lu = $lastUpdated['notification'] ?? $lastUpdated['all'] ?? null; @endphp
-                <small class="text-muted d-block mb-2 last-updated" data-section="notification">@if($lu)Last updated: {{ \Illuminate\Support\Carbon::parse($lu->created_at)->format('Y-m-d H:i:s') }} — {{ $lu->description }}@else Last updated: never @endif</small>
+                <small class="text-muted d-block mb-2 last-updated" data-section="notification">@if($lu)Last updated: {{ \Illuminate\Support\Carbon::parse($lu->created_at)->format('Y-m-d H:i:s') }} — <span title="{{ $lu->description }}">{{ \Illuminate\Support\Str::limit($lu->description, 120) }}</span>@else Last updated: never @endif</small>
             </div>
 
             {{-- Domain --}}
@@ -745,7 +1084,7 @@
                     </details>
                 </x-adminlte-card>
                 @php $lu = $lastUpdated['domain'] ?? $lastUpdated['all'] ?? null; @endphp
-                <small class="text-muted d-block mb-2 last-updated" data-section="domain">@if($lu)Last updated: {{ \Illuminate\Support\Carbon::parse($lu->created_at)->format('Y-m-d H:i:s') }} — {{ $lu->description }}@else Last updated: never @endif</small>
+                <small class="text-muted d-block mb-2 last-updated" data-section="domain">@if($lu)Last updated: {{ \Illuminate\Support\Carbon::parse($lu->created_at)->format('Y-m-d H:i:s') }} — <span title="{{ $lu->description }}">{{ \Illuminate\Support\Str::limit($lu->description, 120) }}</span>@else Last updated: never @endif</small>
             </div>
 
             {{-- Integration --}}
@@ -863,7 +1202,7 @@
                     </details>
                 </x-adminlte-card>
                 @php $lu = $lastUpdated['integration'] ?? $lastUpdated['all'] ?? null; @endphp
-                <small class="text-muted d-block mb-2 last-updated" data-section="integration">@if($lu)Last updated: {{ \Illuminate\Support\Carbon::parse($lu->created_at)->format('Y-m-d H:i:s') }} — {{ $lu->description }}@else Last updated: never @endif</small>
+                <small class="text-muted d-block mb-2 last-updated" data-section="integration">@if($lu)Last updated: {{ \Illuminate\Support\Carbon::parse($lu->created_at)->format('Y-m-d H:i:s') }} — <span title="{{ $lu->description }}">{{ \Illuminate\Support\Str::limit($lu->description, 120) }}</span>@else Last updated: never @endif</small>
             </div>
 
             {{-- Hosting --}}
@@ -970,7 +1309,7 @@
                     </details>
                 </x-adminlte-card>
                 @php $lu = $lastUpdated['hosting'] ?? $lastUpdated['all'] ?? null; @endphp
-                <small class="text-muted d-block mb-2 last-updated" data-section="hosting">@if($lu)Last updated: {{ \Illuminate\Support\Carbon::parse($lu->created_at)->format('Y-m-d H:i:s') }} — {{ $lu->description }}@else Last updated: never @endif</small>
+                <small class="text-muted d-block mb-2 last-updated" data-section="hosting">@if($lu)Last updated: {{ \Illuminate\Support\Carbon::parse($lu->created_at)->format('Y-m-d H:i:s') }} — <span title="{{ $lu->description }}">{{ \Illuminate\Support\Str::limit($lu->description, 120) }}</span>@else Last updated: never @endif</small>
             </div>
 
             {{-- IPAM --}}
@@ -1073,7 +1412,7 @@
                     </details>
                 </x-adminlte-card>
                 @php $lu = $lastUpdated['ipam'] ?? $lastUpdated['all'] ?? null; @endphp
-                <small class="text-muted d-block mb-2 last-updated" data-section="ipam">@if($lu)Last updated: {{ \Illuminate\Support\Carbon::parse($lu->created_at)->format('Y-m-d H:i:s') }} — {{ $lu->description }}@else Last updated: never @endif</small>
+                <small class="text-muted d-block mb-2 last-updated" data-section="ipam">@if($lu)Last updated: {{ \Illuminate\Support\Carbon::parse($lu->created_at)->format('Y-m-d H:i:s') }} — <span title="{{ $lu->description }}">{{ \Illuminate\Support\Str::limit($lu->description, 120) }}</span>@else Last updated: never @endif</small>
             </div>
 
             {{-- Inventory --}}
@@ -1125,7 +1464,7 @@
                     </details>
                 </x-adminlte-card>
                 @php $lu = $lastUpdated['inventory'] ?? $lastUpdated['all'] ?? null; @endphp
-                <small class="text-muted d-block mb-2 last-updated" data-section="inventory">@if($lu)Last updated: {{ \Illuminate\Support\Carbon::parse($lu->created_at)->format('Y-m-d H:i:s') }} — {{ $lu->description }}@else Last updated: never @endif</small>
+                <small class="text-muted d-block mb-2 last-updated" data-section="inventory">@if($lu)Last updated: {{ \Illuminate\Support\Carbon::parse($lu->created_at)->format('Y-m-d H:i:s') }} — <span title="{{ $lu->description }}">{{ \Illuminate\Support\Str::limit($lu->description, 120) }}</span>@else Last updated: never @endif</small>
             </div>
 
             {{-- Catalog --}}
@@ -1223,7 +1562,7 @@
                     </details>
                 </x-adminlte-card>
                 @php $lu = $lastUpdated['catalog'] ?? $lastUpdated['all'] ?? null; @endphp
-                <small class="text-muted d-block mb-2 last-updated" data-section="catalog">@if($lu)Last updated: {{ \Illuminate\Support\Carbon::parse($lu->created_at)->format('Y-m-d H:i:s') }} — {{ $lu->description }}@else Last updated: never @endif</small>
+                <small class="text-muted d-block mb-2 last-updated" data-section="catalog">@if($lu)Last updated: {{ \Illuminate\Support\Carbon::parse($lu->created_at)->format('Y-m-d H:i:s') }} — <span title="{{ $lu->description }}">{{ \Illuminate\Support\Str::limit($lu->description, 120) }}</span>@else Last updated: never @endif</small>
             </div>
 
             {{-- Product --}}
@@ -1345,7 +1684,7 @@
                     </details>
                 </x-adminlte-card>
                 @php $lu = $lastUpdated['product'] ?? $lastUpdated['all'] ?? null; @endphp
-                <small class="text-muted d-block mb-2 last-updated" data-section="product">@if($lu)Last updated: {{ \Illuminate\Support\Carbon::parse($lu->created_at)->format('Y-m-d H:i:s') }} — {{ $lu->description }}@else Last updated: never @endif</small>
+                <small class="text-muted d-block mb-2 last-updated" data-section="product">@if($lu)Last updated: {{ \Illuminate\Support\Carbon::parse($lu->created_at)->format('Y-m-d H:i:s') }} — <span title="{{ $lu->description }}">{{ \Illuminate\Support\Str::limit($lu->description, 120) }}</span>@else Last updated: never @endif</small>
             </div>
 
             {{-- Analytics --}}
@@ -1441,7 +1780,7 @@
                     </details>
                 </x-adminlte-card>
                 @php $lu = $lastUpdated['analytics'] ?? $lastUpdated['all'] ?? null; @endphp
-                <small class="text-muted d-block mb-2 last-updated" data-section="analytics">@if($lu)Last updated: {{ \Illuminate\Support\Carbon::parse($lu->created_at)->format('Y-m-d H:i:s') }} — {{ $lu->description }}@else Last updated: never @endif</small>
+                <small class="text-muted d-block mb-2 last-updated" data-section="analytics">@if($lu)Last updated: {{ \Illuminate\Support\Carbon::parse($lu->created_at)->format('Y-m-d H:i:s') }} — <span title="{{ $lu->description }}">{{ \Illuminate\Support\Str::limit($lu->description, 120) }}</span>@else Last updated: never @endif</small>
             </div>
 
             {{-- Automation --}}
@@ -1543,7 +1882,7 @@
                     </details>
                 </x-adminlte-card>
                 @php $lu = $lastUpdated['automation'] ?? $lastUpdated['all'] ?? null; @endphp
-                <small class="text-muted d-block mb-2 last-updated" data-section="automation">@if($lu)Last updated: {{ \Illuminate\Support\Carbon::parse($lu->created_at)->format('Y-m-d H:i:s') }} — {{ $lu->description }}@else Last updated: never @endif</small>
+                <small class="text-muted d-block mb-2 last-updated" data-section="automation">@if($lu)Last updated: {{ \Illuminate\Support\Carbon::parse($lu->created_at)->format('Y-m-d H:i:s') }} — <span title="{{ $lu->description }}">{{ \Illuminate\Support\Str::limit($lu->description, 120) }}</span>@else Last updated: never @endif</small>
             </div>
 
             {{-- Cron --}}
@@ -1633,7 +1972,7 @@
                     </details>
                 </x-adminlte-card>
                 @php $lu = $lastUpdated['cron'] ?? $lastUpdated['all'] ?? null; @endphp
-                <small class="text-muted d-block mb-2 last-updated" data-section="cron">@if($lu)Last updated: {{ \Illuminate\Support\Carbon::parse($lu->created_at)->format('Y-m-d H:i:s') }} — {{ $lu->description }}@else Last updated: never @endif</small>
+                <small class="text-muted d-block mb-2 last-updated" data-section="cron">@if($lu)Last updated: {{ \Illuminate\Support\Carbon::parse($lu->created_at)->format('Y-m-d H:i:s') }} — <span title="{{ $lu->description }}">{{ \Illuminate\Support\Str::limit($lu->description, 120) }}</span>@else Last updated: never @endif</small>
             </div>
 
             {{-- Role --}}
@@ -1677,7 +2016,7 @@
                     </details>
                 </x-adminlte-card>
                 @php $lu = $lastUpdated['role'] ?? $lastUpdated['all'] ?? null; @endphp
-                <small class="text-muted d-block mb-2 last-updated" data-section="role">@if($lu)Last updated: {{ \Illuminate\Support\Carbon::parse($lu->created_at)->format('Y-m-d H:i:s') }} — {{ $lu->description }}@else Last updated: never @endif</small>
+                <small class="text-muted d-block mb-2 last-updated" data-section="role">@if($lu)Last updated: {{ \Illuminate\Support\Carbon::parse($lu->created_at)->format('Y-m-d H:i:s') }} — <span title="{{ $lu->description }}">{{ \Illuminate\Support\Str::limit($lu->description, 120) }}</span>@else Last updated: never @endif</small>
             </div>
 
             {{-- User --}}
@@ -1765,7 +2104,7 @@
                     </details>
                 </x-adminlte-card>
                 @php $lu = $lastUpdated['user'] ?? $lastUpdated['all'] ?? null; @endphp
-                <small class="text-muted d-block mb-2 last-updated" data-section="user">@if($lu)Last updated: {{ \Illuminate\Support\Carbon::parse($lu->created_at)->format('Y-m-d H:i:s') }} — {{ $lu->description }}@else Last updated: never @endif</small>
+                <small class="text-muted d-block mb-2 last-updated" data-section="user">@if($lu)Last updated: {{ \Illuminate\Support\Carbon::parse($lu->created_at)->format('Y-m-d H:i:s') }} — <span title="{{ $lu->description }}">{{ \Illuminate\Support\Str::limit($lu->description, 120) }}</span>@else Last updated: never @endif</small>
             </div>
                 </div>{{-- /.tab-content --}}
             </div>{{-- /.col content --}}
@@ -1782,6 +2121,13 @@
 
     @push('css')
         <style>
+            /* Gap between cards within a tab pane */
+            .tab-content .card + .card,
+            .tab-content .card + details,
+            .tab-content details + .card {
+                margin-top: 1rem;
+            }
+
             /* Sidebar layout */
             .settings-sidebar {
                 border-right: 1px solid var(--bs-border-color, #dee2e6);
@@ -2001,11 +2347,18 @@
                         }
                         var pane = wrapper.closest('.tab-pane');
                         var paneId = pane ? pane.id : '';
+                        // Fix 5: skip fields not inside a tab pane — they can't be counted or shown
+                        if (!paneId) return;
                         fields.push({ input: inp, wrapper: wrapper, labelEl: labelEl, rawKey: rawKey, labelText: labelText, paneId: paneId });
                     });
                     var tabPanes = document.querySelectorAll('.tab-pane');
-                    var navItems = tabsNav.querySelectorAll('.nav-item');
+                    // Fix 1: track nav items and group labels separately
+                    var navItems = tabsNav.querySelectorAll('.nav-item:not(.settings-nav-group)');
+                    var navGroups = tabsNav.querySelectorAll('.settings-nav-group');
                     var debounceTimer = null;
+
+                    // Fix 3: hide Clear button until input has text
+                    if (searchClear) searchClear.classList.add('d-none');
 
                     var clearHighlights = function () {
                         fields.forEach(function (f) {
@@ -2015,19 +2368,24 @@
                         });
                     };
 
+                    // Fix 4: escape the query the same way as the label before building the regex,
+                    // so special chars like & < > " match correctly in the HTML-escaped label string.
                     var applyHighlight = function (f, qRaw) {
                         if (!f.labelEl || !f.labelEl.dataset.originalLabel) return;
                         var orig = f.labelEl.dataset.originalLabel;
-                        var regex = new RegExp('(' + escapeRegExp(qRaw) + ')', 'gi');
+                        var escapedQ = escapeHtml(qRaw);
+                        var regex = new RegExp('(' + escapeRegExp(escapedQ) + ')', 'gi');
                         f.labelEl.innerHTML = escapeHtml(orig).replace(regex, '<mark>$1</mark>');
                     };
 
+                    // Fix 1: restore group label visibility on reset
                     var resetSearch = function () {
                         clearHighlights();
                         fields.forEach(function (f) { f.wrapper.style.display = ''; });
                         document.querySelectorAll('.tab-pane .card').forEach(function (c) { c.style.display = ''; });
                         document.querySelectorAll('.tab-pane details').forEach(function (d) { d.style.display = ''; d.open = false; });
                         navItems.forEach(function (li) { li.style.display = ''; });
+                        navGroups.forEach(function (li) { li.style.display = ''; });
                         if (searchCount) { searchCount.textContent = ''; searchCount.classList.add('d-none'); }
                         if (searchNoMatches) searchNoMatches.classList.add('d-none');
                     };
@@ -2035,6 +2393,13 @@
                     var doSearch = function () {
                         var qRaw = searchInput.value.trim();
                         var q = qRaw.toLowerCase();
+
+                        // Fix 3: show/hide Clear button based on whether input has text
+                        if (searchClear) {
+                            if (q === '') searchClear.classList.add('d-none');
+                            else searchClear.classList.remove('d-none');
+                        }
+
                         if (q === '') {
                             resetSearch();
                             return;
@@ -2051,8 +2416,7 @@
                                 f.wrapper.style.display = '';
                                 applyHighlight(f, qRaw);
                                 totalMatches++;
-                                if (f.paneId) perPaneCount[f.paneId] = (perPaneCount[f.paneId] || 0) + 1;
-                                // Auto-open details containing a match
+                                perPaneCount[f.paneId] = (perPaneCount[f.paneId] || 0) + 1;
                                 var det = f.wrapper.closest('details');
                                 if (det) { det.style.display = ''; det.open = true; }
                             } else {
@@ -2068,7 +2432,6 @@
                                 });
                                 card.style.display = visibleInCard === 0 ? 'none' : '';
                             });
-                            // Show details that have matches, hide empty details
                             pane.querySelectorAll('details').forEach(function (det) {
                                 var visibleInDetails = 0;
                                 fields.forEach(function (f) {
@@ -2090,6 +2453,16 @@
                             if (li) li.style.display = count === 0 ? 'none' : '';
                             if (count > 0 && firstMatchPaneId === null) firstMatchPaneId = pane.id;
                         });
+                        // Fix 1: hide group headings whose every child nav item is now hidden
+                        navGroups.forEach(function (groupLi) {
+                            var next = groupLi.nextElementSibling;
+                            var hasVisible = false;
+                            while (next && !next.classList.contains('settings-nav-group')) {
+                                if (next.style.display !== 'none') { hasVisible = true; break; }
+                                next = next.nextElementSibling;
+                            }
+                            groupLi.style.display = hasVisible ? '' : 'none';
+                        });
                         if (searchCount) {
                             searchCount.textContent = totalMatches + (totalMatches === 1 ? ' match' : ' matches');
                             searchCount.classList.remove('d-none');
@@ -2098,12 +2471,14 @@
                             if (totalMatches === 0) searchNoMatches.classList.remove('d-none');
                             else searchNoMatches.classList.add('d-none');
                         }
+                        // Fix 2: only switch tab if the current active tab has no matches
                         if (totalMatches > 0 && firstMatchPaneId) {
-                            var firstBtn = document.getElementById(firstMatchPaneId.replace('pane-', 'tab-'));
-                            if (firstBtn) {
-                                var activePane = document.querySelector('.tab-pane.show.active');
-                                var activeId = activePane ? activePane.id : '';
-                                if (activeId !== firstMatchPaneId) {
+                            var activePane = document.querySelector('.tab-pane.show.active');
+                            var activeId = activePane ? activePane.id : '';
+                            var activeHasMatches = activeId && (perPaneCount[activeId] || 0) > 0;
+                            if (!activeHasMatches) {
+                                var firstBtn = document.getElementById(firstMatchPaneId.replace('pane-', 'tab-'));
+                                if (firstBtn) {
                                     if (window.bootstrap && window.bootstrap.Tab) {
                                         window.bootstrap.Tab.getOrCreateInstance(firstBtn).show();
                                     } else {
@@ -2125,6 +2500,7 @@
                             searchInput.value = '';
                             clearTimeout(debounceTimer);
                             resetSearch();
+                            searchClear.classList.add('d-none');
                             searchInput.focus();
                         });
                     }

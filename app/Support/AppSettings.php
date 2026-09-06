@@ -5,6 +5,7 @@ namespace App\Support;
 use App\Settings\AnalyticsSettings;
 use App\Settings\AutomationSettings;
 use App\Settings\BillingSettings;
+use App\Settings\BrandingSettings;
 use App\Settings\CatalogSettings;
 use App\Settings\CronSettings;
 use App\Settings\DomainSettings;
@@ -42,6 +43,12 @@ class AppSettings
         'company_email' => GeneralSettings::class,
         'company_phone' => GeneralSettings::class,
         'company_address' => GeneralSettings::class,
+        'company_address_line1' => GeneralSettings::class,
+        'company_address_line2' => GeneralSettings::class,
+        'company_city' => GeneralSettings::class,
+        'company_state' => GeneralSettings::class,
+        'company_postcode' => GeneralSettings::class,
+        'company_country' => GeneralSettings::class,
         'date_format' => GeneralSettings::class,
         'timezone' => GeneralSettings::class,
         // billing
@@ -55,18 +62,10 @@ class AppSettings
         'smtp_username' => EmailSettings::class,
         'smtp_password' => EmailSettings::class,
         'smtp_encryption' => EmailSettings::class,
-        // email — inbound (ticket mail fetch)
-        'imap_enabled' => EmailSettings::class,
-        'imap_host' => EmailSettings::class,
-        'imap_port' => EmailSettings::class,
-        'imap_username' => EmailSettings::class,
-        'imap_password' => EmailSettings::class,
-        'imap_encryption' => EmailSettings::class,
-        'imap_folder' => EmailSettings::class,
-        'imap_validate_cert' => EmailSettings::class,
-        'imap_delete_after_fetch' => EmailSettings::class,
+        // email — inbound policy (department mailboxes only)
         'imap_auto_create_customers' => EmailSettings::class,
         'imap_default_department' => EmailSettings::class,
+        'imap_max_new_tickets_per_hour' => EmailSettings::class,
         // support
         'ticket_next_number' => SupportSettings::class,
         'ticket_prefix' => SupportSettings::class,
@@ -225,6 +224,15 @@ class AppSettings
         'user_two_factor_enforced' => UserSettings::class,
         'user_inactive_lock_days' => UserSettings::class,
         'user_max_login_attempts' => UserSettings::class,
+        // branding
+        'branding_app_name' => BrandingSettings::class,
+        'branding_tagline' => BrandingSettings::class,
+        'branding_logo_path' => BrandingSettings::class,
+        'branding_favicon_path' => BrandingSettings::class,
+        'branding_primary_color' => BrandingSettings::class,
+        'branding_sidebar_theme' => BrandingSettings::class,
+        'branding_footer_text' => BrandingSettings::class,
+        'branding_accent_color' => BrandingSettings::class,
     ];
 
     /**
@@ -247,6 +255,7 @@ class AppSettings
         return [
             // System
             ['id' => 'portal',       'label' => 'Portal',        'icon' => 'bi bi-person',        'group' => 'System'],
+            ['id' => 'branding',     'label' => 'Branding',      'icon' => 'bi bi-palette',       'group' => 'System'],
             ['id' => 'general',      'label' => 'General',       'icon' => 'bi bi-gear',          'group' => 'System'],
             ['id' => 'security',     'label' => 'Security',      'icon' => 'bi bi-shield-lock',   'group' => 'System'],
             ['id' => 'role',         'label' => 'Role',          'icon' => 'bi bi-person-badge',  'group' => 'System'],

@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Casts\EncryptedOrPlaintext;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
@@ -31,6 +32,17 @@ class TicketDepartment extends Model
             'allow_new_tickets' => 'boolean',
             'sort_order' => 'integer',
             'imap_enabled' => 'boolean',
+            // Live mailbox credential — encrypted at rest so a database dump or
+            // a read primitive elsewhere does not hand over the inbox. Existing
+            // plaintext rows are migrated by
+            // 2026_09_05_140000_encrypt_ticket_department_imap_passwords.
+            //
+            // Deliberately NOT the plain `encrypted` cast: a row that is still
+            // plaintext (an older dump, a seeder, or any
+            // `TicketDepartment::where(...)->update()`, which bypasses casts)
+            // would make every read throw and take `tickets:fetch-mail` down for
+            // all departments at once. See App\Casts\EncryptedOrPlaintext.
+            'imap_password' => EncryptedOrPlaintext::class,
             'imap_port' => 'integer',
             'imap_validate_cert' => 'boolean',
             'imap_delete_after_fetch' => 'boolean',

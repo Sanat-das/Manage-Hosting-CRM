@@ -1,0 +1,13 @@
+{
+    "slug": "crash-module",
+    "name": "Crash Module",
+    "version": "1.0.0",
+    "description": "Hostile fixture module for the module-system isolation tests.",
+    "namespace": "Tests\\Fixtures\\Modules\\CrashModule\\",
+    "provider": "Tests\\Fixtures\\Modules\\CrashModule\\CrashModule",
+    "capabilities": [],
+    "requires": {
+        "app": ">=1.0.0",
+        "php": ">=8.0"
+    }
+}

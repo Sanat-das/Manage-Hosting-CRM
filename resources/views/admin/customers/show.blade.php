@@ -1,4 +1,4 @@
-@extends('adminlte::page')
+﻿@extends('adminlte::page')
 
 @section('title', $customer->full_name)
 
@@ -145,7 +145,7 @@
                         <table class="table table-sm table-borderless">
                             <tbody>
                                 <tr><th class="w-25 text-muted">Tax ID</th><td>{{ $customer->tax_id ?? '—' }}</td></tr>
-                                <tr><th class="text-muted">Address</th><td>{{ $customer->user?->address ?? '—' }}</td></tr>
+                                <tr><th class="text-muted">Address</th><td>@if ($customer->user?->formatted_address) <div>{{ $customer->user->address_line1 }}</div>@if ($customer->user->address_line2)<div>{{ $customer->user->address_line2 }}</div>@endif<div class="text-muted small">{{ $customer->user->city }}@if ($customer->user->city && $customer->user->state), @endif{{ $customer->user->state }} {{ $customer->user->postcode }}@if ($customer->user->country) , {{ $customer->user->country }}@endif</div>@if (!$customer->user->address_line1 && $customer->user->address){{ $customer->user->address }}@endif @else —@endif</td></tr>
                                 <tr><th class="text-muted">Registered</th><td>{{ $customer->created_at?->format('M j, Y H:i') }}</td></tr>
                                 <tr><th class="text-muted">Credit</th><td>₹{{ number_format($customer->credit, 2) }}</td></tr>
                             </tbody>
@@ -706,3 +706,5 @@
         />
     @endif
 @stop
+
+

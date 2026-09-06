@@ -27,9 +27,18 @@
     {{-- Brand --}}
     <div class="sidebar-brand {{ config('adminlte.classes_brand') }}">
         <a href="{{ url('/') }}" class="brand-link">
-            @if (config('adminlte.logo_img'))
-                <img src="{{ asset(config('adminlte.logo_img')) }}"
-                     alt="{{ config('adminlte.logo_img_alt', 'Logo') }}"
+            @php
+                $_b = $branding ?? \App\Support\Branding::all();
+                // Prefer storage-resolved mark URL when a custom logo was uploaded; fallback to config asset path.
+                $_logoPath = $_b['logo_path'] ?? '';
+                $_markUrl = $_b['mark_url'] ?? '';
+                $_hasStorageLogo = is_string($_logoPath) && $_logoPath !== '' && (str_starts_with($_logoPath, 'branding/') || str_starts_with($_logoPath, 'storage/') || str_contains($_logoPath, 'branding/'));
+                $_logoImgSrc = $_hasStorageLogo && $_markUrl !== '' ? $_markUrl : (config('adminlte.logo_img') ? asset(config('adminlte.logo_img')) : '');
+                $_logoAlt = $_b['app_name'] ?? config('adminlte.logo_img_alt', 'Logo');
+            @endphp
+            @if ($_logoImgSrc !== '')
+                <img src="{{ $_logoImgSrc }}"
+                     alt="{{ $_logoAlt }}"
                      class="{{ config('adminlte.logo_img_class', 'brand-image opacity-75 shadow') }}">
             @endif
             <span class="brand-text {{ config('adminlte.classes_brand_text', 'fw-light') }}">
