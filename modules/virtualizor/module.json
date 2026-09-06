@@ -1,0 +1,12 @@
+{
+  "slug": "virtualizor",
+  "name": "Virtualizor Provisioning",
+  "description": "Creates, suspends, unsuspends and terminates VPS instances through the Virtualizor admin API. Credentials come from the Server record the order is allocated to; the plan and OS template are configured per product.",
+  "version": "1.0.0",
+  "author": "ManageHosting",
+  "namespace": "Modules\\Virtualizor\\",
+  "provider": "Modules\\Virtualizor\\Virtualizor",
+  "capabilities": ["provisioning"],
+  "requires": { "app": ">=1.0.0", "php": ">=8.3" },
+  "permissions": []
+}

@@ -1,0 +1,12 @@
+{
+  "slug": "plesk",
+  "name": "Plesk Provisioning",
+  "description": "Creates, suspends, unsuspends and terminates Plesk subscriptions through the Plesk REST API v2. Credentials come from the Server record the order is allocated to; the service plan is configured per product.",
+  "version": "1.0.0",
+  "author": "ManageHosting",
+  "namespace": "Modules\\Plesk\\",
+  "provider": "Modules\\Plesk\\Plesk",
+  "capabilities": ["provisioning"],
+  "requires": { "app": ">=1.0.0", "php": ">=8.3" },
+  "permissions": []
+}

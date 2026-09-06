@@ -1,0 +1,12 @@
+{
+  "slug": "directadmin",
+  "name": "DirectAdmin Provisioning",
+  "description": "Creates, suspends, unsuspends and terminates DirectAdmin user accounts through the CMD_API endpoints. Credentials come from the Server record the order is allocated to; the package is configured per product.",
+  "version": "1.0.0",
+  "author": "ManageHosting",
+  "namespace": "Modules\\DirectAdmin\\",
+  "provider": "Modules\\DirectAdmin\\DirectAdmin",
+  "capabilities": ["provisioning"],
+  "requires": { "app": ">=1.0.0", "php": ">=8.3" },
+  "permissions": []
+}

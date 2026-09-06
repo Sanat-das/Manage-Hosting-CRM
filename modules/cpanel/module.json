@@ -1,0 +1,12 @@
+{
+  "slug": "cpanel",
+  "name": "cPanel/WHM Provisioning",
+  "description": "Creates, suspends, unsuspends and terminates cPanel accounts on a WHM server through WHM API 1. Credentials come from the Server record the order is allocated to; the WHM package is configured per product.",
+  "version": "1.0.0",
+  "author": "ManageHosting",
+  "namespace": "Modules\\Cpanel\\",
+  "provider": "Modules\\Cpanel\\Cpanel",
+  "capabilities": ["provisioning"],
+  "requires": { "app": ">=1.0.0", "php": ">=8.3" },
+  "permissions": []
+}
