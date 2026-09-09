@@ -80,11 +80,18 @@ return [
     |--------------------------------------------------------------------------
     | User menu (topbar dropdown)
     |--------------------------------------------------------------------------
+    |
+    | `usermenu_profile_url` is passed through `url()`, so set it to a path or
+    | an absolute URL — not a route name. `adminlte:scaffold` prefixes its
+    | routes with `admin`, so use 'admin/profile' once the profile section is
+    | scaffolded. `false` hides the "Profile" button and lets "Sign out" fill
+    | the footer.
+    |
     */
 
     'usermenu_enabled' => true,
     'usermenu_header' => false,
-    'usermenu_header_class' => 'bg-primary',
+    'usermenu_header_class' => 'text-bg-primary',
     'usermenu_image' => false,
     'usermenu_desc' => false,
     'usermenu_profile_url' => false,
@@ -155,9 +162,22 @@ return [
     | light page, matching the AdminLTE 4 demos). Set to 'light' for a light
     | sidebar.
     |
+    | The four *_color keys repaint the chrome without touching SCSS: each one
+    | is injected into the layout <head> as a CSS custom-property override
+    | (see ColorlibHQ\AdminLte\Support\ThemeColors). Leave a key null to keep
+    | the stock AdminLTE colour. `primary_color` also recolours links and the
+    | primary button variants. Values must be hex — '#rgb' or '#rrggbb';
+    | anything else is ignored. The /demo/theme-generator page previews these
+    | live and writes the snippet for you.
+    |
     */
 
     'sidebar_theme' => 'dark',  // 'dark' | 'light'
+
+    'primary_color' => null,    // brand colour: links, .btn-primary, --bs-primary
+    'sidebar_color' => null,    // .app-sidebar background
+    'navbar_color' => null,     // .app-header background
+    'footer_color' => null,     // .app-footer background
 
     /*
     |--------------------------------------------------------------------------

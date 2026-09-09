@@ -504,7 +504,7 @@ abstract class ServiceProvider
     /**
      * Register commands that should run on "reload".
      *
-     * @param  string|null  $reload
+     * @param  string  $reload
      * @param  string|null  $key
      * @return void
      */
@@ -644,7 +644,7 @@ return [
             ->values()
             ->when(
                 $strict,
-                static fn (Collection $providerCollection) => $providerCollection->reject(fn (string $p) => in_array($p, $providersToRemove, true)),
+                static fn (Collection $providerCollection) => $providerCollection->diff($providersToRemove),
                 static fn (Collection $providerCollection) => $providerCollection->reject(fn (string $p) => Str::contains($p, $providersToRemove))
             )
             ->map(fn ($p) => '    '.$p.'::class,')

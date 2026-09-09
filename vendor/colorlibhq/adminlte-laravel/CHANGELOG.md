@@ -7,6 +7,326 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.6.1] - 2026-08-28
+
+### Fixed
+
+- Menu items defined with `route` are now highlighted as the current page
+  (#20). `ActiveFilter` only ever auto-derived its match pattern from `url`, so
+  a route-driven item never became active — and neither did its treeview
+  parent, which meant the submenu did not render expanded either. The scaffolded
+  sections all suggest route-based menu entries, so following the documented
+  path produced a sidebar that never highlighted anything.
+
+  The pattern now comes from the item's resolved `href`, which `HrefFilter`
+  has already derived from `route` or `url` one step earlier in the pipeline,
+  rather than from a second route lookup. Links to another host, `#`
+  placeholders, explicit `active` patterns and explicit booleans all behave as
+  before, and a `url` of `'/'` still matches only the site root.
+  Thanks [@ruanpepe](https://github.com/ruanpepe) for finding it and for the
+  original patch.
+
+## [1.6.0] - 2026-08-28
+
+### Added
+
+- `UserTable::modelClass()` — resolves the Eloquent class backing the app's
+  users from the default guard's provider, defaulting to `App\Models\User`.
+- `{{ users_model_import }}` and `{{ users_model_ref }}` stub placeholders. The
+  first renders what follows `use` (aliased `as User` when the model's short
+  name is something else); the second renders an inline reference and is
+  namespace-aware — a bare short name when the stub already sits in the model's
+  namespace, fully qualified with a leading separator anywhere else, so PHP
+  cannot resolve it against the stub's own namespace.
+
+### Fixed
+
+- `adminlte:scaffold` and `adminlte:make-auth` no longer publish code that
+  hardcodes `App\Models\User` (#19). That is only the Laravel 8+ convention:
+  codebases upgraded from Laravel 6/7 keep `App\User`, and apps are free to put
+  the model in a namespace of their own — 29 stubs named it outright, so every
+  scaffolded policy, factory, seeder, feature test, and model relation pointed
+  at a class those apps do not have. Thanks
+  [@ruanpepe](https://github.com/ruanpepe) for raising it and for the original
+  patch.
+
+  Output for an app on the conventional `App\Models\User` is byte-for-byte what
+  it was in 1.5.0.
+
+  The primary key remains deliberately unresolved. Pointing a foreign key at a
+  differently named key column without also changing the column type produces a
+  migration the database rejects — `foreignId()` emits `bigint unsigned`, so
+  `constrained('users', 'uuid')` yields a constraint MySQL and PostgreSQL both
+  refuse. A user model on a non-conventional key still needs its foreign keys
+  adjusted by hand; [`docs/scaffolding.md`](docs/scaffolding.md) says so.
+
+## [1.5.0] - 2026-08-26
+
+### Added
+
+- `ColorlibHQ\AdminLte\Support\UserTable` — resolves the table backing the app's
+  users (an authenticated Eloquent user answers for itself; otherwise the default
+  guard's provider config, `table` for the `database` driver or the `model` it
+  names for `eloquent`; `users` as the fallback). Package code and the console
+  commands both ask it rather than hardcoding the conventional name.
+- `ColorlibHQ\AdminLte\Console\Concerns\RendersStubs` — the placeholder
+  substitution `adminlte:scaffold` and `adminlte:make-auth` run over every stub
+  they publish. Stubs write `{{ users_table }}`; the resolved name is baked into
+  the published file, so generated migrations name their table outright instead
+  of consulting config at run time.
+
+### Fixed
+
+- The navbar message dropdown no longer assumes the user table is called
+  `users` with an `id` key. `NavbarData::messages()` now resolves the table from
+  the authenticated user (an Eloquent model answers for itself; the `database`
+  provider's `GenericUser` is read off `auth.providers.*.table`, falling back to
+  `users`) and joins on `getAuthIdentifierName()` instead of a hardcoded
+  `u.id`. Apps with a renamed users table or a custom auth model previously got
+  a "no such table: users" error on every authenticated page render.
+  Thanks [@ruanpepe](https://github.com/ruanpepe) for reporting and for the
+  original patch (#17).
+- `adminlte:scaffold` and `adminlte:make-auth` no longer publish code that
+  hardcodes the `users` table (#18). Seven migrations used
+  `constrained('users')`, so `php artisan migrate` failed outright on an app
+  that had renamed it; `DashboardController`, `ChatController`, the profile
+  migration, `StoreMessageRequest`, `UpdateProfileRequest`, the RBAC
+  `UserController`, `RegisterController`, and the published `ProfileTest` all
+  named the table or `users.id` in queries and validation rules. Every one now
+  goes through the placeholder. Output for an app on the conventional `users`
+  table is byte-for-byte what it was.
+
+  The primary key is deliberately untouched: the scaffold's `foreignId()`
+  columns presume a `bigint` `id`, so a user model on a UUID key still needs
+  those foreign keys adjusted by hand. This is now stated in
+  [`docs/scaffolding.md`](docs/scaffolding.md).
+
+## [1.4.0] - 2026-08-19
+
+### Changed
+
+- Bumped the AdminLTE version advertised by `adminlte:install` (and the matching
+  README/docs) to the current latest: `admin-lte@^4.8` (was `^4.3`). No other
+  advertised package moved. Verified against the published 4.8.1 tarball that
+  every path this package consumes still exists —
+  `admin-lte/dist/css/adminlte.css`, `admin-lte/dist/css/adminlte.rtl.min.css`
+  (vendor-copied by the installer) and `admin-lte/src/scss/adminlte` (the
+  Option B source build in the published CSS stub) — and that the `--bs-*`
+  custom properties the theme colors override are untouched.
+
+  What the core releases in that range bring to an app on this package:
+
+  - **4.4.0** — opt-in extended palette (`admin-lte/dist/css/adminlte-colors.css`,
+    14 colours plus sidebar/navbar skins) and a fix that lets `.sidebar-wrapper`
+    fill the sidebar. The package's `partials/sidebar.blade.php` uses that class,
+    so the fix applies with no change here.
+  - **4.5.0** — `admin-lte/dist/css/adminlte-colors-v3.css`, the 18 AdminLTE 3
+    colours exactly as they were, for apps ported from v3.
+  - **4.6.0** — `data-lte-primary="teal"` on `<html>` promotes any palette colour
+    to Bootstrap's `primary` (buttons, links, pagination, form focus rings).
+  - **4.7.0** — `data-lte-print="plain"` for pages meant to print as documents.
+  - **4.8.0** — `data-lte-contrast="aa"` for WCAG AA text on the v3 palette.
+  - **4.8.1** — pagination focus-ring fix.
+
+  Both palette stylesheets are opt-in and additive: add the one you want to
+  `resources/css/adminlte.css` next to the existing `admin-lte/dist/css/adminlte.css`
+  import. The `data-lte-*` attributes go on `<html>`, which this package renders in
+  `resources/views/master.blade.php` (and `auth/auth-master.blade.php`,
+  `layouts/errors-master.blade.php`). Nothing is enabled by default, so an
+  install that changes nothing looks exactly as it did.
+
+### Fixed
+
+- **Navbar documentation link now respects `sidebar_docs_url` config.** When
+  `sidebar_docs_url` is set to `false` to hide the documentation CTA in the
+  sidebar, the documentation link in the navbar is now also hidden, making
+  behaviour consistent across both locations.
+
+## [1.3.1] - 2026-08-13
+
+### Fixed
+
+- Documentation: `usermenu_profile_url` was documented as taking `'profile'`
+  after scaffolding. `adminlte:scaffold` registers its routes in a group
+  prefixed `admin`, so the correct value is `'admin/profile'`. The 1.3.0 notes
+  also claimed nothing in the package served `/admin/profile`; that was wrong.
+  Hiding the link when the key is `false` — the actual behaviour change — is
+  unaffected and still matches what the docs have always said.
+
+## [1.3.0] - 2026-08-13
+
+Three config blocks that have shipped since 1.0 — `auth_logo` and the six
+`usermenu_*` keys — were never read by any view, and the lockscreen rendered
+against class names AdminLTE 4 does not define. All of it now works.
+
+**Upgrading:** the `usermenu_*` keys default to `false`, so honouring them
+hides the user dropdown's coloured header, its avatar and its Profile button
+on apps that were relying on the hardcoded markup. Set `usermenu_header`,
+`usermenu_image` and `usermenu_desc` to `true` — and `usermenu_profile_url` to
+a path — to keep the previous appearance.
+
+### Added
+
+- `ColorlibHQ\AdminLte\Http\Middleware\DemoUserMenu`, applied to the bundled
+  demo route group. It turns the user-menu header, avatar and description on
+  for `demo/*` requests only, so the showcase keeps the full AdminLTE dropdown
+  while a fresh install still gets the plain one. See `docs/demo-pages.md`.
+
+### Fixed
+
+- **`auth_logo` is wired up.** The config block has shipped since 1.0 but no
+  view ever read it, so enabling it did nothing. The auth pages now render the
+  configured image — honouring `class`, `width` and `height`, and omitting each
+  attribute when its config value is empty — above the text `logo`. With
+  `auth_logo.enabled` left at its `false` default the auth pages are unchanged.
+- **The user-menu config keys did nothing.** `usermenu_header`,
+  `usermenu_header_class`, `usermenu_image` and `usermenu_desc` have shipped
+  since 1.0 but the partial ignored all four and hardcoded the header, the
+  avatar and the "member since" line. They are now honoured. Note the defaults
+  are all `false`, so the dropdown header is hidden unless you turn it on —
+  set `usermenu_header` and `usermenu_image` to `true` to keep the previous
+  appearance. The bundled demo pages do exactly that for themselves via the new
+  `DemoUserMenu` middleware, so the showcase keeps the coloured header and the
+  90px avatar without changing what a fresh install ships.
+  `usermenu_header_class` default corrected to `text-bg-primary`; `bg-primary`
+  alone sets no contrasting foreground color.
+- **`usermenu_profile_url => false` now hides the "Profile" link** as the docs
+  have always claimed, instead of silently falling back to `/admin/profile`.
+  With the link hidden, "Sign out" fills the footer. To keep the link, set the
+  key to `'admin/profile'` — the path `adminlte:scaffold profile` creates.
+- **The lockscreen rendered unstyled.** It extended the auth card layout, which
+  produced `.lockscreen-page` / `.lockscreen-box` — neither exists in AdminLTE
+  4. The page's real styles are all scoped under a `.lockscreen` body class, so
+  none of them applied. It is now a standalone layout carrying that class, and
+  posts to the `password.confirm` route (falling back to the bare path when
+  auth hasn't been scaffolded) instead of to `login`, which could never have
+  succeeded from a password-only form. Reported by
+  [@ruanpepe](https://github.com/ruanpepe).
+
+## [1.2.0] - 2026-08-11
+
+### Added
+
+- **Theme colors are now real config keys.** `primary_color`, `sidebar_color`,
+  `navbar_color` and `footer_color` repaint the chrome without compiling SCSS.
+  Each is injected into the layout `<head>` as a block of CSS custom-property
+  overrides by the new `ColorlibHQ\AdminLte\Support\ThemeColors`; all four
+  default to `null`, in which case nothing is emitted and the stock AdminLTE
+  palette applies untouched. `primary_color` also recomputes the hover/active
+  button shades with Bootstrap's `shade-color()` weights and picks button text
+  the way Bootstrap's `color-contrast()` does, so a custom brand color behaves
+  like a recompiled `$primary` instead of a flat swap. Values are validated
+  against a strict `#rgb`/`#rrggbb` pattern and anything else is dropped — the
+  block is rendered unescaped, so only hex is safe to put in it. Applies to the
+  main, auth and error layouts. See `docs/configuration.md`.
+
+### Changed
+
+- **The control sidebar is now a Bootstrap Offcanvas, and actually works.** It
+  was rendering AdminLTE 3 markup: `.control-sidebar` / `.control-sidebar-dark`
+  / `.control-sidebar-content` plus `data-lte-toggle="control-sidebar"`. AdminLTE
+  4 dropped that component — the string does not appear anywhere in 4.1 or 4.3,
+  in the CSS, the JS or the SCSS source — so there were no styles, no toggle
+  handler, and no grid area for a right-hand panel. Setting
+  `control_sidebar => true` did not give you a panel that failed to open; it
+  injected an unstyled, permanently visible block into the layout grid after the
+  footer, and nothing in the package could open or close it.
+
+  It is now a Bootstrap Offcanvas (`#adminlte-control-sidebar`), which brings the
+  backdrop, Esc-to-close and focus trap for free and needs no custom CSS or JS —
+  Bootstrap is already imported by the published `resources/js/adminlte.js`.
+  Enabling `control_sidebar` also adds the gear toggle to the navbar that was
+  missing, so the panel can be opened at all. `control_sidebar_theme` now does
+  something too: it is applied as `data-bs-theme` on the panel. Fill the body
+  with `@section('control_sidebar')` or `@push('control_sidebar')`; the `$slot`
+  path still works for direct includes.
+
+  **If you styled the old class names yourself, retarget those rules at
+  `#adminlte-control-sidebar`.** In practice nothing rendered before, so this is
+  unlikely to affect anyone.
+- Bumped the frontend dependency versions advertised by `adminlte:install`
+  (and the matching README/docs) to the current latest: `admin-lte@^4.3`
+  (was `^4.1`) and `apexcharts@^6.8` (was `^6.7`). Every other advertised
+  package was already at its current minor. `fullcalendar` stays at `^6.1` for
+  the reason recorded in `InstallCommand`: v7 drops the minified global bundle
+  this package copies and swaps the bundled CSS for a skeleton + theme + palette
+  model. Verified against the published tarballs that every vendor-copied source
+  path still exists at the versions these ranges now resolve to, and that the
+  `--bs-*` custom properties the theme colors override are unchanged between
+  admin-lte 4.1.0 and 4.3.1. Dev: `orchestra/testbench` `^11.2`,
+  `larastan/larastan` `^3.10`.
+
+### Fixed
+
+- **Every color picker on the Theme Generator demo rendered Bootstrap blue.**
+  The page passed `value="#343a40"` to `<x-adminlte-input-color>`, which has no
+  `value` prop — so the color fell through to `$attributes->merge()` and was
+  appended *after* the component's own `value`, and browsers keep the first of
+  two duplicate attributes. All four swatches showed `#0d6efd` regardless of
+  what the page asked for. They now use the documented `default` prop and are
+  seeded from config. Reported and originally fixed by
+  [@ruanpepe](https://github.com/ruanpepe) in
+  [#8](https://github.com/ColorlibHQ/adminlte-laravel/pull/8).
+- **The Theme Generator emitted a config snippet that did nothing.** Four of the
+  five keys it told you to paste were never read by the package, and `color_mode`
+  was not a config key at all. It now writes only keys that exist, previews every
+  change live on the page, seeds each control from the running config, and labels
+  the color-mode select as preview-only (the runtime mode comes from the topbar
+  toggle and the visitor's system preference).
+- Color inputs on the Theme Generator now use the component's `label` prop, so
+  each label is actually associated with its input instead of floating loose.
+
+## [1.1.0] - 2026-08-06
+
+### Fixed
+
+- **Flatpickr, Tom Select, Tabulator and Quill never worked.** All four
+  optional plugins were broken end to end, so `<x-adminlte-editor>`,
+  `<x-adminlte-input-flatpickr>`, `<x-adminlte-input-tom-select>` and
+  `<x-adminlte-datatable>` rendered inert markup no matter how the app was
+  set up. Two independent gaps, both fixed:
+  - `adminlte:install` never copied the four libraries out of `node_modules`,
+    even though `config('adminlte.plugins')` pointed at
+    `public/vendor/{quill,flatpickr,tom-select,tabulator-tables}/…`. Every
+    `@pluginScripts` tag they emitted 404'd. They're now in the installer's
+    copy map, and `InstallCommandTest` asserts that every configured plugin
+    asset has a matching copy source so this can't regress.
+  - The published `resources/js/adminlte.js` had no initializer for any of
+    them, so even a hand-copied library did nothing. It now ships
+    `initDatePickers()`, `initTomSelects()`, `initDatatables()` and
+    `initEditors()` alongside the existing four, each feature-detecting its
+    global and skipping elements it has already wired.
+
+  Quill in particular now seeds itself from the component's hidden input,
+  mirrors its HTML back on every change so a plain form POST submits the
+  content, and writes `''` instead of `<p><br></p>` when emptied so
+  `required` / `nullable` validation behaves.
+  ([#6](https://github.com/ColorlibHQ/adminlte-laravel/issues/6))
+- `adminlte:install` now copies vendor files on `--only=assets`, and after a
+  declined npm prompt or `--no-interaction-deps`. Previously the copy step
+  ran only on a full interactive install where the prompt was accepted, so
+  anyone managing npm themselves silently got an empty `public/vendor`.
+  Re-running `adminlte:install --only=assets` is now the documented way to
+  pick up a plugin installed after the initial setup.
+
+### Changed
+
+- `adminlte:status` groups its output into **Required**, **Optional** and
+  **Optional plugins**, and lists the four optional plugin libraries so a
+  half-finished install is visible. Opt-in resources (published views,
+  scaffolded sections) no longer render as a red ✗ that triggers a
+  "resources are missing" warning — they were never part of a default
+  install, and the warning sent people to re-run a command that wouldn't
+  have created them.
+- Bumped the frontend dependency versions advertised by `adminlte:install`
+  (and the matching README/docs) to the current latest: `apexcharts@^6.7`
+  (was `^5.16`) and `sass@^1.102`. `fullcalendar` stays at `^6.1`: v7 drops
+  the minified global bundle entirely (`index.global.min.js` is gone in
+  favour of an unminified `all/global.js`) and replaces the bundled CSS with
+  a `skeleton.css` + theme + palette model, which the calendar component
+  needs explicit work to support.
+- `laravel/pint` dev constraint raised to `^1.30`.
+
 ## [1.0.2] - 2026-07-09
 
 ### Fixed

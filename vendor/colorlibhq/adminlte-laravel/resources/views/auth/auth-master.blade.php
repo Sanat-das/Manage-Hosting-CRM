@@ -11,6 +11,7 @@
     <title>{{ $title }}</title>
     {{-- Bootstrap Icons ship via the Vite bundle (imported in resources/css/adminlte.css) --}}
     @vite(['resources/css/adminlte.css', 'resources/js/adminlte.js'])
+    @include('adminlte::partials.theme-colors')
     @stack('css')
 </head>
 <body class="{{ $authType }}-page bg-body-secondary">
@@ -18,6 +19,19 @@
         <div class="card card-outline card-primary">
             <div class="card-header text-center">
                 <a href="{{ url('/') }}" class="h1">
+                    @if (config('adminlte.auth_logo.enabled', false))
+                        <img src="{{ asset(config('adminlte.auth_logo.img.path')) }}"
+                             alt="{{ config('adminlte.auth_logo.img.alt') }}"
+                             @if (config('adminlte.auth_logo.img.class'))
+                                 class="{{ config('adminlte.auth_logo.img.class') }}"
+                             @endif
+                             @if (config('adminlte.auth_logo.img.width'))
+                                 width="{{ config('adminlte.auth_logo.img.width') }}"
+                             @endif
+                             @if (config('adminlte.auth_logo.img.height'))
+                                 height="{{ config('adminlte.auth_logo.img.height') }}"
+                             @endif>
+                    @endif
                     {!! config('adminlte.logo', '<b>Admin</b>LTE') !!}
                 </a>
             </div>

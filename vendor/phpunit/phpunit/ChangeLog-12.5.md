@@ -2,6 +2,22 @@
 
 All notable changes of the PHPUnit 12.5 release series are documented in this file using the [Keep a CHANGELOG](https://keepachangelog.com/) principles.
 
+## [12.5.35] - 2026-09-09
+
+### Fixed
+
+* Paths of included files are now escaped when generating the code that is executed in a separate process, so that a path containing special characters no longer produces broken code
+* Tests of a test class that is skipped as a whole are missing from the TestDox output
+* A test that is skipped or marked incomplete before it started is missing from the TestDox output
+* A test that is marked incomplete before it started is not counted in the number of tests that ran
+* No progress is printed for a test that is marked incomplete before it started
+
+## [12.5.34] - 2026-08-27
+
+### Fixed
+
+* [#6904](https://github.com/sebastianbergmann/phpunit/issues/6904): `SourceMap` is built in child process even though `identifyIssueTrigger` is disabled
+
 ## [12.5.33] - 2026-07-28
 
 ### Fixed
@@ -286,6 +302,8 @@ All notable changes of the PHPUnit 12.5 release series are documented in this fi
 * [#6380](https://github.com/sebastianbergmann/phpunit/pull/6380): Allow `Throwable` in `expectExceptionObject()`
 * A PHPUnit notice is now emitted for test methods that create a mock object but do not configure an expectation for it
 
+[12.5.35]: https://github.com/sebastianbergmann/phpunit/compare/12.5.34...12.5.35
+[12.5.34]: https://github.com/sebastianbergmann/phpunit/compare/12.5.33...12.5.34
 [12.5.33]: https://github.com/sebastianbergmann/phpunit/compare/12.5.32...12.5.33
 [12.5.32]: https://github.com/sebastianbergmann/phpunit/compare/12.5.31...12.5.32
 [12.5.31]: https://github.com/sebastianbergmann/phpunit/compare/12.5.30...12.5.31

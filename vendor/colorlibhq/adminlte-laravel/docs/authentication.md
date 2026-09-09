@@ -43,6 +43,12 @@ Each is copied to `app/Http/Controllers/Auth/`:
 
 Existing files are skipped (printed as `exists`) unless `--force` is used.
 
+`RegisterController` names your users table and your user model directly. Both
+are resolved when the controller is published, not hardcoded — an app that calls
+the table `members` gets `unique:members,email`, and one whose model is
+`App\User` gets that imported instead of `App\Models\User`. See
+[Your user model and table](scaffolding.md#your-user-model-and-table).
+
 ### Routes registered
 
 The auth routes are appended to `routes/web.php` from the package's
@@ -109,7 +115,13 @@ wired into Breeze/Fortify. To customize them, publish with
 | `adminlte::auth.passwords.email` | `auth/passwords/email.blade.php` |
 | `adminlte::auth.passwords.reset` | `auth/passwords/reset.blade.php` |
 
-(`auth/auth-master.blade.php` is the shared layout these views extend.)
+(`auth/auth-master.blade.php` is the shared layout these views extend. The
+lockscreen is the exception — AdminLTE styles it as a full-page `.lockscreen`
+layout rather than a centred auth card, so it stands alone.)
+
+The lockscreen posts to the `password.confirm` route registered by
+`adminlte:make-auth` (Breeze and Fortify register it too), which redirects to
+the intended URL on success.
 
 ---
 

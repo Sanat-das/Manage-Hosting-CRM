@@ -115,16 +115,58 @@ Body-level switches that map directly to AdminLTE 4 body classes. A value of
 
 ---
 
+## Theme Colors
+
+| Key | Default | Description |
+| --- | --- | --- |
+| `primary_color` | `null` | Brand color: `--bs-primary`, link colors, `.btn-primary` and `.btn-outline-primary`. |
+| `sidebar_color` | `null` | `.app-sidebar` background. |
+| `navbar_color` | `null` | `.app-header` background. |
+| `footer_color` | `null` | `.app-footer` background. |
+
+Each key is injected into the layout `<head>` as a block of CSS custom-property
+overrides, so you can recolor the chrome without compiling SCSS:
+
+```php
+'primary_color' => '#6610f2',
+'sidebar_color' => '#1f2937',
+```
+
+Values must be hex — `'#rgb'` or `'#rrggbb'`. Anything else (a named color,
+`rgb()`, a `var()` reference) is ignored and the stock AdminLTE color applies,
+because the block is emitted unescaped and only a strict hex pattern is safe to
+put there. Leave a key `null` to change nothing; when all four are `null` no
+`<style>` element is rendered at all.
+
+`primary_color` also recomputes the hover/active button shades using Bootstrap's
+own `shade-color()` weights, and flips button text between black and white the
+way Bootstrap's `color-contrast()` does — so a custom brand color behaves like a
+recompiled `$primary` rather than a flat color swap.
+
+For anything deeper than these four surfaces (spacing, component variables, the
+full palette), compile AdminLTE from SCSS instead — see the commented Option B
+block in the published `resources/css/adminlte.css`.
+
+> The bundled **[Theme Generator](https://laravel.adminlte.io/demo/theme-generator)**
+> demo page previews these live and writes the config snippet for you.
+
+---
+
 ## User Menu (Topbar Dropdown)
 
 | Key | Default | Description |
 | --- | --- | --- |
 | `usermenu_enabled` | `true` | Show the user dropdown menu in the topbar. |
 | `usermenu_header` | `false` | Show a colored header block inside the user dropdown. |
-| `usermenu_header_class` | `'bg-primary'` | Background class for the user dropdown header. |
-| `usermenu_image` | `false` | Show the user's avatar in the dropdown. |
-| `usermenu_desc` | `false` | Show a description/subtitle under the user's name. |
-| `usermenu_profile_url` | `false` | URL for the dropdown's "Profile" link (false to hide). |
+| `usermenu_header_class` | `'text-bg-primary'` | Background class for the user dropdown header. |
+| `usermenu_image` | `false` | Show the user's avatar in the dropdown header. |
+| `usermenu_desc` | `false` | Show the "member since" subtitle under the user's name. |
+| `usermenu_profile_url` | `false` | URL or path for the dropdown's "Profile" link. `false` hides the link. |
+
+`usermenu_profile_url` is passed through `url()`, so give it a path or an
+absolute URL — not a route name. `adminlte:scaffold` registers its routes in a
+group prefixed `admin`, so after `php artisan adminlte:scaffold profile` the
+page lives at `/admin/profile` and `'admin/profile'` is the value to use.
 
 ---
 
@@ -139,8 +181,8 @@ Body-level switches that map directly to AdminLTE 4 body classes. A value of
 > **Security note:** `footer_left` / `footer_right` are rendered unescaped
 > (`{!! !!}`) so they can hold links and markup. Only put trusted, hardcoded
 > markup here — never user-supplied or database-driven content.
-| `control_sidebar` | `false` | Enable the right-hand control sidebar panel. |
-| `control_sidebar_theme` | `'dark'` | Theme for the control sidebar (`'dark'` or `'light'`). |
+| `control_sidebar` | `false` | Enable the right-hand settings panel (a Bootstrap Offcanvas) and its navbar toggle button. Fill it with `@section('control_sidebar')` — see [Layout](layout.md). |
+| `control_sidebar_theme` | `'dark'` | Theme for the settings panel (`'dark'` or `'light'`), applied as `data-bs-theme`. |
 
 ---
 

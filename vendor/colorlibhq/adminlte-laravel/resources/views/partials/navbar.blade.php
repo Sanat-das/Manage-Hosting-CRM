@@ -16,11 +16,14 @@
                     <i class="bi bi-grid-1x2 me-1" aria-hidden="true"></i> {{ __('adminlte.home') }}
                 </a>
             </li>
-            <li class="nav-item d-none d-md-block">
-                <a href="{{ config('adminlte.sidebar_docs_url', '#') }}" class="nav-link" target="_blank" rel="noopener">
-                    <i class="bi bi-book me-1" aria-hidden="true"></i> {{ __('adminlte.documentation') }}
-                </a>
-            </li>
+
+            @if (config('adminlte.sidebar_docs_url'))
+                <li class="nav-item d-none d-md-block">
+                    <a href="{{ config('adminlte.sidebar_docs_url') }}" class="nav-link" target="_blank" rel="noopener">
+                        <i class="bi bi-book me-1" aria-hidden="true"></i> {{ __('adminlte.documentation') }}
+                    </a>
+                </li>
+            @endif
 
             @foreach ($navLeft as $item)
                 <li class="nav-item d-none d-md-block">
@@ -58,6 +61,18 @@
             {{-- Color mode toggle --}}
             @if (config('adminlte.color_mode_toggle', true))
                 @include('adminlte::partials.color-mode')
+            @endif
+
+            {{-- Control sidebar toggle (partials/control-sidebar.blade.php) --}}
+            @if (config('adminlte.control_sidebar', false))
+                <li class="nav-item">
+                    <a class="nav-link" href="#" role="button"
+                       data-bs-toggle="offcanvas" data-bs-target="#adminlte-control-sidebar"
+                       aria-controls="adminlte-control-sidebar"
+                       aria-label="{{ __('Toggle settings panel') }}">
+                        <i class="bi bi-gear-fill" aria-hidden="true"></i>
+                    </a>
+                </li>
             @endif
 
             {{-- User menu --}}
