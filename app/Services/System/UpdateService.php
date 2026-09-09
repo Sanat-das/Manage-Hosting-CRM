@@ -383,33 +383,43 @@ class UpdateService
                 return $result;
             }
 
-            // Step: Composer
+            // Step: Composer — vendor/ ships in the repo (IIS/shared-host), so a HOME-related
+            // failure is non-fatal when vendor/autoload.php already exists. The runRaw() patch
+            // above injects HOME/COMPOSER_HOME, but keep this fallback for pre-patch runs.
             $emit('composer', 'Installing dependencies...', 60);
             if ($this->composerAvailable()) {
                 $composer = $this->runProcess(['composer', 'install', '--no-dev', '--optimize-autoloader', '--no-interaction'], 120);
                 $appendOutput('composer install --no-dev --optimize-autoloader --no-interaction', $composer['output'], $composer['exit']);
 
                 if (! $composer['success']) {
-                    $result = $this->buildRunResult(
-                        status: 'failed',
-                        message: 'Update downloaded but dependencies failed — run composer install manually. ' . trim(Str::limit($composer['output'], 1500)),
-                        behind: $behind,
-                        from: $fromHash,
-                        to: $this->resolveLocalHash(),
-                        branch: $branch,
-                        remoteSanitized: $remoteSanitized,
-                        exit: $composer['exit'],
-                        startedAt: $startedAt,
-                        output: Str::limit($capturedOutput, self::OUTPUT_LIMIT)
-                    );
-                    $this->audit($actor, $result, $capturedOutput, $behind);
-                    $emit('error', $result['message'], 60, true, $result);
-                    return $result;
+                    $isHomeError = str_contains(strtolower($composer['output']), 'home or composer_home')
+                        || str_contains(strtolower($composer['output']), 'the home or composer_home');
+                    $vendorExists = is_file(base_path('vendor/autoload.php'));
+                    if ($isHomeError && $vendorExists) {
+                        $appendOutput('composer install', 'composer HOME error — vendor/ ships with the update, continuing (migrate will run next).', 0);
+                        try { Log::warning('UpdateService: composer HOME error ignored — vendor/ present, continuing update.'); } catch (Throwable) {}
+                    } else {
+                        $result = $this->buildRunResult(
+                            status: 'failed',
+                            message: 'Update downloaded but dependencies failed — run composer install manually. ' . trim(Str::limit($composer['output'], 1500)),
+                            behind: $behind,
+                            from: $fromHash,
+                            to: $this->resolveLocalHash(),
+                            branch: $branch,
+                            remoteSanitized: $remoteSanitized,
+                            exit: $composer['exit'],
+                            startedAt: $startedAt,
+                            output: Str::limit($capturedOutput, self::OUTPUT_LIMIT)
+                        );
+                        $this->audit($actor, $result, $capturedOutput, $behind);
+                        $emit('error', $result['message'], 60, true, $result);
+                        return $result;
+                    }
                 }
             } else {
-                $appendOutput('composer install', 'composer not found in PATH — skipped. Run composer install via SSH.', 0);
+                $appendOutput('composer install', 'composer not found in PATH — skipped (vendor/ ships with the update).', 0);
                 try {
-                    Log::warning('UpdateService: composer not found — skipping install step.');
+                    Log::warning('UpdateService: composer not found — skipping install step (vendor/ ships with update).');
                 } catch (Throwable) {
                 }
             }
@@ -704,7 +714,7 @@ class UpdateService
                 return $result;
             }
 
-            // Step: Composer
+            // Step: Composer — ZIP ships vendor/, so HOME errors are non-fatal when vendor exists
             $checkpoint('step=composer status=starting');
             $emit('composer', 'Installing dependencies...', 65);
             if ($this->composerAvailable()) {
@@ -712,15 +722,24 @@ class UpdateService
                 $appendOutput('composer install --no-dev --optimize-autoloader --no-interaction', $composer['output'], $composer['exit']);
                 $checkpoint('step=composer status=' . ($composer['success'] ? 'done' : 'failed exit=' . $composer['exit']));
                 if (! $composer['success']) {
-                    $result = $this->buildRunResult('failed', 'Files updated but dependencies failed — run composer install via SSH. ' . Str::limit($composer['output'], 500), 0, $fromVersion, null, 'main', $remoteSanitized, $composer['exit'], $startedAt, $capturedOutput);
-                    $this->audit($actor, $result, $capturedOutput, 0);
-                    $emit('error', $result['message'], 65, true, $result);
-                    return $result;
+                    $isHomeError = str_contains(strtolower($composer['output']), 'home or composer_home')
+                        || str_contains(strtolower($composer['output']), 'the home or composer_home');
+                    $vendorExists = is_file(base_path('vendor/autoload.php'));
+                    if ($isHomeError && $vendorExists) {
+                        $checkpoint('step=composer status=skipped (HOME error but vendor/ present)');
+                        $appendOutput('composer install', 'composer HOME error — vendor/ ships in ZIP, continuing.', 0);
+                        try { Log::warning('UpdateService: composer HOME error ignored during ZIP update — vendor/ present.'); } catch (Throwable) {}
+                    } else {
+                        $result = $this->buildRunResult('failed', 'Files updated but dependencies failed — run composer install via SSH. ' . Str::limit($composer['output'], 500), 0, $fromVersion, null, 'main', $remoteSanitized, $composer['exit'], $startedAt, $capturedOutput);
+                        $this->audit($actor, $result, $capturedOutput, 0);
+                        $emit('error', $result['message'], 65, true, $result);
+                        return $result;
+                    }
                 }
             } else {
                 $checkpoint('step=composer status=skipped (not in PATH)');
-                $appendOutput('composer install', 'composer not found in PATH — skipped. Run composer install via SSH.', 0);
-                try { Log::warning('UpdateService: composer not found during ZIP update.'); } catch (Throwable) {}
+                $appendOutput('composer install', 'composer not found in PATH — skipped (vendor/ ships in ZIP).', 0);
+                try { Log::warning('UpdateService: composer not found during ZIP update — vendor/ ships in archive.'); } catch (Throwable) {}
             }
 
             // Step: Migrate
@@ -894,14 +913,22 @@ class UpdateService
         };
 
         // Dependencies. vendor/ ships inside the update archive, so a missing
-        // composer is a note rather than a failure.
+        // composer or a HOME/COMPOSER_HOME error is a note rather than a failure.
         $emit('composer', 'Installing dependencies...', 20);
         if ($this->composerAvailable()) {
             $composer = $this->runProcess(['composer', 'install', '--no-dev', '--optimize-autoloader', '--no-interaction'], 300);
             $append('composer install --no-dev --optimize-autoloader --no-interaction', $composer['output'], $composer['exit']);
 
             if (! $composer['success']) {
-                return $fail('Dependencies failed to install. ' . trim(Str::limit($composer['output'], 500)), $composer['exit']);
+                $isHomeError = str_contains(strtolower($composer['output']), 'home or composer_home')
+                    || str_contains(strtolower($composer['output']), 'the home or composer_home');
+                $vendorExists = is_file(base_path('vendor/autoload.php'));
+                if ($isHomeError && $vendorExists) {
+                    $append('composer install', 'composer HOME error — vendor/ ships in archive, continuing.', 0);
+                    try { Log::warning('UpdateService: composer HOME error ignored in finalize — vendor/ present.'); } catch (Throwable) {}
+                } else {
+                    return $fail('Dependencies failed to install. ' . trim(Str::limit($composer['output'], 500)), $composer['exit']);
+                }
             }
         } else {
             $append('composer install', 'composer not found — skipped (vendor/ ships inside the update archive).', 0);
@@ -1101,7 +1128,42 @@ class UpdateService
     private function runRaw(array $cmd, int $timeout = 3): array
     {
         try {
-            $process = new Process($cmd, base_path(), null, null, (float) $timeout);
+            // Composer (and git via credential helpers) requires HOME/COMPOSER_HOME even when
+            // PHP-FPM/IIS runs as a service account with no HOME (shared hosting). Without it
+            // Composer dies at Factory.php:727 with "The HOME or COMPOSER_HOME environment
+            // variable must be set". Inject a sane HOME so vendor-shipped installs never need
+            // the user to run "composer install via SSH".
+            $env = null;
+            $isComposer = isset($cmd[0]) && str_contains(strtolower((string) $cmd[0]), 'composer');
+            $needsHome = getenv('HOME') === false && getenv('COMPOSER_HOME') === false
+                && empty($_SERVER['HOME'] ?? null) && empty($_ENV['HOME'] ?? null);
+            // Also cover Windows service accounts where only USERPROFILE exists
+            if ($needsHome || $isComposer) {
+                $home = getenv('HOME') ?: ($_SERVER['HOME'] ?? null) ?: ($_ENV['HOME'] ?? null) ?: null;
+                if ($home === null || $home === '') {
+                    $home = getenv('USERPROFILE') ?: ($_SERVER['USERPROFILE'] ?? null) ?: ($_ENV['USERPROFILE'] ?? null) ?: null;
+                }
+                if ($home === null || $home === '') {
+                    $home = sys_get_temp_dir();
+                }
+                $composerHome = getenv('COMPOSER_HOME') ?: ($_SERVER['COMPOSER_HOME'] ?? null) ?: ($_ENV['COMPOSER_HOME'] ?? null) ?: ($home . DIRECTORY_SEPARATOR . '.composer');
+                // Build env for the child process — merge current env so PATH etc. are preserved
+                $env = array_merge(
+                    array_filter($_ENV ?? [], static fn ($v) => is_string($v) || is_numeric($v)),
+                    array_filter($_SERVER ?? [], static fn ($v) => is_string($v) || is_numeric($v)),
+                    [
+                        'HOME' => $home,
+                        'COMPOSER_HOME' => $composerHome,
+                        'USERPROFILE' => $home,
+                    ]
+                );
+                // Ensure Composer can write its cache/config
+                if (! is_dir($composerHome)) {
+                    @mkdir($composerHome, 0755, true);
+                }
+            }
+
+            $process = new Process($cmd, base_path(), $env, null, (float) $timeout);
             $process->run();
 
             $output = $process->getOutput() . $process->getErrorOutput();
