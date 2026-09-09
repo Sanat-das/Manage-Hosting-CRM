@@ -7,11 +7,15 @@ use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;
 
 /**
- * Dispatched when an order is activated (pending -> active).
+ * Dispatched when an order enters the system: on activation (pending ->
+ * active) and when a customer places one from the storefront.
  *
- * This is the automated provisioning trigger stub: the real provisioning
- * engine (Session 3B) and webhook delivery (Session 5) listen on this event.
- * Keep it minimal — constructor + the activated order.
+ * The storefront used to dispatch nothing at all, so a customer order produced
+ * no notification for the customer and — more damagingly — none for the
+ * admins, who had to notice the row in the orders list. Listeners must
+ * therefore read $order->status rather than assume the order is active.
+ *
+ * Keep it minimal — constructor + the order.
  */
 class OrderCreated
 {

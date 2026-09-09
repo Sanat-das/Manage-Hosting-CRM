@@ -2,10 +2,14 @@
 
 namespace App\Http\Controllers\Client;
 
+use App\Contracts\Module\Capabilities\HostingAccountInfoProvider;
 use App\Http\Controllers\Controller;
 use App\Models\HostingAccount;
 use App\Services\HostingService;
+use App\Services\Modules\ModuleManager;
+use App\Services\OrderConfigSnapshot;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\View\View;
 
 /**
@@ -14,6 +18,10 @@ use Illuminate\View\View;
 class HostingController extends Controller
 {
     private const PER_PAGE = 15;
+
+    public function __construct(
+        private readonly OrderConfigSnapshot $snapshot,
+    ) {}
 
     public function index(Request $request): View
     {
@@ -70,19 +78,19 @@ class HostingController extends Controller
         abort_unless($customer, 404);
 
         $account = $customer->hostingAccounts()
-            ->with(['product', 'server', 'order', 'ipAddresses'])
+            ->with(['product', 'server', 'order.items', 'ipAddresses'])
             ->findOrFail($id);
 
         // Module capability panels (cache-only, client-safe): same collection
         // as the admin page. Modules return only cached snapshot data for
         // this path — no refresh controls or credentials are involved.
         $modulePanels = [];
-        $manager = app(\App\Services\Modules\ModuleManager::class);
+        $manager = app(ModuleManager::class);
 
         foreach ($manager->active() as $module) {
             $instance = $manager->resolve($module);
 
-            if (! $instance instanceof \App\Contracts\Module\Capabilities\HostingAccountInfoProvider) {
+            if (! $instance instanceof HostingAccountInfoProvider) {
                 continue;
             }
 
@@ -100,11 +108,46 @@ class HostingController extends Controller
             }
         }
 
-        return view('client.hosting.show', [
+        return view('client.hosting.show', array_merge([
             'account' => $account,
             'billing' => $this->billingFor($account),
             'modulePanels' => $modulePanels,
-        ]);
+        ], $this->configurationFor($account)));
+    }
+
+    /**
+     * The features this service actually has — the order-time snapshot when
+     * there is one, otherwise resolved from the product's option links so a
+     * service predating the snapshot still shows its fixed features.
+     *
+     * Only options with a value are returned: the page used to fall back to
+     * listing every value a group offers ("RAM: 8 GB, 16 GB"), which reads as
+     * though the customer had been given all of them.
+     *
+     * @return array{configOptions: array<int, array<string, mixed>>, configCycle: string}
+     */
+    private function configurationFor(HostingAccount $account): array
+    {
+        $cycle = $account->order?->billing_cycle
+            ?? $account->product?->billing_cycle
+            ?? 'monthly';
+
+        $linkedItem = $account->order?->items
+            ?->first(fn ($item) => (int) $item->product_id === (int) $account->product_id && ! empty($item->config_options))
+            ?? $account->order?->items?->first(fn ($item) => ! empty($item->config_options));
+
+        $options = $linkedItem?->config_options['options']
+            ?? ($account->product !== null
+                ? $this->snapshot->capture($account->product, null, [], $cycle)['options']
+                : []);
+
+        $configured = array_values(array_filter($options, function (array $entry): bool {
+            $selected = $entry['selected'] ?? null;
+
+            return $selected !== null && $selected !== '' && $selected !== [];
+        }));
+
+        return ['configOptions' => $configured, 'configCycle' => (string) $cycle];
     }
 
     /**
@@ -113,7 +156,7 @@ class HostingController extends Controller
      * renewals), falling back to the order header. Null when nothing can be
      * resolved (view falls back to em-dashes).
      *
-     * @return array{cycle: ?string, amount: ?string, next_billing_date: ?\Illuminate\Support\Carbon}|null
+     * @return array{cycle: ?string, amount: ?string, next_billing_date: ?Carbon}|null
      */
     private function billingFor(HostingAccount $account): ?array
     {

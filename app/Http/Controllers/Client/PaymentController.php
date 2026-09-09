@@ -2,16 +2,15 @@
 
 namespace App\Http\Controllers\Client;
 
-use App\Events\InvoicePaid;
 use App\Http\Controllers\Controller;
 use App\Models\Customer;
 use App\Models\Invoice;
 use App\Models\Payment;
 use App\Models\PaymentGateway;
 use App\Services\Payments\PaymentGatewayManager;
+use App\Services\Payments\PaymentSettlementService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
@@ -29,6 +28,10 @@ class PaymentController extends Controller
         if ($invoice->isFullyPaid()) {
             return redirect()->route('client.invoices.show', $invoice)
                 ->with('info', 'This invoice has already been paid.');
+        }
+
+        if ($guard = $this->uncollectable($invoice)) {
+            return $guard;
         }
 
         $manager = app(PaymentGatewayManager::class);
@@ -49,6 +52,10 @@ class PaymentController extends Controller
         if ($invoice->isFullyPaid()) {
             return redirect()->route('client.invoices.show', $invoice)
                 ->with('info', 'This invoice has already been paid.');
+        }
+
+        if ($guard = $this->uncollectable($invoice)) {
+            return $guard;
         }
 
         $manager = app(PaymentGatewayManager::class);
@@ -98,7 +105,18 @@ class PaymentController extends Controller
         return redirect()->route('client.payments.pending', $payment);
     }
 
-    public function returned(Request $request, Invoice $invoice): RedirectResponse
+    /**
+     * The customer's browser coming back from the gateway.
+     *
+     * This is now one of TWO ways a payment is confirmed — the gateway's
+     * webhook is the other, and either may arrive first (or alone). Both go
+     * through PaymentSettlementService, so the invoice can never be credited
+     * twice, and both get the full billing treatment: partial payments,
+     * overpayment credited to the customer's wallet, and the InvoicePaid event.
+     * This method used to hand-roll its own invoice update, which meant an
+     * overpayment made online was simply kept.
+     */
+    public function returned(Request $request, Invoice $invoice, PaymentSettlementService $settlement): RedirectResponse
     {
         $this->resolveCustomer($request, $invoice);
 
@@ -108,6 +126,14 @@ class PaymentController extends Controller
             ->first();
 
         if ($payment === null) {
+            // No pending payment can also mean the webhook beat the customer
+            // back and already settled it — say so rather than warning them
+            // that something is missing.
+            if ($invoice->fresh()->isFullyPaid()) {
+                return redirect()->route('client.invoices.show', $invoice)
+                    ->with('success', 'Payment received. Thank you!');
+            }
+
             return redirect()->route('client.invoices.show', $invoice)
                 ->with('warning', 'No pending payment was found for this invoice.');
         }
@@ -119,46 +145,17 @@ class PaymentController extends Controller
                 ->with('error', 'The payment gateway for this payment could not be resolved.');
         }
 
-        try {
-            $result = app(PaymentGatewayManager::class)
-                ->driverFor($gateway)
-                ->verify(['reference' => $payment->transaction_id, 'gateway' => $gateway]);
-        } catch (RuntimeException $e) {
-            return redirect()->route('client.invoices.show', $invoice)
-                ->with('error', $e->getMessage());
-        }
+        $outcome = $settlement->settle($payment, $gateway);
 
-        if (! ($result['verified'] ?? false)) {
-            return redirect()->route('client.invoices.show', $invoice)
-                ->with('error', $result['message'] ?? 'Payment could not be confirmed. Please contact support.');
-        }
-
-        DB::transaction(function () use ($payment, $invoice, $result) {
-            $payment->update([
-                'status' => 'completed',
-                'transaction_id' => $result['gateway_transaction_id'] ?? $payment->transaction_id,
-            ]);
-
-            $paid = (float) Payment::where('invoice_id', $invoice->id)
-                ->where('status', 'completed')
-                ->sum('amount');
-
-            $fullyPaid = $paid >= (float) $invoice->total;
-
-            $invoice->update([
-                'paid_amount' => $paid,
-                'status' => $fullyPaid ? 'paid' : 'partial',
-                'paid_at' => $fullyPaid ? now() : $invoice->paid_at,
-            ]);
-
-            // Fully settled online payment → advance the linked order (pending → paid).
-            if ($fullyPaid) {
-                InvoicePaid::dispatch($invoice);
-            }
-        });
-
-        return redirect()->route('client.invoices.show', $invoice)
-            ->with('success', 'Payment received. Thank you!');
+        return match ($outcome['status']) {
+            PaymentSettlementService::SETTLED,
+            PaymentSettlementService::ALREADY_SETTLED => redirect()
+                ->route('client.invoices.show', $invoice)
+                ->with('success', 'Payment received. Thank you!'),
+            default => redirect()
+                ->route('client.invoices.show', $invoice)
+                ->with('error', $outcome['message'] ?? 'Payment could not be confirmed. Please contact support.'),
+        };
     }
 
     public function pending(Request $request, Payment $payment): View
@@ -168,6 +165,31 @@ class PaymentController extends Controller
         $this->resolveCustomer($request, $invoice);
 
         return view('client.payments.pending', compact('payment', 'invoice'));
+    }
+
+    /**
+     * Stop a customer STARTING a payment against an invoice that is no longer
+     * collectable, or null when it is fine to proceed.
+     *
+     * A void or cancelled invoice was still fully payable from here: the only
+     * guard was isFullyPaid(). Since an ending order now voids its outstanding
+     * invoices, that would have let a customer pay for an order that had been
+     * cancelled out from under them. Mirrors the guard the admin invoice page
+     * already applies in InvoiceController::storePayment().
+     *
+     * Note this deliberately only blocks STARTING a payment. A payment already
+     * in flight when the invoice was voided is still settled when it comes
+     * back — see PaymentSettlementService. Money that actually moved must be
+     * recorded, not dropped.
+     */
+    private function uncollectable(Invoice $invoice): ?RedirectResponse
+    {
+        if (! in_array($invoice->status, [Invoice::STATUS_VOID, Invoice::STATUS_CANCELLED], true)) {
+            return null;
+        }
+
+        return redirect()->route('client.invoices.show', $invoice)
+            ->with('warning', 'This invoice has been cancelled and can no longer be paid. Please contact support if you believe this is a mistake.');
     }
 
     private function resolveCustomer(Request $request, Invoice $invoice): Customer

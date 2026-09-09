@@ -6,6 +6,7 @@ use App\Http\Controllers\Client\HostingController;
 use App\Http\Controllers\Client\InvoiceController;
 use App\Http\Controllers\Client\KbController;
 use App\Http\Controllers\Client\NotificationController;
+use App\Http\Controllers\Client\OrderController;
 use App\Http\Controllers\Client\PaymentController;
 use App\Http\Controllers\Client\ProfileController;
 use App\Http\Controllers\Client\StoreController;
@@ -35,6 +36,11 @@ Route::middleware(['web', 'auth', 'client', 'customer.record'])->prefix('client'
     Route::post('store/cart/remove', [StoreController::class, 'removeFromCart'])->name('store.cart.remove');
     Route::post('store/checkout', [StoreController::class, 'placeOrder'])->name('store.checkout.post');
     Route::get('store/{product}', [StoreController::class, 'show'])->name('store.show');
+
+    // Orders (read-only history — the order_confirmation email's "View Order"
+    // button links here)
+    Route::get('orders', [OrderController::class, 'index'])->name('orders.index');
+    Route::get('orders/{id}', [OrderController::class, 'show'])->name('orders.show');
 
     // Hosting
     Route::get('hosting', [HostingController::class, 'index'])->name('hosting.index');

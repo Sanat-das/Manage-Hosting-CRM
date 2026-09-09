@@ -263,6 +263,14 @@ class AppServiceProvider extends ServiceProvider
             return Limit::perMinute(10)->by($request->user()?->getAuthIdentifier() ?: $request->ip());
         });
 
+        // Inbound gateway webhooks — per IP, and far looser than the customer
+        // payment form: a gateway legitimately bursts (delivery retries, several
+        // customers paying at once) from a small set of addresses, and
+        // throttling one into a 429 costs us the payment confirmation.
+        RateLimiter::for('payment-webhooks', function (Request $request) {
+            return Limit::perMinute(120)->by($request->ip());
+        });
+
         // Admin impersonation — per-user cap on session switches.
         RateLimiter::for('impersonate', function (Request $request) {
             return Limit::perMinute(10)->by($request->user()?->getAuthIdentifier() ?: $request->ip());

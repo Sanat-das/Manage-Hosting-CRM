@@ -42,41 +42,19 @@
                 @endforeach
             @endif
 
-            {{-- Product configuration: order-time snapshot, falling back to the
-                 product's live option links when no snapshot was captured. --}}
-            @php
-                $configSnapshot = null;
-                $linkedItem = $account->order?->items
-                    ?->first(fn ($i) => (int) $i->product_id === (int) $account->product_id && ! empty($i->config_options))
-                    ?? $account->order?->items?->first(fn ($i) => ! empty($i->config_options));
-
-                if ($linkedItem !== null) {
-                    $configSnapshot = $linkedItem->config_options;
-                }
-            @endphp
-            @if ($configSnapshot !== null)
+            {{-- The features this service has, resolved by the controller from
+                 the order-time snapshot (or the product's option links for
+                 services predating it). Only options with an actual value
+                 appear — never the full list of values a group offers. --}}
+            @if ($configOptions !== [])
                 <x-adminlte-card icon="bi bi-sliders" title="Product Configuration">
-                    @include('client.partials._selected_options', [
-                        'entries' => $configSnapshot['options'] ?? [],
+                    @include('partials._selected_options', [
+                        'entries' => $configOptions,
                         'modifiersByLink' => [],
-                        'cycle' => $account->order?->billing_cycle ?? 'monthly',
-                        'includeUnselected' => true,
+                        'cycle' => $configCycle,
+                        'includeUnselected' => false,
                     ])
                 </x-adminlte-card>
-            @else
-                @php $account->product?->loadMissing('optionLinks.group', 'optionLinks.linkValues.pricing'); @endphp
-                @if ($account->product !== null && $account->product->optionLinks->isNotEmpty())
-                    <x-adminlte-card icon="bi bi-sliders" title="Product Configuration">
-                        <ul class="list-unstyled small mb-0">
-                            @foreach ($account->product->optionLinks as $liveLink)
-                                <li>
-                                    <strong>{{ $liveLink->group?->name }}:</strong>
-                                    {{ $liveLink->linkValues->isNotEmpty() ? $liveLink->linkValues->pluck('label')->implode(', ') : '—' }}
-                                </li>
-                            @endforeach
-                        </ul>
-                    </x-adminlte-card>
-                @endif
             @endif
         </div>
 

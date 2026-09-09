@@ -318,12 +318,6 @@ return [
             'can' => 'invoices.view',
         ],
         [
-            'text' => 'GST Settings',
-            'route' => 'admin.gst-settings.edit',
-            'icon' => 'bi bi-percent',
-            'can' => 'settings.edit',
-        ],
-        [
             'text' => 'Tax Rates',
             'route' => 'admin.tax-rates.index',
             'icon' => 'bi bi-receipt',
@@ -503,6 +497,12 @@ return [
             'text' => 'Domains',
             'route' => 'client.domains.index',
             'icon' => 'bi bi-globe2',
+            'role' => 'client',
+        ],
+        [
+            'text' => 'Orders',
+            'route' => 'client.orders.index',
+            'icon' => 'bi bi-bag-check',
             'role' => 'client',
         ],
         [

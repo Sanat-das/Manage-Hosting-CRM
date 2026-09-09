@@ -47,7 +47,7 @@
                         @if (! empty($item->config_options['options']))
                             <tr>
                                 <td colspan="4" class="pt-0 border-0">
-                                    @include('client.partials._selected_options', [
+                                    @include('partials._selected_options', [
                                         'entries' => $item->config_options['options'],
                                         'modifiersByLink' => [],
                                         'cycle' => $order->billing_cycle ?? 'monthly',

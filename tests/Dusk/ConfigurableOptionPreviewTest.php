@@ -232,7 +232,10 @@ class ConfigurableOptionPreviewTest extends DuskTestCase
                 ->type('email', $this->client->email)
                 ->type('password', 'password')
                 ->press('button[type="submit"]')
-                ->waitForLocation('/client/dashboard');
+                // The client dashboard is served at /client (route name
+                // client.dashboard) — there is no /client/dashboard URL, so
+                // waiting for one timed out on a login that had succeeded.
+                ->waitForLocation('/client');
 
             $browser->visit('/client/store/'.$this->product->id)
                 ->waitForText('CPU Cores');
@@ -320,7 +323,10 @@ class ConfigurableOptionPreviewTest extends DuskTestCase
                 ->type('email', $this->client->email)
                 ->type('password', 'password')
                 ->press('button[type="submit"]')
-                ->waitForLocation('/client/dashboard');
+                // The client dashboard is served at /client (route name
+                // client.dashboard) — there is no /client/dashboard URL, so
+                // waiting for one timed out on a login that had succeeded.
+                ->waitForLocation('/client');
 
             // Enter the decimal value: the live preview shows the rounded
             // price 199.00 + 249.98 = 448.98.
@@ -330,11 +336,22 @@ class ConfigurableOptionPreviewTest extends DuskTestCase
                 ->assertValue('#option-'.$link->id, '2.5')
                 ->waitUntil('document.getElementById("live-price-total").textContent === "₹448.98"');
 
-            // Add to cart: the cart shows the decimal quantity and the
-            // rounded unit price + option modifier.
+            // Add to cart. Read the flash / validation output on the landing
+            // page before touching the cart: a rejected POST states its reason
+            // there, and asserting it here names the failure instead of letting
+            // it surface later as a mysteriously empty cart.
             $browser->press('Add to Cart')
                 ->waitForLocation('/client/store');
 
+            $errors = $browser->script(
+                "return Array.from(document.querySelectorAll('.invalid-feedback, .alert-danger, .alert-warning, .text-danger'))"
+                .".map(e => e.textContent.trim()).filter(t => t !== '');"
+            )[0];
+
+            $this->assertSame([], $errors, 'Add to Cart was rejected: '.implode(' | ', $errors));
+
+            // The cart shows the decimal quantity and the rounded unit price +
+            // option modifier.
             $browser->visit('/client/store/cart')
                 ->waitForText('Storage VPS')
                 ->assertSee('Storage (TB): 2.5')
@@ -375,7 +392,10 @@ class ConfigurableOptionPreviewTest extends DuskTestCase
                 ->type('email', $this->client->email)
                 ->type('password', 'password')
                 ->press('button[type="submit"]')
-                ->waitForLocation('/client/dashboard');
+                // The client dashboard is served at /client (route name
+                // client.dashboard) — there is no /client/dashboard URL, so
+                // waiting for one timed out on a login that had succeeded.
+                ->waitForLocation('/client');
 
             $browser->visit('/client/store/'.$product->id)
                 ->waitForText('Storage (TB)')
@@ -472,7 +492,10 @@ class ConfigurableOptionPreviewTest extends DuskTestCase
                 ->type('email', $this->client->email)
                 ->type('password', 'password')
                 ->press('button[type="submit"]')
-                ->waitForLocation('/client/dashboard');
+                // The client dashboard is served at /client (route name
+                // client.dashboard) — there is no /client/dashboard URL, so
+                // waiting for one timed out on a login that had succeeded.
+                ->waitForLocation('/client');
 
             $browser->visit('/client/store/'.$product->id)
                 ->waitForText('Add-ons');
@@ -480,25 +503,25 @@ class ConfigurableOptionPreviewTest extends DuskTestCase
             // On load the first option is checked by default; the others are
             // enabled (below the cap).
             $this->assertFalse(
-                $browser->script("return document.getElementById('option-".$link->id."-".$third."').disabled;")[0]
+                $browser->script("return document.getElementById('option-".$link->id.'-'.$third."').disabled;")[0]
             );
 
             // Checking a second option reaches the cap of 2 → the third greys
             // out and disables.
             $browser->check('#option-'.$link->id.'-'.$second);
             $this->assertTrue(
-                $browser->script("return document.getElementById('option-".$link->id."-".$third."').disabled;")[0],
+                $browser->script("return document.getElementById('option-".$link->id.'-'.$third."').disabled;")[0],
                 'The third option must disable at the selection cap.'
             );
             $this->assertTrue(
-                $browser->script("return document.getElementById('option-".$link->id."-".$third."').closest('[data-checkbox-option]').classList.contains('option-cap-limited');")[0],
+                $browser->script("return document.getElementById('option-".$link->id.'-'.$third."').closest('[data-checkbox-option]').classList.contains('option-cap-limited');")[0],
                 'The third option must be greyed out at the selection cap.'
             );
 
             // Unchecking one drops below the cap → the third re-enables.
             $browser->uncheck('#option-'.$link->id.'-'.$first);
             $this->assertFalse(
-                $browser->script("return document.getElementById('option-".$link->id."-".$third."').disabled;")[0],
+                $browser->script("return document.getElementById('option-".$link->id.'-'.$third."').disabled;")[0],
                 'The third option must re-enable below the cap.'
             );
         });
@@ -528,10 +551,12 @@ class ConfigurableOptionPreviewTest extends DuskTestCase
                         ->assertMissing('input[name="option_links['.$sliderLinkId.'][values][0][label]"]');
 
                     // The Min/Max/Step/Placeholder override block shows the
-                    // group's values and stays disabled until toggled.
-                    $card->assertValue('input[name="option_links['.$sliderLinkId.'][input_min]"]', '1.00')
-                        ->assertValue('input[name="option_links['.$sliderLinkId.'][input_max]"]', '32.00')
-                        ->assertValue('input[name="option_links['.$sliderLinkId.'][input_step]"]', '1.00')
+                    // group's values and stays disabled until toggled. The
+                    // bounds render as written, not as the decimal:2 cast
+                    // stringifies them — a whole 32 is "32", never "32.00".
+                    $card->assertValue('input[name="option_links['.$sliderLinkId.'][input_min]"]', '1')
+                        ->assertValue('input[name="option_links['.$sliderLinkId.'][input_max]"]', '32')
+                        ->assertValue('input[name="option_links['.$sliderLinkId.'][input_step]"]', '1')
                         ->assertDisabled('input[name="option_links['.$sliderLinkId.'][input_min]"]');
                 });
 
@@ -549,7 +574,7 @@ class ConfigurableOptionPreviewTest extends DuskTestCase
             // the catalog.
             $syncModal = '#sync-link-'.$dropdownLinkId;
 
-            $browser->within('.option-link-card:has(input[name="option_links['.$dropdownLinkId.'][values][0][label]"])', function (Browser $card) use ($dropdownLinkId) {
+            $browser->within('.option-link-card:has(input[name="option_links['.$dropdownLinkId.'][values][0][label]"])', function (Browser $card) {
                 $card->press('Sync values from group');
             })->waitFor($syncModal.'.show')
                 ->assertSeeIn($syncModal, 'Sync values')
@@ -752,8 +777,8 @@ class ConfigurableOptionPreviewTest extends DuskTestCase
 
             // The override block displays the group's Min/Max/Step (disabled),
             // and flips to per-product fields when toggled on.
-            $browser->assertValue('input[name="option_groups['.$sliderGroup->id.'][input_min]"]', '1.00')
-                ->assertValue('input[name="option_groups['.$sliderGroup->id.'][input_max]"]', '32.00')
+            $browser->assertValue('input[name="option_groups['.$sliderGroup->id.'][input_min]"]', '1')
+                ->assertValue('input[name="option_groups['.$sliderGroup->id.'][input_max]"]', '32')
                 ->assertDisabled('input[name="option_groups['.$sliderGroup->id.'][input_min]"]')
                 ->check('#create-override-'.$sliderGroup->id)
                 ->assertEnabled('input[name="option_groups['.$sliderGroup->id.'][input_min]"]')

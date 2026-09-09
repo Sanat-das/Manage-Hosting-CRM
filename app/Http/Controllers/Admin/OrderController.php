@@ -4,18 +4,20 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\OrderRequest;
-use App\Jobs\SendEmail;
 use App\Models\Customer;
-use App\Models\EmailTemplate;
+use App\Models\GstSetting;
 use App\Models\Invoice;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Product;
+use App\Models\Setting;
 use App\Services\Billing\BillingService;
-use App\Services\InvoiceEmailService;
+use App\Services\Billing\GstTaxService;
 use App\Services\Exports\CsvStreamService;
+use App\Services\InvoiceEmailService;
 use App\Services\OrderActivityLogger;
 use App\Services\OrderConfigSnapshot;
+use App\Services\OrderEmailService;
 use App\Services\OrderNumberService;
 use App\Services\OrderService;
 use Illuminate\Database\Eloquent\Builder;
@@ -53,6 +55,7 @@ class OrderController extends Controller
         private readonly BillingService $billing,
         private readonly OrderConfigSnapshot $snapshot,
         private readonly InvoiceEmailService $invoiceEmails,
+        private readonly OrderEmailService $orderEmails,
     ) {}
 
     public function index(Request $request): View|StreamedResponse
@@ -146,11 +149,11 @@ class OrderController extends Controller
         // Normalized GST settings for the client-side tax preview (mirrors
         // the engine's loadSettings() — the draft invoice stays the source
         // of truth, the preview is an estimate).
-        $gstSettings = \App\Services\Billing\GstTaxService::loadSettings(\App\Models\GstSetting::find(1));
+        $gstSettings = GstTaxService::loadSettings(GstSetting::find(1));
 
         // Admin setting "Auto-generate invoices" (yes/no) drives the default
         // of the "Generate Invoice" checkbox on the order form.
-        $autoGenerateInvoice = (string) (\App\Models\Setting::where('setting_key', 'auto_generate_invoice')->value('setting_value') ?? 'yes') !== 'no';
+        $autoGenerateInvoice = (string) (Setting::where('setting_key', 'auto_generate_invoice')->value('setting_value') ?? 'yes') !== 'no';
 
         return view('admin.orders.create', compact('customers', 'products', 'paymentMethods', 'gstSettings', 'autoGenerateInvoice'));
     }
@@ -183,9 +186,8 @@ class OrderController extends Controller
                     // then the total — same convention as the storefront.
                     $unitPrice = round(OrderConfigSnapshot::formatPrice(
                         (float) $line['unit_price'],
-                        OrderConfigSnapshot::adjustmentsFor($product, $line['options'] ?? []),
-                        $line['billing_cycle'],
-                        $product->pricing->pluck('billing_cycle')->all()
+                        OrderConfigSnapshot::adjustmentsFor($product, $line['options'] ?? [], $line['billing_cycle']),
+                        $line['billing_cycle']
                     ), 2);
 
                     $lineTotal = round($unitPrice * (int) $line['quantity'], 2);
@@ -224,7 +226,7 @@ class OrderController extends Controller
                         'quantity' => (int) $line['quantity'],
                         'unit_price' => $unitPrice,
                         'total' => $lineTotal,
-                        'config_options' => $this->snapshot->capture($product, null, $line['options'] ?? []),
+                        'config_options' => $this->snapshot->capture($product, null, $line['options'] ?? [], $line['billing_cycle']),
                     ]);
                 }
 
@@ -384,8 +386,16 @@ class OrderController extends Controller
      * UI-exposed status targets with button labels, filtered through the
      * state machine (OrderService::canTransition) so a change to the
      * authoritative map can never silently expose an illegal move in the
-     * admin UI. `active → suspended` stays hidden here — the hosting module
-     * drives that transition.
+     * admin UI.
+     *
+     * An ACTIVE order used to have no row here at all, so its page offered no
+     * actions whatsoever: suspending, cancelling or terminating a live service
+     * was impossible from the UI even though the state machine allowed all
+     * three. The note that "the hosting module drives that transition" was not
+     * true of anything that shipped. Since these hops now reach the control
+     * panel (OrderService::applyLifecycleEffects) rather than just moving a
+     * status column, leaving them unreachable meant an operator could not
+     * actually stop serving a customer.
      *
      * @return array<string, string> target status => button label
      */
@@ -393,7 +403,16 @@ class OrderController extends Controller
     {
         $labels = [
             Order::STATUS_PENDING => [Order::STATUS_ACTIVE => 'Activate', Order::STATUS_CANCELLED => 'Cancel'],
-            Order::STATUS_SUSPENDED => [Order::STATUS_ACTIVE => 'Activate', Order::STATUS_CANCELLED => 'Cancel'],
+            Order::STATUS_ACTIVE => [
+                Order::STATUS_SUSPENDED => 'Suspend',
+                Order::STATUS_CANCELLED => 'Cancel',
+                Order::STATUS_TERMINATED => 'Terminate',
+            ],
+            Order::STATUS_SUSPENDED => [
+                Order::STATUS_ACTIVE => 'Activate',
+                Order::STATUS_CANCELLED => 'Cancel',
+                Order::STATUS_TERMINATED => 'Terminate',
+            ],
             // Auto-provisioning failed after invoice payment — the admin can
             // retry the activation (re-runs provisioning + billing seeding via
             // OrderService) or cancel the order outright.
@@ -411,34 +430,14 @@ class OrderController extends Controller
 
     /**
      * Send the order confirmation email to the customer from the
-     * 'order_confirmation' admin-managed template. Skipped quietly when the
-     * template is missing/inactive or the customer has no linked user email.
+     * 'order_confirmation' admin-managed template. Delegated to the shared
+     * OrderEmailService so the admin form, the admin cart and the storefront
+     * all render the template with the same variable map. Skipped quietly when
+     * the template is missing/inactive or the customer has no linked user email.
      */
     private function sendOrderConfirmationEmail(Order $order): void
     {
-        $email = $order->customer?->user?->email;
-        if (! $email) {
-            return;
-        }
-
-        $template = EmailTemplate::query()
-            ->where('name', 'order_confirmation')
-            ->where('status', 'active')
-            ->first();
-
-        if ($template === null) {
-            Log::info('Order confirmation email skipped: template "order_confirmation" not found.', ['order_id' => $order->id]);
-
-            return;
-        }
-
-        [$subject, $body] = $this->renderTemplate($template, [
-            'name' => $order->customer?->full_name ?? 'there',
-            'order_no' => $order->order_number,
-            'total' => number_format((float) $order->total, 2),
-        ]);
-
-        SendEmail::dispatch($email, $subject, $body);
+        $this->orderEmails->send($order);
     }
 
     /**
@@ -451,23 +450,5 @@ class OrderController extends Controller
     private function sendInvoiceEmail(Order $order, Invoice $invoice): void
     {
         $this->invoiceEmails->send($invoice);
-    }
-
-    /**
-     * Render a template's {{placeholder}} variables (the same convention the
-     * seeded demo templates use).
-     *
-     * @param  array<string, string>  $vars
-     * @return array{0: string, 1: string} [subject, body]
-     */
-    private function renderTemplate(EmailTemplate $template, array $vars): array
-    {
-        $placeholders = array_map(fn (string $key) => '{{'.$key.'}}', array_keys($vars));
-        $values = array_values($vars);
-
-        return [
-            str_replace($placeholders, $values, (string) $template->subject),
-            str_replace($placeholders, $values, (string) $template->body),
-        ];
     }
 }

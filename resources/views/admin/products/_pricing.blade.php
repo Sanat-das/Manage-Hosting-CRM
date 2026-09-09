@@ -30,6 +30,18 @@
     $gstEnabled = (bool) old('gst_enabled', $product?->gst_enabled ?? false);
     $gstType = (string) old('gst_type', $product?->gst_type ?? 'standard');
 
+    // Whether anything on this product's GST panel can actually reach an
+    // invoice. Two independent ways it cannot:
+    //  - gst_settings.enabled is off, so GstTaxService returns zero tax for
+    //    every line regardless of what is set here;
+    //  - tax_mode is 'global', which prices every product from the company-wide
+    //    rates and never reads products.gst_enabled or the rates below.
+    // Both were silently true on this install, which is why a product could
+    // read "GST 18%" while its orders were invoiced at zero.
+    $gstConfig = \App\Services\Billing\GstTaxService::loadSettings();
+    $gstGloballyOff = ! (int) ($gstConfig['enabled'] ?? 0);
+    $gstModeIgnoresProduct = ($gstConfig['tax_mode'] ?? 'global') === 'global';
+
     $paymentType = (string) old('payment_type', $product?->payment_type ?? 'recurring');
     $quantityBehaviour = (string) old('quantity_behaviour', $product?->quantity_behaviour ?? 'none');
     $recurringCyclesLimit = old('recurring_cycles_limit', $product?->recurring_cycles_limit ?? 0);
@@ -143,6 +155,29 @@
     {{-- GST settings (always visible in the tab) --}}
     <div class="border-top pt-3 mt-4">
         <h6 class="mb-2"><i class="bi bi-percent me-1"></i>GST settings</h6>
+
+        {{-- Say so when nothing entered below can reach an invoice, rather than
+             letting the form imply this product is taxed when it is not. --}}
+        @if ($gstGloballyOff)
+            <div class="alert alert-warning py-2 small d-flex align-items-start gap-2">
+                <i class="bi bi-exclamation-triangle mt-1"></i>
+                <div>
+                    <strong>GST is switched off company-wide,</strong> so nothing set here will be charged —
+                    invoices for this product are written with zero tax.
+                    <a href="{{ url('admin/settings?tab=billing') }}">Configure GST</a>.
+                </div>
+            </div>
+        @elseif ($gstModeIgnoresProduct)
+            <div class="alert alert-info py-2 small d-flex align-items-start gap-2">
+                <i class="bi bi-info-circle mt-1"></i>
+                <div>
+                    Tax mode is <strong>Global</strong>, so every product is taxed at the company-wide rates and
+                    the settings below are ignored. Switch tax mode to <em>Per Product</em> or <em>Mixed</em> to
+                    use them. <a href="{{ url('admin/settings?tab=billing') }}">GST settings</a>.
+                </div>
+            </div>
+        @endif
+
         <div class="form-check mb-3">
             <input class="form-check-input" type="checkbox" name="gst_enabled" value="1"
                    id="gst_enabled" @checked($gstEnabled)>

@@ -30,10 +30,16 @@
             @php
                 $_b = $branding ?? \App\Support\Branding::all();
                 // Prefer storage-resolved mark URL when a custom logo was uploaded; fallback to config asset path.
+                // When a custom logo is present, Branding::logoHtml() already renders it inside brand-text,
+                // so hide the separate brand-image to avoid duplicate side-by-side logos.
                 $_logoPath = $_b['logo_path'] ?? '';
                 $_markUrl = $_b['mark_url'] ?? '';
                 $_hasStorageLogo = is_string($_logoPath) && $_logoPath !== '' && (str_starts_with($_logoPath, 'branding/') || str_starts_with($_logoPath, 'storage/') || str_contains($_logoPath, 'branding/'));
-                $_logoImgSrc = $_hasStorageLogo && $_markUrl !== '' ? $_markUrl : (config('adminlte.logo_img') ? asset(config('adminlte.logo_img')) : '');
+                if ($_hasStorageLogo) {
+                    $_logoImgSrc = '';
+                } else {
+                    $_logoImgSrc = config('adminlte.logo_img') ? asset(config('adminlte.logo_img')) : '';
+                }
                 $_logoAlt = $_b['app_name'] ?? config('adminlte.logo_img_alt', 'Logo');
             @endphp
             @if ($_logoImgSrc !== '')

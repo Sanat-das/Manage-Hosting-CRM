@@ -9,11 +9,14 @@ use App\Notifications\OrderCreatedNotification;
 use App\Services\NotificationPreferenceService;
 
 /**
- * Notify the customer (and admin users) when an order is activated.
+ * Notify the customer (and admin users) when an order is activated or placed.
  *
  * Mirrors SendOrderPaidNotification: the Customer model is the aggregate that
  * owns the order and is the database-channel notifiable target; admin users
  * are notified too. Every target is gated through NotificationPreferenceService.
+ *
+ * The notification wording follows the order's status, so the same listener
+ * serves both an activation and a pending storefront order.
  */
 class SendOrderCreatedNotification
 {

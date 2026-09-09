@@ -395,6 +395,12 @@ class AdminOrderCreateDuskTest extends DuskTestCase
         // Gap 1 regression: informational (non-editable) option links render as
         // static text, NOT as editable controls — no select is submitted for
         // them, their price modifiers are never shown, and they never charge.
+        //
+        // They also render exactly ONE value: the one flagged is_default (else
+        // the first in display order), which is the single value the order
+        // actually receives — OptionPricingResolver::defaultValue() resolves a
+        // fixed link the same way. Listing the whole group advertised choices
+        // ("Mumbai, Delhi") on a line that was only ever getting Mumbai.
         $vpsId = $this->vps->id;
         $infoLinkId = $this->vps->optionLinks()
             ->whereHas('group', fn ($query) => $query->where('name', 'Datacenter'))
@@ -413,7 +419,9 @@ class AdminOrderCreateDuskTest extends DuskTestCase
 
             $browser->waitUntil('document.querySelector("#order-lines .line-options") !== null')
                 ->waitUntil('document.querySelectorAll("#order-lines .line-options select").length === 1')
-                ->assertSee('Mumbai, Delhi') // informational values shown as plain text
+                ->assertSee('Mumbai') // the default value, shown as plain text
+                ->assertDontSee('Mumbai, Delhi') // not the whole group
+                ->assertDontSee('Delhi') // a value the order does not get is not advertised
                 ->assertDontSee('Mumbai (+₹100.00') // no modifier label on informational values
                 ->assertMissing('select[name="lines[0][options][' . $infoLinkId . ']"]')
                 // The Datacenter values carry +₹100/+₹200 modifiers, yet the

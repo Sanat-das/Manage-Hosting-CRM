@@ -177,10 +177,20 @@
                         <tbody>
                             @forelse ($invoice->items as $item)
                                 <tr>
-                                    <td>{{ $item->description }}</td>
+                                    <td>
+                                        {{ $item->description }}
+                                        {{-- What the line bills for: the RAM / storage / support
+                                             snapshotted onto it when the invoice was raised. --}}
+                                        @include('partials._selected_options', [
+                                            'entries' => $item->config_options['options'] ?? [],
+                                            'modifiersByLink' => [],
+                                            'cycle' => $item->config_options['billing_cycle'] ?? 'monthly',
+                                            'includeUnselected' => false,
+                                        ])
+                                    </td>
                                     <td class="text-center">{{ $item->quantity }}</td>
-                                    <td class="text-end">₹{{ number_format((float) $item->unit_price, 2) }}</td>
-                                    <td class="text-end fw-bold">₹{{ number_format((float) $item->total, 2) }}</td>
+                                    <td class="text-end">{{ number_format((float) $item->unit_price, 2) }}</td>
+                                    <td class="text-end fw-bold">{{ number_format((float) $item->total, 2) }}</td>
                                 </tr>
                             @empty
                                 <tr><td colspan="4" class="text-center text-muted py-3">No items.</td></tr>

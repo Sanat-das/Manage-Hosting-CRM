@@ -2,17 +2,21 @@
 
 namespace App\Http\Controllers\Client;
 
-use App\Http\Controllers\Controller;
+use App\Events\OrderCreated;
 use App\Http\Controllers\Concerns\SanitizesSessionCart;
+use App\Http\Controllers\Controller;
+use App\Models\Invoice;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Product;
 use App\Models\ProductGroup;
-use App\Models\ProductOptionGroup;
 use App\Models\ProductOptionGroupProduct;
 use App\Services\Billing\BillingService;
+use App\Services\InvoiceEmailService;
+use App\Services\OptionPricingResolver;
 use App\Services\OrderActivityLogger;
 use App\Services\OrderConfigSnapshot;
+use App\Services\OrderEmailService;
 use App\Services\OrderNumberService;
 use App\Services\ProductBundlePricingService;
 use App\Support\OptionSelectionRules;
@@ -41,6 +45,9 @@ class StoreController extends Controller
         private readonly ProductBundlePricingService $bundlePricing,
         private readonly BillingService $billing,
         private readonly OrderConfigSnapshot $snapshot,
+        private readonly OptionPricingResolver $optionPricing,
+        private readonly OrderEmailService $orderEmails,
+        private readonly InvoiceEmailService $invoiceEmails,
     ) {}
 
     public function index(): View
@@ -150,22 +157,30 @@ class StoreController extends Controller
         }
 
         if (! $matched) {
+            $cycle = $validated['billing_cycle'];
             $entry = array_merge($validated, ['quantity' => $quantity]);
 
-            // Option-carrying lines pin their own unit price (base price +
-            // selected-value modifiers) and total, mirroring the
-            // bundle-expanded lines, so the cart resolver never re-derives the
-            // unmodified base price for the cycle. Free products keep the
-            // selection (it may matter for provisioning) but never charge.
             if ($selections !== []) {
                 $entry = array_merge($entry, ['options' => $selections]);
+            }
 
-                if (($product->payment_type ?? 'recurring') !== 'free') {
+            // Option-carrying lines pin their own unit price (base price +
+            // option adjustments) and total, mirroring the bundle-expanded
+            // lines, so the cart resolver never re-derives the unmodified base
+            // price for the cycle. A line pins a price when the customer chose
+            // something OR when the product's own fixed options cost money —
+            // a declared "8 GB RAM" is charged whether or not anybody could
+            // change it. Free products keep the selection (it may matter for
+            // provisioning) but never charge.
+            if (($product->payment_type ?? 'recurring') !== 'free') {
+                $adjustments = OrderConfigSnapshot::adjustmentsFor($product, $selections, $cycle);
+                $adjustment = (float) ($adjustments[$cycle] ?? 0.0);
+
+                if ($selections !== [] || abs($adjustment) >= 0.01) {
                     $unitPrice = OrderConfigSnapshot::formatPrice(
-                        $this->baseUnitPrice($product, $validated['billing_cycle']),
-                        OrderConfigSnapshot::adjustmentsFor($product, $selections),
-                        $validated['billing_cycle'],
-                        $product->pricing->pluck('billing_cycle')->all()
+                        $this->baseUnitPrice($product, $cycle),
+                        $adjustments,
+                        $cycle
                     );
 
                     $entry = array_merge($entry, [
@@ -280,19 +295,19 @@ class StoreController extends Controller
                         'quantity' => $item['quantity'],
                         'unit_price' => $item['unit_price'],
                         'total' => $item['total'],
-                        'config_options' => $this->snapshot->capture($item['product'], null, $item['options'] ?? []),
+                        'config_options' => $this->snapshot->capture($item['product'], null, $item['options'] ?? [], $item['cycle']),
                     ]);
 
                     // Draft invoice via the shared GST engine, same convention
                     // as the admin order form / admin cart — the customer's
                     // order is immediately billable.
-                    $this->billing->createInvoiceForOrder($order);
+                    $invoice = $this->billing->createInvoiceForOrder($order);
 
                     // Customer-facing trail: the storefront writes the same
                     // order_created row as the other entry points.
                     OrderActivityLogger::created($order);
 
-                    $created[] = $order;
+                    $created[] = [$order, $invoice];
                 }
 
                 return $created;
@@ -305,9 +320,58 @@ class StoreController extends Controller
 
         session()->forget('cart');
 
-        $confirm = $orders[0];
+        // Everything below is post-commit and best-effort: the order exists and
+        // the customer must reach the confirmation page even if the mail
+        // transport or a notification listener is broken. Placing an order used
+        // to be completely silent — no event, no email — so the customer never
+        // learned an invoice was waiting and no admin was told a sale had come
+        // in.
+        foreach ($orders as [$order, $invoice]) {
+            $this->announcePlacedOrder($order, $invoice);
+        }
+
+        [$confirm] = $orders[0];
 
         return redirect()->route('client.store.confirmation', $confirm)->with('success', 'Order placed.');
+    }
+
+    /**
+     * Notify everyone who needs to know about a freshly placed storefront
+     * order: the OrderCreated event (customer + admin database notifications,
+     * preference-gated by the listener), the order confirmation email, and the
+     * invoice email — which also moves the invoice out of `draft`, so the
+     * customer is not left with an invoice nobody ever told them about.
+     *
+     * Each step is isolated: a missing email template or a dead SMTP host must
+     * not cost the customer their confirmation page.
+     */
+    private function announcePlacedOrder(Order $order, Invoice $invoice): void
+    {
+        $order->loadMissing('customer.user', 'product');
+
+        try {
+            OrderCreated::dispatch($order);
+        } catch (\Throwable $e) {
+            Log::error('Order placed notification failed', ['exception' => $e, 'order_id' => $order->id]);
+        }
+
+        try {
+            $this->orderEmails->send($order);
+        } catch (\Throwable $e) {
+            Log::error('Order confirmation email failed', ['exception' => $e, 'order_id' => $order->id]);
+        }
+
+        try {
+            $invoice->loadMissing('customer.user', 'order');
+
+            // A draft invoice the customer has been emailed is, by definition,
+            // sent — the same convention the admin invoice page applies.
+            if ($this->invoiceEmails->send($invoice) && $invoice->isDraft()) {
+                $invoice->update(['status' => Invoice::STATUS_SENT]);
+            }
+        } catch (\Throwable $e) {
+            Log::error('Order invoice email failed', ['exception' => $e, 'invoice_id' => $invoice->id]);
+        }
     }
 
     public function confirmation(Order $order): View
@@ -373,7 +437,7 @@ class StoreController extends Controller
                     'total' => $resolvedTotal,
                     'domain' => $entry['domain'] ?? null,
                     'options' => $entry['options'] ?? [],
-                    'config_options' => $this->snapshot->capture($product, null, $entry['options'] ?? []),
+                    'config_options' => $this->snapshot->capture($product, null, $entry['options'] ?? [], $cycle),
                 ];
 
                 continue;
@@ -382,15 +446,23 @@ class StoreController extends Controller
             $pricing = $product->pricing()->where('billing_cycle', $cycle)->first();
             $unitPrice = (float) ($pricing?->price ?? $product->price ?? 0);
 
+            // Lines reaching this branch pinned no price at add time — a cart
+            // seeded directly, or one predating the option pricing. Resolve
+            // the options now rather than billing the bare catalog price;
+            // free products keep their selections but never charge.
+            if (($product->payment_type ?? 'recurring') !== 'free') {
+                $unitPrice += $this->optionPricing->adjustment($product, $entry['options'] ?? [], $cycle);
+            }
+
             $items[] = [
                 'product' => $product,
                 'cycle' => $cycle,
                 'quantity' => $quantity,
-                'unit_price' => $unitPrice,
+                'unit_price' => round($unitPrice, 2),
                 'total' => round($unitPrice * $quantity, 2),
                 'domain' => $entry['domain'] ?? null,
                 'options' => $entry['options'] ?? [],
-                'config_options' => $this->snapshot->capture($product, null, $entry['options'] ?? []),
+                'config_options' => $this->snapshot->capture($product, null, $entry['options'] ?? [], $cycle),
             ];
         }
 

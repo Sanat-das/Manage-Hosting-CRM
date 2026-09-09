@@ -107,6 +107,12 @@
             <div id="line-items">
                 @foreach ($invoice->items as $i => $item)
                     <div class="row g-2 mb-2 line-item">
+                        {{-- The line's identity. Without it the save cannot tell
+                             which stored row a submitted line came from, and
+                             the recreated line loses its product link (which
+                             also drives per-product GST) and the configurable
+                             options it bills for. --}}
+                        <input type="hidden" name="items[{{ $i }}][id]" value="{{ old("items.$i.id", $item->id) }}">
                         <div class="col-md-5"><input type="text" name="items[{{ $i }}][description]" class="form-control form-control-sm" value="{{ old("items.$i.description", $item->description) }}" placeholder="Description" required></div>
                         <div class="col-md-2"><input type="number" name="items[{{ $i }}][quantity]" class="form-control form-control-sm" value="{{ old("items.$i.quantity", $item->quantity) }}" min="1" required></div>
                         <div class="col-md-3"><input type="number" name="items[{{ $i }}][unit_price]" class="form-control form-control-sm" step="0.01" min="0" value="{{ old("items.$i.unit_price", $item->unit_price) }}" placeholder="Unit price" required></div>

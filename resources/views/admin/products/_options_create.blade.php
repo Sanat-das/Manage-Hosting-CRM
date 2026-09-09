@@ -96,26 +96,26 @@
                 <div class="row g-2 mb-2 option-input-overrides">
                     <div class="col-md-3 col-lg-2">
                         <label class="form-label small text-muted">Min value</label>
-                        <input type="number" step="0.01" min="0"
+                        <input type="number" step="any" min="0"
                                class="form-control form-control-sm option-override-input"
                                name="option_groups[{{ $group->id }}][input_min]"
-                               value="{{ old("option_groups.{$group->id}.input_min", $group->input_min) }}"
+                               value="{{ old("option_groups.{$group->id}.input_min", \App\Support\OptionNumber::format($group->input_min)) }}"
                                placeholder="0" @disabled(! $overrideOn)>
                     </div>
                     <div class="col-md-3 col-lg-2">
                         <label class="form-label small text-muted">Max value</label>
-                        <input type="number" step="0.01" min="0"
+                        <input type="number" step="any" min="0"
                                class="form-control form-control-sm option-override-input"
                                name="option_groups[{{ $group->id }}][input_max]"
-                               value="{{ old("option_groups.{$group->id}.input_max", $group->input_max) }}"
+                               value="{{ old("option_groups.{$group->id}.input_max", \App\Support\OptionNumber::format($group->input_max)) }}"
                                placeholder="0" @disabled(! $overrideOn)>
                     </div>
                     <div class="col-md-3 col-lg-2">
                         <label class="form-label small text-muted">Step</label>
-                        <input type="number" step="0.01" min="0"
+                        <input type="number" step="any" min="0"
                                class="form-control form-control-sm option-override-input"
                                name="option_groups[{{ $group->id }}][input_step]"
-                               value="{{ old("option_groups.{$group->id}.input_step", $group->input_step) }}"
+                               value="{{ old("option_groups.{$group->id}.input_step", \App\Support\OptionNumber::format($group->input_step)) }}"
                                placeholder="0" @disabled(! $overrideOn)>
                     </div>
                     <div class="col-md-3 col-lg-2">

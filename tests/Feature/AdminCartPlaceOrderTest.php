@@ -9,6 +9,10 @@ use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Permission;
 use App\Models\Product;
+use App\Models\ProductOptionGroup;
+use App\Models\ProductOptionGroupProduct;
+use App\Models\ProductOptionLinkValue;
+use App\Models\ProductOptionLinkValuePricing;
 use App\Models\Role;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -217,6 +221,56 @@ class AdminCartPlaceOrderTest extends TestCase
         $this->assertArrayHasKey('product_group_name', $item->config_options);
         $this->assertArrayHasKey('provisioning_module', $item->config_options);
         $this->assertSame([], $item->config_options['options']);
+    }
+
+    public function test_cart_order_charges_the_products_fixed_options(): void
+    {
+        // The admin cart has no option UI - an admin picks a product, they do
+        // not configure it. That must not make the product cheaper here than
+        // through the storefront, the admin order form or the API: a fixed
+        // option is a feature of the product, so it is charged wherever the
+        // order is created. Without this the admin cart was the one entry
+        // point that billed the bare catalog price.
+        $this->actingAsAdmin();
+
+        $product = $this->makeProduct('VPS with fixed RAM', 199.00);
+        $customer = $this->makeCustomer();
+
+        $group = ProductOptionGroup::create(['name' => 'RAM', 'sort_order' => 1, 'type' => 'dropdown']);
+
+        $link = ProductOptionGroupProduct::create([
+            'product_id' => $product->id,
+            'option_group_id' => $group->id,
+            'customer_editable' => false,
+        ]);
+
+        foreach ([['8 GB', 100.00, true], ['16 GB', 300.00, false]] as $sort => [$label, $modifier, $isDefault]) {
+            $value = ProductOptionLinkValue::create([
+                'product_option_group_product_id' => $link->id,
+                'label' => $label,
+                'is_default' => $isDefault,
+                'sort_order' => $sort + 1,
+            ]);
+
+            ProductOptionLinkValuePricing::create([
+                'product_option_link_value_id' => $value->id,
+                'billing_cycle' => 'monthly',
+                'price_modifier' => $modifier,
+            ]);
+        }
+
+        session()->put('cart', [
+            ['product_id' => $product->id, 'billing_cycle' => 'monthly', 'domain' => null],
+        ]);
+
+        $this->post(route('admin.cart.place-order'), ['customer_id' => $customer->id]);
+
+        $item = OrderItem::sole();
+
+        $this->assertSame('299.00', (string) $item->unit_price, 'base 199.00 + the declared 8 GB at 100.00');
+        $this->assertSame('299.00', (string) $item->total);
+        $this->assertSame('299.00', (string) Order::sole()->total);
+        $this->assertSame('8 GB', $item->config_options['options'][0]['selected']);
     }
 
     public function test_bundle_expanded_line_preserves_quantity(): void

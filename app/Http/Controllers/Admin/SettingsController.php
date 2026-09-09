@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\EmailLog;
+use App\Models\GstSetting;
 use App\Settings\IntegrationSettings;
 use App\Support\AppSettings;
 use App\Support\MailSettings;
@@ -11,6 +12,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 
@@ -36,7 +38,16 @@ class SettingsController extends Controller
 
         $lastUpdated = $this->lastUpdatedPerSection();
 
-        return view('admin.settings.index', compact('settings', 'sections', 'activeTab', 'lastUpdated'));
+        // GST lives in its own table, not in `settings`, and is saved by
+        // GstSettingController through its own form on this page (see the
+        // Billing tab). It is passed through here purely so that form can be
+        // rendered; nothing in the settings payload writes it. Keeping
+        // gst_settings as the single writer is deliberate — the two settings
+        // keys that used to shadow it (gst_enabled, product_gst_applicable)
+        // controlled nothing and were removed.
+        $gst = GstSetting::first();
+
+        return view('admin.settings.index', compact('settings', 'sections', 'activeTab', 'lastUpdated', 'gst'));
     }
 
     /**
@@ -164,6 +175,7 @@ class SettingsController extends Controller
         // Must run BEFORE typed rules so injected branding_*_path values validate as strings,
         // not files. Supports both top-level inputs (branding_logo) and nested
         // settings[branding_logo] naming — blade uses top-level for clarity.
+        // Also handles explicit clear (remove checkbox) and old-file cleanup.
         $brandingFileRules = [];
         if ($request->hasFile('branding_logo')) {
             $brandingFileRules['branding_logo'] = ['nullable', 'file', 'mimes:svg,png,jpg,jpeg,webp', 'max:2048'];
@@ -177,6 +189,14 @@ class SettingsController extends Controller
         if ($request->hasFile('settings.branding_favicon')) {
             $brandingFileRules['settings.branding_favicon'] = ['nullable', 'file', 'mimes:svg,png,jpg,jpeg,webp,ico', 'max:1024'];
         }
+
+        // Remove flags: blade will send either top-level remove_branding_logo=1
+        // or settings[remove_branding_logo]=1 — handle both. Upload wins over remove.
+        $hasLogoFile = $request->hasFile('branding_logo') || $request->hasFile('settings.branding_logo');
+        $hasFaviconFile = $request->hasFile('branding_favicon') || $request->hasFile('settings.branding_favicon');
+        $removeLogoRequested = $request->boolean('remove_branding_logo') || $request->boolean('settings.remove_branding_logo') || $request->boolean('settings.remove_branding_logo_path') || (! empty($payload['remove_branding_logo']));
+        $removeFaviconRequested = $request->boolean('remove_branding_favicon') || $request->boolean('settings.remove_branding_favicon') || $request->boolean('settings.remove_branding_favicon_path') || (! empty($payload['remove_branding_favicon']));
+
         if ($brandingFileRules !== []) {
             try {
                 $request->validate($brandingFileRules);
@@ -185,21 +205,55 @@ class SettingsController extends Controller
                 $e->redirectTo = route('admin.settings.index', ['tab' => 'branding']);
                 throw $e;
             }
+        }
+
+        // Handle uploads (with old-file cleanup) and explicit clears.
+        // Upload takes precedence over remove when both are present.
+        if ($hasLogoFile) {
             try {
+                $oldLogoPath = AppSettings::get('branding_logo_path');
                 if ($request->hasFile('branding_logo')) {
                     $payload['branding_logo_path'] = $request->file('branding_logo')->store('branding', 'public');
                 } elseif ($request->hasFile('settings.branding_logo')) {
                     $payload['branding_logo_path'] = $request->file('settings.branding_logo')->store('branding', 'public');
                 }
+                $request->merge(['settings' => $payload]);
+                $newLogoPath = $payload['branding_logo_path'] ?? null;
+                if (is_string($newLogoPath) && $newLogoPath !== '' && is_string($oldLogoPath) && $oldLogoPath !== '' && $oldLogoPath !== $newLogoPath) {
+                    $this->deleteBrandingFile($oldLogoPath);
+                }
+            } catch (\Throwable $e) {
+                report($e);
+            }
+        } elseif ($removeLogoRequested) {
+            // Explicit clear: delete old file and inject empty string so it persists.
+            $oldLogoPath = AppSettings::get('branding_logo_path');
+            $this->deleteBrandingFile($oldLogoPath);
+            $payload['branding_logo_path'] = '';
+            $request->merge(['settings' => $payload]);
+        }
+
+        if ($hasFaviconFile) {
+            try {
+                $oldFaviconPath = AppSettings::get('branding_favicon_path');
                 if ($request->hasFile('branding_favicon')) {
                     $payload['branding_favicon_path'] = $request->file('branding_favicon')->store('branding', 'public');
                 } elseif ($request->hasFile('settings.branding_favicon')) {
                     $payload['branding_favicon_path'] = $request->file('settings.branding_favicon')->store('branding', 'public');
                 }
                 $request->merge(['settings' => $payload]);
+                $newFaviconPath = $payload['branding_favicon_path'] ?? null;
+                if (is_string($newFaviconPath) && $newFaviconPath !== '' && is_string($oldFaviconPath) && $oldFaviconPath !== '' && $oldFaviconPath !== $newFaviconPath) {
+                    $this->deleteBrandingFile($oldFaviconPath);
+                }
             } catch (\Throwable $e) {
                 report($e);
             }
+        } elseif ($removeFaviconRequested) {
+            $oldFaviconPath = AppSettings::get('branding_favicon_path');
+            $this->deleteBrandingFile($oldFaviconPath);
+            $payload['branding_favicon_path'] = '';
+            $request->merge(['settings' => $payload]);
         }
 
         // --- Company phone normalization (ecommerce phone-input parity) ---
@@ -288,6 +342,16 @@ class SettingsController extends Controller
         }
 
         $values = $validated['settings'];
+
+        // Branding explicit clear: ensure '' persists (ConvertEmptyStringsToNull would have made it null->skip).
+        // Must inject AFTER validation but BEFORE secretKeys/tab filter so saveTyped receives ''.
+        // Upload wins over remove — only clear when no new file was uploaded.
+        if (! $hasLogoFile && $removeLogoRequested) {
+            $values['branding_logo_path'] = '';
+        }
+        if (! $hasFaviconFile && $removeFaviconRequested) {
+            $values['branding_favicon_path'] = '';
+        }
 
         // Blank encrypted fields were masked on GET (loadAll returns ''). Do not
         // overwrite stored secrets with empty string when form leaves them blank.
@@ -720,5 +784,61 @@ class SettingsController extends Controller
         }
 
         return $cache[$class];
+    }
+
+    /**
+     * Whether a stored branding path is safe to delete from the public disk.
+     *
+     * Only paths that are user-uploaded under branding/ (or storage/branding/)
+     * are deletable. Default shipped assets (img/hostvexa...) and empty values
+     * are never deleted.
+     */
+    private function isDeletableBrandingPath(?string $p): bool
+    {
+        if ($p === null || trim($p) === '') {
+            return false;
+        }
+        $path = trim($p);
+
+        // Never delete default shipped assets
+        if (str_contains($path, 'img/hostvexa')) {
+            return false;
+        }
+        // Ignore absolute URLs / data URIs — not on public disk
+        if (str_starts_with($path, 'http://') || str_starts_with($path, 'https://') || str_starts_with($path, '//') || str_starts_with($path, 'data:')) {
+            return false;
+        }
+
+        $normalized = ltrim($path, '/');
+        // Strip leading storage/ for check — Storage::url already prefixes it
+        if (str_starts_with($normalized, 'storage/')) {
+            $normalized = substr($normalized, 8);
+        }
+
+        return str_starts_with($normalized, 'branding/');
+    }
+
+    /**
+     * Delete a branding file from the public disk if it is deletable.
+     * Wraps in try/catch + report so a stale/missing file never breaks the save.
+     */
+    private function deleteBrandingFile(?string $p): void
+    {
+        if (! $this->isDeletableBrandingPath($p)) {
+            return;
+        }
+        try {
+            $path = trim((string) $p);
+            $normalized = ltrim($path, '/');
+            if (str_starts_with($normalized, 'storage/')) {
+                $normalized = substr($normalized, 8);
+            }
+            $disk = Storage::disk('public');
+            if ($disk->exists($normalized)) {
+                $disk->delete($normalized);
+            }
+        } catch (\Throwable $e) {
+            report($e);
+        }
     }
 }

@@ -18,6 +18,42 @@
 @stop
 
 @php
+    /**
+     * How each status transition is presented. These are no longer bare status
+     * flips — suspending or terminating an order calls the product's
+     * provisioning module and really does stop serving the customer — so a
+     * destructive target must not render as a green "confirm" button, and the
+     * confirmation must say what it is about to do.
+     */
+    $transitionMeta = static function (string $target): array {
+        return match ($target) {
+            \App\Models\Order::STATUS_SUSPENDED => [
+                'button' => 'btn-outline-warning',
+                'icon' => 'bi-pause-circle',
+                'theme' => 'warning',
+                'note' => 'The service will be suspended on the control panel. You can reactivate it later.',
+            ],
+            \App\Models\Order::STATUS_CANCELLED => [
+                'button' => 'btn-outline-danger',
+                'icon' => 'bi-x-circle',
+                'theme' => 'danger',
+                'note' => 'This cannot be undone. Any provisioned service is terminated on the control panel, and unpaid invoices for this order are voided.',
+            ],
+            \App\Models\Order::STATUS_TERMINATED => [
+                'button' => 'btn-outline-danger',
+                'icon' => 'bi-trash3',
+                'theme' => 'danger',
+                'note' => 'This cannot be undone. The account is destroyed on the control panel, and unpaid invoices for this order are voided.',
+            ],
+            default => [
+                'button' => 'btn-success',
+                'icon' => 'bi-check-lg',
+                'theme' => 'success',
+                'note' => null,
+            ],
+        };
+    };
+
     $activeTab = (string) request()->query('tab', 'order-info');
     $tabs = [
         ['id' => 'order-info', 'label' => 'Order Info', 'icon' => 'bi bi-receipt'],
@@ -94,10 +130,11 @@
                 @if ($allowedTransitions)
                     <div class="d-flex gap-2">
                         @foreach ($allowedTransitions as $target => $label)
+                                @php $meta = $transitionMeta($target); @endphp
                                 <button type="button"
                                         data-bs-toggle="modal" data-bs-target="#order-status-{{ $target }}"
-                                        class="btn btn-sm {{ $target === 'cancelled' ? 'btn-outline-danger' : 'btn-success' }}">
-                                    <i class="bi {{ $target === 'cancelled' ? 'bi-x-circle' : 'bi-check-lg' }} me-1"></i>
+                                        class="btn btn-sm {{ $meta['button'] }}">
+                                    <i class="bi {{ $meta['icon'] }} me-1"></i>
                                     {{ $label }}
                                 </button>
                         @endforeach
@@ -240,19 +277,20 @@
                                         @if ($item->product)
                                             <div class="text-muted small">{{ $item->product->name }}</div>
                                         @endif
-                                        @php
-                                            $optionSelections = collect($item->optionSnapshot()['options'] ?? [])
-                                                ->map(fn ($entry) => trim(($entry['group'] ?? '').': '.implode(', ', Arr::wrap($entry['selected'] ?? []))))
-                                                ->filter()
-                                                ->values();
-                                        @endphp
-                                        @if ($optionSelections->isNotEmpty())
-                                            <div class="text-muted small mt-1">
-                                                @foreach ($optionSelections as $selection)
-                                                    <div>{{ $selection }}</div>
-                                                @endforeach
-                                            </div>
-                                        @endif
+                                        {{-- The line's configuration, through the shared
+                                             renderer the storefront, invoices and the
+                                             service page use — so units and applied
+                                             prices read identically everywhere. The
+                                             hand-rolled mapping this replaces printed a
+                                             bare "RAM:" for any option with no value. --}}
+                                        <div class="text-muted small mt-1">
+                                            @include('partials._selected_options', [
+                                                'entries' => $item->optionSnapshot()['options'] ?? [],
+                                                'modifiersByLink' => [],
+                                                'cycle' => $item->optionSnapshot()['billing_cycle'] ?? $item->billing_cycle ?? $order->billing_cycle,
+                                                'includeUnselected' => false,
+                                            ])
+                                        </div>
                                     </td>
                                     <td>{{ $billingCycleLabels[$item->billing_cycle ?? $order->billing_cycle] ?? ucfirst(str_replace('_', ' ', (string) ($item->billing_cycle ?? $order->billing_cycle))) }}</td>
                                     <td>{{ $item->domain_name ?? '—' }}</td>
@@ -310,14 +348,15 @@
 
     @can('orders.edit')
         @foreach ($allowedTransitions as $target => $label)
+            @php $meta = $transitionMeta($target); @endphp
             <x-adminlte.partials.confirm-modal
                 :id="'order-status-' . $target"
                 :title="$label . ' order'"
-                :message="$label . ' order ' . $order->order_no . '?'"
+                :message="$label . ' order ' . $order->order_no . '?' . ($meta['note'] ? ' ' . $meta['note'] : '')"
                 method="PUT"
                 :action="route('admin.orders.status', $order)"
                 :confirm-label="$label"
-                :confirm-theme="$target === 'cancelled' ? 'danger' : 'success'"
+                :confirm-theme="$meta['theme']"
             >
                 <x-slot name="fields">
                     <input type="hidden" name="status" value="{{ $target }}">

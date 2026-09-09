@@ -132,6 +132,12 @@ Route::middleware(['web', 'auth', 'admin', 'throttle:admin'])->prefix('admin')->
         ->middleware('permission:products.options')
         ->name('product-options.update');
 
+    // Re-snapshot every attached product's option values from the catalog
+    // group. Explicit because it overwrites per-product pricing.
+    Route::post('product-options/{productOption}/push', [ProductOptionController::class, 'pushToProducts'])
+        ->middleware('permission:products.options')
+        ->name('product-options.push');
+
     Route::delete('product-options/{productOption}', [ProductOptionController::class, 'destroy'])
         ->middleware('permission:products.options')
         ->name('product-options.destroy');

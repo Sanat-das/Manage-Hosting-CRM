@@ -19,6 +19,7 @@ class ProductOptionGroupProduct extends Model
         'product_id',
         'option_group_id',
         'customer_editable',
+        'required',
         'input_min',
         'input_max',
         'input_step',
@@ -28,6 +29,7 @@ class ProductOptionGroupProduct extends Model
 
     protected $casts = [
         'customer_editable' => 'boolean',
+        'required' => 'boolean',
         'input_min' => 'decimal:2',
         'input_max' => 'decimal:2',
         'input_step' => 'decimal:2',

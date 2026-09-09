@@ -5,17 +5,24 @@ declare(strict_types=1);
 namespace App\Services\Payments\Drivers;
 
 use App\Contracts\PaymentGatewayDriver;
+use App\Contracts\PaymentWebhookDriver;
 use App\Models\PaymentGateway;
 use Illuminate\Support\Facades\Http;
 use RuntimeException;
 
-class RazorpayDriver implements PaymentGatewayDriver
+class RazorpayDriver implements PaymentGatewayDriver, PaymentWebhookDriver
 {
     public const BASE_URL = 'https://api.razorpay.com/v1';
 
     public const STATUS_PAID = 'paid';
 
     public const STATUS_REDIRECT = 'redirect';
+
+    /** Razorpay's HMAC header over the raw request body. */
+    public const SIGNATURE_HEADER = 'x-razorpay-signature';
+
+    /** Events that mean an order of ours may now be paid. */
+    public const WEBHOOK_EVENTS = ['order.paid', 'payment.captured', 'payment.authorized'];
 
     public function __construct(private readonly ?PaymentGateway $gateway = null) {}
 
@@ -78,6 +85,55 @@ class RazorpayDriver implements PaymentGatewayDriver
             'amount' => isset($data['amount']) ? (float) $data['amount'] / 100 : null,
             'message' => $verified ? null : 'Payment not confirmed by Razorpay.',
         ];
+    }
+
+    /**
+     * Razorpay signs the raw body with the webhook secret (HMAC-SHA256, hex)
+     * and sends it in X-Razorpay-Signature.
+     *
+     * The secret is a separate credential from key_secret — it is set when the
+     * webhook is created in the Razorpay dashboard. Without it configured we
+     * refuse the delivery rather than trusting an unsigned POST.
+     */
+    public function parseWebhook(array $request): array
+    {
+        $gateway = $request['gateway'];
+        $secret = (string) $gateway->getCredential('webhook_secret', '');
+
+        if ($secret === '') {
+            return $this->webhook(false, null, null, 'Razorpay webhook_secret is not configured.');
+        }
+
+        $signature = (string) ($request['headers'][self::SIGNATURE_HEADER] ?? '');
+        $expected = hash_hmac('sha256', $request['raw'], $secret);
+
+        if ($signature === '' || ! hash_equals($expected, $signature)) {
+            return $this->webhook(false, null, null, 'Razorpay webhook signature mismatch.');
+        }
+
+        $payload = $request['payload'];
+        $event = isset($payload['event']) ? (string) $payload['event'] : null;
+
+        if ($event === null || ! in_array($event, self::WEBHOOK_EVENTS, true)) {
+            return $this->webhook(true, null, $event, 'Event not actionable.');
+        }
+
+        // We create Razorpay *orders*, so the order id is the reference our
+        // pending payment row stores. A payment.* event carries it on the
+        // payment entity instead.
+        $reference = $payload['payload']['order']['entity']['id']
+            ?? $payload['payload']['payment']['entity']['order_id']
+            ?? null;
+
+        return $this->webhook(true, $reference !== null ? (string) $reference : null, $event, null);
+    }
+
+    /**
+     * @return array{valid: bool, reference: ?string, event: ?string, message: ?string}
+     */
+    private function webhook(bool $valid, ?string $reference, ?string $event, ?string $message): array
+    {
+        return ['valid' => $valid, 'reference' => $reference, 'event' => $event, 'message' => $message];
     }
 
     private function assertConfigured(PaymentGateway $gateway): void

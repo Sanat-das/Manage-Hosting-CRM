@@ -89,7 +89,7 @@
                             @endphp
                             <tr>
                                 <td colspan="6" class="pt-0 border-0">
-                                    @include('client.partials._selected_options', [
+                                    @include('partials._selected_options', [
                                         'entries' => $selectedEntries,
                                         'modifiersByLink' => $optionModifiers,
                                         'cycle' => $item['cycle'],

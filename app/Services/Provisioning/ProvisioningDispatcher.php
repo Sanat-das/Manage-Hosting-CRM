@@ -141,6 +141,120 @@ class ProvisioningDispatcher
     }
 
     /**
+     * Suspend the order's remote service through its product's module.
+     *
+     * Order suspension used to be a status flip and nothing else: the order
+     * read 'suspended' in the admin UI while the cPanel/Plesk account carried
+     * on serving the site. The modules have implemented suspend()/unsuspend()/
+     * terminate() since they were written — nothing ever called them.
+     */
+    public function suspend(Order $order, ?string $reason = null): ProvisioningAttempt
+    {
+        return $this->lifecycle($order, 'suspend', 'suspended', $reason);
+    }
+
+    /**
+     * Re-enable a suspended service (the suspended -> active hop).
+     */
+    public function unsuspend(Order $order, ?string $reason = null): ProvisioningAttempt
+    {
+        return $this->lifecycle($order, 'unsuspend', 'active', $reason);
+    }
+
+    /**
+     * Destroy the order's remote service. Used for both `terminated` and a
+     * `cancelled` that ends an order which had already been provisioned.
+     */
+    public function terminate(Order $order, ?string $reason = null): ProvisioningAttempt
+    {
+        return $this->lifecycle($order, 'terminate', 'terminated', $reason);
+    }
+
+    /**
+     * Shared body of suspend/unsuspend/terminate.
+     *
+     * Deliberately does NOT create a ServiceInstance: unlike provisioning,
+     * these verbs act on something that must already exist. An order that was
+     * never provisioned remotely (no service instance) is a silent no-op with
+     * no event row — there is nothing to report. An order that HAS a service
+     * but no usable module is recorded, because that is a real gap an operator
+     * needs to see: local state says suspended, the panel was never told.
+     *
+     * @param  string  $verb  the module method and the event_type written
+     * @param  string  $serviceStatus  service_instances.status on success
+     */
+    private function lifecycle(Order $order, string $verb, string $serviceStatus, ?string $reason): ProvisioningAttempt
+    {
+        $service = ServiceInstance::where('order_id', $order->id)->first();
+
+        if ($service === null) {
+            return ProvisioningAttempt::noModule(null);
+        }
+
+        $product = $order->product;
+        $module = $this->moduleFor($product);
+
+        if ($module === null) {
+            return ProvisioningAttempt::noModule($this->recordEvent(
+                $order,
+                $service,
+                'pending',
+                [
+                    'reason' => 'no_provisioning_module',
+                    'provisioning_module' => $product?->provisioning_module,
+                    'note' => $reason,
+                ],
+                null,
+                $verb,
+            ));
+        }
+
+        $config = $this->configFor($module, $product);
+
+        try {
+            /** @var ProvisioningResult $result */
+            $result = $this->modules
+                ->capabilityInstance($module, self::CAPABILITY)
+                ->{$verb}($service, $config);
+        } catch (Throwable $e) {
+            Log::error('Provisioning module threw on '.$verb, [
+                'order_id' => $order->id,
+                'module' => $module->slug,
+                'error' => $e->getMessage(),
+            ]);
+
+            return ProvisioningAttempt::failed($e->getMessage(), $this->recordEvent(
+                $order,
+                $service,
+                'failed',
+                ['module' => $module->slug, 'note' => $reason],
+                ['error' => $e->getMessage()],
+                $verb,
+            ));
+        }
+
+        if (! $result->success) {
+            return ProvisioningAttempt::failed(
+                $result->message ?? ucfirst($verb).' failed',
+                $this->recordEvent($order, $service, 'failed', ['module' => $module->slug, 'note' => $reason], [
+                    'error' => $result->message,
+                ], $verb),
+            );
+        }
+
+        $service->update(['status' => $serviceStatus]);
+
+        return ProvisioningAttempt::provisioned($result->message, $this->recordEvent(
+            $order,
+            $service,
+            'completed',
+            ['module' => $module->slug, 'note' => $reason],
+            ['message' => $result->message] + $this->redact($result->data),
+            $verb,
+        ));
+    }
+
+    /**
      * The active module that will provision this product, or null.
      *
      * `provisioning_module = 'manual'` is an explicit operator opt-out and is
@@ -278,6 +392,7 @@ class ProvisioningDispatcher
     /**
      * @param  array<string, mixed>  $payload
      * @param  array<string, mixed>|null  $result
+     * @param  string  $eventType  'provision' | 'suspend' | 'unsuspend' | 'terminate'
      */
     private function recordEvent(
         Order $order,
@@ -285,11 +400,12 @@ class ProvisioningDispatcher
         string $status,
         array $payload,
         ?array $result,
+        string $eventType = 'provision',
     ): ?ProvisioningEvent {
         try {
             return ProvisioningEvent::create([
                 'service_instance_id' => $service?->id,
-                'event_type' => 'provision',
+                'event_type' => $eventType,
                 'event_status' => $status,
                 'status' => $status === 'completed' ? 'completed' : ($status === 'failed' ? 'failed' : 'pending'),
                 'triggered_by' => auth()->id(),

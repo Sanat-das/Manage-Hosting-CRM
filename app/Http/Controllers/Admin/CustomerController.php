@@ -17,9 +17,10 @@ use App\Models\SubscriptionPeriod;
 use App\Models\UsageRecord;
 use App\Models\User;
 use App\Services\Exports\CsvStreamService;
+use App\Support\GstStateCodes;
 use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
@@ -374,29 +375,21 @@ class CustomerController extends Controller
         return $validated['address'] ?? null;
     }
 
+    /**
+     * The customer's GST state code, derived from the address state.
+     *
+     * Returns a code from GstStateCodes (the numeric GST vocabulary) or null.
+     * It used to return two-letter codes, and — worse — fell back to the first
+     * two letters of whatever was typed, so "Bengaluru" became "BE". Neither
+     * could ever equal the company's numeric code in
+     * GstTaxService::isIntraState(), which meant every customer was billed as
+     * inter-state. Null for an address we cannot place (a foreign one, most
+     * legitimately) is deliberate: a wrong code is worse than no code, and the
+     * full name is still stored on `customers.state`.
+     */
     private function resolveStateCode(?string $state): ?string
     {
-        if ($state === null || trim($state) === '') {
-            return null;
-        }
-
-        $map = [
-            'andhra pradesh' => 'AP', 'arunachal pradesh' => 'AR', 'assam' => 'AS', 'bihar' => 'BR',
-            'chhattisgarh' => 'CG', 'goa' => 'GA', 'gujarat' => 'GJ', 'haryana' => 'HR',
-            'himachal pradesh' => 'HP', 'jharkhand' => 'JH', 'karnataka' => 'KA', 'kerala' => 'KL',
-            'madhya pradesh' => 'MP', 'maharashtra' => 'MH', 'manipur' => 'MN', 'meghalaya' => 'ML',
-            'mizoram' => 'MZ', 'nagaland' => 'NL', 'odisha' => 'OR', 'punjab' => 'PB',
-            'rajasthan' => 'RJ', 'sikkim' => 'SK', 'tamil nadu' => 'TN', 'telangana' => 'TG',
-            'tripura' => 'TR', 'uttar pradesh' => 'UP', 'uttarakhand' => 'UK', 'west bengal' => 'WB',
-            'delhi' => 'DL', 'jammu and kashmir' => 'JK', 'ladakh' => 'LA',
-        ];
-
-        $key = strtolower(trim($state));
-        if (isset($map[$key])) {
-            return $map[$key];
-        }
-
-        return strtoupper(substr(trim($state), 0, 2));
+        return GstStateCodes::normalize($state);
     }
 
     private function normalizePhone(Request $request): void

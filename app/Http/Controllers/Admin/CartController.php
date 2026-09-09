@@ -2,14 +2,15 @@
 
 namespace App\Http\Controllers\Admin;
 
-use App\Http\Controllers\Controller;
 use App\Http\Controllers\Concerns\SanitizesSessionCart;
+use App\Http\Controllers\Controller;
 use App\Models\Customer;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Product;
 use App\Models\ProductGroup;
 use App\Services\Billing\BillingService;
+use App\Services\OptionPricingResolver;
 use App\Services\OrderActivityLogger;
 use App\Services\OrderConfigSnapshot;
 use App\Services\OrderNumberService;
@@ -40,6 +41,7 @@ class CartController extends Controller
         private readonly ProductBundlePricingService $bundlePricing,
         private readonly BillingService $billing,
         private readonly OrderConfigSnapshot $snapshot,
+        private readonly OptionPricingResolver $optionPricing,
     ) {}
 
     public function index(Request $request): View
@@ -203,7 +205,7 @@ class CartController extends Controller
                         'quantity' => $item['quantity'],
                         'unit_price' => $item['unit_price'],
                         'total' => $item['total'],
-                        'config_options' => $this->snapshot->capture($item['product'], null, []),
+                        'config_options' => $this->snapshot->capture($item['product'], null, [], $item['cycle']),
                     ]);
 
                     // Same draft-invoice convention as the admin order form and
@@ -290,11 +292,20 @@ class CartController extends Controller
             $pricing = $product->pricing()->where('billing_cycle', $cycle)->first();
             $unitPrice = (float) ($pricing?->price ?? $product->price ?? 0);
 
+            // The admin cart offers no option UI, but a product's FIXED
+            // options are features it ships with — charged here exactly as the
+            // storefront, the admin order form and the API charge them, so the
+            // same product cannot cost less depending on who ordered it. Free
+            // products never charge.
+            if (($product->payment_type ?? 'recurring') !== 'free') {
+                $unitPrice += $this->optionPricing->adjustment($product, [], $cycle);
+            }
+
             $items[] = [
                 'product' => $product,
                 'cycle' => $cycle,
                 'quantity' => $quantity,
-                'unit_price' => $unitPrice,
+                'unit_price' => round($unitPrice, 2),
                 'total' => round($unitPrice * $quantity, 2),
                 'domain' => $entry['domain'] ?? null,
             ];

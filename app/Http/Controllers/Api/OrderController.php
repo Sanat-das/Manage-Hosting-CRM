@@ -93,9 +93,8 @@ class OrderController extends Controller
                 // then the total — same convention as the storefront.
                 $unitPrice = round(OrderConfigSnapshot::formatPrice(
                     (float) $line['unit_price'],
-                    OrderConfigSnapshot::adjustmentsFor($product, $line['options'] ?? []),
-                    $line['billing_cycle'],
-                    $product->pricing->pluck('billing_cycle')->all()
+                    OrderConfigSnapshot::adjustmentsFor($product, $line['options'] ?? [], $line['billing_cycle']),
+                    $line['billing_cycle']
                 ), 2);
 
                 $lineTotal = round($unitPrice * (int) $line['quantity'], 2);
@@ -129,7 +128,7 @@ class OrderController extends Controller
                     'quantity' => (int) $line['quantity'],
                     'unit_price' => $unitPrice,
                     'total' => $lineTotal,
-                    'config_options' => $this->snapshot->capture($product, null, $line['options'] ?? []),
+                    'config_options' => $this->snapshot->capture($product, null, $line['options'] ?? [], $line['billing_cycle']),
                 ]);
             }
 

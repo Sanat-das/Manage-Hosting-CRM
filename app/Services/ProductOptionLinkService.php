@@ -40,20 +40,29 @@ class ProductOptionLinkService
 
     /**
      * Copy the group's catalog values and their per-cycle pricing into the
-     * product-scoped snapshot tables. The first value becomes the default.
+     * product-scoped snapshot tables.
+     *
+     * The default carries over from the catalog (`is_default`), because that
+     * is the value a FIXED option resolves to and charges for. Groups that
+     * predate the catalog flag — or lose it to an edit that flags nothing —
+     * fall back to the first value in display order, which is what this method
+     * assumed unconditionally before.
      */
     public function copyGroupValues(ProductOptionGroupProduct $link): void
     {
         $values = $link->group->values()
             ->with('pricing')
             ->orderBy('sort_order')
+            ->orderBy('id')
             ->get();
 
-        foreach ($values as $index => $value) {
+        $defaultId = ($values->firstWhere('is_default', true) ?? $values->first())?->id;
+
+        foreach ($values as $value) {
             $linkValue = ProductOptionLinkValue::create([
                 'product_option_group_product_id' => $link->id,
                 'label' => $value->label,
-                'is_default' => $index === 0,
+                'is_default' => $value->id === $defaultId,
                 'sort_order' => $value->sort_order,
             ]);
 
@@ -138,8 +147,11 @@ class ProductOptionLinkService
             return;
         }
 
-        $groupValues = $link->group->values()->orderBy('sort_order')->get();
-        $linkValues = $link->linkValues()->orderBy('sort_order')->get();
+        // Same ordering copyGroupValues wrote them in — sort_order alone is
+        // not a total order, and a tie that broke differently on the two sides
+        // would attach a price to the wrong value.
+        $groupValues = $link->group->values()->orderBy('sort_order')->orderBy('id')->get();
+        $linkValues = $link->linkValues()->orderBy('sort_order')->orderBy('id')->get();
 
         foreach ($groupValues as $index => $groupValue) {
             $cycles = $pricingByGroupValueId[$groupValue->id] ?? null;

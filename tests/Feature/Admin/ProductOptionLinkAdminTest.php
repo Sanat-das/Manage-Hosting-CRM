@@ -139,6 +139,8 @@ class ProductOptionLinkAdminTest extends TestCase
                 'provisioning_module' => 'manual',
                 'status' => 'active',
                 'gst_type' => 'standard',
+                // The default cycle must carry a price (ProductRequest).
+                'pricing' => ['monthly' => ['price' => 100, 'setup_fee' => 0]],
                 'option_links' => [$link->id => $payload],
             ]);
     }
@@ -564,6 +566,7 @@ class ProductOptionLinkAdminTest extends TestCase
             'provisioning_module' => 'manual',
             'status' => 'active',
             'gst_type' => 'standard',
+            'pricing' => ['monthly' => ['price' => 499, 'setup_fee' => 0]],
             'option_groups' => [
                 $group->id => ['selected' => '0'],
             ],
@@ -582,6 +585,7 @@ class ProductOptionLinkAdminTest extends TestCase
             'provisioning_module' => 'manual',
             'status' => 'active',
             'gst_type' => 'standard',
+            'pricing' => ['monthly' => ['price' => 499, 'setup_fee' => 0]],
             'option_groups' => [
                 $group->id => [
                     'selected' => '1',
@@ -604,6 +608,7 @@ class ProductOptionLinkAdminTest extends TestCase
             'provisioning_module' => 'manual',
             'status' => 'active',
             'gst_type' => 'standard',
+            'pricing' => ['monthly' => ['price' => 499, 'setup_fee' => 0]],
             'option_groups' => [
                 $continuous->id => [
                     'selected' => '1',
@@ -833,6 +838,7 @@ class ProductOptionLinkAdminTest extends TestCase
                 'provisioning_module' => 'manual',
                 'status' => 'active',
                 'gst_type' => 'standard',
+                'pricing' => ['monthly' => ['price' => 100, 'setup_fee' => 0]],
             ])->assertRedirect(route('admin.products.edit', $product));
 
         $product->refresh();

@@ -158,31 +158,27 @@
                 <x-adminlte-textarea name="description" label="Description" rows="2"
                                      placeholder="Optional product description">{{ old('description') }}</x-adminlte-textarea>
 
+                {{-- Each flag posts a hidden 0 ahead of the checkbox, so an
+                     unchecked box submits "0" instead of nothing — otherwise
+                     old() falls back to the default and silently re-checks the
+                     box after a validation error. Only show_in_order is on by
+                     default; only_admin in particular must not be. --}}
                 <div class="row">
                     @foreach ([
-                        'require_domain' => 'Requires a domain',
-                        'show_in_order' => 'Visible in order form',
-                        'show_in_affiliate' => 'Visible to affiliates',
-                        'only_admin' => 'Admin-only ordering',
-                    ] as $field => $label)
+                        'require_domain' => ['Requires a domain', false],
+                        'show_in_order' => ['Visible in order form', true],
+                        'show_in_affiliate' => ['Visible to affiliates', false],
+                        'only_admin' => ['Admin-only ordering', false],
+                        'require_public_ip' => ['Requires a public IP', false],
+                        'require_private_ip' => ['Requires a private IP', false],
+                        'is_bundle' => ['This is a bundle', false],
+                    ] as $field => [$label, $default])
                         <div class="col-md-3">
                             <div class="form-check">
+                                <input type="hidden" name="{{ $field }}" value="0">
                                 <input class="form-check-input" type="checkbox" name="{{ $field }}" value="1"
-                                       id="{{ $field }}" @checked(old($field, true))>
-                                <label class="form-check-label" for="{{ $field }}">{{ $label }}</label>
-                            </div>
-                        </div>
-                    @endforeach
-
-                    @foreach ([
-                        'require_public_ip' => 'Requires a public IP',
-                        'require_private_ip' => 'Requires a private IP',
-                        'is_bundle' => 'This is a bundle',
-                    ] as $field => $label)
-                        <div class="col-md-3">
-                            <div class="form-check">
-                                <input class="form-check-input" type="checkbox" name="{{ $field }}" value="1"
-                                       id="{{ $field }}" @checked(old($field, false))>
+                                       id="{{ $field }}"
+                                       @checked(filter_var(old($field, $default), FILTER_VALIDATE_BOOLEAN))>
                                 <label class="form-check-label" for="{{ $field }}">{{ $label }}</label>
                             </div>
                         </div>

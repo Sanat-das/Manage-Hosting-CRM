@@ -297,6 +297,14 @@
                                 <span class="invalid-feedback d-block" role="alert">{{ $message }}</span>
                             @enderror
                             <small class="form-text text-muted">Choose a new logo to replace the current. Leave empty to keep existing.</small>
+                            @php $hasLogoFile = !empty($settings['branding_logo_path']); @endphp
+                            <div class="form-check mt-2 @if(!$hasLogoFile) d-none @endif" id="branding_logo_remove_wrap">
+                                <input class="form-check-input" type="checkbox" name="remove_branding_logo" id="remove_branding_logo" value="1">
+                                <label class="form-check-label small text-danger" for="remove_branding_logo">
+                                    <i class="bi bi-trash me-1"></i>Remove current logo — revert to default
+                                </label>
+                            </div>
+                            <small class="text-muted d-block mt-1" style="font-size:0.72rem;">If checked, the stored file is deleted from <code>storage/app/public/branding</code> on Save. Uploading a new file takes priority over this checkbox.</small>
                         </div>
                         <div class="col-md-6">
                             <label class="form-label">Favicon</label>
@@ -320,6 +328,14 @@
                                 <span class="invalid-feedback d-block" role="alert">{{ $message }}</span>
                             @enderror
                             <small class="form-text text-muted">Browser tab icon. Leave empty to keep existing.</small>
+                            @php $hasFaviconFile = !empty($settings['branding_favicon_path']); @endphp
+                            <div class="form-check mt-2 @if(!$hasFaviconFile) d-none @endif" id="branding_favicon_remove_wrap">
+                                <input class="form-check-input" type="checkbox" name="remove_branding_favicon" id="remove_branding_favicon" value="1">
+                                <label class="form-check-label small text-danger" for="remove_branding_favicon">
+                                    <i class="bi bi-trash me-1"></i>Remove current favicon — revert to default
+                                </label>
+                            </div>
+                            <small class="text-muted d-block mt-1" style="font-size:0.72rem;">Deletes the stored favicon on Save. New upload wins over remove.</small>
                         </div>
                     </div>
                     <div class="row">
@@ -358,11 +374,82 @@
                             }
                             var logoFile = document.getElementById('branding_logo');
                             var logoPreview = document.getElementById('branding-preview-logo');
+                            var faviconFile = document.getElementById('branding_favicon');
+                            var removeLogo = document.getElementById('remove_branding_logo');
+                            var removeFavicon = document.getElementById('remove_branding_favicon');
+                            var defaultLogo = "{{ asset('img/hostvexa-logo.svg') }}";
+                            var defaultFavicon = "{{ asset('img/hostvexa-favicon.svg') }}";
+                            var originalLogoSrc = logoPreview ? logoPreview.src : defaultLogo;
                             if(logoFile && logoPreview){
                                 logoFile.addEventListener('change', function(){
                                     if(logoFile.files && logoFile.files[0]){
                                         var url = URL.createObjectURL(logoFile.files[0]);
                                         logoPreview.src = url;
+                                        if(removeLogo && removeLogo.checked){
+                                            removeLogo.checked = false;
+                                            logoFile.disabled = false;
+                                            logoFile.classList.remove('opacity-50');
+                                        }
+                                    }
+                                });
+                            }
+                            // Favicon: do not have header preview, but keep file UX consistent
+                            if(faviconFile && removeFavicon){
+                                faviconFile.addEventListener('change', function(){
+                                    if(faviconFile.files && faviconFile.files[0] && removeFavicon.checked){
+                                        removeFavicon.checked = false;
+                                        faviconFile.disabled = false;
+                                        faviconFile.classList.remove('opacity-50');
+                                    }
+                                });
+                            }
+                            function confirmRemove(which){
+                                return confirm('Remove current ' + which + '? This deletes the stored file and reverts to the default on Save. This cannot be undone.');
+                            }
+                            if(removeLogo && logoFile){
+                                removeLogo.addEventListener('change', function(){
+                                    if(removeLogo.checked){
+                                        if(!confirmRemove('logo')){
+                                            removeLogo.checked = false;
+                                            return;
+                                        }
+                                        logoFile.value = '';
+                                        logoFile.disabled = true;
+                                        logoFile.classList.add('opacity-50');
+                                        if(logoPreview) logoPreview.src = defaultLogo;
+                                    } else {
+                                        logoFile.disabled = false;
+                                        logoFile.classList.remove('opacity-50');
+                                        if(logoPreview) logoPreview.src = originalLogoSrc;
+                                    }
+                                });
+                            }
+                            if(removeFavicon && faviconFile){
+                                removeFavicon.addEventListener('change', function(){
+                                    if(removeFavicon.checked){
+                                        if(!confirmRemove('favicon')){
+                                            removeFavicon.checked = false;
+                                            return;
+                                        }
+                                        faviconFile.value = '';
+                                        faviconFile.disabled = true;
+                                        faviconFile.classList.add('opacity-50');
+                                    } else {
+                                        faviconFile.disabled = false;
+                                        faviconFile.classList.remove('opacity-50');
+                                    }
+                                });
+                            }
+                            // Final submit guard: if remove checked + file selected, file wins per backend — warn
+                            var settingsForm = document.getElementById('settings-form');
+                            if(settingsForm){
+                                settingsForm.addEventListener('submit', function(e){
+                                    if(removeLogo && removeLogo.checked && logoFile && logoFile.files && logoFile.files.length > 0){
+                                        // Backend will prefer upload, just uncheck remove to avoid confusion
+                                        removeLogo.checked = false;
+                                    }
+                                    if(removeFavicon && removeFavicon.checked && faviconFile && faviconFile.files && faviconFile.files.length > 0){
+                                        removeFavicon.checked = false;
                                     }
                                 });
                             }
@@ -677,13 +764,16 @@
                                 <small class="form-text text-muted">0 or more days</small>
                             </x-adminlte-input>
                         </div>
-                        <div class="col-md-4">
-                            <x-adminlte-select name="settings[gst_enabled]" label="GST Enabled">
-                                <option value="yes" @selected(($settings['gst_enabled'] ?? 'yes') === 'yes')>Yes</option>
-                                <option value="no" @selected(($settings['gst_enabled'] ?? 'yes') === 'no')>No</option>
-                            </x-adminlte-select>
-                            <small class="form-text text-muted">Yes / No</small>
-                        </div>
+                        {{--
+                            "GST Enabled" used to be a select here, writing
+                            settings.gst_enabled. Nothing ever read it: the tax
+                            engine (GstTaxService::loadSettings) reads the
+                            gst_settings table and nothing else, so this control
+                            reported a state it did not control — it could read
+                            "Yes" while every invoice was being written with zero
+                            tax. The real controls are now in the GST & Tax card
+                            below, which writes gst_settings directly.
+                        --}}
                     </div>
                     {{-- Typed billing + support keys (previously unrendered) — density 8 fields, show Advanced if >120 total --}}
                     <details class="mt-3">
@@ -715,6 +805,108 @@
                         </div>
                     </details>
                 </x-adminlte-card>
+
+                {{--
+                    GST & Tax — moved here from the standalone /admin/gst-settings
+                    page so every billing switch is in one place.
+
+                    These fields do NOT belong to the settings[] payload: they are
+                    columns on the `gst_settings` table, which is the only source
+                    GstTaxService reads. They therefore post to their own route via
+                    the HTML5 form= attribute (the <form id="gst-settings-form">
+                    sits after the main settings form, since forms cannot nest),
+                    keeping GstSettingController the single writer. Saving them is
+                    a separate submit from "Save All Settings".
+                --}}
+                <x-adminlte-card icon="bi bi-percent" title="GST & Tax">
+                    @if ($gst === null || ! $gst->enabled)
+                        <div class="alert alert-warning py-2 small">
+                            <i class="bi bi-exclamation-triangle me-1"></i>
+                            <strong>GST is off.</strong> Every invoice is being written with zero tax, whatever a
+                            product's own GST settings say. Set a GSTIN and legal name, then switch GST to
+                            <em>Enabled</em> below.
+                        </div>
+                    @endif
+
+                    <div class="row">
+                        <div class="col-md-4">
+                            <x-adminlte-input name="gstin" label="GSTIN" form="gst-settings-form"
+                                value="{{ old('gstin', $gst?->gstin) }}" placeholder="22AAAAA0000A1Z5" required>
+                                <small class="form-text text-muted">Printed on every tax invoice.</small>
+                            </x-adminlte-input>
+                        </div>
+                        <div class="col-md-4">
+                            <x-adminlte-input name="legal_name" label="Legal Name" form="gst-settings-form"
+                                value="{{ old('legal_name', $gst?->legal_name) }}" required />
+                        </div>
+                        <div class="col-md-4">
+                            <x-adminlte-select name="enabled" label="GST" form="gst-settings-form">
+                                <option value="1" @selected(old('enabled', $gst?->enabled))>Enabled</option>
+                                <option value="0" @selected(! old('enabled', $gst?->enabled))>Disabled</option>
+                            </x-adminlte-select>
+                            <small class="form-text text-muted">Off means zero tax on every invoice.</small>
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        {{--
+                            One select over the 38 GST state codes, replacing the
+                            free-text code + name pair. The name is derived from
+                            the code on save, so the two can no longer disagree,
+                            and a customer's state code now comes from the same
+                            list — which is what makes the intra-state test able
+                            to match at all.
+                        --}}
+                        <div class="col-md-6">
+                            <x-adminlte-select name="state_code" label="Place of Supply (your state)" form="gst-settings-form">
+                                @foreach (\App\Support\GstStateCodes::options() as $code => $label)
+                                    <option value="{{ $code }}" @selected((string) old('state_code', $gst?->state_code) === (string) $code)>{{ $label }}</option>
+                                @endforeach
+                            </x-adminlte-select>
+                            <small class="form-text text-muted">A customer in this state is billed CGST + SGST; anyone else, IGST.</small>
+                        </div>
+                        <div class="col-md-3">
+                            <x-adminlte-input name="hsn_code" label="HSN Code" form="gst-settings-form"
+                                value="{{ old('hsn_code', $gst?->hsn_code) }}" />
+                        </div>
+                        <div class="col-md-3">
+                            <x-adminlte-input name="sac_code" label="SAC Code" form="gst-settings-form"
+                                value="{{ old('sac_code', $gst?->sac_code) }}" />
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-3">
+                            <x-adminlte-input name="cgst_rate" type="number" step="0.01" min="0" max="100"
+                                label="CGST Rate (%)" form="gst-settings-form"
+                                value="{{ old('cgst_rate', $gst?->cgst_rate) }}" required />
+                        </div>
+                        <div class="col-md-3">
+                            <x-adminlte-input name="sgst_rate" type="number" step="0.01" min="0" max="100"
+                                label="SGST Rate (%)" form="gst-settings-form"
+                                value="{{ old('sgst_rate', $gst?->sgst_rate) }}" required />
+                        </div>
+                        <div class="col-md-3">
+                            <x-adminlte-input name="igst_rate" type="number" step="0.01" min="0" max="100"
+                                label="IGST Rate (%)" form="gst-settings-form"
+                                value="{{ old('igst_rate', $gst?->igst_rate) }}" required>
+                                <small class="form-text text-muted">Used for out-of-state customers. Leaving it at 0 makes those sales tax-free.</small>
+                            </x-adminlte-input>
+                        </div>
+                        <div class="col-md-3">
+                            <x-adminlte-select name="tax_mode" label="Tax Mode" form="gst-settings-form">
+                                <option value="global" @selected(old('tax_mode', $gst?->tax_mode) === 'global')>Global — these rates, every product</option>
+                                <option value="per_product" @selected(old('tax_mode', $gst?->tax_mode) === 'per_product')>Per Product — only products with GST enabled</option>
+                                <option value="mixed" @selected(old('tax_mode', $gst?->tax_mode) === 'mixed')>Mixed — product rates when set, else these</option>
+                            </x-adminlte-select>
+                        </div>
+                    </div>
+
+                    <button type="submit" form="gst-settings-form" class="btn btn-primary">
+                        <i class="bi bi-check-lg me-1"></i> Save GST Settings
+                    </button>
+                </x-adminlte-card>
+
                 @php $lu = $lastUpdated['billing'] ?? $lastUpdated['all'] ?? null; @endphp
                 <small class="text-muted d-block mb-2 last-updated" data-section="billing">@if($lu)Last updated: {{ \Illuminate\Support\Carbon::parse($lu->created_at)->format('Y-m-d H:i:s') }} — <span title="{{ $lu->description }}">{{ \Illuminate\Support\Str::limit($lu->description, 120) }}</span>@else Last updated: never @endif</small>
             </div>
@@ -1666,13 +1858,21 @@
                                 </x-adminlte-select>
                                 <small class="form-text text-muted">Yes / No</small>
                             </div>
+                            {{--
+                                "GST Applicable" used to be a select here,
+                                writing product.product_gst_applicable. Nothing
+                                read it either — whether a product is taxed is
+                                decided by the product's own "Apply per-product
+                                GST rates" checkbox (products.gst_enabled), read
+                                by GstTaxService in per_product / mixed tax mode.
+                            --}}
                             <div class="col-md-3">
-                                <x-adminlte-select name="settings[product_gst_applicable]" label="GST Applicable">
-                                    <option value="yes" @selected(($settings['product_gst_applicable'] ?? 'yes') === 'yes')>Yes</option>
-                                    <option value="no" @selected(($settings['product_gst_applicable'] ?? 'yes') === 'no')>No</option>
-                                </x-adminlte-select>
-                                <small class="form-text text-muted">Yes / No</small>
-                            </div>
+                                    <label class="form-label">GST Applicable</label>
+                                    <div class="form-control-plaintext py-0">
+                                        <a href="{{ route('admin.gst-settings.edit') }}">GST Settings</a>
+                                    </div>
+                                    <small class="form-text text-muted">Set per product on the product's Pricing tab.</small>
+                                </div>
                             <div class="col-md-3">
                                 <x-adminlte-select name="settings[product_version_management]" label="Version Management">
                                     <option value="yes" @selected(($settings['product_version_management'] ?? 'no') === 'yes')>Yes</option>
@@ -2117,6 +2317,15 @@
          upgrades it to an inline fetch so unsaved edits survive the test. --}}
     <form method="POST" action="{{ route('admin.settings.test-email') }}" id="test-email-form" class="d-none">
         @csrf
+    </form>
+
+    {{-- Target for the Billing tab's GST & Tax card (form= attribute), same
+         nested-form reason as the test-email form above. GST is not part of the
+         settings[] payload: it writes the gst_settings table through
+         GstSettingController, which stays the single writer. --}}
+    <form method="POST" action="{{ route('admin.gst-settings.update') }}" id="gst-settings-form" class="d-none">
+        @csrf
+        @method('PUT')
     </form>
 
     @push('css')
@@ -2635,22 +2844,32 @@
                     if (!inp) return '';
                     if (inp.type === 'checkbox') return inp.checked ? inp.value : '';
                     if (inp.type === 'radio') return inp.checked ? inp.value : '';
+                    if (inp.type === 'file') return (inp.files && inp.files.length) ? inp.files[0].name + '|' + inp.files[0].size : '';
                     var v = inp.value;
                     if (v === ENCRYPTED_MASK) return '';
                     return v == null ? '' : String(v);
                 };
+                var getInitialFileValue = function(name){
+                    var v = initialValues.get(name);
+                    if (v instanceof File) return v.size ? v.name + '|' + v.size : '';
+                    if (v === null || v === undefined) return '';
+                    return String(v);
+                };
                 var isPaneDirty = function(pane){
                     if (!pane || !initialValues) return false;
-                    var inputs = pane.querySelectorAll('[name^="settings["]');
+                    var inputs = pane.querySelectorAll('[name^="settings["], input[type="file"][name], input[name^="remove_branding_logo"], input[name^="remove_branding_favicon"], input[name="remove_branding_logo"], input[name="remove_branding_favicon"]');
                     for (var i=0;i<inputs.length;i++){
                         var inp = inputs[i];
                         if (inp.disabled) continue;
                         var name = inp.getAttribute('name');
                         if (!name) continue;
                         var cur = getDirtyFieldValue(inp);
-                        var init = initialValues.get(name);
-                        if (init === null || init === undefined) init = '';
-                        else init = String(init);
+                        var init = inp.type === 'file' ? getInitialFileValue(name) : (function(){
+                            var v = initialValues.get(name);
+                            if (v === null || v === undefined) return '';
+                            if (v instanceof File) return v.size ? v.name + '|' + v.size : '';
+                            return String(v);
+                        })();
                         if (cur !== init) return true;
                     }
                     return false;
@@ -2698,11 +2917,17 @@
                             var savedPane = document.getElementById('pane-' + savedTab);
                             if (savedPane) {
                                 var curFd = new FormData(dirtyForm);
-                                savedPane.querySelectorAll('[name^="settings["]').forEach(function(inp){
+                                savedPane.querySelectorAll('[name^="settings["], input[type="file"][name], input[name^="remove_branding_logo"], input[name^="remove_branding_favicon"], input[name="remove_branding_logo"], input[name="remove_branding_favicon"]').forEach(function(inp){
                                     var name = inp.getAttribute('name');
                                     if (!name) return;
                                     var cur = curFd.get(name);
-                                    if (cur === null) cur = getDirtyFieldValue(inp);
+                                    if (inp.type === 'file') {
+                                        cur = getDirtyFieldValue(inp);
+                                    } else if (cur === null) {
+                                        cur = getDirtyFieldValue(inp);
+                                    } else if (cur instanceof File) {
+                                        cur = cur.size ? cur.name + '|' + cur.size : '';
+                                    }
                                     if (cur === ENCRYPTED_MASK) cur = '';
                                     initialValues.set(name, cur == null ? '' : String(cur));
                                 });
@@ -2717,7 +2942,7 @@
                 updateDirtyUI();
                 // On input change mark tab badge • Dirty and enable Save; revert clears dirty
                 if (dirtyForm) {
-                    var dirtyInputs = dirtyForm.querySelectorAll('[name^="settings["]');
+                    var dirtyInputs = dirtyForm.querySelectorAll('[name^="settings["], input[type="file"][name], input[name^="remove_branding_logo"], input[name^="remove_branding_favicon"], input[name="remove_branding_logo"], input[name="remove_branding_favicon"]');
                     dirtyInputs.forEach(function(inp){
                         inp.addEventListener('input', function(){ updateDirtyUI(); });
                         inp.addEventListener('change', function(){ updateDirtyUI(); });

@@ -75,3 +75,12 @@ Thumbs.db
 # guacamole sidecar deps (ephemeral, reinstall via npm ci)
 modules/windows-server/guacamole-sidecar/node_modules/
 
+# Local probe / scratch artifacts (ephemeral, do not commit)
+reset-admin.php
+reset-admin2.php
+test_auth.php
+/storage/dusk-serve.*
+/storage/probe-*
+tests/Dusk/ScratchCartProbeTest.php
+tests/Feature/Client/ScratchDecimalCartTest.php
+

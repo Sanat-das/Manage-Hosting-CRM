@@ -192,17 +192,40 @@ class InvoiceController extends Controller
             'due_date' => ['nullable', 'date'],
             'notes' => ['nullable', 'string', 'max:1000'],
             'items' => ['required', 'array', 'min:1'],
+            // Existing lines identify themselves so the save can restore what
+            // the form cannot post back: the product link (which also drives
+            // per-product GST) and the options the line bills for. Absent on a
+            // line the admin just added. Scoped to THIS invoice — the id comes
+            // from the browser, and one belonging to another invoice must not
+            // be able to pull that invoice's product and configuration here.
+            'items.*.id' => [
+                'nullable',
+                'integer',
+                // One stored line cannot be two submitted lines. Without this,
+                // a duplicated row would hand its product — and therefore its
+                // per-product GST treatment — to a line that is not it.
+                'distinct',
+                Rule::exists('invoice_items', 'id')->where('invoice_id', $invoice->id),
+            ],
             'items.*.description' => ['required', 'string', 'max:255'],
             'items.*.quantity' => ['required', 'integer', 'min:1'],
             'items.*.unit_price' => ['required', 'numeric', 'min:0'],
         ]);
 
-        $items = collect($validated['items'])->map(fn ($item) => [
-            'description' => $item['description'],
-            'quantity' => (int) $item['quantity'],
-            'unit_price' => (float) $item['unit_price'],
-            'total' => (float) $item['quantity'] * (float) $item['unit_price'],
-        ])->toArray();
+        $items = collect($validated['items'])->map(function (array $item) {
+            $line = [
+                'description' => $item['description'],
+                'quantity' => (int) $item['quantity'],
+                'unit_price' => (float) $item['unit_price'],
+                'total' => (float) $item['quantity'] * (float) $item['unit_price'],
+            ];
+
+            if (isset($item['id']) && $item['id'] !== '') {
+                $line['id'] = (int) $item['id'];
+            }
+
+            return $line;
+        })->toArray();
 
         $amount = round(array_sum(array_column($items, 'total')), 2);
 

@@ -6,15 +6,20 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Str;
 
 /**
  * Configurable option group shared by products through the
  * `product_option_group_product` pivot (EAV: groups → values → pricing).
  *
+ * A group is one product feature — RAM, CPU, Storage, Backup, Support. `name`
+ * is what a customer reads, `key` is what code acts on (the provisioning
+ * handle) and `unit` is how a bare number is rendered ("200 GB").
+ *
  * Table `product_option_groups` only has `created_at` (DB default), no
  * `updated_at`, so timestamps are disabled entirely.
  */
-#[Fillable(['name', 'sort_order', 'type', 'input_min', 'input_max', 'input_step', 'input_placeholder'])]
+#[Fillable(['name', 'key', 'unit', 'sort_order', 'type', 'input_min', 'input_max', 'input_step', 'input_placeholder'])]
 class ProductOptionGroup extends Model
 {
     /**
@@ -43,6 +48,35 @@ class ProductOptionGroup extends Model
         'input_step' => 'decimal:2',
     ];
 
+    /**
+     * Groups self-key from their name when none is given, so a group created
+     * through the admin form (which has no key field) is still addressable by
+     * a provisioning module. The column is unique, hence the numeric suffix on
+     * a collision — two groups both named "Storage" become storage and
+     * storage-2.
+     */
+    protected static function booted(): void
+    {
+        static::creating(function (self $group) {
+            if (empty($group->getAttributes()['key'] ?? null)) {
+                $group->key = self::generateKey((string) $group->name);
+            }
+        });
+    }
+
+    public static function generateKey(string $name): string
+    {
+        $base = Str::slug($name) ?: 'option';
+        $candidate = $base;
+        $suffix = 1;
+
+        while (self::where('key', $candidate)->exists()) {
+            $candidate = $base.'-'.++$suffix;
+        }
+
+        return $candidate;
+    }
+
     public function products(): BelongsToMany
     {
         return $this->belongsToMany(
@@ -51,6 +85,18 @@ class ProductOptionGroup extends Model
             'option_group_id',
             'product_id'
         )->withTimestamps();
+    }
+
+    /**
+     * The pivot rows attaching this group to products — the link layer that
+     * actually carries the per-product values and prices. Use this rather than
+     * `products()` whenever the link (not just the product) matters: attaching
+     * and detaching must go through ProductOptionLinkService, because a bare
+     * pivot row has no values and a deleted one cascades its pricing away.
+     */
+    public function productLinks(): HasMany
+    {
+        return $this->hasMany(ProductOptionGroupProduct::class, 'option_group_id');
     }
 
     public function values(): HasMany

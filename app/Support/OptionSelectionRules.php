@@ -36,6 +36,9 @@ class OptionSelectionRules
         foreach ($links as $link) {
             $key = $prefix.'.'.$link->id;
             $type = $link->group?->type ?? 'dropdown';
+            // An optional option may be left unanswered; links are required by
+            // default, so existing products behave exactly as before.
+            $presence = ($link->required ?? true) ? 'required' : 'nullable';
 
             switch ($type) {
                 case 'checkbox':
@@ -43,13 +46,13 @@ class OptionSelectionRules
                     // "pick up to 3"), else every value (guards against
                     // duplicated-label payloads).
                     $maxCheckboxes = (int) ($link->input_max ?? $link->group?->input_max ?? $link->linkValues->count());
-                    $rules[$key] = ['required', 'array', 'max:'.max(1, $maxCheckboxes)];
-                    $rules[$key.'.*'] = ['string'];
+                    $rules[$key] = [$presence, 'array', 'max:'.max(1, $maxCheckboxes)];
+                    $rules[$key.'.*'] = [Rule::in(self::acceptedValues($link))];
                     break;
 
                 case 'quantity':
                     // Quantity is a count — whole units only.
-                    $rules[$key] = ['required', 'integer', 'min:'.self::inputMin($link)];
+                    $rules[$key] = [$presence, 'integer', 'min:'.self::inputMin($link)];
                     if (self::inputMax($link) !== null) {
                         $rules[$key][] = 'max:'.self::inputMax($link);
                     }
@@ -59,28 +62,49 @@ class OptionSelectionRules
                     // Decimal values allowed (step-driven, e.g. 1.5 TB) — the
                     // value must also be on the option's step grid, matching
                     // the native step attribute on the storefront control.
-                    $rules[$key] = ['required', 'numeric', 'min:'.self::inputMin($link), 'max:'.(self::inputMax($link) ?? PHP_FLOAT_MAX), self::stepRule($link)];
+                    $rules[$key] = [$presence, 'numeric', 'min:'.self::inputMin($link), 'max:'.(self::inputMax($link) ?? PHP_FLOAT_MAX), self::stepRule($link)];
                     break;
 
                 case 'text':
-                    $rules[$key] = ['required', 'string', 'max:255'];
+                    $rules[$key] = [$presence, 'string', 'max:255'];
                     break;
 
                 case 'slider':
                     // Decimal steps allowed (e.g. 0.5-core increments) — value
                     // must land on the slider's step grid.
-                    $rules[$key] = ['required', 'numeric', 'min:'.self::inputMin($link), 'max:'.(self::inputMax($link) ?? 100), self::stepRule($link)];
+                    $rules[$key] = [$presence, 'numeric', 'min:'.self::inputMin($link), 'max:'.(self::inputMax($link) ?? 100), self::stepRule($link)];
                     break;
 
                 case 'dropdown':
                 case 'radio':
                 default:
-                    $rules[$key] = ['required', Rule::in($link->linkValues->pluck('label')->all())];
+                    $rules[$key] = [$presence, Rule::in(self::acceptedValues($link))];
                     break;
             }
         }
 
         return $rules;
+    }
+
+    /**
+     * What a discrete option accepts on the wire: its link-value IDS, which
+     * are the authority, plus the labels for backward compatibility.
+     *
+     * A label is ambiguous — it changes whenever an admin edits it, and two
+     * values may share one — so OptionPricingResolver resolves an id first and
+     * only falls back to matching a label. Labels stay accepted here so a
+     * product page a customer already had open does not start failing
+     * mid-release.
+     *
+     * @return list<string>
+     */
+    private static function acceptedValues(ProductOptionGroupProduct $link): array
+    {
+        return $link->linkValues
+            ->flatMap(fn ($value) => [(string) $value->id, (string) $value->label])
+            ->unique()
+            ->values()
+            ->all();
     }
 
     /**

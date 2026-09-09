@@ -5,8 +5,7 @@ namespace App\Services;
 use App\Jobs\SendEmail;
 use App\Models\EmailTemplate;
 use App\Models\Invoice;
-use App\Support\AppSettings;
-use App\Support\Branding;
+use App\Services\Concerns\BuildsEmailVariables;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -26,6 +25,8 @@ use Illuminate\Support\Facades\Log;
  */
 final class InvoiceEmailService
 {
+    use BuildsEmailVariables;
+
     /**
      * Dispatch the invoice email for the given invoice.
      *
@@ -55,7 +56,7 @@ final class InvoiceEmailService
 
         $vars = $this->buildVariables($invoice);
 
-        [$subject, $body] = $this->render($template, $vars);
+        [$subject, $body] = $this->renderTemplate($template, $vars);
 
         // Strip admin-only "Available variables:" footer if present in DB template
         // (older/custom templates may still contain it; customers must never see it)
@@ -88,36 +89,11 @@ final class InvoiceEmailService
      */
     public function buildVariables(Invoice $invoice): array
     {
-        // --- Branding / app ---
-        $appName = Branding::appName();
-        $appUrl = rtrim((string) config('app.url', url('/')), '/');
-        $logoUrl = Branding::logoUrl();
-        $tagline = Branding::tagline();
-        $primaryColor = Branding::primaryColor();
-        $footerText = Branding::footerText();
-
-        // --- Company (GeneralSettings via AppSettings with fallback) ---
-        $companyName = $this->setting('company_name', $appName);
-        $companyEmail = $this->setting('company_email', (string) config('mail.from.address', ''));
-        $companyPhone = $this->setting('company_phone', '');
-        $companyAddress = $this->setting('company_address', '');
-        // Multi-line address -> single line + html <br> variant
-        $companyAddressLine = $companyAddress !== '' ? preg_replace('/\s*\n\s*/', ', ', $companyAddress) : '';
-        $companyAddressHtml = $companyAddress !== '' ? nl2br(htmlspecialchars($companyAddress, ENT_QUOTES, 'UTF-8')) : '';
-
-        // --- Currency ---
-        $currency = $this->setting('currency', 'INR');
-        $currencySymbol = $this->setting('catalog_currency_symbol', '₹');
-        // Fallback symbol map if setting blank
-        if ($currencySymbol === '') {
-            $currencySymbol = match (strtoupper($currency)) {
-                'USD' => '$',
-                'EUR' => '€',
-                'GBP' => '£',
-                'INR' => '₹',
-                default => $currency . ' ',
-            };
-        }
+        // --- Branding / company / currency (shared with every other template) ---
+        $branding = $this->brandingVariables();
+        $appUrl = $branding['app_url'];
+        $companyEmail = $branding['company_email'];
+        $currencySymbol = $branding['currency_symbol'];
 
         // --- Customer ---
         $customer = $invoice->customer;
@@ -157,31 +133,8 @@ final class InvoiceEmailService
         $payUrl = $this->safeRoute('client.invoices.pay', $invoice->id, $invoiceUrl . '/pay');
         $pdfUrl = $this->safeRoute('client.invoices.pdf', $invoice->id, $appUrl . '/client/invoices/' . $invoice->id . '/pdf');
         $invoicesUrl = $this->safeRoute('client.invoices.index', null, $appUrl . '/client/invoices');
-        $loginUrl = $appUrl . '/login';
-        $currentYear = date('Y');
 
-        return [
-            // Brand / company (new)
-            'app_name' => $appName,
-            'app_url' => $appUrl,
-            'app_logo_url' => $logoUrl,
-            'logo_url' => $logoUrl,
-            'tagline' => $tagline,
-            'primary_color' => $primaryColor,
-            'footer_text' => $footerText,
-
-            'company_name' => $companyName,
-            'company_email' => $companyEmail,
-            'company_phone' => $companyPhone,
-            'company_address' => $companyAddressLine,
-            'company_address_raw' => $companyAddress,
-            'company_address_html' => $companyAddressHtml,
-
-            // Currency (fix: these were missing before)
-            'currency' => $currency,
-            'currency_code' => $currency,
-            'currency_symbol' => $currencySymbol,
-
+        return $branding + [
             // Customer (aliases for template flexibility)
             'name' => $customerName,
             'customer_name' => $customerName,
@@ -233,89 +186,6 @@ final class InvoiceEmailService
             'payment_url' => $payUrl,
             'pdf_url' => $pdfUrl,
             'invoices_url' => $invoicesUrl,
-            'login_url' => $loginUrl,
-
-            // Misc
-            'year' => $currentYear,
-            'current_year' => $currentYear,
-            'support_email' => $companyEmail,
-            'support_url' => $appUrl . '/support',
         ];
-    }
-
-    /**
-     * Render a template's {{placeholder}} variables.
-     *
-     * @param  array<string, string>  $vars
-     * @return array{0: string, 1: string} [subject, body]
-     */
-    private function render(EmailTemplate $template, array $vars): array
-    {
-        $placeholders = array_map(fn (string $key) => '{{'.$key.'}}', array_keys($vars));
-        $values = array_values($vars);
-
-        return [
-            str_replace($placeholders, $values, (string) $template->subject),
-            str_replace($placeholders, $values, (string) $template->body),
-        ];
-    }
-
-    private function isHtml(?string $body): bool
-    {
-        if ($body === null || $body === '') {
-            return false;
-        }
-
-        return str_contains($body, '<table') || str_contains($body, '<html') || str_contains($body, '<div') || str_contains($body, '<!doctype');
-    }
-
-    private function toPlainText(string $html): string
-    {
-        // Keep links readable: <a href="...">text</a> -> text (url)
-        $text = preg_replace('/<a\s[^>]*href=["\']([^"\']+)["\'][^>]*>(.*?)<\/a>/i', '$2 ($1)', $html) ?? $html;
-        $text = strip_tags($text);
-        $text = html_entity_decode($text, ENT_QUOTES | ENT_HTML5);
-        $text = preg_replace('/[ \t]+/', ' ', $text) ?? $text;
-        $text = preg_replace('/\n{3,}/', "\n\n", $text) ?? $text;
-
-        return trim($text);
-    }
-
-    private function stripAvailableVariablesFooter(string $content): string
-    {
-        // Matches "--- Available variables:" or "-- Available variables:" plus everything after
-        // Handles both plain-text and HTML bodies. Keep it non-greedy and case-insensitive.
-        // We do two passes: HTML comment variant and visible text variant.
-        $content = preg_replace('/\n---\s*Available variables:.*$/is', '', $content) ?? $content;
-        $content = preg_replace('/\n--\s*Available variables:.*$/is', '', $content) ?? $content;
-        $content = preg_replace('/<!--\s*Available variables:.*?-->/is', '', $content) ?? $content;
-
-        return rtrim($content);
-    }
-
-    private function setting(string $key, string $fallback = ''): string
-    {
-        try {
-            $v = AppSettings::get($key);
-            if ($v !== null && trim($v) !== '') {
-                return trim($v);
-            }
-        } catch (\Throwable) {
-        }
-
-        return $fallback;
-    }
-
-    private function safeRoute(string $name, mixed $param, string $fallback): string
-    {
-        try {
-            if ($param === null) {
-                return (string) route($name);
-            }
-
-            return (string) route($name, $param);
-        } catch (\Throwable) {
-            return $fallback;
-        }
     }
 }

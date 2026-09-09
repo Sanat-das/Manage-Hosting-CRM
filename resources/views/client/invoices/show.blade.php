@@ -30,7 +30,40 @@
                     <tr><th class="text-muted">Due date</th><td>{{ $invoice->due_date?->format('M j, Y') ?? '—' }}</td></tr>
                 </table>
 
-                {{-- Line items breakdown --}}
+                {{-- What is being billed, line by line, with each line's
+                     configuration (RAM / storage / support) underneath it. The
+                     page used to jump straight to the totals, so a customer
+                     could not see what any amount was actually for. --}}
+                @if ($invoice->items->isNotEmpty())
+                    <table class="table table-sm mt-3">
+                        <thead>
+                            <tr>
+                                <th>Item</th>
+                                <th class="text-center">Qty</th>
+                                <th class="text-end">Amount</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach ($invoice->items as $item)
+                                <tr>
+                                    <td>
+                                        {{ $item->description }}
+                                        @include('partials._selected_options', [
+                                            'entries' => $item->config_options['options'] ?? [],
+                                            'modifiersByLink' => [],
+                                            'cycle' => $item->config_options['billing_cycle'] ?? 'monthly',
+                                            'includeUnselected' => false,
+                                        ])
+                                    </td>
+                                    <td class="text-center">{{ $item->quantity }}</td>
+                                    <td class="text-end">{{ number_format((float) $item->total, 2) }}</td>
+                                </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
+                @endif
+
+                {{-- Totals breakdown --}}
                 <table class="table table-sm mt-3">
                     <thead><tr><th>Description</th><th class="text-end">Amount</th></tr></thead>
                     <tbody>

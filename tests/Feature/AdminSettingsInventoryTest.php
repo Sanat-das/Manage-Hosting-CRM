@@ -13,7 +13,7 @@ use Tests\TestCase;
 /**
  * Baseline inventory guard for admin/settings.
  *
- * - Captures the 199 name="settings[*]" keys rendered by
+ * - Captures the 197 name="settings[*]" keys rendered by
  *   resources/views/admin/settings/index.blade.php (84 baseline + 94 task-8 typed
  *   surfaced + 3 imap_* policy keys for ticket email piping + 4 security hardening
  *   toggles + 6 branding_* keys added with BrandingSettings + 8 company split)
@@ -26,12 +26,18 @@ class AdminSettingsInventoryTest extends TestCase
     use RefreshDatabase;
 
     /**
-      * Baseline set - 199 keys rendered by admin/settings/index.blade.php (84 + 94 typed + 3 imap policy + 4 security hardening + 6 branding + 8 company split).
+      * Baseline set - 197 keys rendered by admin/settings/index.blade.php (84 + 94 typed + 3 imap policy + 4 security hardening + 6 branding + 8 company split).
       * Global Incoming Mail host/user/pwd removed in department-only refactor (9 keys dropped).
       * Documented verbatim so any drop or rename fails this test.
       * Sorted alphabetically for diff stability; source order is the blade file.
       * v6: 2026-09-05 removed 9 global imap_* (host/port/user/pwd/encryption/folder/validate/enabled/delete) — department-only; kept 2 policy keys.
       * v7: 2026-09-05 added imap_max_new_tickets_per_hour (inbound flood cap) — 3 policy keys.
+      * v8: 2026-09-09 removed gst_enabled and product_gst_applicable — two controls
+      *     that wrote settings nothing ever read. Whether GST applies is decided by
+      *     gst_settings.enabled (+ tax_mode) and, per product, products.gst_enabled;
+      *     these two could read "Yes" while every invoice was written with zero tax.
+      *     The keys stay accepted by SettingsController (see UntypedSettingsTest) —
+      *     only the form controls are gone.
       */
     public const BASELINE_KEYS = [
         'analytics_anonymize_ip',
@@ -129,7 +135,6 @@ class AdminSettingsInventoryTest extends TestCase
         'domain_whois_privacy',
         'due_days',
         'force_2fa',
-        'gst_enabled',
         'hosting_allow_account_creation',
         'hosting_auto_provision',
         'hosting_backup_enabled',
@@ -188,7 +193,6 @@ class AdminSettingsInventoryTest extends TestCase
         'product_default_billing_cycle',
         'product_enable_downgrades',
         'product_enable_upgrades',
-        'product_gst_applicable',
         'product_license_key_prefix',
         'product_prorated_charges',
         'product_require_domain',
@@ -263,14 +267,15 @@ class AdminSettingsInventoryTest extends TestCase
         $expected = self::BASELINE_KEYS;
         sort($expected);
 
-        $this->assertCount(199, $keys, 'Baseline field count changed - expected 199 name="settings[*]" keys. Got: ' . implode(', ', $keys));
+        $this->assertCount(197, $keys, 'Baseline field count changed - expected 197 name="settings[*]" keys. Got: ' . implode(', ', $keys));
         $this->assertSame($expected, $keys, 'Baseline field set changed - keys were dropped, renamed, or added.');
     }
 
     public function test_get_query_count_is_bounded_and_has_no_n_plus_one(): void
     {
         // 1 legacy settings pluck in middleware (security hardening toggles) + 1 legacy pluck in
-        // SettingsController::loadAll() + 17 typed group loads (distinct classes in AppSettings::TYPED_KEYS, now includes branding) = 19.
+        // SettingsController::loadAll() + 17 typed group loads (distinct classes in AppSettings::TYPED_KEYS, now includes branding)
+        // + 1 gst_settings row for the Billing tab's GST & Tax card = 20.
         // Guard against N+1 per-key queries (would be ~160+ queries if each TYPED_KEYS entry hit DB).
         DB::enableQueryLog();
 
@@ -294,9 +299,9 @@ class AdminSettingsInventoryTest extends TestCase
         $settingCount = count($settingQueries);
 
         $this->assertLessThanOrEqual(
-            19,
+            20,
             $settingCount,
-            "GET admin.settings.index issued {$settingCount} setting queries (expected <=19 = 2 plucks + 17 typed groups). "
+            "GET admin.settings.index issued {$settingCount} setting queries (expected <=20 = 2 plucks + 17 typed groups + 1 gst_settings). "
             . "Total queries: {$totalCount}. Possible N+1. Queries: " . json_encode(array_column($settingQueries, 'query'))
         );
 

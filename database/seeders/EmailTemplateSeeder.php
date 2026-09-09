@@ -94,7 +94,7 @@ BODY,
 </table>
 <p style="margin:0 0 20px;font-size:14px;line-height:1.6;color:#475569;">You will receive a separate email once your service is activated. Quote your order number {{order_number}} when contacting support.</p>
 <table role="presentation" cellpadding="0" cellspacing="0"><tr><td style="background:{{primary_color}};border-radius:8px;">
-<a href="{{app_url}}/client/orders" style="display:inline-block;padding:12px 22px;color:#ffffff;text-decoration:none;font-weight:600;font-size:14px;">View Order</a>
+<a href="{{order_url}}" style="display:inline-block;padding:12px 22px;color:#ffffff;text-decoration:none;font-weight:600;font-size:14px;">View Order</a>
 </td></tr></table>
 <p style="margin:24px 0 0;font-size:13px;color:#94a3b8;">Need help? {{company_email}} · {{company_phone}}</p>
 </td></tr>

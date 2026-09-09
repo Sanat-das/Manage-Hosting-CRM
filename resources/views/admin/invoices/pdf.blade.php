@@ -56,7 +56,19 @@
         <tbody>
             @foreach ($invoice->items as $item)
                 <tr>
-                    <td>{{ $item->description }}</td>
+                    <td>
+                        {{ $item->description }}
+                        {{-- Configuration without price chips: the line already
+                             states its amount, and dompdf need not render the
+                             currency glyph twice per line. --}}
+                        @include('partials._selected_options', [
+                            'entries' => $item->config_options['options'] ?? [],
+                            'modifiersByLink' => [],
+                            'cycle' => $item->config_options['billing_cycle'] ?? 'monthly',
+                            'includeUnselected' => false,
+                            'showModifiers' => false,
+                        ])
+                    </td>
                     <td class="text-right">{{ $item->quantity }}</td>
                     <td class="text-right">{{ number_format($item->unit_price, 2) }}</td>
                     <td class="text-right">{{ number_format($item->total, 2) }}</td>

@@ -234,8 +234,10 @@ final class Branding
 
     /**
      * Build the AdminLTE logo HTML for config('adminlte.logo').
-     * When a custom logo is uploaded we render an <img> inline; otherwise
-     * fall back to the icon + text wordmark so the sidebar never looks empty.
+     * When a custom logo is uploaded we render ONLY the image — App Name
+     * and logo together are visually noisy and the uploaded wordmark already
+     * contains the name. Fall back to icon + text only when no logo exists.
+     * This enforces "one at a time" as recommended for the sidebar brand.
      */
     public static function logoHtml(): string
     {
@@ -244,7 +246,7 @@ final class Branding
         if (self::logoPath() !== '') {
             $url = e(self::logoUrl());
 
-            return '<span class="brand-logo-hostvexa"><img src="'.$url.'" alt="'.$appName.'" style="height:22px;width:auto;vertical-align:middle;object-fit:contain" loading="lazy"> <span>'.$appName.'</span></span>';
+            return '<span class="brand-logo-hostvexa"><img src="'.$url.'" alt="'.$appName.'" style="height:32px;width:auto;vertical-align:middle;object-fit:contain" loading="lazy"></span>';
         }
 
         return '<span class="brand-logo-hostvexa"><i class="bi bi-hdd-rack"></i> '.$appName.'</span>';

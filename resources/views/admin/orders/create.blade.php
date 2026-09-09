@@ -47,9 +47,12 @@
             ];
 
             if (in_array($link->group?->type, \App\Models\ProductOptionGroup::CONTINUOUS_TYPES, true)) {
-                $base['min'] = $link->input_min ?? $link->group?->input_min ?? 0;
-                $base['max'] = $link->input_max ?? $link->group?->input_max ?? 100;
-                $base['step'] = $link->input_step ?? $link->group?->input_step ?? 1;
+                // Numeric, not the decimal:2 strings — the admin order form
+                // echoes these straight into a control and its readout, where
+                // "1.00" for a whole bound reads as a bug.
+                $base['min'] = (float) \App\Support\OptionNumber::format($link->input_min ?? $link->group?->input_min, '0');
+                $base['max'] = (float) \App\Support\OptionNumber::format($link->input_max ?? $link->group?->input_max, '100');
+                $base['step'] = (float) \App\Support\OptionNumber::format($link->input_step ?? $link->group?->input_step, '1');
                 $base['placeholder'] = $link->input_placeholder ?? $link->group?->input_placeholder;
                 $base['unit'] = $link->unitPricing
                     ->mapWithKeys(fn ($price) => [(string) $price->billing_cycle => (float) $price->price_modifier])
@@ -717,12 +720,21 @@
                         const cid = optionName(el, link.id);
 
                         // Informational (non-editable) links are display-only:
-                        // their values come from the catalog and cannot be
-                        // changed at order time.
+                        // their value comes from the catalog and cannot be
+                        // changed at order time. Exactly ONE value is shown —
+                        // the one flagged default, else the first in display
+                        // order — because that is the single value the order
+                        // actually gets: OptionPricingResolver::defaultValue()
+                        // resolves and prices a fixed link the same way. This
+                        // used to join every value in the group, so a fixed
+                        // "NVMe SSD" advertised "50 GB, 100 GB, 200 GB" on a
+                        // line that was only ever buying (and being charged
+                        // for) one of them.
                         if (!link.customerEditable) {
-                            const labels = (link.values || []).map((v) => v.label).join(', ');
+                            const values = link.values || [];
+                            const chosen = values.find((v) => v.default) || values[0];
                             html += '<div class="col-md-4"><label class="form-label small text-muted mb-1">' + link.name + '</label>' +
-                                '<div class="text-muted small">' + (labels || '—') + '</div></div>';
+                                '<div class="text-muted small">' + (chosen ? chosen.label : '—') + '</div></div>';
                             return;
                         }
 

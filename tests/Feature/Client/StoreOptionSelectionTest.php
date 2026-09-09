@@ -168,6 +168,54 @@ class StoreOptionSelectionTest extends TestCase
             ->assertSee('name="options['.$link->id.']"', false);
     }
 
+    public function test_a_slider_shows_its_bounds_as_plain_numbers(): void
+    {
+        // input_min/max/step are decimal:2 for storage, which stringified a
+        // whole bound as "1.00" — so the readout beside the slider told the
+        // customer they were buying "1.00 vCPU".
+        [$link] = $this->attachLink('slider', [], true, [
+            'name' => 'CPU Cores',
+            'unit' => 'vCPU',
+            'input_min' => 1,
+            'input_max' => 32,
+            'input_step' => 1,
+        ]);
+
+        $html = $this->actingAs($this->makeCustomerUser()->user)
+            ->get(route('client.store.show', $this->product))
+            ->assertOk()
+            ->assertSee('min="1" max="32"', false)
+            ->assertSee('step="1" value="1"', false)
+            ->getContent();
+
+        // The readout beside the slider is the bit the customer actually reads.
+        $this->assertMatchesRegularExpression(
+            '/data-slider-value="option-'.$link->id.'">1</',
+            $html,
+            'The slider readout shows 1, not 1.00.'
+        );
+        $this->assertStringNotContainsString('max="32.00"', $html);
+    }
+
+    public function test_a_fractional_step_keeps_the_digits_it_needs(): void
+    {
+        // Trimming must not flatten a genuinely fractional bound: half-core
+        // increments still have to reach the control.
+        [$link] = $this->attachLink('number', [], true, [
+            'name' => 'CPU Cores',
+            'input_min' => 0.5,
+            'input_max' => 8,
+            'input_step' => 0.5,
+        ]);
+
+        $this->actingAs($this->makeCustomerUser()->user)
+            ->get(route('client.store.show', $this->product))
+            ->assertOk()
+            ->assertSee('min="0.5"', false)
+            ->assertSee('max="8"', false)
+            ->assertSee('step="0.5"', false);
+    }
+
     // ─────────────────────── Validation + modifier math ───────────────────────
 
     public function test_add_to_cart_with_valid_selection_applies_price_modifier(): void
@@ -600,24 +648,29 @@ class StoreOptionSelectionTest extends TestCase
 
     // ─────────────────────── Modifier math (unit level) ───────────────────────
 
-    public function test_format_price_prefers_exact_cycle_then_monthly_fallback(): void
+    public function test_format_price_prefers_the_exact_cycle_then_derives_from_monthly(): void
     {
-        // Exact cycle match wins.
+        // Exact cycle match wins - an annual rate the admin entered is used
+        // verbatim and never derived.
         $this->assertSame(1698.00, OrderConfigSnapshot::formatPrice(199.0, ['monthly' => 149.0, 'annual' => 1499.0], 'annual'));
 
-        // No exact cycle → monthly modifier applies to any cycle (when monthly
-        // is one of the product's enabled cycles).
-        $this->assertSame(348.00, OrderConfigSnapshot::formatPrice(199.0, ['monthly' => 149.0, 'annual' => 1499.0], 'quarterly', ['monthly', 'quarterly', 'annual']));
+        // No exact cycle -> the monthly rate is multiplied by the months in
+        // the cycle, because an option is billed on the same cycle as the
+        // product it belongs to. 199.00 + 149.00 x 3.
+        $this->assertSame(646.00, OrderConfigSnapshot::formatPrice(199.0, ['monthly' => 149.0, 'annual' => 1499.0], 'quarterly'));
 
-        // The monthly fallback is GATED by the enabled cycles: when monthly is
-        // not offered on the product, the fallback must not apply.
-        $this->assertSame(199.00, OrderConfigSnapshot::formatPrice(199.0, ['monthly' => 149.0], 'annual', ['annual', 'quarterly']));
+        // 199.00 + 149.00 x 12. This previously added a bare 149.00 to an
+        // annual line - eleven months of the option given away - and the
+        // enabled-cycles argument gated that fallback off entirely. Derivation
+        // makes the gate moot: the monthly rate is the option's unit of price,
+        // not a stand-in for a cycle the product does not sell.
+        $this->assertSame(1987.00, OrderConfigSnapshot::formatPrice(199.0, ['monthly' => 149.0], 'annual', ['annual', 'quarterly']));
+
+        // one_time spans no months, so it never derives from a recurring rate.
+        $this->assertSame(199.00, OrderConfigSnapshot::formatPrice(199.0, ['monthly' => 149.0], 'one_time'));
 
         // Empty modifier map adds nothing.
         $this->assertSame(199.00, OrderConfigSnapshot::formatPrice(199.0, [], 'monthly'));
-
-        // Legacy callers (no enabled-cycles argument) keep the un-gated behaviour.
-        $this->assertSame(348.00, OrderConfigSnapshot::formatPrice(199.0, ['monthly' => 149.0, 'annual' => 1499.0], 'quarterly'));
     }
 
     public function test_slider_unit_price_uses_the_selected_enabled_cycle(): void

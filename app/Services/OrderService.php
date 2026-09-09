@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Events\OrderCreated;
 use App\Events\OrderPaid;
+use App\Models\Invoice;
 use App\Models\Order;
 use App\Models\OrderStatusHistory;
 use App\Services\Provisioning\ProvisioningDispatcher;
@@ -26,6 +27,12 @@ use InvalidArgumentException;
  * recurring-billing schedule (next_billing_date) and fires OrderCreated (the
  * provisioning trigger stub), so every caller — admin UI, API, jobs — gets
  * the same lifecycle behavior.
+ *
+ * So do the ENDING side-effects. Suspension, reactivation and termination used
+ * to change nothing but the status column, so a suspended order left a live
+ * control-panel account serving the customer's site and a terminated one left
+ * it running forever. Each of those hops now syncs the local hosting account
+ * and calls the product's provisioning module (see applyLifecycleEffects).
  */
 class OrderService
 {
@@ -33,6 +40,7 @@ class OrderService
         private readonly HostingService $hosting,
         private readonly ProvisioningDispatcher $provisioning,
     ) {}
+
     /**
      * State machine: source status => allowed destination statuses.
      * Terminal states (cancelled / terminated) have no outgoing edges.
@@ -124,6 +132,12 @@ class OrderService
                 $this->hosting->provisionFromOrder($order);
             }
 
+            // Local records for the ending hops (suspend / reactivate /
+            // terminate). Kept inside the transaction because it is pure
+            // database work; the remote panel call is made after the commit.
+            $this->syncHostingAccount($order, $from, $to, $notes);
+            $this->voidOpenInvoices($order, $to);
+
             $order->save();
 
             OrderStatusHistory::create([
@@ -137,6 +151,13 @@ class OrderService
 
         $order = $order->refresh();
 
+        // Tell the panel. Post-commit and best-effort, for the same reason
+        // provisioning runs outside the activation transaction: an HTTP call to
+        // a panel must not hold database locks, and an unreachable panel must
+        // not veto the operator's decision to suspend or terminate. Failures
+        // are logged and written to provisioning_events for the operator.
+        $this->applyLifecycleEffects($order, $from, $to, $notes);
+
         if ($from === Order::STATUS_PENDING && $to === Order::STATUS_ACTIVE) {
             OrderCreated::dispatch($order);
         }
@@ -146,6 +167,170 @@ class OrderService
         }
 
         return $order;
+    }
+
+    /**
+     * Statuses that end an order's service for good. `cancelled` is included
+     * deliberately: the state machine allows active/suspended → cancelled, and
+     * an order cancelled after it was provisioned must release the account just
+     * as a termination does — otherwise "cancelled" silently means "still
+     * running, still costing you a licence".
+     */
+    private const ENDING_STATUSES = [Order::STATUS_CANCELLED, Order::STATUS_TERMINATED];
+
+    /**
+     * Statuses from which an order has (or may have) a live service worth
+     * ending. A pending order cancelled before payment never had one.
+     */
+    private const PROVISIONED_STATUSES = [
+        Order::STATUS_ACTIVE,
+        Order::STATUS_SUSPENDED,
+        Order::STATUS_PROVISIONING,
+        Order::STATUS_FAILED,
+    ];
+
+    /**
+     * Keep the local hosting_accounts row in step with the order's status.
+     *
+     * Guarded by HostingService's own state rules, which throw when the account
+     * is not in a status the verb allows (e.g. suspending an already-suspended
+     * account). Those are not errors here — the end state is what was wanted —
+     * so they are swallowed rather than rolling back the order transition.
+     */
+    private function syncHostingAccount(Order $order, string $from, string $to, ?string $notes): void
+    {
+        // Queried rather than read off the relation: callers hand us orders
+        // with all sorts of eager-loading histories, and acting on a stale
+        // cached account (or a cached null) would silently skip the sync.
+        $account = $order->hostingAccount()->first();
+
+        if ($account === null) {
+            return;
+        }
+
+        try {
+            if ($to === Order::STATUS_SUSPENDED) {
+                $this->hosting->suspend($account, $notes);
+
+                return;
+            }
+
+            if ($from === Order::STATUS_SUSPENDED && $to === Order::STATUS_ACTIVE) {
+                $this->hosting->unsuspend($account);
+
+                return;
+            }
+
+            if (in_array($to, self::ENDING_STATUSES, true)) {
+                $this->hosting->terminate($account, $notes);
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Hosting account could not follow the order status', [
+                'order_id' => $order->id,
+                'account_id' => $account->id,
+                'from' => $from,
+                'to' => $to,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
+     * Invoice statuses that are still collectable — the ones an ending order
+     * must stop being able to collect on.
+     */
+    private const COLLECTABLE_INVOICE_STATUSES = [
+        Invoice::STATUS_DRAFT,
+        Invoice::STATUS_SENT,
+        Invoice::STATUS_OVERDUE,
+    ];
+
+    /**
+     * Void the order's outstanding invoices when the order ends.
+     *
+     * Cancelling an order used to leave its invoice open and payable. The
+     * customer could still pay it — and because AdvanceOrderOnPayment only acts
+     * on a `pending` order, the money arrived against a cancelled order and
+     * nothing happened and nobody was told. Since payments can now also settle
+     * asynchronously by webhook, without anyone watching, that had to close.
+     *
+     * Only invoices with NO money against them are voided. A paid or partly
+     * paid invoice is left exactly as it is: voiding it would misstate revenue
+     * that genuinely moved, and the refund is a decision for a human, not a
+     * side effect of a status change. Same rule as Invoice::isAmountLocked().
+     *
+     * Written here rather than in BillingService on purpose: BillingService
+     * already depends on this class, so injecting it back would be a circular
+     * dependency. This is a status update, not a billing calculation — no GST
+     * engine is involved.
+     */
+    private function voidOpenInvoices(Order $order, string $to): void
+    {
+        if (! in_array($to, self::ENDING_STATUSES, true)) {
+            return;
+        }
+
+        $invoices = $order->invoices()
+            ->whereIn('status', self::COLLECTABLE_INVOICE_STATUSES)
+            ->get();
+
+        foreach ($invoices as $invoice) {
+            if ((float) ($invoice->paid_amount ?? 0) > 0 || $invoice->payments()->exists()) {
+                Log::info('Invoice left open on an ending order because money has moved against it', [
+                    'order_id' => $order->id,
+                    'invoice_id' => $invoice->id,
+                    'paid_amount' => $invoice->paid_amount,
+                ]);
+
+                continue;
+            }
+
+            $invoice->update([
+                'status' => Invoice::STATUS_VOID,
+                'notes' => trim((string) $invoice->notes."\nVoided automatically: order {$order->order_number} was {$to}."),
+            ]);
+        }
+    }
+
+    /**
+     * Run the product's provisioning module for the ending hops.
+     *
+     * Never throws and never changes the order's status: the transition has
+     * already been committed and audited. A module that refuses (panel down,
+     * account missing) leaves a `failed` provisioning_events row, which is the
+     * operator's cue that the local state and the panel have diverged.
+     */
+    private function applyLifecycleEffects(Order $order, string $from, string $to, ?string $notes): void
+    {
+        try {
+            if ($to === Order::STATUS_SUSPENDED) {
+                $attempt = $this->provisioning->suspend($order, $notes);
+            } elseif ($from === Order::STATUS_SUSPENDED && $to === Order::STATUS_ACTIVE) {
+                $attempt = $this->provisioning->unsuspend($order, $notes);
+            } elseif (in_array($to, self::ENDING_STATUSES, true) && in_array($from, self::PROVISIONED_STATUSES, true)) {
+                $attempt = $this->provisioning->terminate($order, $notes);
+            } else {
+                return;
+            }
+
+            if (! $attempt->succeeded()) {
+                Log::error('Provisioning module reported failure on order status change', [
+                    'order_id' => $order->id,
+                    'from' => $from,
+                    'to' => $to,
+                    'error' => $attempt->message,
+                ]);
+            }
+        } catch (\Throwable $e) {
+            // The dispatcher already isolates module failures; this is the
+            // belt-and-braces guard so a status change can never 500.
+            Log::error('Order lifecycle provisioning call failed', [
+                'order_id' => $order->id,
+                'from' => $from,
+                'to' => $to,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 
     /**

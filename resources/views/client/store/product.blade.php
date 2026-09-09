@@ -237,8 +237,8 @@
                                                      the server's integer rule — never the group's input_step. --}}
                                                 <input type="number" class="form-control" name="options[{{ $link->id }}]"
                                                        id="option-{{ $link->id }}"
-                                                       min="{{ $link->input_min ?? $link->group?->input_min ?? 0 }}"
-                                                       max="{{ $link->input_max ?? $link->group?->input_max }}"
+                                                       min="{{ \App\Support\OptionNumber::format($link->input_min ?? $link->group?->input_min, '0') }}"
+                                                       max="{{ \App\Support\OptionNumber::format($link->input_max ?? $link->group?->input_max) }}"
                                                        step="1"
                                                        value="{{ $link->linkValues->contains('is_default', true) ? 1 : 0 }}">
                                                 <div class="form-text" data-unit-price="{{ $link->id }}"></div>
@@ -247,18 +247,21 @@
                                             @case('number')
                                                 <input type="number" class="form-control" name="options[{{ $link->id }}]"
                                                        id="option-{{ $link->id }}"
-                                                       min="{{ $link->input_min ?? $link->group?->input_min ?? 0 }}"
-                                                       max="{{ $link->input_max ?? $link->group?->input_max }}"
-                                                       step="{{ $link->input_step ?? $link->group?->input_step ?? 1 }}"
+                                                       min="{{ \App\Support\OptionNumber::format($link->input_min ?? $link->group?->input_min, '0') }}"
+                                                       max="{{ \App\Support\OptionNumber::format($link->input_max ?? $link->group?->input_max) }}"
+                                                       step="{{ \App\Support\OptionNumber::format($link->input_step ?? $link->group?->input_step, '1') }}"
                                                        value="{{ $link->linkValues->contains('is_default', true) ? 1 : 0 }}">
                                                 <div class="form-text" data-unit-price="{{ $link->id }}"></div>
                                                 @break
 
                                             @case('slider')
                                                 @php
-                                                    $sliderMin = $link->input_min ?? $link->group?->input_min ?? 0;
-                                                    $sliderMax = $link->input_max ?? $link->group?->input_max ?? 100;
-                                                    $sliderStep = $link->input_step ?? $link->group?->input_step ?? 1;
+                                                    // Trimmed for display: the decimal:2 cast rendered a whole
+                                                    // bound as "1.00", so the readout beside the slider read
+                                                    // "1.00 vCPU" to the customer.
+                                                    $sliderMin = \App\Support\OptionNumber::format($link->input_min ?? $link->group?->input_min, '0');
+                                                    $sliderMax = \App\Support\OptionNumber::format($link->input_max ?? $link->group?->input_max, '100');
+                                                    $sliderStep = \App\Support\OptionNumber::format($link->input_step ?? $link->group?->input_step, '1');
                                                 @endphp
                                                 <div class="d-flex align-items-center gap-2">
                                                     <input type="range" class="form-range flex-grow-1" name="options[{{ $link->id }}]"

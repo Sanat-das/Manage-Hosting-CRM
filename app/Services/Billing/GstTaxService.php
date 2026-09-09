@@ -7,6 +7,7 @@ namespace App\Services\Billing;
 use App\Models\GstSetting;
 use App\Models\Product;
 use App\Models\Setting;
+use App\Support\GstStateCodes;
 
 /**
  * GstTaxService — GST engine (port of Modules\Billing\InvoiceModel GST logic
@@ -39,13 +40,19 @@ class GstTaxService
      * customer code therefore counts as inter-state here. Callers that must
      * never default to the higher IGST (renewals) resolve the customer state
      * BEFORE calling in — see BillingService::processRecurringBilling().
+     *
+     * Both sides are normalized to the GST vocabulary first (GstStateCodes), so
+     * this cannot be defeated by the two columns holding the same state in two
+     * notations — '27' vs 'MH' vs 'Maharashtra' all compare equal. They used to
+     * be compared as raw strings, and the company holding '27' while customers
+     * held 'WB' meant the answer was ALWAYS inter-state.
      */
     public static function isIntraState(string $companyStateCode, ?string $customerStateCode): bool
     {
-        return $companyStateCode !== ''
-            && $customerStateCode !== null
-            && $customerStateCode !== ''
-            && strtoupper($companyStateCode) === strtoupper($customerStateCode);
+        $company = GstStateCodes::normalize($companyStateCode);
+        $customer = GstStateCodes::normalize($customerStateCode);
+
+        return $company !== null && $customer !== null && $company === $customer;
     }
 
     /**

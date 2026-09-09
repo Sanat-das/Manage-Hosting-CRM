@@ -76,6 +76,11 @@ return Application::configure(basePath: dirname(__DIR__))
 
             require base_path('routes/client.php');
 
+            // Inbound third-party callbacks (payment gateways). Registered
+            // here rather than in web.php so they carry no session/CSRF
+            // middleware — see routes/webhooks.php.
+            require base_path('routes/webhooks.php');
+
             require base_path('routes/api/ssl.php');
             require base_path('routes/api/products.php');
             require base_path('routes/api/orders.php');

@@ -12,10 +12,14 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  *
  * Table `product_option_values` has no timestamps at all.
  */
-#[Fillable(['option_group_id', 'label', 'sort_order'])]
+#[Fillable(['option_group_id', 'label', 'is_default', 'sort_order'])]
 class ProductOptionValue extends Model
 {
     public $timestamps = false;
+
+    protected $casts = [
+        'is_default' => 'boolean',
+    ];
 
     public function group(): BelongsTo
     {

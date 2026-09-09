@@ -321,11 +321,18 @@ class AdminOrderEnhancementTest extends TestCase
         $this->assertSame(2.5, (float) $item->config_options['options'][0]['selected']);
     }
 
-    public function test_store_ignores_informational_option_pricing(): void
+    public function test_store_ignores_a_crafted_selection_for_a_fixed_option(): void
     {
-        // Informational links are display-only: even a crafted payload that
-        // submits a selection for them must NOT change the charged price, and
-        // the selection is dropped from the snapshot (selected = null).
+        // A fixed (non-editable) link is declared by the product, not chosen:
+        // a crafted payload naming a different value must NOT change what is
+        // charged. The declared default is what the customer gets, and — since
+        // it is a feature they receive — what they pay for.
+        //
+        // This used to assert the fixed option was FREE and snapshotted as
+        // `selected: null`. Both were bugs: a fixed option's modifier was
+        // silently discarded however large, and the null selection is why a
+        // service page printed every value in the group instead of the one
+        // value in effect.
         $admin = $this->adminUser();
         $customer = $this->makeCustomer();
         $product = $this->makeProduct();
@@ -388,9 +395,13 @@ class AdminOrderEnhancementTest extends TestCase
         $order = Order::sole();
         $item = $order->items()->firstOrFail();
 
-        $this->assertSame('100.00', (string) $order->total, 'Informational options never charge.');
-        $this->assertSame('100.00', (string) $item->unit_price);
-        $this->assertNull($item->config_options['options'][0]['selected'], 'The informational selection is dropped from the snapshot.');
+        // Mumbai (the default, +100) is charged, NOT the crafted Delhi (+200):
+        // 100.00 base + 100.00. A price of 300.00 would mean the payload was
+        // honoured; 100.00 would mean fixed options are still free.
+        $this->assertSame('200.00', (string) $order->total, 'The declared default is charged, not the crafted selection.');
+        $this->assertSame('200.00', (string) $item->unit_price);
+        $this->assertSame('Mumbai', $item->config_options['options'][0]['selected'], 'The snapshot records the value in effect, not the submitted one.');
+        $this->assertSame(100.0, (float) $item->config_options['options'][0]['price_applied']);
     }
 
     public function test_store_captures_domain_and_billing_state_per_line(): void
@@ -503,11 +514,18 @@ class AdminOrderEnhancementTest extends TestCase
             ]],
         ]);
 
+        // The option selection is rendered through the shared partial that the
+        // storefront, the invoices and the service page also use, which emits
+        // "<strong>Support Level:</strong> Priority Support" — so the group and
+        // its value are asserted separately rather than as one literal string.
+        // Note this snapshot entry carries neither `id` nor `price_applied`:
+        // it is the pre-v2 shape, and it must still render.
         $this->actingAs($admin)->get(route('admin.orders.show', $order))
             ->assertOk()
-            ->assertSee('Razorpay')                       // payment method
-            ->assertSee('site.example.com')               // per-item domain
-            ->assertSee('Support Level: Priority Support') // captured option selection
+            ->assertSee('Razorpay')            // payment method
+            ->assertSee('site.example.com')    // per-item domain
+            ->assertSee('Support Level:')      // captured option selection
+            ->assertSee('Priority Support')
             ->assertSee('Monthly');
     }
 

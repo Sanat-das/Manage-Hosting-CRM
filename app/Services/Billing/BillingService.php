@@ -14,6 +14,7 @@ use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Payment;
 use App\Services\OrderService;
+use App\Support\GstStateCodes;
 use Carbon\CarbonImmutable;
 use DateTimeInterface;
 use Illuminate\Support\Facades\DB;
@@ -31,9 +32,8 @@ use Illuminate\Support\Facades\DB;
  */
 class BillingService
 {
-    public function __construct(private readonly OrderService $orderService)
-    {
-    }
+    public function __construct(private readonly OrderService $orderService) {}
+
     /**
      * Generate the next invoice number: INV-{year}-{seq} padded to 5.
      * Port of InvoiceModel::generateNumber L18-26.
@@ -88,6 +88,9 @@ class BillingService
                     'quantity' => $item['quantity'] ?? 1,
                     'unit_price' => $item['unit_price'],
                     'total' => $item['total'],
+                    // Configurable options the line bills for; absent on
+                    // hand-written invoice lines.
+                    'config_options' => $item['config_options'] ?? null,
                     'gst_enabled' => $item['gst_enabled'],
                     'gst_rate' => $item['gst_rate'],
                     'gst_type' => $item['gst_type'],
@@ -118,6 +121,12 @@ class BillingService
      */
     public function updateWithItems(Invoice $invoice, array $invoiceData, array $items, ?string $customerStateCode = null): Invoice
     {
+        // Restore per-line detail the form cannot post back BEFORE the tax
+        // engine runs: GstTaxService::calculateItemTax() reads `product_id`,
+        // so a line that lost its product would silently lose its per-product
+        // GST treatment too.
+        $items = $this->carryForwardLineDetails($invoice, $items);
+
         $settings = GstTaxService::loadSettings(GstSetting::find(1));
         $computed = GstTaxService::computeInvoiceTaxes($items, $settings, $customerStateCode);
 
@@ -148,6 +157,7 @@ class BillingService
                     'quantity' => $item['quantity'] ?? 1,
                     'unit_price' => $item['unit_price'],
                     'total' => $item['total'],
+                    'config_options' => $item['config_options'] ?? null,
                     'gst_enabled' => $item['gst_enabled'],
                     'gst_rate' => $item['gst_rate'],
                     'gst_type' => $item['gst_type'],
@@ -162,6 +172,122 @@ class BillingService
         });
 
         return $invoice->fresh();
+    }
+
+    /**
+     * Restore the per-line detail an invoice form cannot post back.
+     *
+     * updateWithItems() deletes and recreates every line, so anything absent
+     * from the payload is lost. The admin form submits description / quantity
+     * / unit_price plus each existing line's `id`; a line's `product_id` and
+     * its configurable-option snapshot live only in the database. Without this
+     * restore, editing an invoice's notes would blank the product link — which
+     * also drives per-product GST — and erase what each line bills for.
+     *
+     * Matched by id wherever the payload supplies one, which is exact: it
+     * survives reordering, a retyped description, and two lines that read
+     * identically ("Cloud VPS - Monthly" twice, for units configured 8 GB and
+     * 16 GB).
+     *
+     * Callers that supply no ids fall back to matching on the description, and
+     * only where it appears exactly once on each side among the lines no id
+     * already claimed — anything ambiguous carries nothing rather than attach
+     * one line's product and configuration to another. A line the admin just
+     * added has no id and no matching description, so it correctly inherits
+     * nothing.
+     *
+     * @param  array<int, array<string, mixed>>  $items
+     * @return array<int, array<string, mixed>>
+     */
+    private function carryForwardLineDetails(Invoice $invoice, array $items): array
+    {
+        $previous = $invoice->items()->get();
+        $previousById = $previous->keyBy('id');
+
+        $claimedIds = [];
+        foreach ($items as $item) {
+            $id = $this->lineId($item);
+
+            if ($id !== null && $previousById->has($id)) {
+                $claimedIds[$id] = true;
+            }
+        }
+
+        // Fallback index: only the stored lines no id claimed, and only the
+        // submitted lines that named no id.
+        $fallbackLines = [];
+        $fallbackCounts = [];
+
+        foreach ($previous as $line) {
+            if (isset($claimedIds[(int) $line->id])) {
+                continue;
+            }
+
+            $description = (string) $line->description;
+            $fallbackCounts[$description] = ($fallbackCounts[$description] ?? 0) + 1;
+            $fallbackLines[$description] ??= $line;
+        }
+
+        $incomingCounts = [];
+
+        foreach ($items as $item) {
+            if ($this->lineId($item) !== null) {
+                continue;
+            }
+
+            $description = (string) ($item['description'] ?? '');
+            $incomingCounts[$description] = ($incomingCounts[$description] ?? 0) + 1;
+        }
+
+        // A stored line can be claimed once. The HTTP path already rejects a
+        // repeated id (`distinct`), but this is a public service method: a
+        // second reference to the same line inherits nothing rather than
+        // duplicating one line's product — and its per-product GST treatment —
+        // onto a line that is not it.
+        $consumed = [];
+        $resolved = [];
+
+        foreach ($items as $item) {
+            $id = $this->lineId($item);
+            $match = null;
+
+            if ($id !== null) {
+                $match = $previousById->get($id);
+            } else {
+                $description = (string) ($item['description'] ?? '');
+
+                if (($fallbackCounts[$description] ?? 0) === 1 && ($incomingCounts[$description] ?? 0) === 1) {
+                    $match = $fallbackLines[$description];
+                }
+            }
+
+            if ($match !== null && ! isset($consumed[(int) $match->id])) {
+                $consumed[(int) $match->id] = true;
+
+                // Anything the caller stated explicitly wins; the stored line
+                // only fills the gaps.
+                $item = array_merge($item, [
+                    'product_id' => $item['product_id'] ?? $match->product_id,
+                    'config_options' => $item['config_options'] ?? $match->config_options,
+                ]);
+            }
+
+            $resolved[] = $item;
+        }
+
+        return $resolved;
+    }
+
+    /**
+     * The stored line id a submitted item refers to, or null for a new line.
+     *
+     * @param  array<string, mixed>  $item
+     */
+    private function lineId(array $item): ?int
+    {
+        $id = $item['id'] ?? null;
+
+        return is_numeric($id) ? (int) $id : null;
     }
 
     /**
@@ -192,6 +318,9 @@ class BillingService
                 'unit_price' => (float) $item->unit_price,
                 'total' => (float) $item->total,
                 'product_id' => $item->product_id,
+                // The configuration travels with the line, so the invoice can
+                // show the RAM / storage / support it is charging for.
+                'config_options' => $item->config_options,
             ];
         })->all();
 
@@ -263,11 +392,25 @@ class BillingService
      *    customer_wallet ledger row (type 'credit', balance_type 'credit') so the
      *    wallet ledger reflects it.
      *
+     * $pendingPaymentId settles a payment row that already exists rather than
+     * creating a second one. Online gateways write a `pending` row when the
+     * customer is sent to the gateway (it carries the gateway_id and the
+     * purchase reference); when the money is later confirmed — by the customer
+     * returning, or by the gateway's webhook — that same row is completed here.
+     * Without it the confirmation would leave the pending row orphaned beside a
+     * new completed one, and the two confirmation paths would each record their
+     * own payment for the same money.
+     *
      * @return array{invoice_id:int,payment_id:int,amount:float,status:string,previous_due:float,remaining_due:float,overpayment:float,credit_created:bool}
      */
-    public function recordPayment(int $invoiceId, float $amount, string $method, string $transactionId = ''): array
-    {
-        return DB::transaction(function () use ($invoiceId, $amount, $method, $transactionId) {
+    public function recordPayment(
+        int $invoiceId,
+        float $amount,
+        string $method,
+        string $transactionId = '',
+        ?int $pendingPaymentId = null,
+    ): array {
+        return DB::transaction(function () use ($invoiceId, $amount, $method, $transactionId, $pendingPaymentId) {
             $invoice = Invoice::findOrFail($invoiceId);
 
             $total = (float) $invoice->total;
@@ -276,13 +419,13 @@ class BillingService
 
             $overpayment = ($paidAmount + $amount) - $total;
 
-            $payment = Payment::create([
-                'invoice_id' => $invoiceId,
-                'amount' => $amount,
-                'method' => $method,
-                'transaction_id' => $transactionId,
-                'status' => 'completed',
-            ]);
+            $payment = $this->settleOrCreatePayment(
+                $invoiceId,
+                $amount,
+                $method,
+                $transactionId,
+                $pendingPaymentId,
+            );
 
             // Overpayment: clamp paid_amount to total, mark paid, credit the excess.
             if ($overpayment > 0) {
@@ -349,6 +492,49 @@ class BillingService
     }
 
     /**
+     * The completed payment row for this settlement: the pre-existing pending
+     * gateway row when one was named and is still claimable, otherwise a new
+     * one.
+     *
+     * The row is only reused when it belongs to this invoice and is still
+     * `pending`. A caller naming an already-completed row would otherwise
+     * double-count the money — the guard belongs here, next to the accounting,
+     * rather than in each of the two gateway callbacks.
+     */
+    private function settleOrCreatePayment(
+        int $invoiceId,
+        float $amount,
+        string $method,
+        string $transactionId,
+        ?int $pendingPaymentId,
+    ): Payment {
+        if ($pendingPaymentId !== null) {
+            $pending = Payment::where('id', $pendingPaymentId)
+                ->where('invoice_id', $invoiceId)
+                ->where('status', 'pending')
+                ->first();
+
+            if ($pending !== null) {
+                $pending->update([
+                    'amount' => $amount,
+                    'status' => 'completed',
+                    'transaction_id' => $transactionId !== '' ? $transactionId : $pending->transaction_id,
+                ]);
+
+                return $pending;
+            }
+        }
+
+        return Payment::create([
+            'invoice_id' => $invoiceId,
+            'amount' => $amount,
+            'method' => $method,
+            'transaction_id' => $transactionId,
+            'status' => 'completed',
+        ]);
+    }
+
+    /**
      * Generate recurring renewal invoices for active orders.
      *
      * WHMCS-style per-service billing: an order is a one-time transaction, and
@@ -373,9 +559,8 @@ class BillingService
      * billed they adopt their own schedule.
      *
      * @param  DateTimeInterface|null  $asOf  Reference date (defaults to today,
-     *                                       Asia/Kolkata); due_date and the next
-     *                                       cycle advance from this date.
-     *
+     *                                        Asia/Kolkata); due_date and the next
+     *                                        cycle advance from this date.
      * @return array{invoices_generated:int,errors:int}
      */
     public function processRecurringBilling(?DateTimeInterface $asOf = null): array
@@ -471,6 +656,9 @@ class BillingService
                     'quantity' => (int) $due['item']->quantity,
                     'unit_price' => (float) $due['item']->unit_price,
                     'total' => $due['total'],
+                    // A renewal bills the same configuration as the original
+                    // order, so the renewal invoice states it too.
+                    'config_options' => $due['item']->config_options,
                 ], $dueItems);
 
                 // RENEWAL-IGST FIX (decisions.md #6): the reference passed a null
@@ -543,16 +731,18 @@ class BillingService
      * Source: customers.state_code (added by the billing migration — mirrors the
      * reference's `SELECT state FROM customers` in ApiRoutes L960). Returns null
      * when unknown; callers fall back to the company state code (intra-state).
+     *
+     * Normalized through GstStateCodes so the value is always in the same
+     * vocabulary as `gst_settings.state_code`. That is belt-and-braces on top of
+     * the normalizing migration: a row written by an older release, or by an
+     * import, that still holds 'WB' resolves to '19' here instead of silently
+     * failing the intra-state comparison and billing the sale as inter-state.
      */
     public function resolveCustomerStateCode(int $customerId): ?string
     {
         $customer = Customer::find($customerId);
 
-        if (! $customer || $customer->state_code === null || $customer->state_code === '') {
-            return null;
-        }
-
-        return strtoupper((string) $customer->state_code);
+        return $customer === null ? null : GstStateCodes::normalize($customer->state_code);
     }
 
     /**
@@ -573,8 +763,7 @@ class BillingService
      * sibling services still running stay active.
      *
      * @param  DateTimeInterface|null  $asOf  Reference date (defaults to today,
-     *                                       Asia/Kolkata).
-     *
+     *                                        Asia/Kolkata).
      * @return array{terminated:int,errors:int}
      */
     public function processAutoTerminations(?DateTimeInterface $asOf = null): array

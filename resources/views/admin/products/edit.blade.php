@@ -186,31 +186,26 @@
                 <x-adminlte-textarea name="description" label="Description" rows="2"
                                      placeholder="Optional product description">{{ old('description', $product->description) }}</x-adminlte-textarea>
 
+                {{-- Each flag posts a hidden 0 ahead of the checkbox, so an
+                     unchecked box submits "0" instead of nothing — otherwise
+                     old() falls back to the stored value and silently
+                     re-checks the box after a validation error. --}}
                 <div class="row">
                     @foreach ([
                         'require_domain' => 'Requires a domain',
                         'show_in_order' => 'Visible in order form',
                         'show_in_affiliate' => 'Visible to affiliates',
                         'only_admin' => 'Admin-only ordering',
-                    ] as $field => $label)
-                        <div class="col-md-3">
-                            <div class="form-check">
-                                <input class="form-check-input" type="checkbox" name="{{ $field }}" value="1"
-                                       id="{{ $field }}" @checked(old($field, $product->{$field}))>
-                                <label class="form-check-label" for="{{ $field }}">{{ $label }}</label>
-                            </div>
-                        </div>
-                    @endforeach
-
-                    @foreach ([
                         'require_public_ip' => 'Requires a public IP',
                         'require_private_ip' => 'Requires a private IP',
                         'is_bundle' => 'This is a bundle',
                     ] as $field => $label)
                         <div class="col-md-3">
                             <div class="form-check">
+                                <input type="hidden" name="{{ $field }}" value="0">
                                 <input class="form-check-input" type="checkbox" name="{{ $field }}" value="1"
-                                       id="{{ $field }}" @checked(old($field, $product->{$field}))>
+                                       id="{{ $field }}"
+                                       @checked(filter_var(old($field, $product->{$field}), FILTER_VALIDATE_BOOLEAN))>
                                 <label class="form-check-label" for="{{ $field }}">{{ $label }}</label>
                             </div>
                         </div>
@@ -354,24 +349,67 @@
                 }
                 @endif
 
+                // Unsaved-changes guard. The tabs hide edits from view and the
+                // attach / module buttons reload the page, so an unsaved
+                // Details or Pricing edit is otherwise lost without a word.
+                // The attach picker and the module config fields are excluded:
+                // they are actions with their own submit, not product fields.
+                var editForm = document.getElementById('product-edit-form');
+                var dirty = false;
+                var isActionField = function (target) {
+                    if (!target || typeof target.closest !== 'function') return false;
+                    return !!target.closest('.module-config-fields')
+                        || target.id === 'option-group-select'
+                        || target.id === 'new-link-customer-editable';
+                };
+
+                if (editForm) {
+                    ['input', 'change'].forEach(function (type) {
+                        editForm.addEventListener(type, function (e) {
+                            if (!isActionField(e.target)) dirty = true;
+                        });
+                    });
+                    editForm.addEventListener('submit', function () { dirty = false; });
+                }
+
+                window.addEventListener('beforeunload', function (e) {
+                    if (!dirty) return;
+                    e.preventDefault();
+                    e.returnValue = '';
+                });
+
+                // Asked before an action that reloads the page: confirming
+                // clears the flag so beforeunload does not prompt twice.
+                var confirmDiscard = function () {
+                    if (!dirty) return true;
+                    if (!window.confirm('You have unsaved changes to this product. Continuing will discard them. Continue?')) {
+                        return false;
+                    }
+                    dirty = false;
+
+                    return true;
+                };
+
                 var attachBtn = document.getElementById('option-attach-btn');
                 var select = document.getElementById('option-group-select');
-                if (!attachBtn || !select) return;
 
-                attachBtn.addEventListener('click', function () {
-                    if (!select.value) return;
+                if (attachBtn && select) {
+                    attachBtn.addEventListener('click', function () {
+                        if (!select.value) return;
+                        if (!confirmDiscard()) return;
 
-                    var data = new FormData();
-                    data.append('_token', document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') ?? '');
-                    data.append('option_group_id', select.value);
-                    var editable = document.getElementById('new-link-customer-editable');
-                    data.append('customer_editable', editable && editable.checked ? '1' : '0');
+                        var data = new FormData();
+                        data.append('_token', document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') ?? '');
+                        data.append('option_group_id', select.value);
+                        var editable = document.getElementById('new-link-customer-editable');
+                        data.append('customer_editable', editable && editable.checked ? '1' : '0');
 
-                    fetch('{{ route('admin.products.options.attach', $product) }}', { method: 'POST', body: data })
-                        .finally(function () {
-                            window.location.href = '{{ route('admin.products.edit', $product) }}';
-                        });
-                });
+                        fetch('{{ route('admin.products.options.attach', $product) }}', { method: 'POST', body: data })
+                            .finally(function () {
+                                window.location.href = '{{ route('admin.products.edit', $product) }}';
+                            });
+                    });
+                }
 
                 // Module enable/disable + config save run via fetch (no nested
                 // forms inside the single update form — same pattern as the
@@ -380,6 +418,8 @@
                 // they render after we navigate back to the edit page.
                 var csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') ?? '';
                 var moduleAction = function (url, method, data) {
+                    if (!confirmDiscard()) return;
+
                     data.append('_token', csrf);
                     fetch(url, { method: method, body: data, redirect: 'manual' })
                         .finally(function () {

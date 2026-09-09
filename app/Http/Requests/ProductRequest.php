@@ -120,7 +120,42 @@ class ProductRequest extends FormRequest
             $this->validateOptionGroupPayloads($validator);
             $this->validateOptionLinkPayloads($validator);
             $this->validateBillingConfiguration($validator);
+            $this->validateDefaultCyclePricing($validator);
         });
+    }
+
+    /**
+     * The default billing cycle must carry a price in the submitted ladder.
+     * A cycle toggled off on the Pricing tab (or hidden by the payment type)
+     * while still selected as the default otherwise saves silently with
+     * `products.price` = 0 and no matching product_pricing row — an active,
+     * orderable product priced at zero. Free products are priced by the
+     * `free` cycle alone, so they are exempt.
+     */
+    private function validateDefaultCyclePricing(Validator $validator): void
+    {
+        if ($this->input('payment_type') === 'free') {
+            return;
+        }
+
+        $cycle = $this->input('billing_cycle');
+
+        if (! is_string($cycle) || $cycle === '') {
+            return; // the `required` / `in` rules already reported it
+        }
+
+        $price = data_get($this->input('pricing'), "{$cycle}.price");
+
+        if ($price !== null && $price !== '') {
+            return;
+        }
+
+        $label = Product::DEFAULT_CYCLES[$cycle] ?? $cycle;
+
+        $validator->errors()->add(
+            'billing_cycle',
+            "The default billing cycle ({$label}) has no price. Enable that cycle on the Pricing tab and give it a price, or choose a different default cycle."
+        );
     }
 
     /**
