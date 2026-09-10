@@ -460,27 +460,25 @@
                                     </div>
                                     <div class="row g-2">
                                         <div class="col-12">
-                                            <input type="text" name="address_line1" class="form-control form-control-sm" placeholder="Street address — House no., street, area" autocomplete="street-address">
+                                            <input type="text" name="address_line1" class="form-control form-control-sm" placeholder="Street address — House no., street, area" autocomplete="off">
                                         </div>
                                         <div class="col-12">
-                                            <input type="text" name="address_line2" class="form-control form-control-sm" placeholder="Apartment, suite, landmark (optional)" autocomplete="address-line2">
+                                            <input type="text" name="address_line2" class="form-control form-control-sm" placeholder="Apartment, suite, landmark (optional)" autocomplete="off">
                                         </div>
                                         <div class="col-6">
-                                            <input type="text" name="city" class="form-control form-control-sm" placeholder="City" autocomplete="address-level2">
+                                            <input type="text" name="city" class="form-control form-control-sm" placeholder="City" autocomplete="off">
                                         </div>
                                         <div class="col-6">
-                                            <input type="text" name="state" class="form-control form-control-sm" placeholder="State / Province" autocomplete="address-level1">
+                                            <x-state-field id="qc_state" country-id="qc_country"
+                                                           :label="null" size="sm" wrapper-class=""
+                                                           autocomplete="off"
+                                                           placeholder="State / Province" />
                                         </div>
                                         <div class="col-6">
-                                            <input type="text" name="postcode" class="form-control form-control-sm" placeholder="Postcode / ZIP" autocomplete="postal-code">
+                                            <input type="text" name="postcode" class="form-control form-control-sm" placeholder="Postcode / ZIP" autocomplete="off">
                                         </div>
                                         <div class="col-6">
-                                            <select name="country" class="form-select form-select-sm">
-                                                @php $qcCountries = ['India','United States','United Kingdom','Canada','Australia','Singapore','United Arab Emirates','Germany','France','Other']; @endphp
-                                                @foreach ($qcCountries as $c)
-                                                    <option value="{{ $c }}" @selected($c === 'India')>{{ $c }}</option>
-                                                @endforeach
-                                            </select>
+                                            <x-country-select id="qc_country" :label="null" size="sm" wrapper-class="" autocomplete="off" />
                                         </div>
                                     </div>
                                 </div>

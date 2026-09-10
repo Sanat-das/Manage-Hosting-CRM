@@ -98,17 +98,46 @@ class SettingsController extends Controller
             'cron_schedules' => ['hourly', 'daily', 'weekly', 'monthly'],
             'date_formats' => ['Y-m-d', 'd/m/Y', 'm/d/Y', 'd-m-Y', 'd M Y', 'j F Y', 'D, d M Y'],
 
-            // Open sets — suggestions only.
-            'panels' => $safe(static fn (): array => \App\Models\Module::query()
-                ->where('status', 'active')
-                ->orderBy('slug')
-                ->pluck('slug')
-                ->all()),
+            // Only modules that can actually provision an account belong in a
+            // "control panel" list. Read from the stored manifest rather than by
+            // resolving each module: resolving boots module code on every
+            // settings page load, and a module that fatals is recorded as
+            // crashed for the whole install.
+            'provisioning_panels' => $safe(static function (): array {
+                $slugs = [];
+
+                foreach (\App\Models\Module::query()->where('status', 'active')->orderBy('slug')->get(['slug', 'manifest']) as $module) {
+                    // Module::$casts already turns `manifest` into an array;
+                    // json_decode((string) $array) decodes the literal "Array"
+                    // and quietly yields no capabilities at all. Accept both
+                    // shapes so a raw query builder row works too.
+                    $manifest = $module->manifest;
+
+                    if (is_string($manifest)) {
+                        $manifest = json_decode($manifest, true);
+                    }
+
+                    $capabilities = is_array($manifest) ? ($manifest['capabilities'] ?? []) : [];
+
+                    if (is_array($capabilities) && in_array('provisioning', $capabilities, true)) {
+                        $slugs[] = $module->slug;
+                    }
+                }
+
+                return $slugs;
+            }),
             'server_groups' => $safe(static fn (): array => \App\Models\ServerGroup::query()
                 ->orderBy('name')
                 ->pluck('name')
                 ->all()),
+            'registrars' => $safe(static fn (): array => app(\App\Services\DomainService::class)->registrars()),
             'stock_units' => ['units', 'pcs', 'licenses', 'GB', 'TB', 'cores', 'hours'],
+
+            // No source: nothing in the app defines domain pricing tiers, so
+            // this list is a guess kept only so the field is not free text.
+            'pricing_tiers' => ['standard', 'premium', 'reseller', 'wholesale'],
+
+            // Open sets — suggestions only.
             'sort_orders' => ['sort_order', 'name', 'price', 'created_at', 'updated_at'],
         ];
     }

@@ -104,25 +104,22 @@
             </div>
             <div class="row">
                 <div class="col-md-6">
-                    <x-adminlte-input name="address_line1" label="Street address" placeholder="House no., street name, area" value="{{ old('address_line1') }}" />
+                    {{-- autocomplete="off": a staff member is entering ANOTHER user's
+                         address, so browser autofill would offer their own. --}}
+                    <x-adminlte-input name="address_line1" label="Street address" placeholder="House no., street name, area" autocomplete="off" value="{{ old('address_line1') }}" />
                 </div>
                 <div class="col-md-6">
-                    <x-adminlte-input name="address_line2" label="Apartment / Suite (optional)" placeholder="Apartment, suite, landmark" value="{{ old('address_line2') }}" />
+                    <x-adminlte-input name="address_line2" label="Apartment / Suite (optional)" placeholder="Apartment, suite, landmark" autocomplete="off" value="{{ old('address_line2') }}" />
                 </div>
             </div>
             <div class="row">
-                <div class="col-md-4"><x-adminlte-input name="city" label="City" placeholder="e.g. Mumbai" value="{{ old('city') }}" /></div>
-                <div class="col-md-4"><x-adminlte-input name="state" label="State / Province" placeholder="e.g. Maharashtra" value="{{ old('state') }}" /></div>
-                <div class="col-md-4"><x-adminlte-input name="postcode" label="Postcode / ZIP" placeholder="e.g. 400001" value="{{ old('postcode') }}" /></div>
+                <div class="col-md-4"><x-adminlte-input name="city" label="City" placeholder="e.g. Mumbai" autocomplete="off" value="{{ old('city') }}" /></div>
+                <div class="col-md-4"><x-state-field autocomplete="off" :value="old('state')" :country="old('country')" /></div>
+                <div class="col-md-4"><x-adminlte-input name="postcode" label="Postcode / ZIP" placeholder="e.g. 400001" autocomplete="off" value="{{ old('postcode') }}" /></div>
             </div>
             <div class="row">
                 <div class="col-md-6">
-                    <x-adminlte-select name="country" label="Country">
-                        @php $countries = ['India','United States','United Kingdom','Canada','Australia','Singapore','United Arab Emirates','Germany','France','Other']; @endphp
-                        @foreach ($countries as $c)
-                            <option value="{{ $c }}" @selected(old('country','India') === $c)>{{ $c }}</option>
-                        @endforeach
-                    </x-adminlte-select>
+                    <x-country-select autocomplete="off" :selected="old('country')" />
                 </div>
             </div>
         </div>

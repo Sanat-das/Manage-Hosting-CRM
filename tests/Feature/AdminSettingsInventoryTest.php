@@ -304,7 +304,10 @@ class AdminSettingsInventoryTest extends TestCase
     {
         // 1 legacy settings pluck in middleware (security hardening toggles) + 1 legacy pluck in
         // SettingsController::loadAll() + 17 typed group loads (distinct classes in AppSettings::TYPED_KEYS, now includes branding)
-        // + 1 gst_settings row for the Billing tab's GST & Tax card = 20.
+        // + 1 gst_settings row for the Billing tab's GST & Tax card = 20, plus 1 registrar_settings
+        // read backing the Default Registrar dropdown (SettingsController::fieldOptions) = 21.
+        // The other option sources (adminlte_roles, modules, server_groups) do not match the
+        // filter below; registrar_settings does, because its name contains "settings".
         // Guard against N+1 per-key queries (would be ~160+ queries if each TYPED_KEYS entry hit DB).
         DB::enableQueryLog();
 
@@ -328,9 +331,9 @@ class AdminSettingsInventoryTest extends TestCase
         $settingCount = count($settingQueries);
 
         $this->assertLessThanOrEqual(
-            20,
+            21,
             $settingCount,
-            "GET admin.settings.index issued {$settingCount} setting queries (expected <=20 = 2 plucks + 17 typed groups + 1 gst_settings). "
+            "GET admin.settings.index issued {$settingCount} setting queries (expected <=21 = 2 plucks + 17 typed groups + 1 gst_settings + 1 registrar_settings). "
             . "Total queries: {$totalCount}. Possible N+1. Queries: " . json_encode(array_column($settingQueries, 'query'))
         );
 

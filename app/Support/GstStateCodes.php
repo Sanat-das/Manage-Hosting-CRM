@@ -76,6 +76,16 @@ final class GstStateCodes
     ];
 
     /**
+     * Codes kept in CODES only so that GSTINs issued under them still
+     * normalize. Neither is a place anybody can live today, so neither may be
+     * offered in an address form — "Andhra Pradesh (before division)" in a
+     * customer's state dropdown is an invitation to file a wrong return.
+     *
+     * @var list<string>
+     */
+    private const HISTORICAL = ['25', '28'];
+
+    /**
      * Legacy two-letter codes => GST code, for converting what is already
      * stored (customers.state_code was written by an alpha map) and for
      * accepting a hand-typed 'MH'.
@@ -196,6 +206,44 @@ final class GstStateCodes
         }
 
         return null;
+    }
+
+    /**
+     * The 36 states and union territories that exist right now — CODES minus
+     * HISTORICAL. This is the list an address form offers; all() is for
+     * normalizing what is already stored, and the two are deliberately not the
+     * same set.
+     *
+     * @return array<string, string> code => state name
+     */
+    public static function current(): array
+    {
+        $current = [];
+
+        foreach (self::CODES as $code => $name) {
+            if (! in_array((string) $code, self::HISTORICAL, true)) {
+                $current[(string) $code] = $name;
+            }
+        }
+
+        return $current;
+    }
+
+    /**
+     * State names for an address <select>, sorted the way a human scans a
+     * dropdown. The option VALUE is the name, not the code: `users.state` holds
+     * a name and is printed verbatim on invoices, and normalize() maps a name
+     * back to its code exactly — so one control satisfies both the address and
+     * the GST side without a second lookup field.
+     *
+     * @return list<string>
+     */
+    public static function currentNames(): array
+    {
+        $names = array_values(self::current());
+        sort($names, SORT_NATURAL | SORT_FLAG_CASE);
+
+        return $names;
     }
 
     /**

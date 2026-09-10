@@ -86,10 +86,9 @@
                     @error('city')<div class="invalid-feedback d-block">{{ $message }}</div>@enderror
                 </div>
                 <div class="col-6">
-                    <input type="text" name="state" value="{{ old('state') }}"
-                           class="form-control form-control-sm @error('state') is-invalid @enderror"
-                           placeholder="State / Province" autocomplete="address-level1">
-                    @error('state')<div class="invalid-feedback d-block">{{ $message }}</div>@enderror
+                    <x-state-field :label="null" size="sm" wrapper-class=""
+                                   placeholder="State / Province"
+                                   :value="old('state')" :country="old('country')" />
                 </div>
             </div>
             <div class="row g-2">
@@ -100,13 +99,7 @@
                     @error('postcode')<div class="invalid-feedback d-block">{{ $message }}</div>@enderror
                 </div>
                 <div class="col-6">
-                    <select name="country" class="form-select form-select-sm @error('country') is-invalid @enderror">
-                        @php $countries = ['India','United States','United Kingdom','Canada','Australia','Singapore','United Arab Emirates','Germany','France','Other']; @endphp
-                        @foreach ($countries as $c)
-                            <option value="{{ $c }}" @selected(old('country','India') === $c)>{{ $c }}</option>
-                        @endforeach
-                    </select>
-                    @error('country')<div class="invalid-feedback d-block">{{ $message }}</div>@enderror
+                    <x-country-select :label="null" size="sm" wrapper-class="" :selected="old('country')" />
                 </div>
             </div>
         </div>

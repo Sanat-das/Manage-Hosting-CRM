@@ -90,11 +90,18 @@
 
             <div class="row">
                 <div class="col-md-6">
+                    {{-- autocomplete="off" throughout: this captures the CUSTOMER's
+                         address, not the admin's. With the semantic tokens the browser
+                         offers the signed-in admin's own saved address, one stray
+                         tab-complete from writing their home address onto a customer
+                         record and then onto that customer's invoice. --}}
                     <x-adminlte-input name="address_line1" label="Street address" placeholder="House no., street name, area"
+                                      autocomplete="off"
                                       value="{{ old('address_line1') }}" />
                 </div>
                 <div class="col-md-6">
                     <x-adminlte-input name="address_line2" label="Apartment / Suite (optional)" placeholder="Apartment, suite, floor, landmark"
+                                      autocomplete="off"
                                       value="{{ old('address_line2') }}" />
                 </div>
             </div>
@@ -102,26 +109,22 @@
             <div class="row">
                 <div class="col-md-4">
                     <x-adminlte-input name="city" label="City" placeholder="e.g. Mumbai"
+                                      autocomplete="off"
                                       value="{{ old('city') }}" />
                 </div>
                 <div class="col-md-4">
-                    <x-adminlte-input name="state" label="State / Province" placeholder="e.g. Maharashtra"
-                                      value="{{ old('state') }}" />
+                    <x-state-field autocomplete="off" :value="old('state')" :country="old('country')" />
                 </div>
                 <div class="col-md-4">
                     <x-adminlte-input name="postcode" label="Postcode / ZIP" placeholder="e.g. 400001"
+                                      autocomplete="off"
                                       value="{{ old('postcode') }}" />
                 </div>
             </div>
 
             <div class="row">
                 <div class="col-md-6">
-                    <x-adminlte-select name="country" label="Country">
-                        @php $countries = ['India','United States','United Kingdom','Canada','Australia','Singapore','United Arab Emirates','Germany','France','Other']; @endphp
-                        @foreach ($countries as $c)
-                            <option value="{{ $c }}" @selected(old('country','India') === $c)>{{ $c }}</option>
-                        @endforeach
-                    </x-adminlte-select>
+                    <x-country-select autocomplete="off" :selected="old('country')" />
                 </div>
                 <div class="col-md-6 d-flex align-items-end">
                     <div class="form-text mb-3 w-100">State drives GST (CGST/SGST vs IGST). Postcode validates shipping/tax.</div>

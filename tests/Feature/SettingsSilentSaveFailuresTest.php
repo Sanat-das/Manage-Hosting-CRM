@@ -227,10 +227,11 @@ class SettingsSilentSaveFailuresTest extends TestCase
     }
 
     /**
-     * Controls whose value space is fixed by code should not be free text. A
-     * typo in a cron schedule box was a silent no-op.
+     * Fields with a known set of values should not be free text. A typo in a
+     * cron schedule box was a silent no-op, and "cpanel" typed into a control
+     * panel box was indistinguishable from "cpnael".
      */
-    public function test_closed_value_sets_render_as_selects(): void
+    public function test_known_value_sets_render_as_selects(): void
     {
         $html = $this->actingAsSettingsAdmin()
             ->get(route('admin.settings.index', ['tab' => 'cron']))
@@ -241,6 +242,8 @@ class SettingsSilentSaveFailuresTest extends TestCase
             'cron_domain_expiry_check', 'cron_overdue_invoice_check', 'cron_backup_check',
             'cron_usage_sync', 'cron_pricing_sync', 'cron_report_generation',
             'role_guard', 'product_default_billing_cycle', 'date_format',
+            'hosting_default_panel', 'hosting_default_server_group',
+            'domain_default_registrar', 'domain_pricing_tier', 'inventory_stock_unit',
         ] as $key) {
             $this->assertMatchesRegularExpression(
                 '/<select[^>]*name="settings\['.preg_quote($key, '/').'\]"/',
@@ -257,6 +260,48 @@ class SettingsSilentSaveFailuresTest extends TestCase
                 "{$key} should be type=url."
             );
         }
+    }
+
+    /**
+     * The control panel list is the modules that can actually provision, read
+     * from each module's stored manifest. Offering ssh-console or snmp-monitor
+     * as a "control panel" is how an admin ends up with a default that can
+     * never create an account.
+     */
+    public function test_the_control_panel_list_holds_only_provisioning_modules(): void
+    {
+        \App\Models\Module::query()->delete();
+        foreach ([
+            ['slug' => 'cpanel', 'caps' => ['provisioning']],
+            ['slug' => 'virtualizor', 'caps' => ['provisioning']],
+            ['slug' => 'snmp-monitor', 'caps' => ['hosting-account-info']],
+            ['slug' => 'ssh-console', 'caps' => []],
+        ] as $row) {
+            \App\Models\Module::query()->create([
+                'slug' => $row['slug'],
+                'name' => ucfirst($row['slug']),
+                'version' => '1.0.0',
+                'status' => 'active',
+                'provider' => 'Modules\\'.ucfirst($row['slug']).'\\Provider',
+                // An array, because Module::$casts stores it that way. Passing a
+                // JSON string here double-encodes it and the test then exercises
+                // a shape production never has.
+                'manifest' => ['capabilities' => $row['caps']],
+            ]);
+        }
+
+        $html = $this->actingAsSettingsAdmin()
+            ->get(route('admin.settings.index', ['tab' => 'hosting']))
+            ->assertStatus(200)
+            ->getContent();
+
+        preg_match('/<select[^>]*name="settings\[hosting_default_panel\]".*?<\/select>/s', $html, $m);
+        $this->assertNotEmpty($m, 'hosting_default_panel select missing.');
+
+        $this->assertStringContainsString('value="cpanel"', $m[0]);
+        $this->assertStringContainsString('value="virtualizor"', $m[0]);
+        $this->assertStringNotContainsString('value="snmp-monitor"', $m[0], 'A monitoring module is not a control panel.');
+        $this->assertStringNotContainsString('value="ssh-console"', $m[0], 'A console module is not a control panel.');
     }
 
     /**

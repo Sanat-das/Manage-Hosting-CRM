@@ -96,6 +96,18 @@
             return $html;
         };
 
+        /**
+         * A blank option label, but only when the value is genuinely unset.
+         *
+         * Option A (pinned in SettingsController::saveTyped) makes an empty
+         * submission mean "keep the stored value". Offering "— not set —" on a
+         * field that already has one would therefore be a control that looks
+         * like it clears the setting and silently does nothing. It is offered
+         * only to represent a value that is already empty, which the select
+         * would otherwise have to misrepresent as its first real option.
+         */
+        $blankIfUnset = fn ($current): ?string => trim((string) $current) === '' ? '— not set —' : null;
+
         /** <option> markup for a <datalist>: suggestions that never constrain the value. */
         $datalistOptions = function (array $options): string {
             return implode('', array_map(
@@ -654,43 +666,42 @@
                         <div class="row g-3">
                             <div class="col-md-6">
                                 <label for="company_address_line1" class="form-label">Street address</label>
-                                <input type="text" name="settings[company_address_line1]" id="company_address_line1" value="{{ old('settings.company_address_line1', $settings['company_address_line1'] ?? '') }}" placeholder="House no., street name, area" maxlength="255" class="form-control @error('settings.company_address_line1') is-invalid @enderror">
+                                <input type="text" name="settings[company_address_line1]" id="company_address_line1" value="{{ old('settings.company_address_line1', $settings['company_address_line1'] ?? '') }}" placeholder="House no., street name, area" maxlength="255" autocomplete="off" class="form-control @error('settings.company_address_line1') is-invalid @enderror">
                                 @error('settings.company_address_line1') <span class="invalid-feedback d-block" role="alert">{{ $message }}</span> @enderror
                             </div>
                             <div class="col-md-6">
                                 <label for="company_address_line2" class="form-label">Apartment / Suite <span class="text-muted">(optional)</span></label>
-                                <input type="text" name="settings[company_address_line2]" id="company_address_line2" value="{{ old('settings.company_address_line2', $settings['company_address_line2'] ?? '') }}" placeholder="Apartment, suite, floor, landmark" maxlength="255" class="form-control @error('settings.company_address_line2') is-invalid @enderror">
+                                <input type="text" name="settings[company_address_line2]" id="company_address_line2" value="{{ old('settings.company_address_line2', $settings['company_address_line2'] ?? '') }}" placeholder="Apartment, suite, floor, landmark" maxlength="255" autocomplete="off" class="form-control @error('settings.company_address_line2') is-invalid @enderror">
                                 @error('settings.company_address_line2') <span class="invalid-feedback d-block" role="alert">{{ $message }}</span> @enderror
                             </div>
                         </div>
                         <div class="row g-3 mt-1">
                             <div class="col-md-4">
                                 <label for="company_city" class="form-label">City</label>
-                                <input type="text" name="settings[company_city]" id="company_city" value="{{ old('settings.company_city', $settings['company_city'] ?? '') }}" placeholder="e.g. Mumbai" maxlength="100" class="form-control @error('settings.company_city') is-invalid @enderror">
+                                <input type="text" name="settings[company_city]" id="company_city" value="{{ old('settings.company_city', $settings['company_city'] ?? '') }}" placeholder="e.g. Mumbai" maxlength="100" autocomplete="off" class="form-control @error('settings.company_city') is-invalid @enderror">
                                 @error('settings.company_city') <span class="invalid-feedback d-block" role="alert">{{ $message }}</span> @enderror
                             </div>
                             <div class="col-md-4">
-                                <label for="company_state" class="form-label">State / Province</label>
-                                <input type="text" name="settings[company_state]" id="company_state" value="{{ old('settings.company_state', $settings['company_state'] ?? '') }}" placeholder="e.g. Maharashtra" maxlength="100" class="form-control @error('settings.company_state') is-invalid @enderror">
-                                @error('settings.company_state') <span class="invalid-feedback d-block" role="alert">{{ $message }}</span> @enderror
+                                {{-- id stays company_state: the invoice-header preview below reads it by id
+                                     and listens for `input`, which the component re-dispatches on the hidden
+                                     field whichever control the admin actually used. --}}
+                                <x-state-field name="settings[company_state]" id="company_state"
+                                               country-id="company_country" country-name="settings[company_country]"
+                                               wrapper-class="" autocomplete="off"
+                                               :value="$settings['company_state'] ?? null"
+                                               :country="$settings['company_country'] ?? null" />
                             </div>
                             <div class="col-md-4">
                                 <label for="company_postcode" class="form-label">Postcode / ZIP</label>
-                                <input type="text" name="settings[company_postcode]" id="company_postcode" value="{{ old('settings.company_postcode', $settings['company_postcode'] ?? '') }}" placeholder="e.g. 400001" maxlength="20" class="form-control @error('settings.company_postcode') is-invalid @enderror">
+                                <input type="text" name="settings[company_postcode]" id="company_postcode" value="{{ old('settings.company_postcode', $settings['company_postcode'] ?? '') }}" placeholder="e.g. 400001" maxlength="20" autocomplete="off" class="form-control @error('settings.company_postcode') is-invalid @enderror">
                                 @error('settings.company_postcode') <span class="invalid-feedback d-block" role="alert">{{ $message }}</span> @enderror
                             </div>
                         </div>
                         <div class="row g-3 mt-1">
                             <div class="col-md-6">
-                                <label for="company_country" class="form-label">Country</label>
-                                @php $companyCountryCurrent = old('settings.company_country', $settings['company_country'] ?? 'India'); @endphp
-                                <select name="settings[company_country]" id="company_country" class="form-select @error('settings.company_country') is-invalid @enderror">
-                                    @php $cCountries = ['India','United States','United Kingdom','Canada','Australia','Singapore','United Arab Emirates','Germany','France','Other']; @endphp
-                                    @foreach ($cCountries as $cIn)
-                                        <option value="{{ $cIn }}" @selected($companyCountryCurrent === $cIn)>{{ $cIn }}</option>
-                                    @endforeach
-                                </select>
-                                @error('settings.company_country') <span class="invalid-feedback d-block" role="alert">{{ $message }}</span> @enderror
+                                <x-country-select name="settings[company_country]" id="company_country"
+                                                  wrapper-class="" autocomplete="off"
+                                                  :selected="$settings['company_country'] ?? null" />
                             </div>
                             <div class="col-md-6 d-flex align-items-end">
                                 <div class="form-text mb-2 w-100">State drives GST (CGST/SGST vs IGST). Postcode validates shipping/tax — same rules as customer address.</div>
@@ -1274,14 +1285,17 @@
                 <x-adminlte-card icon="bi bi-globe" title="Domain Settings">
                     <div class="row">
                         <div class="col-md-4">
-                            <x-adminlte-input name="settings[domain_default_registrar]" label="Default Registrar"
-                                value="{{ old('settings.domain_default_registrar', $settings['domain_default_registrar'] ?? '') }}">
-                                <small class="form-text text-muted">(leave blank to keep current; to clear, contact admin)</small>
-                            </x-adminlte-input>
+                            @php $registrarValue = old('settings.domain_default_registrar', $settings['domain_default_registrar'] ?? ''); @endphp
+                            <x-adminlte-select name="settings[domain_default_registrar]" label="Default Registrar">
+                                {!! $selectOptions($fieldOptions['registrars'] ?? [], $registrarValue, $blankIfUnset($registrarValue)) !!}
+                            </x-adminlte-select>
+                            <small class="form-text text-muted">Configure credentials under Domains &rsaquo; Registrar Settings.</small>
                         </div>
                         <div class="col-md-4">
-                            <x-adminlte-input name="settings[domain_pricing_tier]" spellcheck="false" autocapitalize="none" autocomplete="off" label="Pricing Tier"
-                                value="{{ old('settings.domain_pricing_tier', $settings['domain_pricing_tier'] ?? 'standard') }}" />
+                            @php $pricingTierValue = old('settings.domain_pricing_tier', $settings['domain_pricing_tier'] ?? 'standard'); @endphp
+                            <x-adminlte-select name="settings[domain_pricing_tier]" label="Pricing Tier">
+                                {!! $selectOptions($fieldOptions['pricing_tiers'] ?? [], $pricingTierValue, $blankIfUnset($pricingTierValue)) !!}
+                            </x-adminlte-select>
                         </div>
                         <div class="col-md-4">
                             <x-adminlte-input name="settings[domain_renewal_reminder_days]" label="Renewal Reminder (days)" type="number" min="0" max="365"
@@ -1500,21 +1514,18 @@
                 <x-adminlte-card icon="bi bi-hdd" title="Hosting Settings">
                     <div class="row">
                         <div class="col-md-4">
-                            {{-- Datalist, not a select: an uninstalled module must not
-                                 silently rewrite this on the next save of the tab. --}}
-                            <x-adminlte-input name="settings[hosting_default_panel]" label="Default Control Panel"
-                                list="hosting-panel-options" spellcheck="false" autocapitalize="none" autocomplete="off"
-                                value="{{ old('settings.hosting_default_panel', $settings['hosting_default_panel'] ?? 'cpanel') }}" />
-                            <datalist id="hosting-panel-options">{!! $datalistOptions($fieldOptions['panels'] ?? []) !!}</datalist>
-                            <small class="form-text text-muted">Suggestions are the active modules.</small>
+                            @php $panelValue = old('settings.hosting_default_panel', $settings['hosting_default_panel'] ?? ''); @endphp
+                            <x-adminlte-select name="settings[hosting_default_panel]" label="Default Control Panel">
+                                {!! $selectOptions($fieldOptions['provisioning_panels'] ?? [], $panelValue, $blankIfUnset($panelValue)) !!}
+                            </x-adminlte-select>
+                            <small class="form-text text-muted">Active modules that can provision accounts.</small>
                         </div>
                         <div class="col-md-4">
-                            <datalist id="hosting-server-group-options">{!! $datalistOptions($fieldOptions['server_groups'] ?? []) !!}</datalist>
-                            <x-adminlte-input name="settings[hosting_default_server_group]" label="Default Server Group"
-                                list="hosting-server-group-options" autocomplete="off"
-                                value="{{ old('settings.hosting_default_server_group', $settings['hosting_default_server_group'] ?? '') }}">
-                                <small class="form-text text-muted">(leave blank to keep current; to clear, contact admin)</small>
-                            </x-adminlte-input>
+                            @php $serverGroupValue = old('settings.hosting_default_server_group', $settings['hosting_default_server_group'] ?? ''); @endphp
+                            <x-adminlte-select name="settings[hosting_default_server_group]" label="Default Server Group">
+                                {!! $selectOptions($fieldOptions['server_groups'] ?? [], $serverGroupValue, $blankIfUnset($serverGroupValue)) !!}
+                            </x-adminlte-select>
+                            <small class="form-text text-muted">Groups from Products/Services &rsaquo; Server Groups.</small>
                         </div>
                         <div class="col-md-4">
                             <x-adminlte-input name="settings[hosting_provision_retries]" label="Provision Retries" type="number" min="0"
@@ -1727,10 +1738,10 @@
                 <x-adminlte-card icon="bi bi-box-seam" title="Inventory Settings">
                     <div class="row">
                         <div class="col-md-4">
-                            <x-adminlte-input name="settings[inventory_stock_unit]" label="Stock Unit"
-                                list="inventory-stock-unit-options" spellcheck="false" autocomplete="off"
-                                value="{{ old('settings.inventory_stock_unit', $settings['inventory_stock_unit'] ?? 'units') }}" />
-                            <datalist id="inventory-stock-unit-options">{!! $datalistOptions($fieldOptions['stock_units'] ?? []) !!}</datalist>
+                            @php $stockUnitValue = old('settings.inventory_stock_unit', $settings['inventory_stock_unit'] ?? 'units'); @endphp
+                            <x-adminlte-select name="settings[inventory_stock_unit]" label="Stock Unit">
+                                {!! $selectOptions($fieldOptions['stock_units'] ?? [], $stockUnitValue, $blankIfUnset($stockUnitValue)) !!}
+                            </x-adminlte-select>
                         </div>
                         <div class="col-md-4">
                             <x-adminlte-input name="settings[inventory_low_stock_threshold]" label="Low Stock Threshold" type="number" min="0"

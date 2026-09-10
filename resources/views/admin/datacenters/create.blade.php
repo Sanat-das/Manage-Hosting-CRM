@@ -13,9 +13,10 @@
         </div>
         <x-adminlte-input name="address" label="Address" placeholder="e.g. 100 Data Center Way" value="{{ old('address') }}" />
         <div class="row">
-            <div class="col-md-4"><x-adminlte-input name="city" label="City" value="{{ old('city') }}" /></div>
-            <div class="col-md-4"><x-adminlte-input name="state" label="State" value="{{ old('state') }}" /></div>
-            <div class="col-md-4"><x-adminlte-input name="country" label="Country" value="{{ old('country') }}" /></div>
+            {{-- autocomplete="off": a facility address, never the admin's own. --}}
+            <div class="col-md-4"><x-adminlte-input name="city" label="City" autocomplete="off" value="{{ old('city') }}" /></div>
+            <div class="col-md-4"><x-state-field label="State" autocomplete="off" :value="old('state')" :country="old('country')" /></div>
+            <div class="col-md-4"><x-country-select allow-blank autocomplete="off" :selected="old('country')" /></div>
         </div>
         <div class="row">
             <div class="col-md-6"><x-adminlte-input name="timezone" label="Timezone" placeholder="e.g. Asia/Kolkata" value="{{ old('timezone') }}" /></div>
