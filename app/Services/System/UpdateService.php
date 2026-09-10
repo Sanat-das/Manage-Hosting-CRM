@@ -401,21 +401,34 @@ class UpdateService
                         $appendOutput('composer install', 'composer HOME error — vendor/ ships with the update, continuing (migrate will run next).', 0);
                         try { Log::warning('UpdateService: composer HOME error ignored — vendor/ present, continuing update.'); } catch (Throwable) {}
                     } elseif ($isPhpVersionError) {
-                        $result = $this->buildRunResult(
-                            status: 'failed',
-                            message: 'Dependencies failed: your server PHP (' . PHP_VERSION . ') does not satisfy the update (requires PHP >=8.4.1 for symfony/clock 8.1 etc.). Fix: cPanel → MultiPHP Manager → select your domain → set PHP to ea-php84 (8.4) → retry update. ' . trim(Str::limit($composer['output'], 1200)),
-                            behind: $behind,
-                            from: $fromHash,
-                            to: $this->resolveLocalHash(),
-                            branch: $branch,
-                            remoteSanitized: $remoteSanitized,
-                            exit: $composer['exit'],
-                            startedAt: $startedAt,
-                            output: Str::limit($capturedOutput, self::OUTPUT_LIMIT)
-                        );
-                        $this->audit($actor, $result, $capturedOutput, $behind);
-                        $emit('error', $result['message'], 60, true, $result);
-                        return $result;
+                        // Shared hosts often have web PHP 8.5.10 but CLI `php`/`composer` still on 8.3.33.
+                        // The lock requires >=8.4.1 (symfony/clock 8.1). Vendor ships pre-built, so
+                        // retry with --ignore-platform-reqs; if vendor exists we can continue anyway.
+                        $appendOutput('composer install', 'PHP version mismatch detected (web PHP ' . PHP_VERSION . ' vs Composer PHP 8.3.33) — retrying with --ignore-platform-reqs...', 0);
+                        $composerRetry = $this->runProcess(['composer', 'install', '--no-dev', '--optimize-autoloader', '--no-interaction', '--ignore-platform-reqs'], 180);
+                        $appendOutput('composer install --ignore-platform-reqs', $composerRetry['output'], $composerRetry['exit']);
+                        if ($composerRetry['success']) {
+                            try { Log::warning('UpdateService: composer retry with --ignore-platform-reqs succeeded (PHP mismatch ignored, vendor shipped).'); } catch (Throwable) {}
+                        } elseif ($vendorExists) {
+                            $appendOutput('composer install', 'Composer still failed but vendor/autoload.php exists — continuing (vendor ships with update, PHP 8.5.10 will run it).', 0);
+                            try { Log::warning('UpdateService: composer failed even with --ignore-platform-reqs but vendor exists — continuing.'); } catch (Throwable) {}
+                        } else {
+                            $result = $this->buildRunResult(
+                                status: 'failed',
+                                message: 'Dependencies failed: Composer PHP (8.3.33 from PATH) does not match web PHP (' . PHP_VERSION . ') and lock requires >=8.4.1. Fix: cPanel → MultiPHP Manager → set BOTH web and CLI to ea-php84/ea-php85 (or set CLI via cPanel → Terminal → `ln -s /opt/alt/php85/usr/bin/php ~/bin/php`), then retry. Raw: ' . trim(Str::limit($composer['output'], 1500)),
+                                behind: $behind,
+                                from: $fromHash,
+                                to: $this->resolveLocalHash(),
+                                branch: $branch,
+                                remoteSanitized: $remoteSanitized,
+                                exit: $composer['exit'],
+                                startedAt: $startedAt,
+                                output: Str::limit($capturedOutput, self::OUTPUT_LIMIT)
+                            );
+                            $this->audit($actor, $result, $capturedOutput, $behind);
+                            $emit('error', $result['message'], 60, true, $result);
+                            return $result;
+                        }
                     } else {
                         $result = $this->buildRunResult(
                             status: 'failed',
@@ -750,11 +763,23 @@ class UpdateService
                         $appendOutput('composer install', 'composer HOME error — vendor/ ships in ZIP, continuing.', 0);
                         try { Log::warning('UpdateService: composer HOME error ignored during ZIP update — vendor/ present.'); } catch (Throwable) {}
                     } elseif ($isPhpVersionError) {
-                        $checkpoint('step=composer status=failed (PHP version mismatch)');
-                        $result = $this->buildRunResult('failed', 'Dependencies failed: your server PHP (' . PHP_VERSION . ') does not satisfy the update (requires PHP >=8.4.1). Fix: cPanel → MultiPHP Manager → select domain → set to ea-php84 (8.4) → retry. ' . Str::limit($composer['output'], 500), 0, $fromVersion, null, 'main', $remoteSanitized, $composer['exit'], $startedAt, $capturedOutput);
-                        $this->audit($actor, $result, $capturedOutput, 0);
-                        $emit('error', $result['message'], 65, true, $result);
-                        return $result;
+                        $checkpoint('step=composer status=retrying with --ignore-platform-reqs (PHP mismatch)');
+                        $appendOutput('composer install', 'PHP version mismatch (web PHP ' . PHP_VERSION . ' vs Composer PHP) — retrying with --ignore-platform-reqs...', 0);
+                        $composerRetry = $this->runProcess(['composer', 'install', '--no-dev', '--optimize-autoloader', '--no-interaction', '--ignore-platform-reqs'], 300);
+                        $appendOutput('composer install --ignore-platform-reqs', $composerRetry['output'], $composerRetry['exit']);
+                        $checkpoint('step=composer status=' . ($composerRetry['success'] ? 'done (retry)' : 'failed retry exit=' . $composerRetry['exit']));
+                        if ($composerRetry['success']) {
+                            try { Log::warning('UpdateService: composer ZIP retry with --ignore-platform-reqs succeeded.'); } catch (Throwable) {}
+                        } elseif ($vendorExists) {
+                            $checkpoint('step=composer status=skipped (retry failed but vendor/ present)');
+                            $appendOutput('composer install', 'Composer retry failed but vendor/autoload.php exists — continuing (vendor ships in ZIP).', 0);
+                            try { Log::warning('UpdateService: composer ZIP retry failed but vendor exists — continuing.'); } catch (Throwable) {}
+                        } else {
+                            $result = $this->buildRunResult('failed', 'Dependencies failed: Composer PHP does not satisfy lock (requires >=8.4.1) but your web PHP is ' . PHP_VERSION . '. Fix: cPanel → MultiPHP Manager → set to ea-php85 (8.5) for BOTH web and CLI, or SSH: `composer install --ignore-platform-reqs`. Raw: ' . Str::limit($composer['output'], 500), 0, $fromVersion, null, 'main', $remoteSanitized, $composer['exit'], $startedAt, $capturedOutput);
+                            $this->audit($actor, $result, $capturedOutput, 0);
+                            $emit('error', $result['message'], 65, true, $result);
+                            return $result;
+                        }
                     } else {
                         $result = $this->buildRunResult('failed', 'Files updated but dependencies failed — run composer install via SSH. ' . Str::limit($composer['output'], 500), 0, $fromVersion, null, 'main', $remoteSanitized, $composer['exit'], $startedAt, $capturedOutput);
                         $this->audit($actor, $result, $capturedOutput, 0);
@@ -955,7 +980,17 @@ class UpdateService
                     $append('composer install', 'composer HOME error — vendor/ ships in archive, continuing.', 0);
                     try { Log::warning('UpdateService: composer HOME error ignored in finalize — vendor/ present.'); } catch (Throwable) {}
                 } elseif ($isPhpVersionError) {
-                    return $fail('Dependencies failed: your server PHP (' . PHP_VERSION . ') does not satisfy the update (requires PHP >=8.4.1). Fix: cPanel → MultiPHP Manager → set to ea-php84 (8.4) → retry. ' . trim(Str::limit($composer['output'], 1500)), $composer['exit']);
+                    $append('composer install', 'PHP version mismatch — retrying with --ignore-platform-reqs (web PHP ' . PHP_VERSION . ')...', 0);
+                    $composerRetry = $this->runProcess(['composer', 'install', '--no-dev', '--optimize-autoloader', '--no-interaction', '--ignore-platform-reqs'], 300);
+                    $append('composer install --ignore-platform-reqs', $composerRetry['output'], $composerRetry['exit']);
+                    if ($composerRetry['success']) {
+                        try { Log::warning('UpdateService: composer finalize retry with --ignore-platform-reqs succeeded.'); } catch (Throwable) {}
+                    } elseif ($vendorExists) {
+                        $append('composer install', 'Composer retry failed but vendor exists — continuing (vendor ships).', 0);
+                        try { Log::warning('UpdateService: composer finalize retry failed but vendor exists — continuing.'); } catch (Throwable) {}
+                    } else {
+                        return $fail('Dependencies failed: your server PHP (' . PHP_VERSION . ') does not satisfy the update (requires PHP >=8.4.1). Fix: cPanel → MultiPHP Manager → set to ea-php85 (8.5) → retry. ' . trim(Str::limit($composer['output'], 1500)), $composer['exit']);
+                    }
                 } else {
                     return $fail('Dependencies failed to install. ' . trim(Str::limit($composer['output'], 500)), $composer['exit']);
                 }
