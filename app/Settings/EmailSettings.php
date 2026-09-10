@@ -3,6 +3,7 @@
 namespace App\Settings;
 
 use App\Models\TicketDepartment;
+use App\Settings\Casts\EncryptedCast;
 use Spatie\LaravelSettings\Settings;
 
 /**
@@ -61,6 +62,23 @@ class EmailSettings extends Settings
     public static function group(): string
     {
         return 'email';
+    }
+
+    /**
+     * smtp_password is a live credential and was stored in clear text in
+     * settings_properties, while the equivalent secrets on IntegrationSettings
+     * (cpanel_api_token, plesk_password, resellerclub_api_key) were encrypted.
+     * There was no reason for the difference.
+     *
+     * SettingsController already masks it on read and refuses to overwrite it
+     * with a blank submit, so the UI contract does not change — only what sits
+     * in the database does. 2026_09_10_000002 re-encrypts the existing value.
+     */
+    public static function casts(): array
+    {
+        return [
+            'smtp_password' => EncryptedCast::class,
+        ];
     }
 
     public static function rules(): array
