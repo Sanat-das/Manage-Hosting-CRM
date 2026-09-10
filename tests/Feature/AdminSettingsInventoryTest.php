@@ -271,6 +271,35 @@ class AdminSettingsInventoryTest extends TestCase
         $this->assertSame($expected, $keys, 'Baseline field set changed - keys were dropped, renamed, or added.');
     }
 
+    /**
+     * Every option is visible without a click. The "Advanced — …" groups used to
+     * be collapsed disclosure widgets, which hid roughly half the controls on
+     * most tabs behind an extra interaction; they are now plain sections with a
+     * heading. Asserted here rather than left to styling because it is a stated
+     * preference, and because the search filter and the invalid-field reveal
+     * both had to stop expanding things that no longer collapse.
+     */
+    public function test_no_option_is_hidden_behind_a_disclosure_widget(): void
+    {
+        $html = $this->actingAsSettingsAdmin()
+            ->get(route('admin.settings.index'))
+            ->assertStatus(200)
+            ->getContent();
+
+        $this->assertStringNotContainsString('<details', $html, 'A collapsible group is back on the settings page.');
+        $this->assertStringNotContainsString('<summary', $html);
+        $this->assertSame(
+            13,
+            substr_count($html, 'class="mt-3 settings-group"'),
+            'Expected the 13 former Advanced groups to render as always-visible sections.'
+        );
+        $this->assertSame(
+            substr_count($html, '<div'),
+            substr_count($html, '</div>'),
+            'Unbalanced <div> in the rendered settings page.'
+        );
+    }
+
     public function test_get_query_count_is_bounded_and_has_no_n_plus_one(): void
     {
         // 1 legacy settings pluck in middleware (security hardening toggles) + 1 legacy pluck in

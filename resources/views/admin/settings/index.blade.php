@@ -810,8 +810,8 @@
                         --}}
                     </div>
                     {{-- Typed billing + support keys (previously unrendered) — density 8 fields, show Advanced if >120 total --}}
-                    <details class="mt-3">
-                        <summary class="small text-muted" style="cursor:pointer;">Advanced — Billing typed keys</summary>
+                    <div class="mt-3 settings-group">
+                        <h4 class="settings-group-title">Billing typed keys</h4>
                         <div class="row mt-2">
                             <div class="col-md-3">
                                 <x-adminlte-input name="settings[currency]" label="Currency" maxlength="3"
@@ -837,7 +837,7 @@
                                 </x-adminlte-input>
                             </div>
                         </div>
-                    </details>
+                    </div>
                 </x-adminlte-card>
 
                 {{--
@@ -1251,8 +1251,8 @@
                             </x-adminlte-input>
                         </div>
                     </div>
-                    <details class="mt-3">
-                        <summary class="small text-muted" style="cursor:pointer;">Advanced — Domain automation &amp; DNS</summary>
+                    <div class="mt-3 settings-group">
+                        <h4 class="settings-group-title">Domain automation &amp; DNS</h4>
                         <div class="row mt-2">
                             <div class="col-md-3">
                                 <x-adminlte-select name="settings[domain_auto_registration]" label="Auto Registration">
@@ -1312,7 +1312,7 @@
                                 <small class="form-text text-muted">Yes / No</small>
                             </div>
                         </div>
-                    </details>
+                    </div>
                 </x-adminlte-card>
                 @php $lu = $lastUpdated['domain'] ?? $lastUpdated['all'] ?? null; @endphp
                 <small class="text-muted d-block mb-2 last-updated" data-section="domain">@if($lu)Last updated: {{ \Illuminate\Support\Carbon::parse($lu->created_at)->format('Y-m-d H:i:s') }} — <span title="{{ $lu->description }}">{{ \Illuminate\Support\Str::limit($lu->description, 120) }}</span>@else Last updated: never @endif</small>
@@ -1361,8 +1361,8 @@
                                 value="{{ old('settings.plesk_username', $settings['plesk_username'] ?? '') }}" />
                         </div>
                     </div>
-                    <details class="mt-3">
-                        <summary class="small text-muted" style="cursor:pointer;">Advanced — Integration toggles &amp; secrets</summary>
+                    <div class="mt-3 settings-group">
+                        <h4 class="settings-group-title">Integration toggles &amp; secrets</h4>
                         <div class="row mt-2">
                             <div class="col-md-3">
                                 <x-adminlte-select name="settings[cpanel_enabled]" label="cPanel Enabled">
@@ -1430,7 +1430,7 @@
                                 </div>
                             </div>
                         </div>
-                    </details>
+                    </div>
                 </x-adminlte-card>
                 @php $lu = $lastUpdated['integration'] ?? $lastUpdated['all'] ?? null; @endphp
                 <small class="text-muted d-block mb-2 last-updated" data-section="integration">@if($lu)Last updated: {{ \Illuminate\Support\Carbon::parse($lu->created_at)->format('Y-m-d H:i:s') }} — <span title="{{ $lu->description }}">{{ \Illuminate\Support\Str::limit($lu->description, 120) }}</span>@else Last updated: never @endif</small>
@@ -1471,8 +1471,8 @@
                             </x-adminlte-input>
                         </div>
                     </div>
-                    <details class="mt-3">
-                        <summary class="small text-muted" style="cursor:pointer;">Advanced — Hosting automation</summary>
+                    <div class="mt-3 settings-group">
+                        <h4 class="settings-group-title">Hosting automation</h4>
                         <div class="row mt-2">
                             <div class="col-md-3">
                                 <x-adminlte-select name="settings[hosting_auto_provision]" label="Auto Provision">
@@ -1537,7 +1537,7 @@
                                 <small class="form-text text-muted">Yes / No</small>
                             </div>
                         </div>
-                    </details>
+                    </div>
                 </x-adminlte-card>
                 @php $lu = $lastUpdated['hosting'] ?? $lastUpdated['all'] ?? null; @endphp
                 <small class="text-muted d-block mb-2 last-updated" data-section="hosting">@if($lu)Last updated: {{ \Illuminate\Support\Carbon::parse($lu->created_at)->format('Y-m-d H:i:s') }} — <span title="{{ $lu->description }}">{{ \Illuminate\Support\Str::limit($lu->description, 120) }}</span>@else Last updated: never @endif</small>
@@ -1580,8 +1580,8 @@
                             </x-adminlte-input>
                         </div>
                     </div>
-                    <details class="mt-3">
-                        <summary class="small text-muted" style="cursor:pointer;">Advanced — IPAM features</summary>
+                    <div class="mt-3 settings-group">
+                        <h4 class="settings-group-title">IPAM features</h4>
                         <div class="row mt-2">
                             <div class="col-md-3">
                                 <x-adminlte-select name="settings[ipam_enabled]" label="IPAM Enabled">
@@ -1640,7 +1640,7 @@
                                 </x-adminlte-input>
                             </div>
                         </div>
-                    </details>
+                    </div>
                 </x-adminlte-card>
                 @php $lu = $lastUpdated['ipam'] ?? $lastUpdated['all'] ?? null; @endphp
                 <small class="text-muted d-block mb-2 last-updated" data-section="ipam">@if($lu)Last updated: {{ \Illuminate\Support\Carbon::parse($lu->created_at)->format('Y-m-d H:i:s') }} — <span title="{{ $lu->description }}">{{ \Illuminate\Support\Str::limit($lu->description, 120) }}</span>@else Last updated: never @endif</small>
@@ -1667,8 +1667,8 @@
                             </x-adminlte-input>
                         </div>
                     </div>
-                    <details class="mt-3">
-                        <summary class="small text-muted" style="cursor:pointer;">Advanced — Inventory tracking</summary>
+                    <div class="mt-3 settings-group">
+                        <h4 class="settings-group-title">Inventory tracking</h4>
                         <div class="row mt-2">
                             <div class="col-md-4">
                                 <x-adminlte-select name="settings[inventory_track_stock]" label="Track Stock">
@@ -1692,7 +1692,7 @@
                                 <small class="form-text text-muted">Yes / No</small>
                             </div>
                         </div>
-                    </details>
+                    </div>
                 </x-adminlte-card>
                 @php $lu = $lastUpdated['inventory'] ?? $lastUpdated['all'] ?? null; @endphp
                 <small class="text-muted d-block mb-2 last-updated" data-section="inventory">@if($lu)Last updated: {{ \Illuminate\Support\Carbon::parse($lu->created_at)->format('Y-m-d H:i:s') }} — <span title="{{ $lu->description }}">{{ \Illuminate\Support\Str::limit($lu->description, 120) }}</span>@else Last updated: never @endif</small>
@@ -1729,8 +1729,8 @@
                                 value="{{ old('settings.catalog_featured_product_ids', $settings['catalog_featured_product_ids'] ?? '') }}" />
                         </div>
                     </div>
-                    <details class="mt-3">
-                        <summary class="small text-muted" style="cursor:pointer;">Advanced — Catalog display</summary>
+                    <div class="mt-3 settings-group">
+                        <h4 class="settings-group-title">Catalog display</h4>
                         <div class="row mt-2">
                             <div class="col-md-3">
                                 <x-adminlte-select name="settings[catalog_show_inactive]" label="Show Inactive">
@@ -1790,7 +1790,7 @@
                                 </x-adminlte-input>
                             </div>
                         </div>
-                    </details>
+                    </div>
                 </x-adminlte-card>
                 @php $lu = $lastUpdated['catalog'] ?? $lastUpdated['all'] ?? null; @endphp
                 <small class="text-muted d-block mb-2 last-updated" data-section="catalog">@if($lu)Last updated: {{ \Illuminate\Support\Carbon::parse($lu->created_at)->format('Y-m-d H:i:s') }} — <span title="{{ $lu->description }}">{{ \Illuminate\Support\Str::limit($lu->description, 120) }}</span>@else Last updated: never @endif</small>
@@ -1827,8 +1827,8 @@
                             </x-adminlte-input>
                         </div>
                     </div>
-                    <details class="mt-3">
-                        <summary class="small text-muted" style="cursor:pointer;">Advanced — Product features</summary>
+                    <div class="mt-3 settings-group">
+                        <h4 class="settings-group-title">Product features</h4>
                         <div class="row mt-2">
                             <div class="col-md-3">
                                 <x-adminlte-select name="settings[product_require_domain]" label="Require Domain">
@@ -1920,7 +1920,7 @@
                                 <small class="form-text text-muted">Yes / No</small>
                             </div>
                         </div>
-                    </details>
+                    </div>
                 </x-adminlte-card>
                 @php $lu = $lastUpdated['product'] ?? $lastUpdated['all'] ?? null; @endphp
                 <small class="text-muted d-block mb-2 last-updated" data-section="product">@if($lu)Last updated: {{ \Illuminate\Support\Carbon::parse($lu->created_at)->format('Y-m-d H:i:s') }} — <span title="{{ $lu->description }}">{{ \Illuminate\Support\Str::limit($lu->description, 120) }}</span>@else Last updated: never @endif</small>
@@ -1947,8 +1947,8 @@
                             </x-adminlte-input>
                         </div>
                     </div>
-                    <details class="mt-3">
-                        <summary class="small text-muted" style="cursor:pointer;">Advanced — Analytics toggles</summary>
+                    <div class="mt-3 settings-group">
+                        <h4 class="settings-group-title">Analytics toggles</h4>
                         <div class="row mt-2">
                             <div class="col-md-3">
                                 <x-adminlte-select name="settings[analytics_enabled]" label="Analytics Enabled">
@@ -2016,7 +2016,7 @@
                                 <small class="form-text text-muted">Comma-separated widget IDs</small>
                             </div>
                         </div>
-                    </details>
+                    </div>
                 </x-adminlte-card>
                 @php $lu = $lastUpdated['analytics'] ?? $lastUpdated['all'] ?? null; @endphp
                 <small class="text-muted d-block mb-2 last-updated" data-section="analytics">@if($lu)Last updated: {{ \Illuminate\Support\Carbon::parse($lu->created_at)->format('Y-m-d H:i:s') }} — <span title="{{ $lu->description }}">{{ \Illuminate\Support\Str::limit($lu->description, 120) }}</span>@else Last updated: never @endif</small>
@@ -2043,8 +2043,8 @@
                             </x-adminlte-input>
                         </div>
                     </div>
-                    <details class="mt-3">
-                        <summary class="small text-muted" style="cursor:pointer;">Advanced — Automation workflows</summary>
+                    <div class="mt-3 settings-group">
+                        <h4 class="settings-group-title">Automation workflows</h4>
                         <div class="row mt-2">
                             <div class="col-md-3">
                                 <x-adminlte-select name="settings[automation_workflows_enabled]" label="Workflows Enabled">
@@ -2118,7 +2118,7 @@
                                 <small class="form-text text-muted">Yes / No</small>
                             </div>
                         </div>
-                    </details>
+                    </div>
                 </x-adminlte-card>
                 @php $lu = $lastUpdated['automation'] ?? $lastUpdated['all'] ?? null; @endphp
                 <small class="text-muted d-block mb-2 last-updated" data-section="automation">@if($lu)Last updated: {{ \Illuminate\Support\Carbon::parse($lu->created_at)->format('Y-m-d H:i:s') }} — <span title="{{ $lu->description }}">{{ \Illuminate\Support\Str::limit($lu->description, 120) }}</span>@else Last updated: never @endif</small>
@@ -2159,8 +2159,8 @@
                             </x-adminlte-input>
                         </div>
                     </div>
-                    <details class="mt-3">
-                        <summary class="small text-muted" style="cursor:pointer;">Advanced — Cron scheduler</summary>
+                    <div class="mt-3 settings-group">
+                        <h4 class="settings-group-title">Cron scheduler</h4>
                         <div class="row mt-2">
                             <div class="col-md-3">
                                 <x-adminlte-select name="settings[cron_scheduler_enabled]" label="Scheduler Enabled">
@@ -2208,7 +2208,7 @@
                                 <small class="form-text text-muted">Yes / No</small>
                             </div>
                         </div>
-                    </details>
+                    </div>
                 </x-adminlte-card>
                 @php $lu = $lastUpdated['cron'] ?? $lastUpdated['all'] ?? null; @endphp
                 <small class="text-muted d-block mb-2 last-updated" data-section="cron">@if($lu)Last updated: {{ \Illuminate\Support\Carbon::parse($lu->created_at)->format('Y-m-d H:i:s') }} — <span title="{{ $lu->description }}">{{ \Illuminate\Support\Str::limit($lu->description, 120) }}</span>@else Last updated: never @endif</small>
@@ -2227,8 +2227,8 @@
                                 value="{{ old('settings.role_guard', $settings['role_guard'] ?? 'web') }}" />
                         </div>
                     </div>
-                    <details class="mt-3">
-                        <summary class="small text-muted" style="cursor:pointer;">Advanced — Role flags</summary>
+                    <div class="mt-3 settings-group">
+                        <h4 class="settings-group-title">Role flags</h4>
                         <div class="row mt-2">
                             <div class="col-md-4">
                                 <x-adminlte-select name="settings[role_allow_assignment]" label="Allow Assignment">
@@ -2252,7 +2252,7 @@
                                 <small class="form-text text-muted">Yes / No</small>
                             </div>
                         </div>
-                    </details>
+                    </div>
                 </x-adminlte-card>
                 @php $lu = $lastUpdated['role'] ?? $lastUpdated['all'] ?? null; @endphp
                 <small class="text-muted d-block mb-2 last-updated" data-section="role">@if($lu)Last updated: {{ \Illuminate\Support\Carbon::parse($lu->created_at)->format('Y-m-d H:i:s') }} — <span title="{{ $lu->description }}">{{ \Illuminate\Support\Str::limit($lu->description, 120) }}</span>@else Last updated: never @endif</small>
@@ -2287,8 +2287,8 @@
                             </x-adminlte-input>
                         </div>
                     </div>
-                    <details class="mt-3">
-                        <summary class="small text-muted" style="cursor:pointer;">Advanced — User account</summary>
+                    <div class="mt-3 settings-group">
+                        <h4 class="settings-group-title">User account</h4>
                         <div class="row mt-2">
                             <div class="col-md-3">
                                 <x-adminlte-select name="settings[user_email_verification]" label="Email Verification">
@@ -2340,7 +2340,7 @@
                                 </x-adminlte-input>
                             </div>
                         </div>
-                    </details>
+                    </div>
                 </x-adminlte-card>
                 @php $lu = $lastUpdated['user'] ?? $lastUpdated['all'] ?? null; @endphp
                 <small class="text-muted d-block mb-2 last-updated" data-section="user">@if($lu)Last updated: {{ \Illuminate\Support\Carbon::parse($lu->created_at)->format('Y-m-d H:i:s') }} — <span title="{{ $lu->description }}">{{ \Illuminate\Support\Str::limit($lu->description, 120) }}</span>@else Last updated: never @endif</small>
@@ -2371,9 +2371,23 @@
         <style>
             /* Gap between cards within a tab pane */
             .tab-content .card + .card,
-            .tab-content .card + details,
-            .tab-content details + .card {
+            .tab-content .card + .settings-group,
+            .tab-content .settings-group + .card {
                 margin-top: 1rem;
+            }
+
+            /* Section label for the option groups that used to be collapsed
+               behind an "Advanced — …" disclosure widget. The grouping is still
+               useful; the click needed to reach it was not. */
+            .settings-group-title {
+                font-size: 0.8125rem;
+                font-weight: 600;
+                letter-spacing: 0.02em;
+                text-transform: uppercase;
+                color: var(--bs-secondary-color, #6c757d);
+                margin: 0 0 0.75rem;
+                padding-bottom: 0.35rem;
+                border-bottom: 1px solid var(--bs-border-color, #dee2e6);
             }
 
             /* Sidebar layout */
@@ -2631,7 +2645,7 @@
                         clearHighlights();
                         fields.forEach(function (f) { f.wrapper.style.display = ''; });
                         document.querySelectorAll('.tab-pane .card').forEach(function (c) { c.style.display = ''; });
-                        document.querySelectorAll('.tab-pane details').forEach(function (d) { d.style.display = ''; d.open = false; });
+                        document.querySelectorAll('.tab-pane .settings-group').forEach(function (d) { d.style.display = ''; });
                         navItems.forEach(function (li) { li.style.display = ''; });
                         navGroups.forEach(function (li) { li.style.display = ''; });
                         if (searchCount) { searchCount.textContent = ''; searchCount.classList.add('d-none'); }
@@ -2665,8 +2679,8 @@
                                 applyHighlight(f, qRaw);
                                 totalMatches++;
                                 perPaneCount[f.paneId] = (perPaneCount[f.paneId] || 0) + 1;
-                                var det = f.wrapper.closest('details');
-                                if (det) { det.style.display = ''; det.open = true; }
+                                var group = f.wrapper.closest('.settings-group');
+                                if (group) { group.style.display = ''; }
                             } else {
                                 f.wrapper.style.display = 'none';
                             }
@@ -2680,15 +2694,15 @@
                                 });
                                 card.style.display = visibleInCard === 0 ? 'none' : '';
                             });
-                            pane.querySelectorAll('details').forEach(function (det) {
-                                var visibleInDetails = 0;
+                            pane.querySelectorAll('.settings-group').forEach(function (group) {
+                                var visibleInGroup = 0;
                                 fields.forEach(function (f) {
-                                    if (f.wrapper.closest('details') === det && f.wrapper.style.display !== 'none') visibleInDetails++;
+                                    if (f.wrapper.closest('.settings-group') === group && f.wrapper.style.display !== 'none') visibleInGroup++;
                                 });
-                                if (visibleInDetails === 0 && det.querySelectorAll('[name^="settings["]').length > 0) {
-                                    det.style.display = 'none';
+                                if (visibleInGroup === 0 && group.querySelectorAll('[name^="settings["]').length > 0) {
+                                    group.style.display = 'none';
                                 } else {
-                                    det.style.display = '';
+                                    group.style.display = '';
                                 }
                             });
                         });
@@ -2781,7 +2795,7 @@
                         }
                     });
                 });
-                // -- Error summary tab linking: click switches tab, opens details, focuses field --
+                // -- Error summary tab linking: click switches tab, focuses field --
                 var errorSummary = document.getElementById('settings-error-summary');
                 if (errorSummary) {
                     errorSummary.querySelectorAll('.error-summary-link').forEach(function (link) {
@@ -2805,8 +2819,6 @@
                                 targetInput = document.getElementById(dotId);
                             }
                             if (targetInput) {
-                                var det = targetInput.closest('details');
-                                if (det) det.open = true;
                                 setTimeout(function () {
                                     targetInput.focus();
                                     if (targetInput.scrollIntoView) {
@@ -2819,17 +2831,9 @@
                             try { history.replaceState(null, '', '#pane-' + tab); } catch (err) {}
                         });
                     });
-                    (function autoOpenFirstError() {
-                        var firstLink = errorSummary.querySelector('.error-summary-link');
-                        if (!firstLink) return;
-                        var rawKey = firstLink.getAttribute('data-raw-key');
-                        var fieldName = 'settings[' + rawKey + ']';
-                        var inp = document.querySelector('[name="' + fieldName + '"]') || document.getElementById(rawKey);
-                        if (inp) {
-                            var d = inp.closest('details');
-                            if (d) d.open = true;
-                        }
-                    })();
+                    // (An autoOpenFirstError() helper used to live here, expanding the
+                    // collapsed group that held the first invalid field. Nothing
+                    // collapses any more, so there is nothing to open.)
                 }
 
                 // -- Single Save All submit wiring --
@@ -2876,9 +2880,6 @@
                             }
                         }
                     }
-                    var det = el.closest ? el.closest('details') : null;
-                    if (det) det.open = true;
-
                     // After the tab transition, not during it.
                     setTimeout(function () {
                         if (el.scrollIntoView) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
