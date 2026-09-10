@@ -74,9 +74,29 @@
         }
     @endphp
 
-    <form method="POST" action="{{ route('admin.settings.update') }}" id="settings-form" enctype="multipart/form-data">
+    {{--
+        novalidate is deliberate. Inactive .tab-pane elements are display:none, so
+        a control that fails an HTML5 constraint (required, pattern, type=email,
+        number min/max) on a tab the admin is not looking at cannot be focused —
+        the browser refuses the submit, logs "An invalid form control ... is not
+        focusable", and NOTHING happens on screen. Constraint validation is
+        instead run by hand on submit (see the js block), which switches to the
+        owning tab first and only then reports the error. The server validates
+        every key regardless.
+    --}}
+    <form method="POST" action="{{ route('admin.settings.update') }}" id="settings-form" enctype="multipart/form-data" novalidate>
         @csrf
         <input type="hidden" name="active_tab" id="active-tab-input" value="{{ $activeTab }}">
+        {{--
+            #save-all-btn carries name="save_all", but a submit button's value is
+            only sent when the submit is triggered BY that button. Pressing Enter
+            in any text field submits without it, and the controller then applies
+            its per-tab keyToSection filter and silently discards every other
+            tab's edits. This hidden field makes Enter behave exactly like the one
+            visible Save button. Scoped payloads (tests, API) still omit it and
+            still get tab scoping.
+        --}}
+        <input type="hidden" name="save_all" value="1">
 
         @php
             $sectionsByGroup = [];
@@ -902,9 +922,14 @@
                         </div>
                     </div>
 
-                    <button type="submit" form="gst-settings-form" class="btn btn-primary">
+                    <button type="submit" form="gst-settings-form" class="btn btn-primary" id="save-gst-btn">
                         <i class="bi bi-check-lg me-1"></i> Save GST Settings
                     </button>
+                    {{-- Shown by the dirty tracker: these fields post to their own
+                         form, so "Save All Settings" genuinely does not save them. --}}
+                    <span id="gst-dirty-hint" class="ms-2 small text-danger d-none" role="status">
+                        <i class="bi bi-exclamation-triangle-fill me-1" aria-hidden="true"></i>Unsaved GST changes — <strong>Save All Settings</strong> does not save these.
+                    </span>
                 </x-adminlte-card>
 
                 @php $lu = $lastUpdated['billing'] ?? $lastUpdated['all'] ?? null; @endphp
@@ -2802,8 +2827,68 @@
                 // redirect. Server-side keyToSection scoping remains as
                 // defense-in-depth for scoped payloads.
                 var settingsForm = document.getElementById('settings-form');
+
+                // -- Constraint validation, done by hand because the form is novalidate --
+                // The browser cannot report an error on a control inside a hidden
+                // tab-pane; it aborts the submit silently instead. So: find the
+                // first invalid control the form OWNS, bring it into view, and only
+                // then hand back to reportValidity().
+                var submitAborted = false;
+                var findFirstInvalid = function (form) {
+                    // form.elements — not querySelector(':invalid') — because the GST
+                    // inputs sit inside this form's markup while belonging to
+                    // #gst-settings-form, and their required-ness is not ours to report.
+                    var els = form.elements;
+                    for (var i = 0; i < els.length; i++) {
+                        if (els[i].willValidate && !els[i].checkValidity()) return els[i];
+                    }
+                    return null;
+                };
+                var revealInvalidControl = function (el) {
+                    if (!el) return;
+                    // A control hidden by the search filter cannot be reported on either.
+                    var searchBox = document.getElementById('settings-search');
+                    var searchClearBtn = document.getElementById('settings-search-clear');
+                    if (searchBox && searchBox.value && searchClearBtn) searchClearBtn.click();
+
+                    var pane = el.closest ? el.closest('.tab-pane') : null;
+                    if (pane) {
+                        var tabBtn = document.getElementById(pane.id.replace('pane-', 'tab-'));
+                        if (tabBtn) {
+                            if (window.bootstrap && window.bootstrap.Tab) {
+                                window.bootstrap.Tab.getOrCreateInstance(tabBtn).show();
+                            } else {
+                                tabBtn.click();
+                            }
+                        }
+                    }
+                    var det = el.closest ? el.closest('details') : null;
+                    if (det) det.open = true;
+
+                    // After the tab transition, not during it.
+                    setTimeout(function () {
+                        if (el.scrollIntoView) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        if (el.reportValidity) el.reportValidity();
+                        else el.focus();
+                    }, 180);
+                };
+
                 if (settingsForm) {
-                    settingsForm.addEventListener('submit', function () {
+                    settingsForm.addEventListener('submit', function (e) {
+                        var invalid = settingsForm.checkValidity && !settingsForm.checkValidity()
+                            ? findFirstInvalid(settingsForm)
+                            : null;
+                        if (invalid) {
+                            e.preventDefault();
+                            submitAborted = true;
+                            // The submit never happened — the beforeunload guard must
+                            // stay armed, or the admin loses the edits on the next click.
+                            isSubmittingDirty = false;
+                            revealInvalidControl(invalid);
+                            return;
+                        }
+                        submitAborted = false;
+
                         if (activeTabInput) {
                             var activePane = document.querySelector('.tab-pane.show.active');
                             var activeId = activePane ? activePane.id.replace('pane-', '') : activeTabInput.value;
@@ -2817,7 +2902,7 @@
                                 input.readOnly = false;
                             }
                         });
-                        // Native submit proceeds with all 178 keys + save_all=1.
+                        // Native submit proceeds with every settings[*] key + save_all=1.
                     });
                 }
                 // -- Dirty tracking and beforeunload guard --
@@ -2855,6 +2940,34 @@
                     if (v === null || v === undefined) return '';
                     return String(v);
                 };
+                // -- GST card dirty tracking (separate form, separate snapshot) --
+                // The GST fields are owned by #gst-settings-form through the form=
+                // attribute, so FormData(#settings-form) cannot see them and the
+                // pane scan below skips them: editing a GST rate raised no badge and
+                // no beforeunload warning, and the edits vanished on navigation.
+                // form.elements reflects form OWNERSHIP, not DOM containment, so this
+                // is exactly the GST set even though the markup lives in the Billing
+                // pane. Tracked separately because "Save All Settings" really does
+                // not save them — GstSettingController stays the single writer.
+                var gstForm = document.getElementById('gst-settings-form');
+                var gstInputs = (gstForm && gstForm.elements)
+                    ? Array.prototype.slice.call(gstForm.elements)
+                    : [];
+                var isTrackedGstInput = function(inp){
+                    return inp && inp.name && inp.type !== 'hidden' && inp.type !== 'submit' && !inp.disabled;
+                };
+                var gstInitial = {};
+                gstInputs.forEach(function(inp){
+                    if (isTrackedGstInput(inp)) gstInitial[inp.name] = getDirtyFieldValue(inp);
+                });
+                var isGstDirty = function(){
+                    for (var i = 0; i < gstInputs.length; i++) {
+                        var inp = gstInputs[i];
+                        if (!isTrackedGstInput(inp)) continue;
+                        if (getDirtyFieldValue(inp) !== (gstInitial[inp.name] || '')) return true;
+                    }
+                    return false;
+                };
                 var isPaneDirty = function(pane){
                     if (!pane || !initialValues) return false;
                     var inputs = pane.querySelectorAll('[name^="settings["], input[type="file"][name], input[name^="remove_branding_logo"], input[name^="remove_branding_favicon"], input[name="remove_branding_logo"], input[name="remove_branding_favicon"]');
@@ -2875,6 +2988,8 @@
                     return false;
                 };
                 var hasAnyDirty = function(){
+                    // GST first: it is unsaved work even though this form cannot save it.
+                    if (isGstDirty()) return true;
                     if (!dirtyForm || !initialValues) return false;
                     var panes = document.querySelectorAll('.tab-pane');
                     for (var p=0;p<panes.length;p++){
@@ -2884,13 +2999,20 @@
                 };
                 var updateDirtyUI = function(){
                     if (!dirtyForm || !initialValues) return;
-                    var anyDirty = false;
+                    // settingsDirty drives Save All; gstDirty only drives the badge and
+                    // its own hint. Enabling Save All for a GST edit would promise a
+                    // save it cannot perform.
+                    var settingsDirty = false;
+                    var gstDirty = isGstDirty();
                     document.querySelectorAll('.tab-pane').forEach(function(pane){
                         var tabId = pane.id.replace('pane-','');
                         var tabBtn = document.getElementById('tab-' + tabId);
                         var badge = tabBtn ? tabBtn.querySelector('.dirty-badge') : null;
                         var dirty = isPaneDirty(pane);
-                        if (dirty) anyDirty = true;
+                        if (dirty) settingsDirty = true;
+                        // The GST card lives in the Billing pane, so its unsaved state
+                        // belongs on that tab's badge.
+                        if (tabId === 'billing' && gstDirty) dirty = true;
                         if (badge) {
                             if (dirty) badge.classList.remove('d-none');
                             else badge.classList.add('d-none');
@@ -2898,9 +3020,14 @@
                     });
                     var saveAll = document.getElementById('save-all-btn');
                     if (saveAll) {
-                        saveAll.disabled = !anyDirty;
-                        if (anyDirty) saveAll.classList.remove('disabled');
+                        saveAll.disabled = !settingsDirty;
+                        if (settingsDirty) saveAll.classList.remove('disabled');
                         else saveAll.classList.add('disabled');
+                    }
+                    var gstHint = document.getElementById('gst-dirty-hint');
+                    if (gstHint) {
+                        if (gstDirty) gstHint.classList.remove('d-none');
+                        else gstHint.classList.add('d-none');
                     }
                 };
                 // After POST success (302 + flash) reset snapshot for saved keys only (per-tab resets that tab, Save All resets all), not fire after success
@@ -2947,6 +3074,25 @@
                         inp.addEventListener('input', function(){ updateDirtyUI(); });
                         inp.addEventListener('change', function(){ updateDirtyUI(); });
                     });
+                    // Same wiring for the GST card, which the selector above cannot
+                    // reach (its inputs are not named settings[*]).
+                    gstInputs.forEach(function(inp){
+                        if (!isTrackedGstInput(inp)) return;
+                        inp.addEventListener('input', function(){ updateDirtyUI(); });
+                        inp.addEventListener('change', function(){ updateDirtyUI(); });
+                    });
+                    // Saving GST navigates away too — do not warn about the edits
+                    // that submit is on its way to persist.
+                    if (gstForm) {
+                        gstForm.addEventListener('submit', function(){ isSubmittingDirty = true; });
+                    }
+                    var saveGstBtn = document.getElementById('save-gst-btn');
+                    if (saveGstBtn) {
+                        saveGstBtn.addEventListener('click', function(){
+                            isSubmittingDirty = true;
+                            setTimeout(function(){ isSubmittingDirty = false; }, 2500);
+                        });
+                    }
                     // Also handle encrypted reveal inputs (their value change should not mark dirty when masked)
                     // beforeunload show "You have unsaved changes" if any dirty
                     window.addEventListener('beforeunload', function(e){
@@ -2957,8 +3103,11 @@
                             return 'You have unsaved changes';
                         }
                     });
-                    // Mark submitting so beforeunload does NOT fire after successful save navigation
+                    // Mark submitting so beforeunload does NOT fire after successful save navigation.
+                    // Registered after the validation handler above, so it sees the
+                    // abort flag: a submit that was cancelled must leave the guard armed.
                     dirtyForm.addEventListener('submit', function(){
+                        if (submitAborted) return;
                         isSubmittingDirty = true;
                     });
                     // Set the flag synchronously on Save All click (beforeunload
