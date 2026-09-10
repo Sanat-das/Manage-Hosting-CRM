@@ -36,6 +36,16 @@ class RunSystemUpdateCommand extends Command
         $cacheKey = 'system.update_progress.' . $actorId;
 
         $emit = function (string $step, string $message, int $progress, bool $done = false, array $extra = []) use ($cacheKey): void {
+            // A run the update lock refused must not overwrite the progress of
+            // the run that is actually holding it: both processes publish to the
+            // same per-actor key, so a double-click would otherwise replace a
+            // healthy in-flight update with "an update is already running".
+            if (($extra['status'] ?? null) === 'busy') {
+                $this->mark('refused — another update holds the lock');
+
+                return;
+            }
+
             Cache::put($cacheKey, array_merge(
                 ['step' => $step, 'message' => $message, 'progress' => $progress, 'done' => $done],
                 $extra

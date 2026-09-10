@@ -56,6 +56,8 @@ LEDGER_FLUX_PHILOSOPHY.md
 # Sensitive backups and local DB dumps
 /storage/backups/
 /storage/tmp/
+# Pre-update file snapshots written by UpdateService (rollback source of truth)
+/storage/app/update-restore-points/
 /sql/local.sql
 /sql/local-backup-addon-database-dump.sql
 

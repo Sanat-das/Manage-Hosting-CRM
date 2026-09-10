@@ -6,6 +6,7 @@ namespace App\Services\System;
 
 use App\Services\Cron\ScheduleInspector;
 use App\Services\Installer\InstallerService;
+use App\Support\SecretRedactor;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Log;
@@ -23,10 +24,26 @@ use Throwable;
  */
 final class AppInfoService
 {
+    /** Cache key for the git-derived half of all(). */
+    public const GIT_CACHE_KEY = 'system.appinfo.git';
+
+    /** How long that snapshot stays fresh. Short: it carries the `dirty` flag. */
+    public const GIT_CACHE_SECONDS = 60;
+
     /**
      * Resolve the application version.
      *
-     * Priority: config('app.version') if not 'dev' -> VERSION file -> git describe --tags --always -> git rev-parse --short HEAD -> 'dev'.
+     * Priority: APP_VERSION override -> git describe/rev-parse when this is a
+     * checkout -> the VERSION marker a ZIP update wrote -> 'dev'.
+     *
+     * Git beats VERSION rather than the other way round because VERSION is a
+     * *tracked* file. On a checkout it holds whatever placeholder was committed
+     * ("1.0.0"), never the commit actually deployed, and the updater
+     * deliberately refuses to write it there — writing a tracked file would
+     * leave `git status` permanently dirty and wedge the updater shut. So on a
+     * checkout the file cannot be right and the repository always is. On a ZIP
+     * install there is no repository, and the marker the updater writes after a
+     * successful update is authoritative.
      */
     public function version(): string
     {
@@ -34,6 +51,20 @@ final class AppInfoService
 
         if ($configured !== '' && strtolower($configured) !== 'dev') {
             return $configured;
+        }
+
+        if ($this->isGitCheckout()) {
+            $describe = $this->runProcess(['git', 'describe', '--tags', '--always'], 3);
+
+            if ($describe['success'] && trim($describe['output']) !== '') {
+                return trim($describe['output']);
+            }
+
+            $short = $this->runProcess(['git', 'rev-parse', '--short', 'HEAD'], 3);
+
+            if ($short['success'] && trim($short['output']) !== '') {
+                return trim($short['output']);
+            }
         }
 
         $versionFile = base_path('VERSION');
@@ -50,23 +81,31 @@ final class AppInfoService
             }
         }
 
-        $describe = $this->runProcess(['git', 'describe', '--tags', '--always'], 3);
-
-        if ($describe['success'] && trim($describe['output']) !== '') {
-            return trim($describe['output']);
-        }
-
-        $short = $this->runProcess(['git', 'rev-parse', '--short', 'HEAD'], 3);
-
-        if ($short['success'] && trim($short['output']) !== '') {
-            return trim($short['output']);
-        }
-
         return 'dev';
     }
 
     /**
+     * Is the application root itself a git checkout?
+     *
+     * Checked against `.git` in the install directory rather than by asking git,
+     * for two reasons: a ZIP install pays nothing instead of spawning two
+     * subprocesses that will fail, and a ZIP install unpacked *inside* some
+     * other repository does not end up reporting that repository's HEAD as its
+     * own version. `.git` is a file, not a directory, in worktrees and submodules.
+     */
+    private function isGitCheckout(): bool
+    {
+        $dotGit = base_path('.git');
+
+        return is_dir($dotGit) || is_file($dotGit);
+    }
+
+    /**
      * Git state snapshot. Every field is nullable — no exception is thrown when git is missing.
+     *
+     * `remoteUrlRaw` is raw only in the sense of "as git reported it": runProcess()
+     * redacts credentials out of command output, so an embedded token never
+     * reaches this array.
      *
      * @return array{branch: string|null, commit: string|null, short: string|null, date: string|null, dirty: bool|null, remote: string|null, remoteUrlRaw: string|null, ahead: int|null, behind: int|null}
      */
@@ -279,12 +318,58 @@ final class AppInfoService
                 'installedAt' => $installedAt,
                 'maintenance' => $maintenance,
             ],
-            'version' => $this->version(),
-            'git' => $this->gitInfo(),
+            ...$this->gitSnapshot(),
             'health' => $this->health(),
             'framework' => $this->framework(),
             'changelog' => $this->changelog(),
         ];
+    }
+
+    /**
+     * version() + gitInfo(), cached together.
+     *
+     * Only the git-derived fields are cached, and deliberately so. Measured on
+     * this host: gitInfo() is 1701 ms and version() 239 ms of the 1724 ms all()
+     * costs, while health(), framework() and changelog() together are ~20 ms.
+     * Caching those too would buy nothing and would freeze the scheduler
+     * heartbeat — the field an operator reads to answer "is cron running right
+     * now" — which health() pulls live from the cache the cron tick writes.
+     *
+     * The window is short because `dirty` lives in here: long enough that
+     * switching tabs on the System page (each one a full reload) is free,
+     * short enough that a stale flag corrects itself unprompted. Anything that
+     * can change the deployed code flushes it outright — see flushCache().
+     *
+     * @return array{version: string, git: array<string, mixed>}
+     */
+    private function gitSnapshot(): array
+    {
+        $cached = Cache::get(self::GIT_CACHE_KEY);
+
+        if (is_array($cached) && isset($cached['version'], $cached['git'])) {
+            return $cached;
+        }
+
+        $snapshot = [
+            'version' => $this->version(),
+            'git' => $this->gitInfo(),
+        ];
+
+        Cache::put(self::GIT_CACHE_KEY, $snapshot, self::GIT_CACHE_SECONDS);
+
+        return $snapshot;
+    }
+
+    /**
+     * Drop the cached git snapshot.
+     *
+     * Called after anything that can change the deployed code — an update, a
+     * rollback, a manual finalize — and by the explicit "Check for updates"
+     * action, which must never answer from cache.
+     */
+    public static function flushCache(): void
+    {
+        Cache::forget(self::GIT_CACHE_KEY);
     }
 
     /**
@@ -404,7 +489,9 @@ final class AppInfoService
             $process = new Process($cmd, base_path(), null, null, (float) $timeout);
             $process->run();
 
-            $output = $process->getOutput() . $process->getErrorOutput();
+            // Redacted at the single point process output enters this class —
+            // git writes the remote URL, userinfo included, into its own errors.
+            $output = SecretRedactor::redact($process->getOutput().$process->getErrorOutput());
 
             return [
                 'output' => $output,
@@ -412,10 +499,12 @@ final class AppInfoService
                 'success' => $process->isSuccessful(),
             ];
         } catch (Throwable $e) {
-            Log::debug('AppInfoService: process failed.', ['cmd' => $cmd, 'error' => $e->getMessage()]);
+            $message = SecretRedactor::redact($e->getMessage());
+
+            Log::debug('AppInfoService: process failed.', ['cmd' => $cmd, 'error' => $message]);
 
             return [
-                'output' => $e->getMessage(),
+                'output' => $message,
                 'exit' => 1,
                 'success' => false,
             ];

@@ -54,7 +54,11 @@ class SystemController extends Controller
      */
     public function check(Request $request): RedirectResponse|JsonResponse
     {
+        // "Check for updates" must never answer from cache — neither the update
+        // check nor the git snapshot the About card renders beside it.
         $this->updater->flushApiCache();
+        AppInfoService::flushCache();
+
         $result = $this->updater->check();
 
         if ($request->expectsJson()) {
@@ -73,7 +77,14 @@ class SystemController extends Controller
     public function update(Request $request): RedirectResponse|JsonResponse|StreamedResponse
     {
         $cacheKey = 'system.update_progress.' . $request->user()->id;
-        Cache::forget($cacheKey);
+
+        // Clear a finished run's result so the poller doesn't read it as this
+        // run's outcome — but leave an in-flight run's progress alone, or a
+        // second click blanks the progress of the update already running.
+        $existing = Cache::get($cacheKey);
+        if (! is_array($existing) || ($existing['done'] ?? true)) {
+            Cache::forget($cacheKey);
+        }
 
         // Background-process mode: AJAX callers get an immediate response while
         // the update runs in a fully detached process (not subject to IIS requestTimeout).

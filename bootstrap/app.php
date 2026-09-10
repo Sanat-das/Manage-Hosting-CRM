@@ -121,6 +121,19 @@ return Application::configure(basePath: dirname(__DIR__))
         // module files (routes/api/*.php) that opt into that group.
         $middleware->throttleApi();
 
+        // The About & Updates page polls this endpoint every 2 s while an update
+        // runs, and the update itself enables maintenance mode at step 2 of 7.
+        // Without this exclusion every poll for the rest of the run answered 503
+        // and the browser silently swallowed it, so the progress bar froze at
+        // 30% until `artisan up` — with no way to bypass, since the update
+        // generates a random `--secret` and discards it.
+        //
+        // Laravel feeds this same list into the `down` file, so the
+        // pre-framework shim in public/index.php honours it too.
+        $middleware->preventRequestsDuringMaintenance(except: [
+            'admin/system/update/progress',
+        ]);
+
         // While the application is not installed, every web request is
         // funnelled to the first-run installer wizard.
         $middleware->web(append: [

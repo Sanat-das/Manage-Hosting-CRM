@@ -15,7 +15,17 @@ return [
 
     'name' => env('APP_NAME', 'HostVexa'),
 
-    'version' => is_file(base_path('VERSION')) ? trim((string) file_get_contents(base_path('VERSION'))) : 'dev',
+    /*
+    | An explicit operator override, and nothing else. Leave it unset.
+    |
+    | This used to be derived from the VERSION file, which made it the first
+    | thing AppInfoService::version() found — so the git branches below it were
+    | unreachable and a git checkout reported the committed placeholder
+    | ("1.0.0") instead of the commit actually deployed. Resolution now lives in
+    | AppInfoService::version(); this only exists to let an operator pin a
+    | display version by hand.
+    */
+    'version' => env('APP_VERSION'),
 
     /*
     |--------------------------------------------------------------------------
