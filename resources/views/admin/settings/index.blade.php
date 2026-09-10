@@ -2873,14 +2873,68 @@
                     }, 180);
                 };
 
+                // -- Shrink the posted payload to the tabs actually edited --
+                // Save All used to post every settings[*] key on the page, and the
+                // controller writes every key it receives, last-write-wins. So an
+                // admin who changed one colour also rewrote Billing, Hosting, Cron
+                // and everything else with whatever their tab had loaded, silently
+                // reverting another admin's edits made in between.
+                //
+                // Granularity is a PANE, not a field, and that is deliberate. The
+                // controller derives company_address from the six sundered address
+                // fields and company_phone from the code+number pair — post
+                // company_city alone and the address is recompiled from just the
+                // city, post the number alone and the country code snaps to +91.
+                // Those couplings live in the controller; duplicating them in a
+                // hand-maintained list here would rot silently. A whole pane always
+                // travels together, so every within-pane invariant is preserved.
+                //
+                // Disabled controls are not serialized, which is the whole trick.
+                // Inputs already disabled for their own reasons (the deprecated
+                // default_currency) are left alone so restore cannot enable them.
+                var shrinkPayloadToDirtyPanes = function () {
+                    var disabled = [];
+                    var panes = document.querySelectorAll('.tab-pane');
+                    var dirtyByPane = [];
+
+                    // Measure every pane BEFORE touching any of them.
+                    for (var p = 0; p < panes.length; p++) {
+                        dirtyByPane.push(isPaneDirty(panes[p]));
+                    }
+
+                    for (var i = 0; i < panes.length; i++) {
+                        if (dirtyByPane[i]) continue;
+                        panes[i].querySelectorAll('[name^="settings["], input[type="file"][name], input[name="remove_branding_logo"], input[name="remove_branding_favicon"]').forEach(function (inp) {
+                            if (inp.disabled) return;
+                            inp.disabled = true;
+                            disabled.push(inp);
+                        });
+                    }
+
+                    return disabled;
+                };
+                var restoreShrunkPayload = function (disabled) {
+                    if (!disabled) return;
+                    disabled.forEach(function (inp) { inp.disabled = false; });
+                };
+
                 if (settingsForm) {
                     settingsForm.addEventListener('submit', function (e) {
+                        // Shrink BEFORE validating, so validation covers exactly what
+                        // is about to be posted. A stored value that no longer passes
+                        // its rule must not block an edit on an unrelated tab — that
+                        // is the same "save did nothing" trap from the other end.
+                        var shrunk = shrinkPayloadToDirtyPanes();
+
                         var invalid = settingsForm.checkValidity && !settingsForm.checkValidity()
                             ? findFirstInvalid(settingsForm)
                             : null;
                         if (invalid) {
                             e.preventDefault();
                             submitAborted = true;
+                            // Put the form back before anything else — a cancelled
+                            // submit must not leave half the page disabled.
+                            restoreShrunkPayload(shrunk);
                             // The submit never happened — the beforeunload guard must
                             // stay armed, or the admin loses the edits on the next click.
                             isSubmittingDirty = false;
@@ -2888,6 +2942,12 @@
                             return;
                         }
                         submitAborted = false;
+
+                        // The page is navigating away, so these stay disabled through
+                        // the POST. Restore anyway on a delay: bfcache can hand this
+                        // exact DOM back on Back, and a form of dead inputs is worse
+                        // than a wide payload.
+                        setTimeout(function () { restoreShrunkPayload(shrunk); }, 4000);
 
                         if (activeTabInput) {
                             var activePane = document.querySelector('.tab-pane.show.active');

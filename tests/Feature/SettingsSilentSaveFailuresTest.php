@@ -123,6 +123,71 @@ class SettingsSilentSaveFailuresTest extends TestCase
     }
 
     /**
+     * Save All now posts only the tabs that were edited (clean panes are
+     * disabled on submit, and disabled controls are not serialized). That is
+     * only safe because the controller writes exactly the keys it receives —
+     * an omitted key must keep its stored value, not be blanked.
+     */
+    public function test_a_pane_sized_payload_leaves_the_other_tabs_untouched(): void
+    {
+        $this->actingAsSettingsAdmin()
+            ->post(route('admin.settings.update'), [
+                'save_all' => '1',
+                'settings' => [
+                    'company_name' => 'Original Co',
+                    'hosting_provision_retries' => '7',
+                    'quote_prefix' => 'ORIG-',
+                ],
+            ])
+            ->assertRedirect();
+
+        // What the browser posts after editing only the Billing tab.
+        $this->actingAsSettingsAdmin()
+            ->post(route('admin.settings.update'), [
+                'active_tab' => 'billing',
+                'save_all' => '1',
+                'settings' => ['quote_prefix' => 'NEW-'],
+            ])
+            ->assertRedirect();
+
+        $this->assertSame(
+            'NEW-',
+            DB::table('settings')->where('setting_key', 'quote_prefix')->value('setting_value')
+        );
+        $this->assertSame('Original Co', AppSettings::get('company_name'), 'An untouched tab was overwritten.');
+        $this->assertSame('7', AppSettings::get('hosting_provision_retries'), 'An untouched tab was overwritten.');
+    }
+
+    /**
+     * Why the shrink is pane-sized and not field-sized: the controller compiles
+     * company_address from the six sundered fields present in the payload. Post
+     * one of them on its own and the address is rebuilt from just that one, so
+     * these fields have to travel together.
+     */
+    public function test_the_address_fields_must_travel_together(): void
+    {
+        $this->actingAsSettingsAdmin()
+            ->post(route('admin.settings.update'), [
+                'active_tab' => 'general',
+                'save_all' => '1',
+                'settings' => [
+                    'company_address_line1' => '12 Park Street',
+                    'company_city' => 'Kolkata',
+                    'company_state' => 'West Bengal',
+                    'company_postcode' => '700016',
+                    'company_country' => 'India',
+                ],
+            ])
+            ->assertRedirect();
+
+        $compiled = AppSettings::get('company_address');
+
+        foreach (['12 Park Street', 'Kolkata', 'West Bengal', '700016', 'India'] as $part) {
+            $this->assertStringContainsString($part, (string) $compiled);
+        }
+    }
+
+    /**
      * The GST card posts to GstSettingController through the form= attribute, so
      * FormData(#settings-form) cannot see it and "Save All Settings" does not
      * save it. That is intended — GstSettingController is the single writer —
