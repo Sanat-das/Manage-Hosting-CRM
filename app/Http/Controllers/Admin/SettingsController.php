@@ -129,7 +129,7 @@ class SettingsController extends Controller
      * Typed keys (160 in AppSettings::TYPED_KEYS) delegate validation to their
      * owning Spatie settings class via `Class::rules()[$key]`.
      *
-     * Legacy untyped keys (18) — not yet ported to typed classes — use fallback
+     * Legacy untyped keys — not ported to typed classes — use fallback
      * validation `nullable|string|max:1000` and persist to the legacy `settings`
      * table via updateOrInsert. They remain here for backward compatibility:
      *   - registration_enabled, default_currency, default_tax_rate, quote_prefix,
@@ -137,6 +137,10 @@ class SettingsController extends Controller
      *     mail_from_name, session_timeout, max_login_attempts, lockout_duration,
      *     force_2fa, password_min_length, notify_overdue_invoices,
      *     notify_domain_expiry, notify_new_tickets, domain_expiry_warning_days
+     *   - ticket_next_number — untyped ON PURPOSE, not "not yet ported":
+     *     TicketService allocates it under lockForUpdate() on this row, which
+     *     spatie cannot do. Typing it split the counter in two (page said 1,
+     *     tickets were at 18).
      *
      * Do NOT port these to typed without a dedicated migration — the fallback
      * rule is intentionally permissive and must not change typed validation

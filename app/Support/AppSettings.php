@@ -67,7 +67,8 @@ class AppSettings
         'imap_default_department' => EmailSettings::class,
         'imap_max_new_tickets_per_hour' => EmailSettings::class,
         // support
-        'ticket_next_number' => SupportSettings::class,
+        // ticket_next_number is deliberately absent — it is an untyped legacy
+        // `settings` row so TicketService can allocate it under lockForUpdate().
         'ticket_prefix' => SupportSettings::class,
         // domain (T4.2)
         'domain_default_registrar' => DomainSettings::class,
@@ -304,7 +305,7 @@ class AppSettings
             }
         }
 
-        // Legacy untyped keys (18) — explicit tab assignment.
+        // Legacy untyped keys — explicit tab assignment.
         $legacy = [
             'registration_enabled' => 'portal',
             'default_currency' => 'general',
@@ -313,6 +314,8 @@ class AppSettings
             'auto_generate_invoice' => 'billing',
             'due_days' => 'billing',
             'gst_enabled' => 'billing',
+            // Counter, not a typed setting — see SupportSettings.
+            'ticket_next_number' => 'billing',
             'mail_from_address' => 'email',
             'mail_from_name' => 'email',
             'session_timeout' => 'security',

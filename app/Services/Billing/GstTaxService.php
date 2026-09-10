@@ -6,7 +6,7 @@ namespace App\Services\Billing;
 
 use App\Models\GstSetting;
 use App\Models\Product;
-use App\Models\Setting;
+use App\Support\AppSettings;
 use App\Support\GstStateCodes;
 
 /**
@@ -296,7 +296,12 @@ class GstTaxService
     {
         $settings = self::loadSettings();
 
-        $taxRate = (float) (Setting::where('setting_key', 'tax_rate')->value('setting_value') ?? 18);
+        // Read through AppSettings, which resolves tax_rate from the typed
+        // BillingSettings group the settings page actually writes. Querying the
+        // legacy `settings` row directly (as this did) read a value frozen at
+        // the T4.2 migration, so an admin editing the Billing tab silently
+        // changed nothing here.
+        $taxRate = (float) (AppSettings::get('tax_rate', '18') ?: 18);
 
         $cgstRate = (float) ($settings['cgst_rate'] ?? $taxRate / 2);
         $sgstRate = (float) ($settings['sgst_rate'] ?? $taxRate / 2);

@@ -194,7 +194,13 @@ final class DummyDataConfig
         // listed so the matrix is exhaustive and regressions are caught.
         'payment_gateways' => 3,
         'gst_settings' => 1,
-        'settings' => 17,
+        // Was 17 — the rows create_config_tables seeds. 16 of them were copies
+        // of a settings_properties property and are dropped by
+        // 2026_09_10_000001_drop_legacy_settings_shadow_rows, leaving
+        // ticket_next_number as the only guaranteed legacy row (it stays here
+        // because TicketService allocates it under lockForUpdate()). The
+        // remaining untyped keys are created on first save, not seeded.
+        'settings' => 1,
         'settings_properties' => 160,
         'sequences' => 1,
     ];

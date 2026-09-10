@@ -13,6 +13,7 @@ use App\Models\TicketDepartment;
 use App\Models\TicketReply;
 use App\Models\TicketTransfer;
 use App\Models\User;
+use App\Support\AppSettings;
 use DomainException;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
@@ -635,13 +636,22 @@ class TicketService
      * Sequential ticket number from the support settings (ticket_prefix +
      * ticket_next_number), matching the billing invoice-number pattern.
      * Must run inside a transaction so the row lock is effective.
+     *
+     * The two halves deliberately come from different stores. The PREFIX is a
+     * settings-page value and is read through AppSettings, which resolves it
+     * from the typed SupportSettings group — reading the legacy `settings` row
+     * directly (as this did) meant the admin's edit never reached a ticket
+     * number, because the page has written the typed group since T4.2. The
+     * COUNTER stays a legacy `settings` row on purpose: allocating it safely
+     * needs `lockForUpdate()` on a real row, which spatie's settings
+     * repository cannot give us. It is therefore NOT in AppSettings::TYPED_KEYS.
      */
     private function nextTicketNumber(): string
     {
         $setting = $this->lockedCounterRow();
 
         $next = max(1, (int) ($setting->setting_value ?? 1));
-        $prefix = (string) (Setting::where('setting_key', 'ticket_prefix')->value('setting_value') ?? 'TKT-');
+        $prefix = (string) (AppSettings::get('ticket_prefix', 'TKT-') ?: 'TKT-');
 
         // `tickets.ticket_no` is UNIQUE, and the counter can drift out of step
         // with it — an imported ticket, a hand-edited setting, a restored
