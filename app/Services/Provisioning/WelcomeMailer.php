@@ -151,7 +151,10 @@ class WelcomeMailer
     private function variables(Order $order, ServiceInstance $service, array $credentials, bool $isHtml): array
     {
         $appName = Branding::appName();
-        $appUrl = rtrim((string) config('app.url', url('/')), '/');
+        $appUrl = rtrim(Branding::baseUrl(), '/');
+        if ($appUrl === '') {
+            $appUrl = rtrim((string) config('app.url', url('/')), '/');
+        }
         $customer = $order->customer;
 
         $username = (string) ($credentials['username'] ?? $service->username ?? '');
@@ -163,7 +166,7 @@ class WelcomeMailer
         $vars = [
             'app_name' => $appName,
             'app_url' => $appUrl,
-            'app_logo_url' => Branding::logoUrl(),
+            'app_logo_url' => str_contains(Branding::logoUrl(), '.local') ? Branding::logoEmailUrl() : Branding::logoUrl(),
             'tagline' => Branding::tagline(),
             'primary_color' => Branding::primaryColor(),
             'footer_text' => Branding::footerText(),

@@ -30,8 +30,24 @@ trait BuildsEmailVariables
     protected function brandingVariables(): array
     {
         $appName = Branding::appName();
-        $appUrl = rtrim((string) config('app.url', url('/')), '/');
+        // Auto-fetch: uses request host when APP_URL is .local, so {{app_url}}
+        // and all derived links (login_url, pay_url, etc.) are public without
+        // needing to edit .env. Falls back to config('app.url') for queues/CLI.
+        $appUrl = rtrim(Branding::baseUrl(), '/');
+        if ($appUrl === '') {
+            $appUrl = rtrim((string) config('app.url', url('/')), '/');
+        }
+        // For emails, use the auto-fetched base for the logo as well. On a
+        // public domain this is a normal https:// URL like IDFC (no attachment
+        // needed); on .local it becomes a data: URI so the image isn't broken.
+        // Branding::logoUrl() now respects baseUrl(), and logoEmailUrl() embeds
+        // only when the base is still non-public.
         $logoUrl = Branding::logoUrl();
+        // If the resolved URL is still .local (e.g. queued job with no request),
+        // embed as data URI so the inbox still sees the logo.
+        if (str_contains($logoUrl, '.local') || str_contains($logoUrl, 'localhost')) {
+            $logoUrl = Branding::logoEmailUrl();
+        }
 
         $companyName = $this->setting('company_name', $appName);
         $companyEmail = $this->setting('company_email', (string) config('mail.from.address', ''));

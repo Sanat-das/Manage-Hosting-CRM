@@ -29,13 +29,16 @@
         <a href="{{ url('/') }}" class="brand-link">
             @php
                 $_b = $branding ?? \App\Support\Branding::all();
-                // Prefer storage-resolved mark URL when a custom logo was uploaded; fallback to config asset path.
-                // When a custom logo is present, Branding::logoHtml() already renders it inside brand-text,
-                // so hide the separate brand-image to avoid duplicate side-by-side logos.
+                // When the wordmark is rendered inside brand-text (custom upload OR
+                // shipped default PNG), hide the separate brand-image to enforce
+                // "one at a time" and avoid duplicate logos side-by-side.
+                // Branding::logoHtml() now always returns an <img> (fallback to
+                // DEFAULT_LOGO), so we detect that via config('adminlte.logo').
                 $_logoPath = $_b['logo_path'] ?? '';
                 $_markUrl = $_b['mark_url'] ?? '';
                 $_hasStorageLogo = is_string($_logoPath) && $_logoPath !== '' && (str_starts_with($_logoPath, 'branding/') || str_starts_with($_logoPath, 'storage/') || str_contains($_logoPath, 'branding/'));
-                if ($_hasStorageLogo) {
+                $_hasWordmarkImage = str_contains((string) config('adminlte.logo'), '<img');
+                if ($_hasStorageLogo || $_hasWordmarkImage) {
                     $_logoImgSrc = '';
                 } else {
                     $_logoImgSrc = config('adminlte.logo_img') ? asset(config('adminlte.logo_img')) : '';

@@ -212,8 +212,10 @@
                 <x-adminlte-card icon="bi bi-palette" title="Branding — HostVexa">
                     @php
                         $brandingData = $branding ?? \App\Support\Branding::all();
-                        $brandingLogoUrl = $brandingData['logo_url'] ?? asset('img/hostvexa-logo.svg');
-                        $brandingFaviconUrl = $brandingData['favicon_url'] ?? asset('img/hostvexa-favicon.svg');
+                        $brandingLogoUrl = $brandingData['logo_url'] ?? asset(\App\Support\Branding::DEFAULT_LOGO);
+                        $brandingLogoWebpUrl = $brandingData['logo_webp_url'] ?? asset(\App\Support\Branding::DEFAULT_LOGO_WEBP);
+                        $brandingFaviconUrl = $brandingData['favicon_url'] ?? asset(\App\Support\Branding::DEFAULT_FAVICON);
+                        $brandingFaviconWebpUrl = $brandingData['favicon_webp_url'] ?? asset(\App\Support\Branding::DEFAULT_FAVICON_WEBP);
                         $brandingPrimary = old('settings.branding_primary_color', $settings['branding_primary_color'] ?? '#0EA5E9');
                         $brandingAccent = old('settings.branding_accent_color', $settings['branding_accent_color'] ?? '#6366F1');
                         // Normalize to hex with hash for color input
@@ -282,7 +284,10 @@
                             <div class="w-100">
                                 <label class="form-label">Preview</label>
                                 <div id="branding-preview-card" class="rounded d-flex align-items-center gap-2 px-3 py-2" style="background:#0F172A;color:#fff;min-height:44px;border:1px solid #1e293b;">
-                                    <img id="branding-preview-logo" src="{{ $brandingLogoUrl }}" alt="Logo preview" style="height:24px;width:auto;object-fit:contain;background:rgba(255,255,255,0.08);border-radius:4px;padding:2px;">
+                                    <picture>
+                                        <source srcset="{{ $brandingLogoWebpUrl }}" type="image/webp">
+                                        <img id="branding-preview-logo" src="{{ $brandingLogoUrl }}" alt="Logo preview" style="height:24px;width:auto;object-fit:contain;background:rgba(255,255,255,0.08);border-radius:4px;padding:2px;">
+                                    </picture>
                                     <span id="branding-preview-name" class="fw-semibold small">{{ old('settings.branding_app_name', $settings['branding_app_name'] ?? 'HostVexa') }}</span>
                                     <span class="ms-auto d-inline-flex gap-1">
                                         <span id="branding-preview-primary" class="rounded-circle d-inline-block" style="width:18px;height:18px;background:{{ $brandingPrimary }};border:2px solid rgba(255,255,255,0.5);" title="Primary"></span>
@@ -297,12 +302,18 @@
                         <div class="col-md-6">
                             <label class="form-label">Logo</label>
                             <div class="d-flex align-items-center gap-3 mb-2 p-2 border rounded" style="background:var(--bs-tertiary-bg, #f8f9fa);">
-                                <img src="{{ $brandingLogoUrl }}" alt="Current logo" style="height:36px;width:auto;max-width:140px;object-fit:contain;background:#fff;border-radius:4px;padding:4px;border:1px solid #dee2e6;">
+                                <picture>
+                                    <source srcset="{{ $brandingLogoWebpUrl }}" type="image/webp">
+                                    <img src="{{ $brandingLogoUrl }}" alt="Current logo" style="height:36px;width:auto;max-width:140px;object-fit:contain;background:#fff;border-radius:4px;padding:4px;border:1px solid #dee2e6;">
+                                </picture>
                                 <div class="small text-muted">
-                                    Current: <code class="small">{{ $settings['branding_logo_path'] ?? '' ?: 'img/hostvexa-logo.svg (default)' }}</code><br>
+                                    Current: <code class="small">{{ $settings['branding_logo_path'] ?? '' ?: \App\Support\Branding::DEFAULT_LOGO.' (default)' }}</code><br>
                                     <span>Upload SVG, PNG, JPG or WEBP — max 2 MB.</span>
                                 </div>
-                                <img src="{{ $brandingFaviconUrl }}" alt="Favicon preview" style="height:16px;width:16px;object-fit:contain;" class="ms-auto d-none d-md-block" title="Favicon">
+                                <picture class="ms-auto d-none d-md-block">
+                                    <source srcset="{{ $brandingFaviconWebpUrl }}" type="image/webp">
+                                    <img src="{{ $brandingFaviconUrl }}" alt="Favicon preview" style="height:16px;width:16px;object-fit:contain;" title="Favicon">
+                                </picture>
                             </div>
                             <input type="file" name="branding_logo" id="branding_logo"
                                 accept="image/svg+xml,image/png,image/jpeg,image/webp,.ico"
@@ -329,9 +340,12 @@
                         <div class="col-md-6">
                             <label class="form-label">Favicon</label>
                             <div class="d-flex align-items-center gap-3 mb-2 p-2 border rounded" style="background:var(--bs-tertiary-bg, #f8f9fa);">
-                                <img src="{{ $brandingFaviconUrl }}" alt="Current favicon" style="height:32px;width:32px;object-fit:contain;background:#fff;border-radius:4px;padding:4px;border:1px solid #dee2e6;">
+                                <picture>
+                                    <source srcset="{{ $brandingFaviconWebpUrl }}" type="image/webp">
+                                    <img src="{{ $brandingFaviconUrl }}" alt="Current favicon" style="height:32px;width:32px;object-fit:contain;background:#fff;border-radius:4px;padding:4px;border:1px solid #dee2e6;">
+                                </picture>
                                 <div class="small text-muted">
-                                    Current: <code class="small">{{ $settings['branding_favicon_path'] ?? '' ?: 'img/hostvexa-favicon.svg (default)' }}</code><br>
+                                    Current: <code class="small">{{ $settings['branding_favicon_path'] ?? '' ?: \App\Support\Branding::DEFAULT_FAVICON.' (default)' }}</code><br>
                                     <span>SVG, PNG, JPG, WEBP or ICO — max 1 MB.</span>
                                 </div>
                             </div>
@@ -397,8 +411,8 @@
                             var faviconFile = document.getElementById('branding_favicon');
                             var removeLogo = document.getElementById('remove_branding_logo');
                             var removeFavicon = document.getElementById('remove_branding_favicon');
-                            var defaultLogo = "{{ asset('img/hostvexa-logo.svg') }}";
-                            var defaultFavicon = "{{ asset('img/hostvexa-favicon.svg') }}";
+                            var defaultLogo = "{{ asset(\App\Support\Branding::DEFAULT_LOGO) }}";
+                            var defaultFavicon = "{{ asset(\App\Support\Branding::DEFAULT_FAVICON) }}";
                             var originalLogoSrc = logoPreview ? logoPreview.src : defaultLogo;
                             if(logoFile && logoPreview){
                                 logoFile.addEventListener('change', function(){

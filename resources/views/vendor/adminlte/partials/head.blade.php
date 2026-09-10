@@ -28,13 +28,18 @@
 @php
     $_branding = $branding ?? \App\Support\Branding::all();
     $_brandingFavicon = $_branding['favicon_url'] ?? \App\Support\Branding::faviconUrl();
+    $_brandingFaviconWebp = $_branding['favicon_webp_url'] ?? \App\Support\Branding::faviconWebpUrl();
     $_brandingOg = $_branding['og_url'] ?? \App\Support\Branding::ogUrl();
     $_brandingPrimary = $_branding['primary_color'] ?? \App\Support\Branding::primaryColor();
     $_brandingAccent = $_branding['accent_color'] ?? \App\Support\Branding::accentColor();
     $_brandingAppName = $_branding['app_name'] ?? config('app.name', 'HostVexa');
     $_brandingInline = \App\Support\Branding::inlineStyle();
 @endphp
-<link rel="icon" type="image/svg+xml" href="{{ $_brandingFavicon }}">
+@php $_faviconExt = strtolower(pathinfo(parse_url($_brandingFavicon, PHP_URL_PATH) ?? $_brandingFavicon, PATHINFO_EXTENSION)); $_faviconType = $_faviconExt === 'svg' ? 'image/svg+xml' : ($_faviconExt === 'png' ? 'image/png' : ($_faviconExt === 'ico' ? 'image/x-icon' : 'image/png')); @endphp
+<link rel="icon" type="{{ $_faviconType }}" href="{{ $_brandingFavicon }}">
+@if($_brandingFaviconWebp !== $_brandingFavicon)
+<link rel="icon" type="image/webp" href="{{ $_brandingFaviconWebp }}">
+@endif
 <link rel="alternate icon" href="{{ $_brandingFavicon }}">
 <meta name="theme-color" content="{{ $_brandingPrimary }}">
 <meta property="og:site_name" content="{{ $_brandingAppName }}">

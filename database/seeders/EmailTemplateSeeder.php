@@ -130,7 +130,7 @@ BODY,
 
 <!-- ── Brand header ─────────────────────────────────────────── -->
 <tr><td style="background:#0f172a;padding:32px 40px;text-align:center;">
-<img src="{{app_logo_url}}" alt="{{app_name}}" width="52" height="52" style="display:block;margin:0 auto 14px;border-radius:12px;border:2px solid rgba(255,255,255,0.12);">
+<img src="{{app_logo_url}}" alt="{{app_name}}" width="140" style="max-width:140px;height:auto;display:block;margin:0 auto 14px;">
 <div style="font-size:22px;font-weight:800;color:#ffffff;letter-spacing:-0.02em;line-height:1;">{{app_name}}</div>
 <div style="font-size:11px;color:#64748b;margin-top:5px;letter-spacing:0.1em;text-transform:uppercase;">{{company_name}}</div>
 </td></tr>

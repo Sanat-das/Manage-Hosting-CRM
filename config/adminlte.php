@@ -58,7 +58,7 @@ return [
     */
 
     'logo' => '<span class="brand-logo-hostvexa"><i class="bi bi-hdd-rack"></i> HostVexa</span>',
-    'logo_img' => 'img/hostvexa-mark.svg',
+    'logo_img' => 'img/hostvexa-mark.png',
     'logo_img_class' => 'brand-image img-circle elevation-2',
     'logo_img_alt' => 'HostVexa',
 

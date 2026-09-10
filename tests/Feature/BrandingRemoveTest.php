@@ -68,11 +68,11 @@ class BrandingRemoveTest extends TestCase
         $logoUrl = Branding::logoUrl();
         $this->assertStringContainsString(Branding::DEFAULT_LOGO, $logoUrl, 'logoUrl must fall back to DEFAULT_LOGO after clear');
         $this->assertSame('', Branding::logoPath());
-        $this->assertStringContainsString('img/hostvexa-logo.svg', $logoUrl);
+        $this->assertStringContainsString(Branding::DEFAULT_LOGO, $logoUrl);
 
         // Next GET — blade renders default placeholder, not the old stored path.
         $html = $this->actingAsSettingsAdmin()->get(route('admin.settings.index', ['tab' => 'branding']))->getContent();
-        $this->assertStringContainsString('img/hostvexa-logo.svg (default)', $html);
+        $this->assertStringContainsString(Branding::DEFAULT_LOGO.' (default)', $html);
         $this->assertStringNotContainsString('branding/test-logo.svg', $html);
     }
 
@@ -198,7 +198,7 @@ class BrandingRemoveTest extends TestCase
         // Next load: blade shows new stored path, not default placeholder.
         $html = $this->actingAsSettingsAdmin()->get(route('admin.settings.index', ['tab' => 'branding']))->getContent();
         $this->assertStringContainsString($newPath, $html);
-        $this->assertStringNotContainsString('img/hostvexa-logo.svg (default)', $html);
+        $this->assertStringNotContainsString(Branding::DEFAULT_LOGO.' (default)', $html);
     }
 
     public function test_favicon_upload_and_remove_together_upload_wins(): void
