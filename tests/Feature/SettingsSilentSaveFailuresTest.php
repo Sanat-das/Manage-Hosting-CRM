@@ -188,6 +188,78 @@ class SettingsSilentSaveFailuresTest extends TestCase
     }
 
     /**
+     * The free-text boxes that became selects must keep a stored value that is
+     * not in the option list.
+     *
+     * Saves are last-write-wins across a whole tab, so a select that fell back
+     * to its first option would rewrite the stored value the moment anyone
+     * saved that tab — a silent data change from merely opening the page. The
+     * value is kept and labelled instead, which also surfaces the underlying
+     * problem: role_default_role is 'client', and no such role exists.
+     */
+    public function test_a_select_never_silently_drops_an_unrecognised_stored_value(): void
+    {
+        DB::table('settings')->updateOrInsert(
+            ['setting_key' => 'role_default_role'],
+            ['setting_value' => 'client', 'group' => 'role', 'updated_at' => now()],
+        );
+        app(\App\Settings\RoleSettings::class)->fill(['role_default_role' => 'client'])->save();
+        app()->forgetScopedInstances();
+
+        $html = $this->actingAsSettingsAdmin()
+            ->get(route('admin.settings.index', ['tab' => 'role']))
+            ->assertStatus(200)
+            ->getContent();
+
+        $this->assertMatchesRegularExpression(
+            '/<option value="client" selected>client\s*—\s*not a recognised value<\/option>/u',
+            $html,
+            'An unrecognised stored value must stay selected, not be replaced by the first option.'
+        );
+
+        // The real options are there too — a dropdown with only the bad value
+        // would mean the option source silently failed (the roles table is
+        // adminlte_roles, and querying `roles` returns nothing but does not throw
+        // past the guard).
+        foreach (['admin', 'support', 'sales'] as $role) {
+            $this->assertStringContainsString('<option value="'.$role.'"', $html, "Role {$role} missing from the dropdown.");
+        }
+    }
+
+    /**
+     * Controls whose value space is fixed by code should not be free text. A
+     * typo in a cron schedule box was a silent no-op.
+     */
+    public function test_closed_value_sets_render_as_selects(): void
+    {
+        $html = $this->actingAsSettingsAdmin()
+            ->get(route('admin.settings.index', ['tab' => 'cron']))
+            ->assertStatus(200)
+            ->getContent();
+
+        foreach ([
+            'cron_domain_expiry_check', 'cron_overdue_invoice_check', 'cron_backup_check',
+            'cron_usage_sync', 'cron_pricing_sync', 'cron_report_generation',
+            'role_guard', 'product_default_billing_cycle', 'date_format',
+        ] as $key) {
+            $this->assertMatchesRegularExpression(
+                '/<select[^>]*name="settings\['.preg_quote($key, '/').'\]"/',
+                $html,
+                "{$key} should be a select, not a free-text box."
+            );
+        }
+
+        // …and the URL fields carry a URL type rather than plain text.
+        foreach (['hosting_documentation_url', 'hosting_terms_url'] as $key) {
+            $this->assertMatchesRegularExpression(
+                '/<input[^>]*type="url"[^>]*name="settings\['.preg_quote($key, '/').'\]"|<input[^>]*name="settings\['.preg_quote($key, '/').'\]"[^>]*type="url"/',
+                $html,
+                "{$key} should be type=url."
+            );
+        }
+    }
+
+    /**
      * The GST card posts to GstSettingController through the form= attribute, so
      * FormData(#settings-form) cannot see it and "Save All Settings" does not
      * save it. That is intended — GstSettingController is the single writer —

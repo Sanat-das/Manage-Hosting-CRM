@@ -47,7 +47,70 @@ class SettingsController extends Controller
         // controlled nothing and were removed.
         $gst = GstSetting::first();
 
-        return view('admin.settings.index', compact('settings', 'sections', 'activeTab', 'lastUpdated', 'gst'));
+        $fieldOptions = $this->fieldOptions();
+
+        return view('admin.settings.index', compact('settings', 'sections', 'activeTab', 'lastUpdated', 'gst', 'fieldOptions'));
+    }
+
+    /**
+     * Option sets for the controls that used to be free-text boxes.
+     *
+     * Two kinds, and the distinction is deliberate:
+     *
+     *  - CLOSED sets (guards, billing cycles, cron schedules, date formats)
+     *    become a real <select>. The value space is fixed by code, so typing
+     *    anything else was only ever a way to save a value nothing could use.
+     *  - OPEN sets (panels, server groups, registrars, DNS providers, stock
+     *    units) become a <datalist> on a text input: the field suggests what
+     *    exists without refusing anything else. A <select> there would silently
+     *    rewrite a stored value the moment the list changed — a module gets
+     *    uninstalled, a server group renamed — and settings saves are
+     *    last-write-wins, so that edit would stick.
+     *
+     * Three extra queries (roles, server groups, modules), all guarded: this
+     * page must still render on a half-migrated database.
+     *
+     * @return array<string, array<int|string, string>>
+     */
+    private function fieldOptions(): array
+    {
+        $safe = static function (callable $fn): array {
+            try {
+                return $fn();
+            } catch (\Throwable $e) {
+                report($e);
+
+                return [];
+            }
+        };
+
+        return [
+            // Closed sets.
+            'guards' => array_keys(config('auth.guards', [])),
+            // Through the models, never a hardcoded table name — the roles table
+            // is `adminlte_roles`, and querying `roles` fails silently through
+            // the guard below, leaving the admin an empty dropdown.
+            'roles' => $safe(static fn (): array => \App\Models\Role::query()
+                ->orderBy('name')
+                ->pluck('name')
+                ->all()),
+            'billing_cycles' => \App\Models\Order::BILLING_CYCLES,
+            'cron_schedules' => ['hourly', 'daily', 'weekly', 'monthly'],
+            'date_formats' => ['Y-m-d', 'd/m/Y', 'm/d/Y', 'd-m-Y', 'd M Y', 'j F Y', 'D, d M Y'],
+
+            // Open sets — suggestions only.
+            'panels' => $safe(static fn (): array => \App\Models\Module::query()
+                ->where('status', 'active')
+                ->orderBy('slug')
+                ->pluck('slug')
+                ->all()),
+            'server_groups' => $safe(static fn (): array => \App\Models\ServerGroup::query()
+                ->orderBy('name')
+                ->pluck('name')
+                ->all()),
+            'stock_units' => ['units', 'pcs', 'licenses', 'GB', 'TB', 'cores', 'hours'],
+            'sort_orders' => ['sort_order', 'name', 'price', 'created_at', 'updated_at'],
+        ];
     }
 
     /**

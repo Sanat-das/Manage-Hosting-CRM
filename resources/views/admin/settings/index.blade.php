@@ -59,6 +59,51 @@
             return strcmp($a, $b);
         });
 
+        $fieldOptions = $fieldOptions ?? [];
+
+        /**
+         * <option> markup for the closed-set selects.
+         *
+         * The stored value is ALWAYS selectable, even when it is not in the
+         * list. Settings saves are last-write-wins across the whole tab, so a
+         * select that quietly fell back to its first option would rewrite the
+         * stored value the moment anyone saved that tab — a silent data change
+         * nobody asked for. An unrecognised value is kept and labelled instead,
+         * which also surfaces the problem: role_default_role is currently
+         * 'client', and there is no 'client' role.
+         */
+        $selectOptions = function (array $options, ?string $current, ?string $blankLabel = null): string {
+            $current = (string) ($current ?? '');
+            $html = '';
+            $matched = false;
+
+            if ($blankLabel !== null) {
+                $html .= '<option value=""'.($current === '' ? ' selected' : '').'>'.e($blankLabel).'</option>';
+                $matched = $matched || $current === '';
+            }
+
+            foreach ($options as $key => $label) {
+                $value = is_int($key) ? (string) $label : (string) $key;
+                $isSelected = $value === $current;
+                $matched = $matched || $isSelected;
+                $html .= '<option value="'.e($value).'"'.($isSelected ? ' selected' : '').'>'.e($label).'</option>';
+            }
+
+            if (! $matched && $current !== '') {
+                $html .= '<option value="'.e($current).'" selected>'.e($current).' — not a recognised value</option>';
+            }
+
+            return $html;
+        };
+
+        /** <option> markup for a <datalist>: suggestions that never constrain the value. */
+        $datalistOptions = function (array $options): string {
+            return implode('', array_map(
+                fn ($value) => '<option value="'.e((string) $value).'"></option>',
+                $options,
+            ));
+        };
+
         // When validation fails, activate the tab that owns the first error so the
         // user lands on the pane holding the problem (mirrors products/edit pattern).
         if ($errors->any()) {
@@ -757,9 +802,19 @@
                     </div>
                     <div class="row">
                         <div class="col-md-4">
-                            <x-adminlte-input name="settings[date_format]" label="Date Format"
-                                value="{{ old('settings.date_format', $settings['date_format'] ?? 'Y-m-d') }}" />
-                            <small class="form-text text-muted">PHP date format (e.g., Y-m-d)</small>
+                            @php
+                                // Each option shows today's date in that format — a
+                                // raw "d/m/Y" tells an admin nothing about whether it
+                                // is the one they want.
+                                $dateFormatOptions = [];
+                                foreach ($fieldOptions['date_formats'] ?? [] as $fmt) {
+                                    $dateFormatOptions[$fmt] = $fmt.'  —  '.now()->format($fmt);
+                                }
+                            @endphp
+                            <x-adminlte-select name="settings[date_format]" label="Date Format">
+                                {!! $selectOptions($dateFormatOptions, old('settings.date_format', $settings['date_format'] ?? 'Y-m-d')) !!}
+                            </x-adminlte-select>
+                            <small class="form-text text-muted">PHP date format, shown with today's date.</small>
                         </div>
                     </div>
                 </x-adminlte-card>
@@ -772,15 +827,15 @@
                 <x-adminlte-card icon="bi bi-receipt" title="Billing Settings">
                     <div class="row">
                         <div class="col-md-4">
-                            <x-adminlte-input name="settings[invoice_prefix]" label="Invoice Prefix"
+                            <x-adminlte-input name="settings[invoice_prefix]" spellcheck="false" autocapitalize="none" autocomplete="off" label="Invoice Prefix"
                                 value="{{ old('settings.invoice_prefix', $settings['invoice_prefix'] ?? 'INV-') }}" />
                         </div>
                         <div class="col-md-4">
-                            <x-adminlte-input name="settings[quote_prefix]" label="Quote Prefix"
+                            <x-adminlte-input name="settings[quote_prefix]" spellcheck="false" autocapitalize="none" autocomplete="off" label="Quote Prefix"
                                 value="{{ old('settings.quote_prefix', $settings['quote_prefix'] ?? 'QT-') }}" />
                         </div>
                         <div class="col-md-4">
-                            <x-adminlte-input name="settings[ticket_prefix]" label="Ticket Prefix"
+                            <x-adminlte-input name="settings[ticket_prefix]" spellcheck="false" autocapitalize="none" autocomplete="off" label="Ticket Prefix"
                                 value="{{ old('settings.ticket_prefix', $settings['ticket_prefix'] ?? 'T-') }}" />
                         </div>
                     </div>
@@ -815,6 +870,10 @@
                         <div class="row mt-2">
                             <div class="col-md-3">
                                 <x-adminlte-input name="settings[currency]" label="Currency" maxlength="3"
+                                    {{-- No text-transform: it would render "inr" as "INR"
+                                         while still submitting the lowercase value. --}}
+                                    pattern="[A-Za-z]{3}" title="Three letters, e.g. INR or USD"
+                                    spellcheck="false" autocapitalize="characters" autocomplete="off"
                                     value="{{ old('settings.currency', $settings['currency'] ?? 'INR') }}" />
                                 <small class="form-text text-muted">ISO 4217 — 3 letters (e.g., INR, USD)</small>
                             </div>
@@ -955,7 +1014,7 @@
                 <x-adminlte-card icon="bi bi-envelope" title="Email Settings">
                     <div class="row">
                         <div class="col-md-6">
-                            <x-adminlte-input name="settings[smtp_host]" label="SMTP Host"
+                            <x-adminlte-input name="settings[smtp_host]" spellcheck="false" autocapitalize="none" autocomplete="off" inputmode="url" label="SMTP Host"
                                 value="{{ old('settings.smtp_host', $settings['smtp_host'] ?? '') }}" />
                         </div>
                         <div class="col-md-3">
@@ -975,7 +1034,7 @@
                     </div>
                     <div class="row">
                         <div class="col-md-6">
-                            <x-adminlte-input name="settings[smtp_username]" label="SMTP Username"
+                            <x-adminlte-input name="settings[smtp_username]" spellcheck="false" autocapitalize="none" autocomplete="off" label="SMTP Username"
                                 value="{{ old('settings.smtp_username', $settings['smtp_username'] ?? '') }}" />
                         </div>
                         <div class="col-md-6">
@@ -1221,7 +1280,7 @@
                             </x-adminlte-input>
                         </div>
                         <div class="col-md-4">
-                            <x-adminlte-input name="settings[domain_pricing_tier]" label="Pricing Tier"
+                            <x-adminlte-input name="settings[domain_pricing_tier]" spellcheck="false" autocapitalize="none" autocomplete="off" label="Pricing Tier"
                                 value="{{ old('settings.domain_pricing_tier', $settings['domain_pricing_tier'] ?? 'standard') }}" />
                         </div>
                         <div class="col-md-4">
@@ -1239,13 +1298,13 @@
                             </x-adminlte-input>
                         </div>
                         <div class="col-md-4">
-                            <x-adminlte-input name="settings[domain_nameserver1]" label="Nameserver 1"
+                            <x-adminlte-input name="settings[domain_nameserver1]" spellcheck="false" autocapitalize="none" autocomplete="off" inputmode="url" label="Nameserver 1"
                                 value="{{ old('settings.domain_nameserver1', $settings['domain_nameserver1'] ?? '') }}">
                                 <small class="form-text text-muted">(leave blank to keep current; to clear, contact admin)</small>
                             </x-adminlte-input>
                         </div>
                         <div class="col-md-4">
-                            <x-adminlte-input name="settings[domain_nameserver2]" label="Nameserver 2"
+                            <x-adminlte-input name="settings[domain_nameserver2]" spellcheck="false" autocapitalize="none" autocomplete="off" inputmode="url" label="Nameserver 2"
                                 value="{{ old('settings.domain_nameserver2', $settings['domain_nameserver2'] ?? '') }}">
                                 <small class="form-text text-muted">(leave blank to keep current; to clear, contact admin)</small>
                             </x-adminlte-input>
@@ -1285,19 +1344,19 @@
                         </div>
                         <div class="row">
                             <div class="col-md-4">
-                                <x-adminlte-input name="settings[domain_nameserver3]" label="Nameserver 3"
+                                <x-adminlte-input name="settings[domain_nameserver3]" spellcheck="false" autocapitalize="none" autocomplete="off" inputmode="url" label="Nameserver 3"
                                     value="{{ old('settings.domain_nameserver3', $settings['domain_nameserver3'] ?? '') }}">
                                     <small class="form-text text-muted">(leave blank to keep current; to clear, contact admin)</small>
                                 </x-adminlte-input>
                             </div>
                             <div class="col-md-4">
-                                <x-adminlte-input name="settings[domain_nameserver4]" label="Nameserver 4"
+                                <x-adminlte-input name="settings[domain_nameserver4]" spellcheck="false" autocapitalize="none" autocomplete="off" inputmode="url" label="Nameserver 4"
                                     value="{{ old('settings.domain_nameserver4', $settings['domain_nameserver4'] ?? '') }}">
                                     <small class="form-text text-muted">(leave blank to keep current; to clear, contact admin)</small>
                                 </x-adminlte-input>
                             </div>
                             <div class="col-md-4">
-                                <x-adminlte-input name="settings[domain_dns_provider]" label="DNS Provider"
+                                <x-adminlte-input name="settings[domain_dns_provider]" spellcheck="false" autocapitalize="none" autocomplete="off" inputmode="url" label="DNS Provider"
                                     value="{{ old('settings.domain_dns_provider', $settings['domain_dns_provider'] ?? '') }}">
                                     <small class="form-text text-muted">(leave blank to keep current; to clear, contact admin)</small>
                                 </x-adminlte-input>
@@ -1323,7 +1382,7 @@
                 <x-adminlte-card icon="bi bi-plug" title="Integration Settings">
                     <div class="row">
                         <div class="col-md-4">
-                            <x-adminlte-input name="settings[cpanel_host]" label="cPanel Host"
+                            <x-adminlte-input name="settings[cpanel_host]" spellcheck="false" autocapitalize="none" autocomplete="off" inputmode="url" label="cPanel Host"
                                 value="{{ old('settings.cpanel_host', $settings['cpanel_host'] ?? '') }}">
                                 <small class="form-text text-muted">(leave blank to keep current; to clear, contact admin)</small>
                             </x-adminlte-input>
@@ -1335,7 +1394,7 @@
                             </x-adminlte-input>
                         </div>
                         <div class="col-md-4">
-                            <x-adminlte-input name="settings[plesk_host]" label="Plesk Host"
+                            <x-adminlte-input name="settings[plesk_host]" spellcheck="false" autocapitalize="none" autocomplete="off" inputmode="url" label="Plesk Host"
                                 value="{{ old('settings.plesk_host', $settings['plesk_host'] ?? '') }}">
                                 <small class="form-text text-muted">(leave blank to keep current; to clear, contact admin)</small>
                             </x-adminlte-input>
@@ -1349,15 +1408,15 @@
                     </div>
                     <div class="row">
                         <div class="col-md-4">
-                            <x-adminlte-input name="settings[resellerclub_api_id]" label="ResellerClub API ID"
+                            <x-adminlte-input name="settings[resellerclub_api_id]" spellcheck="false" autocapitalize="none" autocomplete="off" label="ResellerClub API ID"
                                 value="{{ old('settings.resellerclub_api_id', $settings['resellerclub_api_id'] ?? '') }}" />
                         </div>
                         <div class="col-md-4">
-                            <x-adminlte-input name="settings[resellerclub_username]" label="ResellerClub Username"
+                            <x-adminlte-input name="settings[resellerclub_username]" spellcheck="false" autocapitalize="none" autocomplete="off" label="ResellerClub Username"
                                 value="{{ old('settings.resellerclub_username', $settings['resellerclub_username'] ?? '') }}" />
                         </div>
                         <div class="col-md-4">
-                            <x-adminlte-input name="settings[plesk_username]" label="Plesk Username"
+                            <x-adminlte-input name="settings[plesk_username]" spellcheck="false" autocapitalize="none" autocomplete="off" label="Plesk Username"
                                 value="{{ old('settings.plesk_username', $settings['plesk_username'] ?? '') }}" />
                         </div>
                     </div>
@@ -1441,11 +1500,18 @@
                 <x-adminlte-card icon="bi bi-hdd" title="Hosting Settings">
                     <div class="row">
                         <div class="col-md-4">
+                            {{-- Datalist, not a select: an uninstalled module must not
+                                 silently rewrite this on the next save of the tab. --}}
                             <x-adminlte-input name="settings[hosting_default_panel]" label="Default Control Panel"
+                                list="hosting-panel-options" spellcheck="false" autocapitalize="none" autocomplete="off"
                                 value="{{ old('settings.hosting_default_panel', $settings['hosting_default_panel'] ?? 'cpanel') }}" />
+                            <datalist id="hosting-panel-options">{!! $datalistOptions($fieldOptions['panels'] ?? []) !!}</datalist>
+                            <small class="form-text text-muted">Suggestions are the active modules.</small>
                         </div>
                         <div class="col-md-4">
+                            <datalist id="hosting-server-group-options">{!! $datalistOptions($fieldOptions['server_groups'] ?? []) !!}</datalist>
                             <x-adminlte-input name="settings[hosting_default_server_group]" label="Default Server Group"
+                                list="hosting-server-group-options" autocomplete="off"
                                 value="{{ old('settings.hosting_default_server_group', $settings['hosting_default_server_group'] ?? '') }}">
                                 <small class="form-text text-muted">(leave blank to keep current; to clear, contact admin)</small>
                             </x-adminlte-input>
@@ -1511,14 +1577,18 @@
                                 </x-adminlte-input>
                             </div>
                             <div class="col-md-3">
-                                <x-adminlte-input name="settings[hosting_documentation_url]" label="Documentation URL"
-                                    value="{{ old('settings.hosting_documentation_url', $settings['hosting_documentation_url'] ?? '') }}" />
-                                <small class="form-text text-muted">Max 500 chars</small>
+                            <x-adminlte-input name="settings[hosting_documentation_url]" label="Documentation URL"
+                                type="url" inputmode="url" spellcheck="false" autocapitalize="none"
+                                placeholder="https://docs.example.com"
+                                value="{{ old('settings.hosting_documentation_url', $settings['hosting_documentation_url'] ?? '') }}" />
+                            <small class="form-text text-muted">Full URL, max 500 chars</small>
                             </div>
                             <div class="col-md-3">
-                                <x-adminlte-input name="settings[hosting_terms_url]" label="Terms URL"
-                                    value="{{ old('settings.hosting_terms_url', $settings['hosting_terms_url'] ?? '') }}" />
-                                <small class="form-text text-muted">Max 500 chars</small>
+                            <x-adminlte-input name="settings[hosting_terms_url]" label="Terms URL"
+                                type="url" inputmode="url" spellcheck="false" autocapitalize="none"
+                                placeholder="https://example.com/terms"
+                                value="{{ old('settings.hosting_terms_url', $settings['hosting_terms_url'] ?? '') }}" />
+                            <small class="form-text text-muted">Full URL, max 500 chars</small>
                             </div>
                             <div class="col-md-3">
                                 <x-adminlte-select name="settings[hosting_welcome_email_enabled]" label="Welcome Email">
@@ -1549,10 +1619,16 @@
                     <div class="row">
                         <div class="col-md-4">
                             <x-adminlte-input name="settings[ipam_default_ipv4_gateway]" label="Default IPv4 Gateway"
+                                pattern="((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.){3}(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)"
+                                title="Dotted-quad IPv4 address, e.g. 192.168.1.1"
+                                inputmode="decimal" spellcheck="false" autocomplete="off" placeholder="192.168.1.1"
                                 value="{{ old('settings.ipam_default_ipv4_gateway', $settings['ipam_default_ipv4_gateway'] ?? '') }}" />
                         </div>
                         <div class="col-md-4">
                             <x-adminlte-input name="settings[ipam_default_ipv6_prefix]" label="Default IPv6 Prefix"
+                                pattern="[0-9A-Fa-f:]+(/\d{1,3})?"
+                                title="IPv6 prefix with optional length, e.g. 2001:db8::/32"
+                                spellcheck="false" autocapitalize="none" autocomplete="off" placeholder="2001:db8::/32"
                                 value="{{ old('settings.ipam_default_ipv6_prefix', $settings['ipam_default_ipv6_prefix'] ?? '') }}" />
                         </div>
                         <div class="col-md-4">
@@ -1570,7 +1646,7 @@
                             </x-adminlte-input>
                         </div>
                         <div class="col-md-4">
-                            <x-adminlte-input name="settings[ipam_dns_reverse_zone]" label="DNS Reverse Zone"
+                            <x-adminlte-input name="settings[ipam_dns_reverse_zone]" spellcheck="false" autocapitalize="none" autocomplete="off" inputmode="url" label="DNS Reverse Zone"
                                 value="{{ old('settings.ipam_dns_reverse_zone', $settings['ipam_dns_reverse_zone'] ?? '') }}" />
                         </div>
                         <div class="col-md-4">
@@ -1652,7 +1728,9 @@
                     <div class="row">
                         <div class="col-md-4">
                             <x-adminlte-input name="settings[inventory_stock_unit]" label="Stock Unit"
+                                list="inventory-stock-unit-options" spellcheck="false" autocomplete="off"
                                 value="{{ old('settings.inventory_stock_unit', $settings['inventory_stock_unit'] ?? 'units') }}" />
+                            <datalist id="inventory-stock-unit-options">{!! $datalistOptions($fieldOptions['stock_units'] ?? []) !!}</datalist>
                         </div>
                         <div class="col-md-4">
                             <x-adminlte-input name="settings[inventory_low_stock_threshold]" label="Low Stock Threshold" type="number" min="0"
@@ -1704,7 +1782,9 @@
                     <div class="row">
                         <div class="col-md-4">
                             <x-adminlte-input name="settings[catalog_default_sort]" label="Default Sort Order"
+                                list="catalog-sort-options" spellcheck="false" autocapitalize="none" autocomplete="off"
                                 value="{{ old('settings.catalog_default_sort', $settings['catalog_default_sort'] ?? 'sort_order') }}" />
+                            <datalist id="catalog-sort-options">{!! $datalistOptions($fieldOptions['sort_orders'] ?? []) !!}</datalist>
                         </div>
                         <div class="col-md-4">
                             <x-adminlte-input name="settings[catalog_products_per_page]" label="Products Per Page" type="number" min="1" max="100"
@@ -1721,12 +1801,15 @@
                     </div>
                     <div class="row">
                         <div class="col-md-4">
-                            <x-adminlte-input name="settings[catalog_currency_symbol]" label="Currency Symbol"
+                            <x-adminlte-input name="settings[catalog_currency_symbol]" spellcheck="false" autocapitalize="none" autocomplete="off" label="Currency Symbol"
                                 value="{{ old('settings.catalog_currency_symbol', $settings['catalog_currency_symbol'] ?? '₹') }}" />
                         </div>
                         <div class="col-md-8">
                             <x-adminlte-input name="settings[catalog_featured_product_ids]" label="Featured Product IDs"
+                                pattern="\s*\d+(\s*,\s*\d+)*\s*" title="Comma-separated product IDs, e.g. 3, 7, 12"
+                                inputmode="numeric" spellcheck="false" autocomplete="off" placeholder="3, 7, 12"
                                 value="{{ old('settings.catalog_featured_product_ids', $settings['catalog_featured_product_ids'] ?? '') }}" />
+                            <small class="form-text text-muted">Comma-separated product IDs.</small>
                         </div>
                     </div>
                     <div class="mt-3 settings-group">
@@ -1801,12 +1884,14 @@
                 <x-adminlte-card icon="bi bi-tags" title="Product Settings">
                     <div class="row">
                         <div class="col-md-4">
-                            <x-adminlte-input name="settings[product_sku_prefix]" label="SKU Prefix"
+                            <x-adminlte-input name="settings[product_sku_prefix]" spellcheck="false" autocapitalize="none" autocomplete="off" label="SKU Prefix"
                                 value="{{ old('settings.product_sku_prefix', $settings['product_sku_prefix'] ?? '') }}" />
                         </div>
                         <div class="col-md-4">
-                            <x-adminlte-input name="settings[product_default_billing_cycle]" label="Default Billing Cycle"
-                                value="{{ old('settings.product_default_billing_cycle', $settings['product_default_billing_cycle'] ?? 'monthly') }}" />
+                            <x-adminlte-select name="settings[product_default_billing_cycle]" label="Default Billing Cycle">
+                                {!! $selectOptions($fieldOptions['billing_cycles'] ?? [], old('settings.product_default_billing_cycle', $settings['product_default_billing_cycle'] ?? 'monthly')) !!}
+                            </x-adminlte-select>
+                            <small class="form-text text-muted">The cycles orders can actually bill on.</small>
                         </div>
                         <div class="col-md-4">
                             <x-adminlte-input name="settings[product_trial_days]" label="Trial Days" type="number" min="0" max="365"
@@ -1817,7 +1902,7 @@
                     </div>
                     <div class="row">
                         <div class="col-md-4">
-                            <x-adminlte-input name="settings[product_license_key_prefix]" label="License Key Prefix"
+                            <x-adminlte-input name="settings[product_license_key_prefix]" spellcheck="false" autocapitalize="none" autocomplete="off" label="License Key Prefix"
                                 value="{{ old('settings.product_license_key_prefix', $settings['product_license_key_prefix'] ?? '') }}" />
                         </div>
                         <div class="col-md-4">
@@ -1931,7 +2016,7 @@
                 <x-adminlte-card icon="bi bi-graph-up" title="Analytics Settings">
                     <div class="row">
                         <div class="col-md-4">
-                            <x-adminlte-input name="settings[analytics_tracking_code]" label="Tracking Code"
+                            <x-adminlte-input name="settings[analytics_tracking_code]" spellcheck="false" autocapitalize="none" autocomplete="off" label="Tracking Code"
                                 value="{{ old('settings.analytics_tracking_code', $settings['analytics_tracking_code'] ?? '') }}" />
                         </div>
                         <div class="col-md-4">
@@ -2027,7 +2112,7 @@
                 <x-adminlte-card icon="bi bi-robot" title="Automation Settings">
                     <div class="row">
                         <div class="col-md-4">
-                            <x-adminlte-input name="settings[automation_default_workflow]" label="Default Workflow"
+                            <x-adminlte-input name="settings[automation_default_workflow]" spellcheck="false" autocapitalize="none" autocomplete="off" label="Default Workflow"
                                 value="{{ old('settings.automation_default_workflow', $settings['automation_default_workflow'] ?? '') }}" />
                         </div>
                         <div class="col-md-4">
@@ -2129,22 +2214,26 @@
                 <x-adminlte-card icon="bi bi-clock-history" title="Cron Settings">
                     <div class="row">
                         <div class="col-md-4">
-                            <x-adminlte-input name="settings[cron_domain_expiry_check]" label="Domain Expiry Check"
-                                value="{{ old('settings.cron_domain_expiry_check', $settings['cron_domain_expiry_check'] ?? 'daily') }}" />
+                            <x-adminlte-select name="settings[cron_domain_expiry_check]" label="Domain Expiry Check">
+                                {!! $selectOptions($fieldOptions['cron_schedules'] ?? [], old('settings.cron_domain_expiry_check', $settings['cron_domain_expiry_check'] ?? 'daily')) !!}
+                            </x-adminlte-select>
                         </div>
                         <div class="col-md-4">
-                            <x-adminlte-input name="settings[cron_overdue_invoice_check]" label="Overdue Invoice Check"
-                                value="{{ old('settings.cron_overdue_invoice_check', $settings['cron_overdue_invoice_check'] ?? 'daily') }}" />
+                            <x-adminlte-select name="settings[cron_overdue_invoice_check]" label="Overdue Invoice Check">
+                                {!! $selectOptions($fieldOptions['cron_schedules'] ?? [], old('settings.cron_overdue_invoice_check', $settings['cron_overdue_invoice_check'] ?? 'daily')) !!}
+                            </x-adminlte-select>
                         </div>
                         <div class="col-md-4">
-                            <x-adminlte-input name="settings[cron_backup_check]" label="Backup Check"
-                                value="{{ old('settings.cron_backup_check', $settings['cron_backup_check'] ?? 'weekly') }}" />
+                            <x-adminlte-select name="settings[cron_backup_check]" label="Backup Check">
+                                {!! $selectOptions($fieldOptions['cron_schedules'] ?? [], old('settings.cron_backup_check', $settings['cron_backup_check'] ?? 'weekly')) !!}
+                            </x-adminlte-select>
                         </div>
                     </div>
                     <div class="row">
                         <div class="col-md-4">
-                            <x-adminlte-input name="settings[cron_usage_sync]" label="Usage Sync"
-                                value="{{ old('settings.cron_usage_sync', $settings['cron_usage_sync'] ?? 'hourly') }}" />
+                            <x-adminlte-select name="settings[cron_usage_sync]" label="Usage Sync">
+                                {!! $selectOptions($fieldOptions['cron_schedules'] ?? [], old('settings.cron_usage_sync', $settings['cron_usage_sync'] ?? 'hourly')) !!}
+                            </x-adminlte-select>
                         </div>
                         <div class="col-md-4">
                             <x-adminlte-input name="settings[cron_log_cleanup_days]" label="Log Cleanup After (days)" type="number" min="0"
@@ -2177,14 +2266,14 @@
                                 <small class="form-text text-muted">Yes / No</small>
                             </div>
                             <div class="col-md-3">
-                                <x-adminlte-input name="settings[cron_pricing_sync]" label="Pricing Sync"
-                                    value="{{ old('settings.cron_pricing_sync', $settings['cron_pricing_sync'] ?? 'daily') }}" />
-                                <small class="form-text text-muted">e.g., daily / hourly</small>
+                            <x-adminlte-select name="settings[cron_pricing_sync]" label="Pricing Sync">
+                                {!! $selectOptions($fieldOptions['cron_schedules'] ?? [], old('settings.cron_pricing_sync', $settings['cron_pricing_sync'] ?? 'daily')) !!}
+                            </x-adminlte-select>
                             </div>
                             <div class="col-md-3">
-                                <x-adminlte-input name="settings[cron_report_generation]" label="Report Generation"
-                                    value="{{ old('settings.cron_report_generation', $settings['cron_report_generation'] ?? 'daily') }}" />
-                                <small class="form-text text-muted">e.g., daily</small>
+                            <x-adminlte-select name="settings[cron_report_generation]" label="Report Generation">
+                                {!! $selectOptions($fieldOptions['cron_schedules'] ?? [], old('settings.cron_report_generation', $settings['cron_report_generation'] ?? 'daily')) !!}
+                            </x-adminlte-select>
                             </div>
                         </div>
                         <div class="row">
@@ -2219,12 +2308,16 @@
                 <x-adminlte-card icon="bi bi-person-badge" title="Role Settings">
                     <div class="row">
                         <div class="col-md-4">
-                            <x-adminlte-input name="settings[role_default_role]" label="Default Role"
-                                value="{{ old('settings.role_default_role', $settings['role_default_role'] ?? 'client') }}" />
+                            <x-adminlte-select name="settings[role_default_role]" label="Default Role">
+                                {!! $selectOptions($fieldOptions['roles'] ?? [], old('settings.role_default_role', $settings['role_default_role'] ?? ''), '— none —') !!}
+                            </x-adminlte-select>
+                            <small class="form-text text-muted">Roles defined under Roles &amp; Permissions.</small>
                         </div>
                         <div class="col-md-4">
-                            <x-adminlte-input name="settings[role_guard]" label="Auth Guard"
-                                value="{{ old('settings.role_guard', $settings['role_guard'] ?? 'web') }}" />
+                            <x-adminlte-select name="settings[role_guard]" label="Auth Guard">
+                                {!! $selectOptions($fieldOptions['guards'] ?? [], old('settings.role_guard', $settings['role_guard'] ?? 'web')) !!}
+                            </x-adminlte-select>
+                            <small class="form-text text-muted">From <code>config/auth.php</code>.</small>
                         </div>
                     </div>
                     <div class="mt-3 settings-group">
@@ -2374,6 +2467,29 @@
             .tab-content .card + .settings-group,
             .tab-content .settings-group + .card {
                 margin-top: 1rem;
+            }
+
+            /* Controls in a row must start on the same baseline even when one
+               label wraps. "Require Domain For Hosting" takes two lines while
+               "Show Inactive" beside it takes one, which pushed its select 16px
+               lower and left a row of dropdowns sitting on two different
+               baselines. Reserving two lines for every label and bottom-aligning
+               the text keeps the label next to its own control while lining the
+               controls up across the row. */
+            .tab-pane .form-label {
+                min-height: 3em;
+                display: flex;
+                align-items: flex-end;
+                margin-bottom: 0.35rem;
+            }
+
+            /* Single-line groups (Portal) and the file/colour rows in Branding
+               set their own layout, so the reserved second line only adds dead
+               space there. */
+            #pane-portal .form-label,
+            #pane-branding .form-label {
+                min-height: 0;
+                display: block;
             }
 
             /* Section label for the option groups that used to be collapsed
