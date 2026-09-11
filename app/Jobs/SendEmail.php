@@ -31,7 +31,7 @@ class SendEmail implements ShouldQueue
      *                             plain text — `$body` is still stored on the EmailLog row and
      *                             sent as the plain-text alternative part.
      * @param  list<array{disk: string, path: string, filename: string, mimeType: ?string, isInline: bool, contentId: ?string}>  $attachments
-     *                             file paths on disk, not raw bytes �?" keeps queued job payloads small.
+     *                             file paths on disk, not raw bytes — keeps queued job payloads small.
      *                             `isInline`+`contentId` embed the file for a `cid:` reference in `$htmlBody`
      *                             instead of listing it as a downloadable attachment.
      * @param  ?string  $logBody  what to store on the EmailLog row INSTEAD of `$body`. The sent
