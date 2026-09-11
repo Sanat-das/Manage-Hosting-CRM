@@ -166,7 +166,10 @@ class AdminLteRbacSeeder extends Seeder
                 'permissions' => $all,
             ],
             'support' => [
-                'label' => 'Support Agent',
+                // Labels must match what is already deployed: this seeder is now
+                // the only writer, and firstOrCreate() would otherwise hand fresh
+                // installs different role names than every existing one.
+                'label' => 'Support Team',
                 'permissions' => [
                     'dashboard.view',
                     'activity.view',
@@ -181,7 +184,7 @@ class AdminLteRbacSeeder extends Seeder
                 ],
             ],
             'sales' => [
-                'label' => 'Sales',
+                'label' => 'Sales Team',
                 'permissions' => [
                     'dashboard.view',
                     'analytics.view',
@@ -198,7 +201,7 @@ class AdminLteRbacSeeder extends Seeder
                 ],
             ],
             'marketing' => [
-                'label' => 'Marketing',
+                'label' => 'Marketing Team',
                 'permissions' => [
                     'dashboard.view',
                     'analytics.view',
@@ -207,6 +210,24 @@ class AdminLteRbacSeeder extends Seeder
                     'products.view',
                     'kb.view', 'kb.create', 'kb.edit',
                     'email.view',
+                ],
+            ],
+            // `staff` is offered by StaffUserRequest and the Users form, and
+            // UserController::syncAdminlteRoles() syncs the pivot to the role of
+            // that name — so without a row here every staff account created
+            // through the UI lands in the panel holding nothing at all. The set
+            // is deliberately read-only; widen it per-install in the Roles UI.
+            'staff' => [
+                'label' => 'Staff',
+                'permissions' => [
+                    'dashboard.view',
+                    'customers.view',
+                    'products.view',
+                    'invoices.view',
+                    'hosting.view',
+                    'domains.view',
+                    'tickets.view',
+                    'kb.view',
                 ],
             ],
             // Legacy AdminLTE defaults (kept for compatibility)

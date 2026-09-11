@@ -231,10 +231,14 @@ class ImportReferenceDataCommand extends Command
     }
 
     /**
-     * Reference users carry a `role` string column. The target AdminLTE RBAC
-     * has no "staff" role, so staff users get the closest panel role ("support")
-     * in the pivot so AdminMiddleware lets them through. Client users keep their
-     * role column, which User::hasRole() checks directly.
+     * Reference users carry a `role` string column, mirrored into the pivot.
+     *
+     * This used to map staff onto "support" because the RBAC set had no "staff"
+     * role. It does now, so the mapping is name-for-name and the pivot agrees
+     * with users.role — `hasRole()` reads both, and a user matching through one
+     * but not the other reads as privileged on one code path only. "support" is
+     * kept as a fallback for a target seeded before the staff role existed.
+     * Client users keep their role column, which hasRole() checks directly.
      */
     private function assignStaffRoles(array $source): void
     {
@@ -242,9 +246,16 @@ class ImportReferenceDataCommand extends Command
             return;
         }
 
-        $supportRoleId = DB::table('adminlte_roles')->where('name', 'support')->value('id');
-        if ($supportRoleId === null) {
-            $this->warn('  ! "support" role not found in adminlte_roles; staff RBAC mapping skipped');
+        $roleName = 'staff';
+        $staffRoleId = DB::table('adminlte_roles')->where('name', $roleName)->value('id');
+
+        if ($staffRoleId === null) {
+            $roleName = 'support';
+            $staffRoleId = DB::table('adminlte_roles')->where('name', $roleName)->value('id');
+        }
+
+        if ($staffRoleId === null) {
+            $this->warn('  ! neither "staff" nor "support" found in adminlte_roles; staff RBAC mapping skipped');
 
             return;
         }
@@ -261,13 +272,13 @@ class ImportReferenceDataCommand extends Command
 
             $userId = $this->remapId('users', (int) $row['id']);
             DB::table('adminlte_role_user')->insertOrIgnore([
-                'role_id' => $supportRoleId,
+                'role_id' => $staffRoleId,
                 'user_id' => $userId,
             ]);
             $assigned++;
         }
 
-        $this->line("  ✓ staff → support RBAC: {$assigned} users mapped");
+        $this->line("  ✓ staff → {$roleName} RBAC: {$assigned} users mapped");
     }
 
     /**

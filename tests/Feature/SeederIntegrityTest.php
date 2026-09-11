@@ -6,7 +6,10 @@ namespace Tests\Feature;
 
 use App\Models\Permission;
 use App\Models\Role;
+use App\Models\User;
+use Database\Seeders\AdminLteRbacSeeder;
 use Database\Seeders\Demo\DummyDataConfig;
+use Database\Seeders\InitialDataSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -23,7 +26,7 @@ use Tests\TestCase;
  * $this->seed(). No MySQL, no external dependencies — CI-ready.
  *
  * Permission gates are never hardcoded: route permissions are scraped from
- * `routes/admin/*.php` via `/permission:([a-z0-9._-]+)/i` and sidebar
+ * every file under `routes/` via `/permission:([a-z0-9._-]+)/i` and sidebar
  * permissions from `config/adminlte.php` `can` keys, so a future missing
  * permission cannot slip through a stale allow-list.
  */
@@ -47,17 +50,23 @@ final class SeederIntegrityTest extends TestCase
     // ─────────────────────────────────────────────────────────────────
 
     /**
-     * Collect every permission name referenced by admin route middleware.
+     * Collect every permission name referenced by route middleware.
      *
-     * Scans each file in `routes/admin/*.php` for `permission:xxx` and
-     * returns the de-duplicated, sorted set.
+     * Scans every file under `routes/` for `permission:xxx` and returns the
+     * de-duplicated, sorted set.
      *
      * @return list<string>
      */
     private function collectRoutePermissions(): array
     {
+        // Every route file, not just routes/admin: customers.create/edit/delete
+        // are gated only in routes/api, so an admin-only glob leaves any future
+        // API-only permission outside this guard.
         $pattern = '/permission:([a-z0-9._-]+)/i';
-        $files = glob(base_path('routes/admin/*.php')) ?: [];
+        $files = array_merge(
+            glob(base_path('routes/*.php')) ?: [],
+            glob(base_path('routes/*/*.php')) ?: [],
+        );
         $names = [];
 
         foreach ($files as $file) {
@@ -270,7 +279,7 @@ final class SeederIntegrityTest extends TestCase
             [],
             $missing,
             'Missing permissions in adminlte_permissions (seed inventory is stale): [' . implode(', ', $missing) . '] — '
-                . 'collected from routes/admin/*.php and config/adminlte.php but not present in adminlte_permissions table.'
+                . 'collected from routes/**/*.php and config/adminlte.php but not present in adminlte_permissions table.'
         );
 
         $this->assertSame(
@@ -378,6 +387,104 @@ final class SeederIntegrityTest extends TestCase
             $permissionCount,
             $adminCount,
             "Admin role holds [{$adminCount}] permissions but adminlte_permissions has [{$permissionCount}] — admin must be granted every permission."
+        );
+    }
+
+    /**
+     * The installer runs the seeders in the opposite order to DatabaseSeeder,
+     * and that order must reach the same end state.
+     *
+     * `InstallerService::provision()` calls AdminLteRbacSeeder and then
+     * InitialDataSeeder; `DatabaseSeeder` calls them the other way round. While
+     * both seeders kept their own permission inventory and sync()'d it onto
+     * every role, the second one silently overwrote the first — so a web
+     * install left `admin` holding 97 of 103 permissions while `db:seed` left
+     * it holding all 103, and no test noticed because every test used the
+     * DatabaseSeeder order.
+     */
+    public function test_installer_seeder_order_grants_admin_every_permission(): void
+    {
+        $this->seed(AdminLteRbacSeeder::class);
+        $this->seed(InitialDataSeeder::class);
+
+        $adminRole = Role::where('name', 'admin')->first();
+        $this->assertNotNull($adminRole, 'Role [admin] does not exist after the installer seeder order.');
+
+        $permissionNames = Permission::pluck('name')->all();
+        $adminNames = $adminRole->permissions()->pluck('name')->all();
+        $ungranted = array_values(array_diff($permissionNames, $adminNames));
+
+        $this->assertSame(
+            [],
+            $ungranted,
+            'Installer seeder order (AdminLteRbacSeeder then InitialDataSeeder) left the admin role without ['
+                . implode(', ', $ungranted) . '] — the two seeders disagree about the permission inventory.'
+        );
+    }
+
+    /**
+     * Every role the Users form can assign must exist in adminlte_roles.
+     *
+     * `UserController::syncAdminlteRoles()` syncs the pivot to the role whose
+     * name matches the submitted `users.role` value — and `sync([])` when no
+     * such row exists. `staff` was selectable but unseeded, so every staff
+     * account created through the UI silently landed in the panel holding no
+     * permissions at all.
+     */
+    public function test_every_assignable_role_exists(): void
+    {
+        $this->seed();
+
+        $request = (string) file_get_contents(app_path('Http/Requests/StaffUserRequest.php'));
+
+        $this->assertSame(
+            1,
+            preg_match("/'role'\s*=>.*?Rule::in\(\[(.*?)\]\)/s", $request, $match),
+            'Could not read the assignable role list from StaffUserRequest — the rule shape changed.'
+        );
+
+        preg_match_all("/'([a-z_]+)'/", $match[1], $roleMatch);
+        $assignable = array_values(array_unique($roleMatch[1]));
+
+        $this->assertNotEmpty($assignable, 'Parsed an empty assignable role list from StaffUserRequest.');
+
+        $seeded = Role::pluck('name')->all();
+        $unseeded = array_values(array_diff($assignable, $seeded));
+
+        $this->assertSame(
+            [],
+            $unseeded,
+            'Roles assignable in the Users form but absent from adminlte_roles: [' . implode(', ', $unseeded)
+                . '] — UserController::syncAdminlteRoles() will sync those users to an empty pivot.'
+        );
+    }
+
+    /**
+     * Every seeded panel user's pivot must agree with its `users.role` column.
+     *
+     * `hasRole()` treats the column and the `adminlte_role_user` pivot as
+     * equally authoritative, so a user carrying one without the other reads as
+     * privileged through one code path and unprivileged through the other —
+     * the Roles screens and any pivot-based report then understate real access.
+     */
+    public function test_seeded_users_pivot_matches_their_role_column(): void
+    {
+        $this->seed();
+
+        $mismatched = [];
+
+        foreach (User::where('role', '!=', 'client')->with('roles')->get() as $user) {
+            if (! $user->roles->pluck('name')->contains($user->role)) {
+                $mismatched[] = "{$user->email} (column={$user->role}, pivot=["
+                    . $user->roles->pluck('name')->implode(',') . '])';
+            }
+        }
+
+        $this->assertSame(
+            [],
+            $mismatched,
+            "Seeded users whose adminlte_role_user pivot disagrees with users.role:\n  "
+                . implode("\n  ", $mismatched)
         );
     }
 

@@ -33,6 +33,21 @@ PC=$(echo "$PJ" | php -r 'echo count(json_decode(file_get_contents("php://stdin"
 GR=$(echo "$PJ" | php -r 'echo json_decode(file_get_contents("php://stdin"))->granted??0;')
 [ "${PC:-0}" -eq 2 ] && pass "permissions modules.view/manage exist (2/2)" || fail "permissions missing (got $PC/2 $PJ)"
 [ "${GR:-0}" -eq 2 ] && pass "admin granted modules.* (2/2)" || fail "admin not granted modules.* (got $GR/2)"
+# 2b) admin is superuser: its pivot must cover EVERY permission row.
+# Named-permission checks cannot catch inventory drift between the two seeders
+# (the installer order once left admin holding 97 of 103); compare the counts.
+AJ=$(q '
+$total=\DB::table("adminlte_permissions")->count();
+$rid=\DB::table("adminlte_roles")->where("name","admin")->value("id");
+$held=$rid?\DB::table("adminlte_permission_role")->where("role_id",$rid)->count():0;
+$ids=\DB::table("adminlte_permission_role")->where("role_id",$rid)->pluck("permission_id");
+$miss=\DB::table("adminlte_permissions")->whereNotIn("id",$ids->all()?:[0])->pluck("name")->implode(",");
+echo json_encode(["total"=>$total,"held"=>$held,"miss"=>$miss]);' | grep -o "{.*}")
+TOT=$(echo "$AJ" | php -r 'echo json_decode(file_get_contents("php://stdin"))->total??0;')
+HLD=$(echo "$AJ" | php -r 'echo json_decode(file_get_contents("php://stdin"))->held??0;')
+MIS=$(echo "$AJ" | php -r 'echo json_decode(file_get_contents("php://stdin"))->miss??"";')
+[ "${HLD:-0}" -eq "${TOT:-1}" ] && pass "admin holds every permission ($HLD/$TOT)" \
+  || fail "admin holds $HLD/$TOT permissions; missing: $MIS"
 # 3) idempotency: second db:seed must not change counts
 BEFORE=$(q 'echo json_encode(["p"=>\DB::table("products")->count(),"o"=>\DB::table("orders")->count(),"perm"=>\DB::table("adminlte_permissions")->count()]);' | grep -o "{.*}")
 DB_CONNECTION=sqlite DB_DATABASE="$FILE" php artisan db:seed --force --no-interaction >/dev/null 2>&1

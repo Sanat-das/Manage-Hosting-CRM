@@ -116,25 +116,25 @@ class UserSeeder extends Seeder
      */
     private function attachRoles(): void
     {
-        $roleMap = [
-            'support@example.com' => 'support',
-            'sales@example.com' => 'sales',
-            'marketing@example.com' => 'marketing',
-        ];
+        // Derived from users.role rather than a hardcoded e-mail map. hasRole()
+        // treats the column and the pivot as equally authoritative, so a user
+        // holding one but not the other reads as privileged through one code
+        // path and unprivileged through the other. A map also silently skips
+        // any account added later — it did exactly that for the two `staff`
+        // users, which ended up with an empty pivot.
+        $roleIds = Role::pluck('id', 'name');
+        $attached = 0;
 
-        $roles = Role::whereIn('name', array_values($roleMap))
-            ->get()
-            ->keyBy('name');
+        foreach (User::where('role', '!=', 'client')->get() as $user) {
+            $roleId = $roleIds->get((string) $user->role);
 
-        foreach ($roleMap as $email => $roleName) {
-            $user = User::where('email', $email)->first();
-            $role = $roles->get($roleName);
-
-            if ($user && $role) {
-                $user->roles()->syncWithoutDetaching($role);
-                $this->command->info("Attached role '{$roleName}' to {$email}.");
+            if ($roleId !== null) {
+                $user->roles()->syncWithoutDetaching($roleId);
+                $attached++;
             }
         }
+
+        $this->command->info("Attached roles to {$attached} panel user(s) from their role column.");
     }
 
     /**
