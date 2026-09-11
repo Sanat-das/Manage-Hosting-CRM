@@ -46,14 +46,6 @@
                 <td>
                     @if ($role->name === 'admin')
                         <strong>{{ $role->name }}</strong>
-                        {{-- The row is already unlinked because denyIfProtected()
-                             403s on edit. Say why: User::hasPermission() returns
-                             true for this role before reading any pivot row, so
-                             the count beside it does not govern its access. --}}
-                        <span class="badge text-bg-warning-subtle text-warning-emphasis fw-normal ms-1"
-                              title="Accounts with this role are granted every permission in code. The permission count is informational — it cannot be used to restrict them.">
-                            bypasses permission checks
-                        </span>
                     @else
                         <a href="{{ route('adminlte.roles.edit', $role) }}" class="table-link"><strong>{{ $role->name }}</strong></a>
                     @endif

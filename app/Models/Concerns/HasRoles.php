@@ -44,13 +44,17 @@ trait HasRoles
      * Checks the pivot-assigned roles first, then falls back to the string
      * `users.role` column so legacy / string-only users inherit the
      * equivalent Role's permissions (e.g. editor/viewer panel access).
+     *
+     * Admins are not special-cased. They used to return true here before any
+     * row was read, which made the admin role's permissions unenforceable --
+     * stripping every one of them changed nothing -- and hid the installer
+     * seeding admin with 97 of 103 permissions for as long as it did. The
+     * admin role holds every permission instead, seeded by AdminLteRbacSeeder
+     * and backfilled for existing installs by
+     * 2026_09_11_000001_grant_admin_role_every_permission.
      */
     public function hasPermission(string $permission): bool
     {
-        if ($this->isAdmin()) {
-            return true;
-        }
-
         if ($this->roles()
             ->whereHas('permissions', fn ($query) => $query->where('name', $permission))
             ->exists()) {

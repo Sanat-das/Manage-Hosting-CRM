@@ -29,19 +29,22 @@ final class RolePermissionUiTest extends TestCase
         return User::factory()->create(['role' => 'admin']);
     }
 
-    public function test_roles_index_marks_the_admin_role_as_bypassing_permissions(): void
+    /**
+     * The admin role no longer bypasses anything, so the index must not say so.
+     */
+    public function test_roles_index_no_longer_claims_the_admin_role_bypasses_permissions(): void
     {
         $actor = $this->actingAsRoleManager();
 
         $this->actingAs($actor)
             ->get(route('adminlte.roles.index'))
             ->assertOk()
-            ->assertSee('bypasses permission checks', false);
+            ->assertDontSee('bypasses permission checks', false);
     }
 
     /**
      * The admin role is not editable at all, so there is no grid of checkboxes
-     * that could imply otherwise — the index note is the only surface.
+     * that could imply otherwise.
      */
     public function test_admin_role_cannot_be_edited(): void
     {
@@ -65,20 +68,48 @@ final class RolePermissionUiTest extends TestCase
     }
 
     /**
-     * Pins the behaviour the warning describes: stripping every permission from
-     * the admin role does not reduce an admin's access. If this ever fails the
-     * bypass has been removed and the warning must come out with it.
+     * An admin's access comes from the admin role's rows, not from a bypass.
+     *
+     * hasPermission() used to return true for admins before reading anything,
+     * which made this role's permissions unenforceable and hid the installer
+     * granting it 97 of 103. Stripping the role must now actually take the
+     * access away -- that is the whole point of removing the short-circuit.
      */
-    public function test_stripping_the_admin_role_does_not_reduce_admin_access(): void
+    public function test_stripping_the_admin_role_removes_admin_access(): void
     {
         $this->seed(AdminLteRbacSeeder::class);
-
-        Role::where('name', 'admin')->firstOrFail()->permissions()->sync([]);
 
         $user = User::factory()->create(['role' => 'admin']);
 
         $this->assertTrue($user->hasPermission('settings.manage'));
         $this->assertTrue($user->hasPermission('system.update'));
+
+        Role::where('name', 'admin')->firstOrFail()->permissions()->sync([]);
+
+        $this->assertFalse($user->fresh()->hasPermission('settings.manage'));
+        $this->assertFalse($user->fresh()->hasPermission('system.update'));
+    }
+
+    /**
+     * The admin role must hold every permission, since nothing grants them now.
+     */
+    public function test_admin_role_holds_every_permission(): void
+    {
+        $this->seed(AdminLteRbacSeeder::class);
+
+        $user = User::factory()->create(['role' => 'admin']);
+
+        $ungranted = \App\Models\Permission::pluck('name')
+            ->reject(fn (string $name): bool => $user->hasPermission($name))
+            ->values()
+            ->all();
+
+        $this->assertSame(
+            [],
+            $ungranted,
+            'An administrator no longer passes [' . implode(', ', $ungranted) . '] -- with the '
+                . 'isAdmin() short-circuit gone, every permission must be on the admin role.'
+        );
     }
 
     /**
