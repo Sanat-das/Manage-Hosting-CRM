@@ -6,6 +6,7 @@ use App\Models\ProductGroup;
 use App\Models\User;
 use Database\Seeders\AdminLteRbacSeeder;
 use Database\Seeders\InitialDataSeeder;
+use Dotenv\Dotenv;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
@@ -463,13 +464,90 @@ class InstallerService
                 ->delete();
         }
 
-        // 7. Mark the application as installed by writing install.lock.
+        // 7. Prove the .env that was just written actually works, before
+        //    anything declares the install finished. Everything above ran on
+        //    the submitted form input, so up to this point a broken .env is
+        //    completely invisible.
+        $this->verifyWrittenEnvironment();
+
+        // 8. Mark the application as installed by writing install.lock.
         //    Its presence is what gates the installer (like WordPress) —
         //    deleting the file returns the app to the setup wizard and
         //    allows a clean reinstall. Refresh config caches so the next
         //    request boots as a fully installed application.
         self::markInstalled();
         Artisan::call('config:clear');
+    }
+
+    /**
+     * Re-read .env from disk and prove the credentials it now holds can open
+     * the database — the check that turns a silent failure into a loud one.
+     *
+     * run() never consults .env: verifyConnection() and applyDatabaseConfig()
+     * both use the submitted input, so the connection test, the migrations,
+     * the seeders and the administrator account all succeed on credentials
+     * that may differ from what reached the file. A single mangled character
+     * therefore produced a wizard reporting success and an application where
+     * every request died on "Access denied", with install.lock already written
+     * to stop the wizard being re-run.
+     *
+     * Throwing here leaves install.lock absent. On the next request
+     * databaseProvisioned() cannot connect either, so isInstalled() is false
+     * and the wizard stays reachable — the install can simply be repeated once
+     * .env is right, and every step of it is idempotent.
+     *
+     * @throws RuntimeException When .env is unparseable or its credentials are
+     *                          rejected by the database server.
+     */
+    private function verifyWrittenEnvironment(): void
+    {
+        $path = $this->envPath();
+
+        try {
+            $env = Dotenv::createArrayBacked(dirname($path), basename($path))->load();
+        } catch (\Throwable $e) {
+            throw new RuntimeException(
+                'The installer wrote an .env file that cannot be parsed ('.$e->getMessage().'). '
+                .'The application would fail to boot on the next request, so the install has '
+                .'not been marked complete. Correct .env and run the installer again.'
+            );
+        }
+
+        $host = (string) ($env['DB_HOST'] ?? '');
+        $port = (int) ($env['DB_PORT'] ?? 3306);
+        $database = (string) ($env['DB_DATABASE'] ?? '');
+        $username = (string) ($env['DB_USERNAME'] ?? '');
+        $password = (string) ($env['DB_PASSWORD'] ?? '');
+
+        // Same defence in depth as verifyConnection(): never interpolate an
+        // unvalidated host into a DSN, even one this class wrote itself.
+        if (! self::isValidDatabaseHost($host)) {
+            throw new RuntimeException(
+                'DB_HOST in the .env file the installer wrote is not a valid hostname or IP '
+                .'address. The install has not been marked complete.'
+            );
+        }
+
+        // dbname is included (verifyConnection deliberately omits it, because
+        // it may still have to create the database) so a credential that can
+        // reach the server but not this schema is caught here too.
+        $dsn = "mysql:host={$host};port={$port};dbname={$database};charset=utf8mb4";
+
+        try {
+            new PDO($dsn, $username, $password, [
+                PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+                PDO::ATTR_TIMEOUT => 5,
+            ]);
+        } catch (\PDOException $e) {
+            throw new RuntimeException(
+                'The database settings saved to .env were rejected ('.$e->getMessage().'), '
+                .'even though the details you submitted were accepted earlier. A value was '
+                .'altered on its way into the file — check DB_PASSWORD and DB_USERNAME in '
+                .'.env against what you typed. The database itself has been set up correctly; '
+                .'the install has not been marked complete, so you can fix .env and submit '
+                .'this form again.'
+            );
+        }
     }
 
     /**

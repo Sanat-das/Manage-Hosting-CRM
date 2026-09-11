@@ -183,6 +183,46 @@ class InstallerHardensEnvironmentTest extends TestCase
     }
 
     /**
+     * The written .env must be proven to work before the install is declared
+     * finished, and in that order.
+     *
+     * run() does all its work with the submitted form input — verifyConnection()
+     * and applyDatabaseConfig() never read .env — so without this check a value
+     * mangled on its way to disk yields a "successful" install and an
+     * application that cannot serve a single request. Writing install.lock
+     * first would additionally block the wizard from being re-run.
+     */
+    public function test_installer_run_verifies_written_env_before_marking_installed(): void
+    {
+        $source = (string) file_get_contents(
+            (new \ReflectionClass(InstallerService::class))->getFileName()
+        );
+
+        $run = (new \ReflectionMethod(InstallerService::class, 'run'));
+        $body = implode("\n", array_slice(
+            explode("\n", $source),
+            $run->getStartLine() - 1,
+            $run->getEndLine() - $run->getStartLine() + 1
+        ));
+
+        $verify = strpos($body, 'verifyWrittenEnvironment(');
+        $mark = strpos($body, 'markInstalled(');
+
+        $this->assertNotFalse(
+            $verify,
+            'InstallerService::run() must re-read .env and test the credentials it holds.'
+        );
+        $this->assertNotFalse($mark, 'InstallerService::run() must write install.lock.');
+
+        $this->assertLessThan(
+            $mark,
+            $verify,
+            'The .env verification must run BEFORE install.lock is written, or a broken '
+            .'install is locked in and the wizard cannot be re-run.'
+        );
+    }
+
+    /**
      * The pre-install environment must not ship a Secure session cookie.
      *
      * bootstrap/app.php copies .env.example -> .env before the app boots, so
