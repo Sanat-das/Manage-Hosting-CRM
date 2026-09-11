@@ -11,16 +11,20 @@ use App\Models\ProductPricing;
 use App\Models\Role;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Concerns\CreatesPanelUsers;
 use Tests\TestCase;
 
 class ProductsServicesPageTest extends TestCase
 {
+    use CreatesPanelUsers;
     use RefreshDatabase;
 
     public function test_products_services_index_requires_permission(): void
     {
         // Panel user WITHOUT hosting.view -> the permission gate must 403.
-        $user = User::factory()->create(['role' => 'support']);
+        // Not a support user: support genuinely holds hosting.view, so that
+        // only ever 403'd because the RBAC tables were empty in tests.
+        $user = $this->panelUserWithoutPermission('hosting.view');
 
         $this->actingAs($user)
             ->get(route('admin.hosting.index'))

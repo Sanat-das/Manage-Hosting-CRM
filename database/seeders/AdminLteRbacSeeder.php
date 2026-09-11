@@ -153,15 +153,32 @@ class AdminLteRbacSeeder extends Seeder
             'notifications.manage' => 'Manage Notifications',
         ];
 
-        // updateOrCreate, not firstOrCreate: four migrations create permission
+        // Upsert rather than firstOrCreate: four migrations create permission
         // rows too, so for any name they share the first writer used to win the
         // label outright and this inventory's text was unreachable. Permissions
         // have no edit UI, so healing them here is safe. Roles below stay on
         // firstOrCreate for the opposite reason -- their labels ARE editable in
         // the Roles screen, and a re-seed must not overwrite that.
-        foreach ($permissions as $name => $label) {
-            Permission::updateOrCreate(['name' => $name], ['label' => $label]);
-        }
+        //
+        // One statement rather than 103 select-then-write pairs: the test suite
+        // seeds this before every test, where the per-row version cost ~180s
+        // across a full run.
+        $now = now();
+
+        Permission::upsert(
+            array_map(
+                static fn (string $name, string $label): array => [
+                    'name' => $name,
+                    'label' => $label,
+                    'created_at' => $now,
+                    'updated_at' => $now,
+                ],
+                array_keys($permissions),
+                array_values($permissions),
+            ),
+            ['name'],
+            ['label', 'updated_at'],
+        );
 
         // --- Role → permission matrix ---
         $all = array_keys($permissions);

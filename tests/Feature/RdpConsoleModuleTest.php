@@ -16,6 +16,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Routing\Route;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Tests\Concerns\CreatesPanelUsers;
 use Modules\RdpConsole\Models\RdpConsoleConfig;
 use Modules\RdpConsole\RdpConsole;
 use Tests\TestCase;
@@ -36,6 +37,7 @@ use Tests\TestCase;
  */
 class RdpConsoleModuleTest extends TestCase
 {
+    use CreatesPanelUsers;
     use RefreshDatabase;
 
     private ModuleManager $manager;
@@ -236,7 +238,7 @@ class RdpConsoleModuleTest extends TestCase
         ]);
 
         // A panel user without hosting.view must be denied.
-        $this->actingAs(User::factory()->create(['role' => 'support']))
+        $this->actingAs($this->panelUserWithoutPermission('hosting.view'))
             ->get(route('admin.rdp-console.password', $account))
             ->assertForbidden();
 

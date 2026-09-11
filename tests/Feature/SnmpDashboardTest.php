@@ -16,6 +16,7 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
 use Modules\SnmpMonitor\Exceptions\UnlinkedAccountException;
+use Tests\Concerns\CreatesPanelUsers;
 use Modules\SnmpMonitor\Models\SnmpTarget;
 use Modules\SnmpMonitor\Services\SnmpMetricRepository;
 use Tests\Support\InteractsWithSnmpMonitorModule;
@@ -35,6 +36,7 @@ require_once __DIR__.'/../Support/InteractsWithSnmpMonitorModule.php';
  */
 final class SnmpDashboardTest extends TestCase
 {
+    use CreatesPanelUsers;
     use InteractsWithSnmpMonitorModule;
     use RefreshDatabase;
 
@@ -896,7 +898,7 @@ final class SnmpDashboardTest extends TestCase
 
     private function actingAsAdminWithoutPermission(): self
     {
-        return $this->actingAs(User::factory()->create(['role' => 'support']));
+        return $this->actingAs($this->panelUserWithoutPermission('hosting.view'));
     }
 
     private function makeAdminUser(bool $withHostingView): User

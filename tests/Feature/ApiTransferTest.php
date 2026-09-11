@@ -118,9 +118,17 @@ class ApiTransferTest extends TestCase
      * @param  array<int, string>  $permissions
      * @param  array<int, string>  $departments
      */
-    private function staffWithPermissions(array $permissions, array $departments, string $roleName = 'support'): User
+    /**
+     * The bespoke role name matters: `Role::firstOrCreate('support')` now finds
+     * the seeded support role and hands the user all 16 of its permissions,
+     * including tickets.transfer — which is the very thing
+     * test_transfer_without_permission_is_forbidden needs the user to lack. The
+     * `users.role` column is likewise a role granting no tickets.* at all, so
+     * the only tickets permissions in play are the ones asked for here.
+     */
+    private function staffWithPermissions(array $permissions, array $departments, string $roleName = 'api-transfer-scoped'): User
     {
-        $user = User::factory()->create(['role' => $roleName]);
+        $user = User::factory()->create(['role' => 'marketing']);
 
         $role = Role::firstOrCreate(['name' => $roleName], ['label' => ucfirst($roleName)]);
 
