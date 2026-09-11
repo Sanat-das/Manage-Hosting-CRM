@@ -17,6 +17,9 @@
 .et-toolbar button:hover{background:var(--bs-secondary-bg);}
 #quillEditor{height:380px; background:#fff;}
 #quillEditor .ql-editor{font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size:13px;}
+/* z-index fix: sticky Variables card (1020) was covering Load starter dropdown (1000) */
+.dropdown-menu{z-index:1040 !important;}
+.col-lg-4 .sticky-top{z-index:2 !important;}
 </style>
 @endpush
 

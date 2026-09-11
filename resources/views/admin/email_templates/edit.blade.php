@@ -41,6 +41,19 @@
 /* Status bar */
 .et-statusbar{display:flex; flex-wrap:wrap; align-items:center; gap:.75rem; padding:.35rem .6rem; border-top:1px solid var(--bs-border-color); background:var(--bs-tertiary-bg); font-size:.75rem; color:var(--bs-secondary-color);}
 .et-statusbar .ok{color:#16a34a;} .et-statusbar .bad{color:#dc2626;}
+/* ── z-index fix ─────────────────────────────────────────────── */
+/* Bootstrap .sticky-top is 1020 and .dropdown-menu is 1000, so the
+   Variables sticky card was painting over the Load starter dropdown.
+   Raise dropdowns above sticky, and keep the sticky card below them
+   but still above normal content. Also allow toolbar dropdowns (Snippets)
+   to escape the rounded editor wrapper which had overflow:hidden. */
+.dropdown-menu{z-index:1040 !important;}
+.col-lg-4 .sticky-top{z-index:2 !important;}
+.et-editor-wrap{overflow:visible;}
+.et-editor-wrap .et-editor-tabs{border-radius:.5rem .5rem 0 0;}
+.et-editor-wrap .CodeMirror{border-radius:0;}
+.et-editor-wrap:has(#pane-code:not(.d-none)) .et-statusbar{border-radius:0 0 .5rem .5rem;}
+.CodeMirror-fullscreen{z-index:10500 !important;}
 </style>
 @endpush
 
