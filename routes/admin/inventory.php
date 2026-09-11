@@ -12,7 +12,7 @@ use Illuminate\Support\Facades\Route;
 | admin. name prefix (sidebar contract: admin.inventory-assets.*).
 |
 | Permission gates: granular inventory.view/manage as defined in
-| config/permissions.php. Fallback to hosting.* handled in PermissionMiddleware.
+ | AdminLteRbacSeeder. Fallback to hosting.* handled in PermissionMiddleware.
 */
 
 Route::middleware(['web', 'auth', 'admin', 'throttle:admin'])->prefix('admin')->name('admin.')->group(function () {

@@ -130,7 +130,7 @@ class RoleController extends Controller
     /**
      * Group permissions by domain for the grouped checklist UI.
      *
-     * Mirrors the granular inventory in config/permissions.php — every
+     * Mirrors the granular inventory in AdminLteRbacSeeder — every
      * seeded permission is assigned to exactly one visual group, ordered
      * for scanning (Dashboard first, System last). Unmatched names fall
      * into "Other" so new seeders never silently disappear.

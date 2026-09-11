@@ -13,7 +13,7 @@ use Illuminate\Support\Facades\Route;
 | admin. name prefix (sidebar contract: admin.dns-zones.*).
 |
 | Permission gates: granular dns-zones / dns-records as defined in
-| config/permissions.php and seeded by AdminLteRbacSeeder. Fallback to
+ | AdminLteRbacSeeder, the sole permission inventory. Fallback to
 | hosting.view/manage handled in PermissionMiddleware.
 */
 

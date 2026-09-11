@@ -13,7 +13,7 @@ use Illuminate\Support\Facades\Route;
 | admin. name prefix (sidebar contract: admin.service-instances.*).
 |
 | Permission gates: granular service-instances / provisioning-events as
-| defined in config/permissions.php. Fallback to hosting.* handled in
+ | declared in AdminLteRbacSeeder. Fallback to hosting.* handled in
 | PermissionMiddleware.
 */
 

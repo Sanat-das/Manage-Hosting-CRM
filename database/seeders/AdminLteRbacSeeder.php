@@ -40,7 +40,7 @@ class AdminLteRbacSeeder extends Seeder
             'products.delete' => 'Delete Products',
             'products.groups' => 'Manage Product Groups',
             'products.options' => 'Manage Configurable Options',
-            'products.addons' => 'Manage Addons',
+            'products.addons' => 'Manage Product Addons',
 
             // orders
             'orders.view' => 'View Orders',
@@ -153,8 +153,14 @@ class AdminLteRbacSeeder extends Seeder
             'notifications.manage' => 'Manage Notifications',
         ];
 
+        // updateOrCreate, not firstOrCreate: four migrations create permission
+        // rows too, so for any name they share the first writer used to win the
+        // label outright and this inventory's text was unreachable. Permissions
+        // have no edit UI, so healing them here is safe. Roles below stay on
+        // firstOrCreate for the opposite reason -- their labels ARE editable in
+        // the Roles screen, and a re-seed must not overwrite that.
         foreach ($permissions as $name => $label) {
-            Permission::firstOrCreate(['name' => $name], ['label' => $label]);
+            Permission::updateOrCreate(['name' => $name], ['label' => $label]);
         }
 
         // --- Role → permission matrix ---

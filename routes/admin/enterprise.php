@@ -25,8 +25,8 @@ use Illuminate\Support\Facades\Route;
 | the admin. name prefix, matching the sidebar contract.
 |
 | Permission gates: granular per sub-resource (e.g. datacenters.view,
-| ip-subnets.manage) as defined in config/permissions.php and seeded by
-| AdminLteRbacSeeder. Fallback to hosting.view/manage is handled in
+ | ip-subnets.manage) as declared in AdminLteRbacSeeder, the sole permission
+ | inventory. Fallback to hosting.view/manage is handled in
 | PermissionMiddleware for backward compatibility.
 */
 

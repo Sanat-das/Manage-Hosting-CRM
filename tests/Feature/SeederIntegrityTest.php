@@ -195,6 +195,30 @@ final class SeederIntegrityTest extends TestCase
     }
 
     /**
+     * Parse the `'name' => 'Label'` pairs from a seeder's permission inventory.
+     *
+     * @return array<string, string>
+     */
+    private function parseSeederPermissionLabels(string $seederFile): array
+    {
+        $contents = (string) file_get_contents($seederFile);
+
+        if (preg_match('/\$permissions\s*=\s*\[(.*?)\n        \];/s', $contents, $block) !== 1) {
+            return [];
+        }
+
+        preg_match_all("/'([a-z0-9._-]+)'\s*=>\s*'([^']*)'/", $block[1], $matches, PREG_SET_ORDER);
+
+        $labels = [];
+
+        foreach ($matches as $match) {
+            $labels[$match[1]] = $match[2];
+        }
+
+        return $labels;
+    }
+
+    /**
      * Snapshot row counts for every business table declared by DummyDataConfig.
      *
      * Inline equivalent of DummyDataSeederTest::snapshotRowCounts() — kept
@@ -485,6 +509,41 @@ final class SeederIntegrityTest extends TestCase
             $mismatched,
             "Seeded users whose adminlte_role_user pivot disagrees with users.role:\n  "
                 . implode("\n  ", $mismatched)
+        );
+    }
+
+    /**
+     * The seeded label for every permission must be the one the seeder declares.
+     *
+     * Four migrations also create permission rows, and both they and the seeder
+     * used firstOrCreate — so for any name they share, whichever ran first won
+     * the label and the other's text was silently unreachable. Permission
+     * labels have no edit UI, so the seeder can own them outright; role labels
+     * are editable in the Roles screen and deliberately are not healed.
+     */
+    public function test_permission_labels_match_the_seeder_inventory(): void
+    {
+        $this->seed();
+
+        $declared = $this->parseSeederPermissionLabels(database_path('seeders/AdminLteRbacSeeder.php'));
+
+        $this->assertNotEmpty($declared, 'Could not parse name => label pairs from AdminLteRbacSeeder.');
+
+        $drift = [];
+
+        foreach (Permission::orderBy('name')->get() as $permission) {
+            $expected = $declared[$permission->name] ?? null;
+
+            if ($expected !== null && $expected !== $permission->label) {
+                $drift[] = "{$permission->name}: seeder='{$expected}' db='{$permission->label}'";
+            }
+        }
+
+        $this->assertSame(
+            [],
+            $drift,
+            "Permission labels in the DB disagree with AdminLteRbacSeeder:\n  " . implode("\n  ", $drift)
+                . "\n(a migration created the row first and firstOrCreate never updates a label)"
         );
     }
 
