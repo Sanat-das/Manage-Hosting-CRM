@@ -73,6 +73,31 @@ trait HasRoles
     }
 
     /**
+     * Determine whether the user holds any permission at all.
+     *
+     * Resolved the same way as hasPermission(): pivot roles first, then the
+     * Role named by the `users.role` column. Used by AdminMiddleware to keep a
+     * role that has been stripped of every permission from reaching the panel
+     * shell, rather than relying on each individual route to turn it away.
+     */
+    public function hasAnyPermission(): bool
+    {
+        if ($this->roles()->whereHas('permissions')->exists()) {
+            return true;
+        }
+
+        if (! empty($this->role)) {
+            $roleModel = Role::where('name', $this->role)->first();
+
+            if ($roleModel !== null && $roleModel->permissions()->exists()) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
      * Assign a role to the user by name without detaching existing roles.
      */
     public function assignRole(string $role): void

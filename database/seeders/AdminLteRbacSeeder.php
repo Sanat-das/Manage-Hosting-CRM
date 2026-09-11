@@ -243,11 +243,15 @@ class AdminLteRbacSeeder extends Seeder
             'staff' => [
                 'label' => 'Staff',
                 'permissions' => [
+                    // Deliberately no hosting.view: it is the gate on
+                    // admin.rdp-console.password and the SSH console, so it
+                    // discloses stored server credentials. A generic read-only
+                    // role should not carry that by default -- grant it per
+                    // install in the Roles UI to the people who need it.
                     'dashboard.view',
                     'customers.view',
                     'products.view',
                     'invoices.view',
-                    'hosting.view',
                     'domains.view',
                     'tickets.view',
                     'kb.view',
