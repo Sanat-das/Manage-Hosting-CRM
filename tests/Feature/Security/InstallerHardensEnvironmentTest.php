@@ -34,6 +34,11 @@ class InstallerHardensEnvironmentTest extends TestCase
             'APP_KEY=base64:abc',
             'APP_DEBUG=true',
             'DB_CONNECTION=sqlite',
+            // .env.example ships an empty DB_PASSWORD, so setEnvValue always
+            // takes its replace branch for it -- which is the branch that used
+            // to mangle the value. Without this line the fixture would only
+            // ever exercise the (safe) append branch.
+            'DB_PASSWORD=',
         ])."\n");
     }
 
@@ -80,6 +85,64 @@ class InstallerHardensEnvironmentTest extends TestCase
         // Replaced in place, not appended alongside the originals.
         $this->assertSame(1, substr_count($contents, 'APP_ENV='));
         $this->assertSame(1, substr_count($contents, 'APP_DEBUG='));
+    }
+
+    /**
+     * Every value the installer writes must survive the round trip through .env.
+     *
+     * Two ways it did not:
+     *
+     * - preg_replace() reads $1 / ${1} / \1 in the replacement as backreferences.
+     *   A real install with DB_PASSWORD='$6btNmZR5sPb_abW' wrote
+     *   DB_PASSWORD=btNmZR5sPb_abW. The wizard still reported success, because
+     *   verifyConnection() and applyDatabaseConfig() use the submitted value --
+     *   only later requests read .env, and every one of them died on
+     *   "1045 Access denied ... (using password: YES)".
+     *
+     * - '#' was escaped to '\#', which then tripped the backslash branch of the
+     *   quoting check and was escaped a second time.
+     *
+     * Asserted against the real parser, not a regex, so the check is what the
+     * booted application actually sees.
+     */
+    #[\PHPUnit\Framework\Attributes\DataProvider('awkwardEnvValues')]
+    public function test_awkward_values_round_trip_through_the_env_file(string $value): void
+    {
+        $service = $this->serviceWritingTo($this->tempEnv);
+
+        $service->setEnvValue('DB_PASSWORD', $value);
+
+        $parsed = \Dotenv\Dotenv::createArrayBacked(
+            dirname($this->tempEnv),
+            basename($this->tempEnv)
+        )->load();
+
+        $this->assertSame(
+            $value,
+            $parsed['DB_PASSWORD'] ?? null,
+            'Value written to .env did not read back unchanged.'
+        );
+    }
+
+    /**
+     * @return array<string, array{string}>
+     */
+    public static function awkwardEnvValues(): array
+    {
+        return [
+            'dollar then digit (the live outage)' => ['$6btNmZR5sPb_abW'],
+            'dollar then digit, short' => ['$6abc'],
+            'dollar then letter' => ['$abc'],
+            'braced backreference' => ['${1}xyz'],
+            'dollar mid-string' => ['ab$6cd'],
+            'backslash then digit' => ['a\1b'],
+            'hash' => ['Str0ng#Pass!'],
+            'hash and dollar' => ['$6a#b'],
+            'space' => ['has space'],
+            'double quote' => ['has"quote'],
+            'backslash' => ['back\slash'],
+            'plain' => ['plainPass123'],
+        ];
     }
 
     /**

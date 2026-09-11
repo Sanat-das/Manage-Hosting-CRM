@@ -323,7 +323,16 @@ class InstallerService
         $pattern = '/^'.preg_quote($key, '/').'=.*$/m';
 
         if (preg_match($pattern, $content)) {
-            $content = (string) preg_replace($pattern, $line, $content);
+            // preg_replace() reads $1 / ${1} / \1 in the *replacement* as
+            // backreferences, so a value containing them is silently mangled --
+            // a DB_PASSWORD starting with "$6" lost its first two characters and
+            // every post-install connection failed with 1045. Returning the line
+            // from a callback keeps it literal.
+            $content = (string) preg_replace_callback(
+                $pattern,
+                static fn (): string => $line,
+                $content
+            );
         } else {
             $content = rtrim($content, "\r\n").PHP_EOL.$line.PHP_EOL;
         }
@@ -545,9 +554,10 @@ class InstallerService
 
     private function quoteEnvValue(string $value): string
     {
-        $value = str_replace('#', '\#', $value);
-
-        if (preg_match('/[\s"\'\\\\]/', $value)) {
+        // '#' forces quoting (unquoted it starts a comment) but must never be
+        // escaped: it is literal inside double quotes, and pre-escaping it
+        // injected a stray backslash that then got escaped again.
+        if (preg_match('/[\s"\'\\\\#]/', $value)) {
             return '"'.str_replace(['\\', '"'], ['\\\\', '\"'], $value).'"';
         }
 
