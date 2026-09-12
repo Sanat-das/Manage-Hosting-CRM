@@ -12,6 +12,7 @@
         "freedsx/snmp": "^0.5.3",
         "laravel/fortify": "^1.37",
         "laravel/framework": "^13.8",
+        "laravel/reverb": "^1.11",
         "laravel/sanctum": "^4.3",
         "laravel/tinker": "^3.0",
         "mews/captcha": "^3.5",

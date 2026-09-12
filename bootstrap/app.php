@@ -89,6 +89,20 @@ return Application::configure(basePath: dirname(__DIR__))
             require base_path('routes/api/support.php');
         },
     )
+    // Websocket channel authorisation for the chat (routes/channels.php). This
+    // also registers POST /broadcasting/auth, which Echo calls before it will
+    // join any private or presence channel.
+    //
+    // `auth` is added to the framework's default `web`: without it an
+    // unauthenticated POST reaches the broadcaster, which correctly denies it,
+    // but the 403 page then renders the AdminLTE user menu and fatals on a null
+    // user. A guest belongs at the login screen, which is what `auth` does.
+    // Guest customer chat does not use this endpoint — it authorises with its
+    // own token on its own client route.
+    ->withBroadcasting(
+        __DIR__.'/../routes/channels.php',
+        ['middleware' => ['web', 'auth']],
+    )
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->alias([
             'role' => RoleMiddleware::class,
