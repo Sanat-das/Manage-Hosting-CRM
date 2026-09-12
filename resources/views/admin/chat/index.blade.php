@@ -175,31 +175,49 @@
 
                     <div class="chat-typing" id="chat-typing" aria-live="polite"></div>
 
+                    {{-- Archive is a freeze, not a deletion: the history above
+                         stays readable, the composer below stops working. The
+                         server refuses the post either way (the policy's
+                         sendMessage() denies on an archived room); this is the
+                         affordance that says so before you type. --}}
+                    @php $isArchived = $selected->isArchived(); @endphp
+                    @if ($isArchived)
+                        <p class="alert alert-secondary rounded-0 border-0 border-top mb-0 py-2 px-3 small"
+                           data-chat-archived role="status">
+                            <i class="bi bi-archive me-1" aria-hidden="true"></i>This conversation is archived. You can read it, but not post to it.
+                        </p>
+                    @endif
+
                     <form class="chat-composer border-top" id="chat-composer" data-conversation-id="{{ $selected->id }}">
                         @csrf
                         <div class="chat-composer__chips" id="chat-chips" aria-live="polite"></div>
 
                         <label class="visually-hidden" for="chat-body">Message</label>
-                        <textarea class="form-control" id="chat-body" name="body" rows="2"
+                        <textarea class="form-control" id="chat-body" name="body" rows="2" {{ $isArchived ? 'disabled' : '' }}
                                   maxlength="{{ \App\Services\ChatService::MAX_BODY_LENGTH }}"
-                                  placeholder="Message {{ $selected->displayName() }} &#8212; Enter to send, Shift+Enter for a new line"></textarea>
+                                  @if ($isArchived)
+                                      placeholder="This conversation is archived"
+                                  @else
+                                      placeholder="Message {{ $selected->displayName() }} &#8212; Enter to send, Shift+Enter for a new line"
+                                  @endif
+                        ></textarea>
 
                         <div class="chat-composer__bar">
                             <div class="d-flex align-items-center gap-1">
                                 <input type="file" id="chat-file" class="d-none">
                                 <button type="button" class="btn btn-sm btn-outline-secondary" id="chat-attach"
-                                        title="Attach a file" aria-label="Attach a file">
+                                        title="Attach a file" aria-label="Attach a file" {{ $isArchived ? 'disabled' : '' }}>
                                     <i class="bi bi-paperclip"></i>
                                 </button>
                                 @if ($entityTypes->isNotEmpty())
                                     <button type="button" class="btn btn-sm btn-outline-secondary" id="chat-attach-entity"
-                                            title="Attach a record" aria-label="Attach a record">
+                                            title="Attach a record" aria-label="Attach a record" {{ $isArchived ? 'disabled' : '' }}>
                                         <i class="bi bi-link-45deg"></i>
                                     </button>
                                 @endif
                                 <span class="text-body-secondary small ms-1" id="chat-status" aria-live="polite"></span>
                             </div>
-                            <button type="submit" class="btn btn-sm btn-primary">Send</button>
+                            <button type="submit" class="btn btn-sm btn-primary" {{ $isArchived ? 'disabled' : '' }}>Send</button>
                         </div>
 
                         <ul class="chat-autocomplete d-none" id="chat-mentions" role="listbox"
@@ -228,13 +246,17 @@
                     <button type="button" class="btn-close" id="chat-thread-close" aria-label="Close thread"></button>
                 </header>
                 <div class="chat-thread__body" id="chat-thread-body"></div>
+                {{-- A thread reply is a post into the same conversation, so it
+                     freezes with it. Without this the panel offers a composer
+                     the server will refuse. --}}
+                @php $threadFrozen = $selected !== null && $selected->isArchived(); @endphp
                 <form class="chat-thread__composer border-top" id="chat-thread-composer">
                     @csrf
                     <label class="visually-hidden" for="chat-thread-body-input">Reply</label>
                     <textarea class="form-control" id="chat-thread-body-input" rows="2"
                               maxlength="{{ \App\Services\ChatService::MAX_BODY_LENGTH }}"
-                              placeholder="Reply to thread"></textarea>
-                    <button type="submit" class="btn btn-sm btn-primary mt-2">Reply</button>
+                              placeholder="Reply to thread" {{ $threadFrozen ? 'disabled' : '' }}></textarea>
+                    <button type="submit" class="btn btn-sm btn-primary mt-2" {{ $threadFrozen ? 'disabled' : '' }}>Reply</button>
                 </form>
             </aside>
         </div>

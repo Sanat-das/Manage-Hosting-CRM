@@ -150,27 +150,54 @@ class ChatController extends Controller
     }
 
     /**
+     * Which conversation `?c=` asks for, or the first one in the sidebar.
+     *
+     * Two rules, both learned the hard way:
+     *
+     * 1. The sidebar listing is a listing, not an authorisation source. It hides
+     *    archived rooms deliberately, and "not in the list" was being read as
+     *    "not permitted" — which made an archived conversation 403 on this page
+     *    while the JSON history of the same room answered 200 to the same user.
+     *    Archive is a freeze, not a deletion: readable, not postable. The policy
+     *    already says exactly that (`view()` has no archived check, and
+     *    `sendMessage()` does), so ask the policy.
+     *
+     * 2. Every id the caller may not open gets ONE answer: a 404. Nonexistent,
+     *    malformed and real-but-forbidden must be indistinguishable, or the
+     *    difference between them enumerates every conversation in the install.
+     *    404 keeps the original intent — refuse, never silently fall back to
+     *    some other room — while saying nothing about whether the row exists.
+     *
      * @param  Collection<string, Collection<int, ChatConversation>>  $conversations
      */
     private function resolveSelected(Request $request, Collection $conversations): ?ChatConversation
     {
         $flat = $conversations->flatten();
+        $requested = $request->query('c');
 
-        if ($requested = $request->integer('c')) {
-            $found = $flat->firstWhere('id', $requested);
-
-            // Asking for a conversation that is not yours is a 403, not a
-            // silent fallback to some other room.
-            if ($found === null && ChatConversation::whereKey($requested)->exists()) {
-                abort(403);
-            }
-
-            if ($found !== null) {
-                return $found;
-            }
+        // No selection asked for. An empty `c` is a form submitting nothing,
+        // not a lookup of a conversation named "".
+        if ($requested === null || $requested === '') {
+            return $flat->first();
         }
 
-        return $flat->first();
+        // is_numeric() rather than a cast: `?c[]=1` must not reach an int cast,
+        // and `?c=abc` must become a miss rather than conversation 0.
+        $id = is_numeric($requested) ? (int) $requested : 0;
+
+        // Already in the sidebar: loaded, and already policy-filtered there.
+        if ($found = $flat->firstWhere('id', $id)) {
+            return $found;
+        }
+
+        $conversation = ChatConversation::query()
+            ->with(['participants.user', 'customer.user', 'assignedOperator'])
+            ->find($id);
+
+        abort_if($conversation === null, 404);
+        abort_unless($request->user()->can('view', $conversation), 404);
+
+        return $conversation;
     }
 
     /**
@@ -489,7 +516,11 @@ class ChatController extends Controller
             : $request->user();
 
         try {
-            $this->chat->assignOperator($conversation, $operator);
+            // The acting user is passed explicitly. Without it the service
+            // defaults the actor to the operator, every assignment looks like a
+            // self-assignment, and the assignee is never told — which is exactly
+            // what happened here while the service's own tests stayed green.
+            $this->chat->assignOperator($conversation, $operator, $request->user());
         } catch (InvalidArgumentException|RuntimeException $e) {
             return response()->json(['message' => $e->getMessage()], 422);
         }

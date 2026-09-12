@@ -258,6 +258,43 @@ class ChatNotificationTest extends TestCase
         $this->assertLessThanOrEqual(ChatMentions::MAX_MENTIONS, $notified);
     }
 
+    /**
+     * `@channel` is documented as bounded at MAX_CHANNEL_FANOUT (50), separately
+     * from the 20 that bounds named mentions. Nothing asserted it, and the bound
+     * was not reachable: the final `take(MAX_MENTIONS)` truncated the fan-out to
+     * 20 regardless of the 50 taken a few lines above.
+     */
+    public function test_channel_fan_out_is_bounded_at_the_documented_fifty(): void
+    {
+        $alice = $this->userWithName('Alice', 'Anders', 'chat.view', 'chat.create_channel');
+        $channel = $this->chat->createChannel('Everyone', $alice);
+
+        // 60 participants besides the author: more than the bound, so the bound
+        // is what decides the answer rather than the room size.
+        $members = collect(range(1, 60))->map(function (int $i) use ($channel) {
+            $u = $this->userWithName('Member'.$i, 'Test', 'chat.view');
+            $this->chat->addMember($channel, $u);
+
+            return $u;
+        });
+
+        $this->chat->sendMessage($channel, $alice, 'Attention @channel please read.');
+
+        $notified = $members->filter(fn (User $u) => $u->fresh()->notifications()->count() > 0)->count();
+
+        $this->assertSame(
+            ChatMentions::MAX_CHANNEL_FANOUT,
+            $notified,
+            '@channel must fan out to exactly MAX_CHANNEL_FANOUT people in a larger room.'
+        );
+        $this->assertGreaterThan(
+            ChatMentions::MAX_MENTIONS,
+            $notified,
+            'The named-mention cap of 20 must not silently truncate the @channel bound.'
+        );
+        $this->assertSame(0, $alice->notifications()->count());
+    }
+
     public function test_prompt_injection_body_is_escaped_in_notification_payload(): void
     {
         $alice = $this->userWithName('Alice', 'Anders', 'chat.view', 'chat.create_channel');
@@ -297,6 +334,86 @@ class ChatNotificationTest extends TestCase
         $this->chat->sendMessage($channel, $bob, 'Reply here', $root->id);
 
         $this->assertSame(0, $alice->notifications()->where('data->type', 'chat.reply')->count());
+    }
+
+    // --- assignment over the real HTTP route --------------------------------
+    //
+    // The service-level tests above pass an explicit $actor, which is exactly
+    // what the assign ROUTE did not do. Every one of them was green while an
+    // admin assigning a conversation to somebody else notified nobody, because
+    // the controller let $actor default to the operator and
+    // notifyForAssignment() then correctly suppressed the self-notification.
+    // A unit test on the service cannot catch that; only the route can.
+
+    public function test_assigning_over_the_route_notifies_the_assignee(): void
+    {
+        Event::fake([BroadcastNotificationCreated::class]);
+
+        $assigner = $this->userWithName('Op', 'One', 'chat.view', 'chat.manage');
+        $assignee = $this->userWithName('Op', 'Two', 'chat.view', 'chat.manage');
+
+        $inbox = ChatConversation::factory()->customerInbox()->create();
+
+        $this->actingAs($assigner)
+            ->postJson(route('admin.chat.inbox.assign', $inbox), ['user_id' => $assignee->id])
+            ->assertOk();
+
+        $this->assertSame(1, $assignee->notifications()->count(), 'Assigning over the route must notify the assignee.');
+
+        $row = $assignee->notifications()->firstOrFail();
+        $this->assertSame('chat.assign', $row->data['type']);
+        $this->assertSame($assigner->id, $row->data['actor_id'], 'The actor is the admin who assigned, not the assignee.');
+
+        // The person who performed the assignment is not told about it.
+        $this->assertSame(0, $assigner->notifications()->count());
+
+        Event::assertDispatched(
+            BroadcastNotificationCreated::class,
+            fn (BroadcastNotificationCreated $e) => $e->notifiable->is($assignee)
+                && $e->notification instanceof ChatAssignmentNotification
+        );
+    }
+
+    public function test_taking_a_conversation_yourself_over_the_route_notifies_nobody(): void
+    {
+        $operator = $this->userWithName('Op', 'One', 'chat.view', 'chat.manage');
+
+        // Both shapes of a self-assignment: the "Take" button sends no user_id
+        // at all, and an explicit id pointing at yourself.
+        $implicit = ChatConversation::factory()->customerInbox()->create();
+        $explicit = ChatConversation::factory()->customerInbox()->create();
+
+        $this->actingAs($operator)
+            ->postJson(route('admin.chat.inbox.assign', $implicit), [])
+            ->assertOk();
+
+        $this->actingAs($operator)
+            ->postJson(route('admin.chat.inbox.assign', $explicit), ['user_id' => $operator->id])
+            ->assertOk();
+
+        $this->assertSame(0, $operator->notifications()->count(), 'Nobody is told about their own action.');
+    }
+
+    public function test_the_assignees_opt_out_is_honoured_over_the_route(): void
+    {
+        $assigner = $this->userWithName('Op', 'One', 'chat.view', 'chat.manage');
+        $assignee = $this->userWithName('Op', 'Two', 'chat.view', 'chat.manage');
+
+        NotificationPreference::create([
+            'preferrable_type' => $assignee->getMorphClass(),
+            'preferrable_id' => $assignee->id,
+            'type' => 'chat.assign',
+            'channel' => 'database',
+            'enabled' => false,
+        ]);
+
+        $inbox = ChatConversation::factory()->customerInbox()->create();
+
+        $this->actingAs($assigner)
+            ->postJson(route('admin.chat.inbox.assign', $inbox), ['user_id' => $assignee->id])
+            ->assertOk();
+
+        $this->assertSame(0, $assignee->notifications()->count());
     }
 
     public function test_assign_disabled_preference_skips_notification(): void

@@ -70,6 +70,13 @@ final class ChatMentions
 
         $mentioned = collect();
 
+        // Two different bounds, and the wider one applies when @channel is what
+        // did the addressing. Capping unconditionally at MAX_MENTIONS made
+        // MAX_CHANNEL_FANOUT unreachable: the `take(50)` below was immediately
+        // truncated back to 20 on the way out, so the documented 50 never
+        // happened and nothing asserted that it should.
+        $cap = $isChannel ? self::MAX_CHANNEL_FANOUT : self::MAX_MENTIONS;
+
         // @channel — every participant except the author, bounded.
         if ($isChannel) {
             $channelUsers = $participants
@@ -162,7 +169,7 @@ final class ChatMentions
                 if (! $already && ! $isSelf && $matchedUser->can('view', $conversation)) {
                     $mentioned->push($matchedUser);
 
-                    if ($mentioned->count() >= self::MAX_MENTIONS) {
+                    if ($mentioned->count() >= $cap) {
                         break;
                     }
                 }
@@ -177,7 +184,7 @@ final class ChatMentions
             $pos = $at + 1;
         }
 
-        return $mentioned->take(self::MAX_MENTIONS)->values();
+        return $mentioned->take($cap)->values();
     }
 
     public static function containsChannelMention(string $body): bool

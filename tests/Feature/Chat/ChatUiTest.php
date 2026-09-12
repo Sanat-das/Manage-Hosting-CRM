@@ -112,7 +112,13 @@ class ChatUiTest extends TestCase
             ->assertSee('data-conversation-id="'.$second->id.'"', false);
     }
 
-    public function test_asking_for_a_conversation_you_cannot_see_is_forbidden_not_a_silent_fallback(): void
+    /**
+     * Still a refusal, never a silent fallback to some other room — but a 404
+     * rather than the 403 this asserted before, so that it is indistinguishable
+     * from asking for an id that was never issued. See
+     * test_an_unknown_conversation_id_is_indistinguishable_from_a_forbidden_one.
+     */
+    public function test_asking_for_a_conversation_you_cannot_see_is_refused_not_a_silent_fallback(): void
     {
         $owner = $this->chatUser('chat.view', 'chat.create_channel');
         $private = $this->chat->createChannel('Secret', $owner, true);
@@ -120,9 +126,12 @@ class ChatUiTest extends TestCase
         $outsider = $this->chatUser('chat.view', 'chat.create_channel');
         $this->chat->createChannel('Mine', $outsider);
 
-        $this->actingAs($outsider)
+        $response = $this->actingAs($outsider)
             ->get(route('admin.chat.index', ['c' => $private->id]))
-            ->assertForbidden();
+            ->assertNotFound();
+
+        // The refusal must not itself name what it refused.
+        $response->assertDontSee('Secret');
     }
 
     public function test_opening_a_conversation_marks_it_read(): void
@@ -288,6 +297,144 @@ class ChatUiTest extends TestCase
             ->assertOk()
             ->assertSee('Live Room')
             ->assertDontSee('Old Room');
+    }
+
+    /**
+     * Archive is a freeze, not a deletion, so all three surfaces must agree:
+     * readable everywhere, postable nowhere.
+     *
+     * This replaces the behaviour recorded before the fix, which was incoherent
+     * — the HTML page answered 403 while the JSON history of the SAME room to
+     * the SAME user answered 200. The page's 403 came from `resolveSelected()`
+     * treating the sidebar's `notArchived()` listing query as an authorisation
+     * source: not in the list was read as not permitted.
+     */
+    public function test_archived_access_is_coherent_across_the_page_and_the_api(): void
+    {
+        $user = $this->chatUser('chat.view', 'chat.create_channel');
+        $channel = $this->chat->createChannel('Old Room', $user);
+        $this->chat->sendMessage($channel, $user, 'History survives archiving');
+        $this->chat->archive($channel);
+
+        // Surface 1 — the HTML page. Was 403 before the fix.
+        $this->actingAs($user)
+            ->get(route('admin.chat.index', ['c' => $channel->id]))
+            ->assertOk();
+
+        // Surface 2 — the JSON history. Was already 200, and stays 200.
+        $this->actingAs($user)
+            ->getJson(route('admin.chat.messages.index', $channel))
+            ->assertOk();
+
+        // Surface 3 — posting stays refused, by the policy, unchanged. 403, not
+        // the 422 the audit reported: that is the *widget* route's shape (the
+        // service's RuntimeException); here sendMessage() denies first.
+        $this->actingAs($user)
+            ->postJson(route('admin.chat.messages.store', $channel), ['body' => 'Can I still speak?'])
+            ->assertForbidden();
+    }
+
+    public function test_an_archived_conversation_shows_its_history_with_a_frozen_composer(): void
+    {
+        $user = $this->chatUser('chat.view', 'chat.create_channel');
+        $channel = $this->chat->createChannel('Old Room', $user);
+        $this->chat->sendMessage($channel, $user, 'History survives archiving');
+        $this->chat->archive($channel);
+
+        $response = $this->actingAs($user)
+            ->get(route('admin.chat.index', ['c' => $channel->id]))
+            ->assertOk();
+
+        // Readable: the room's name and its history are both on the page.
+        $response->assertSee('Old Room');
+        $response->assertSee('History survives archiving');
+
+        // Frozen: the notice is shown and the composer cannot be typed into or
+        // submitted. Asserted against rendered HTML, never Blade source.
+        $response->assertSee('This conversation is archived', false);
+        $response->assertSee('data-chat-archived', false);
+        $response->assertSee('chat-body" name="body" rows="2" disabled', false);
+
+        // A Blade directive that reaches the browser as text compiles perfectly
+        // well and renders as literal noise; this repo has shipped that bug.
+        $html = $response->getContent();
+        foreach (['@endif', '@endcan', '@stop', '@if (', '@else'] as $directive) {
+            $this->assertStringNotContainsString($directive, $html, 'A Blade directive leaked into the rendered page.');
+        }
+    }
+
+    public function test_a_live_conversation_composer_is_not_disabled(): void
+    {
+        $user = $this->chatUser('chat.view', 'chat.create_channel');
+        $channel = $this->chat->createChannel('Live Room', $user);
+
+        $this->actingAs($user)
+            ->get(route('admin.chat.index', ['c' => $channel->id]))
+            ->assertOk()
+            ->assertDontSee('data-chat-archived', false)
+            ->assertDontSee('This conversation is archived', false)
+            ->assertSee('chat-body" name="body" rows="2"', false);
+    }
+
+    /**
+     * A conversation id that does not exist and one that exists but is not
+     * yours must produce the SAME answer, or the difference between them is a
+     * free enumeration oracle over every conversation in the install.
+     *
+     * The chosen answer is 404 for both. It keeps the original intent of the
+     * 403 — refuse, never silently fall back to some other room — while saying
+     * nothing about whether the row exists.
+     */
+    public function test_an_unknown_conversation_id_is_indistinguishable_from_a_forbidden_one(): void
+    {
+        $owner = $this->chatUser('chat.view', 'chat.create_channel');
+        $private = $this->chat->createChannel('Secret', $owner, true);
+
+        $outsider = $this->chatUser('chat.view', 'chat.create_channel');
+        $this->chat->createChannel('Mine', $outsider);
+
+        $forbidden = $this->actingAs($outsider)->get(route('admin.chat.index', ['c' => $private->id]));
+        $nonexistent = $this->actingAs($outsider)->get(route('admin.chat.index', ['c' => 999999]));
+
+        $forbidden->assertNotFound();
+        $nonexistent->assertNotFound();
+        $this->assertSame(
+            $forbidden->getStatusCode(),
+            $nonexistent->getStatusCode(),
+            'A real-but-forbidden id and a nonexistent id must be indistinguishable.'
+        );
+    }
+
+    public function test_malformed_conversation_ids_are_answered_the_same_way(): void
+    {
+        $user = $this->chatUser('chat.view', 'chat.create_channel');
+        $this->chat->createChannel('Mine', $user);
+
+        foreach (['abc', '-1', '0', '999999', '1e9', '../1'] as $bad) {
+            $this->actingAs($user)
+                ->get(route('admin.chat.index', ['c' => $bad]))
+                ->assertNotFound();
+        }
+
+        // An empty `c` is a form submitting nothing, not a lookup: it falls back
+        // to the default room rather than 404ing.
+        $this->actingAs($user)
+            ->get(route('admin.chat.index', ['c' => '']))
+            ->assertOk()
+            ->assertSee('Mine');
+    }
+
+    public function test_a_customer_inbox_is_not_an_oracle_for_staff_who_cannot_operate(): void
+    {
+        $this->chat->startCustomerChat(['email' => 'jo@example.com'], null, 'I need help');
+        $inbox = ChatConversation::where('type', ChatConversation::TYPE_CUSTOMER_INBOX)->firstOrFail();
+
+        // chat.view but no chat.manage, and not a participant: the policy says
+        // no, so the answer must match the nonexistent-id answer exactly.
+        $staff = $this->chatUser('chat.view');
+
+        $this->actingAs($staff)->get(route('admin.chat.index', ['c' => $inbox->id]))->assertNotFound();
+        $this->actingAs($staff)->get(route('admin.chat.index', ['c' => 999999]))->assertNotFound();
     }
 
     public function test_a_customer_inbox_conversation_shows_its_status(): void
