@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Events\Chat\TypingIndicator;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Chat\SearchChatEntitiesRequest;
+use App\Http\Requests\Chat\SearchChatMessagesRequest;
 use App\Http\Requests\Chat\StoreChatAttachmentRequest;
 use App\Http\Requests\Chat\StoreChatChannelRequest;
 use App\Http\Requests\Chat\StoreChatEntityLinkRequest;
@@ -25,6 +26,7 @@ use App\Services\ChatPresence;
 use App\Services\ChatService;
 use App\Services\TicketService;
 use App\Support\ChatMessagePayload;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -52,6 +54,19 @@ class ChatController extends Controller
 {
     /** Newest-first page size for a conversation's history. */
     private const MESSAGE_PAGE = 50;
+
+    /** Newest-first page size for search results. */
+    private const SEARCH_PAGE = 30;
+
+    /**
+     * The LIKE escape character for search patterns.
+     *
+     * Not a backslash: MySQL's default LIKE escape IS a backslash while
+     * SQLite has none, and `ESCAPE '\'` cannot be written as one string literal
+     * that means the same thing in both. `!` is unremarkable in every dialect,
+     * and is itself escaped by likeLiteral() so a literal `!` still matches.
+     */
+    private const LIKE_ESCAPE = '!';
 
     public function __construct(
         private readonly ChatService $chat,
@@ -117,22 +132,11 @@ class ChatController extends Controller
      */
     private function visibleConversations(User $user): Collection
     {
-        $canOperate = $user->hasPermission('chat.manage');
-
-        $all = ChatConversation::query()
+        $all = $this->scopeReadableBy(ChatConversation::query(), $user)
+            // The sidebar — and only the sidebar — hides archived rooms. This
+            // is a listing preference, not an authorisation rule; search
+            // deliberately does NOT apply it (see readableConversationIds).
             ->notArchived()
-            ->where(function ($q) use ($user, $canOperate) {
-                // Public channels, visible to every chat user.
-                $q->where(fn ($p) => $p->where('type', ChatConversation::TYPE_CHANNEL)->where('is_private', false));
-
-                // Anything at all that this user is a participant of.
-                $q->orWhereHas('participants', fn ($p) => $p->where('user_id', $user->id));
-
-                // The customer queue, for operators.
-                if ($canOperate) {
-                    $q->orWhere('type', ChatConversation::TYPE_CUSTOMER_INBOX);
-                }
-            })
             ->with(['participants.user', 'customer.user', 'assignedOperator'])
             ->orderBy('name')
             ->orderByDesc('id')
@@ -147,6 +151,37 @@ class ChatController extends Controller
             'dms' => $all->whereIn('type', [ChatConversation::TYPE_DM, ChatConversation::TYPE_GROUP_DM])->values(),
             'inbox' => $all->where('type', ChatConversation::TYPE_CUSTOMER_INBOX)->values(),
         ]);
+    }
+
+    /**
+     * The cheap SQL pre-filter for "conversations this user could plausibly
+     * read" — one copy, shared by the sidebar and by search.
+     *
+     * It is a pre-filter, NOT the authority: ChatConversationPolicy::view()
+     * still runs over every row it returns. Its only job is to keep the query
+     * from loading every private channel in the install in order to throw most
+     * of them away in PHP. A second, drifting copy of this clause is exactly
+     * how a private room ends up readable somewhere the sidebar would hide it.
+     *
+     * @param  Builder<ChatConversation>  $query
+     * @return Builder<ChatConversation>
+     */
+    private function scopeReadableBy(Builder $query, User $user): Builder
+    {
+        $canOperate = $user->hasPermission('chat.manage');
+
+        return $query->where(function ($q) use ($user, $canOperate) {
+            // Public channels, visible to every chat user.
+            $q->where(fn ($p) => $p->where('type', ChatConversation::TYPE_CHANNEL)->where('is_private', false));
+
+            // Anything at all that this user is a participant of.
+            $q->orWhereHas('participants', fn ($p) => $p->where('user_id', $user->id));
+
+            // The customer queue, for operators.
+            if ($canOperate) {
+                $q->orWhere('type', ChatConversation::TYPE_CUSTOMER_INBOX);
+            }
+        });
     }
 
     /**
@@ -346,6 +381,180 @@ class ChatController extends Controller
             'has_more' => $messages->isNotEmpty()
                 && $conversation->messages()->whereNull('parent_id')->where('id', '<', $messages->first()->id)->exists(),
         ]);
+    }
+
+    /**
+     * Full-text-ish search across everything the caller may read.
+     *
+     * PERFORMANCE, stated plainly because it is a deliberate choice and not an
+     * oversight: the `LIKE '%q%'` below has a LEADING wildcard, so it cannot
+     * use any index on `chat_conversation_messages.body` — no index on that
+     * column would be usable even if one existed, and the database will scan
+     * every row that survives the preceding filters. That is an accepted v1
+     * tradeoff at the volume this table is expected to reach, and it is bounded
+     * on both sides:
+     *
+     *   - the conversation whitelist and the date range are applied FIRST, so
+     *     the scan runs over one user's readable rows in a bounded window
+     *     rather than over the whole table; both sides of that narrowing are
+     *     indexed (`conversation_id`, `created_at`);
+     *   - the result set is capped by LIMIT 30 (SEARCH_PAGE) per page.
+     *
+     * Revisit once the table passes roughly 500k rows, by adding a MySQL
+     * FULLTEXT index on `body` and switching to MATCH ... AGAINST. That is an
+     * added index and a changed WHERE clause — no schema break, no migration of
+     * existing rows, and nothing about this endpoint's contract changes.
+     *
+     * SECURITY: the order of operations in this method is the whole point. The
+     * set of conversations the caller may read is resolved BEFORE the LIKE and
+     * applied as a `whereIn`, so a non-participant's search cannot reach a
+     * private channel's text no matter what they type — including by naming
+     * that channel in `?channel=`, which narrows the authorised set and can
+     * never widen it.
+     */
+    public function search(SearchChatMessagesRequest $request): JsonResponse
+    {
+        $user = $request->user();
+
+        // FIRST: what may this user read at all?
+        $conversationIds = $this->readableConversationIds($user);
+
+        // A channel filter narrows that set by intersection. An id the caller
+        // may not read — or one that does not exist — leaves nothing to search
+        // and is answered with the same empty page, so the response cannot be
+        // used to tell "no such conversation" from "not yours".
+        if ($channel = $request->integer('channel')) {
+            $conversationIds = array_values(array_intersect($conversationIds, [$channel]));
+        }
+
+        if ($conversationIds === []) {
+            return response()->json($this->emptySearchPage());
+        }
+
+        $query = ChatConversationMessage::query()
+            ->whereIn('conversation_id', $conversationIds)
+            ->with(['user', 'conversation']);
+
+        // Dates next, still ahead of the LIKE. `to` covers the whole day it
+        // names — a range of 2026-09-05..2026-09-05 means that Saturday, not
+        // the single instant of its midnight.
+        if ($from = $request->date('from')) {
+            $query->where('created_at', '>=', $from->startOfDay());
+        }
+
+        if ($to = $request->date('to')) {
+            $query->where('created_at', '<=', $to->endOfDay());
+        }
+
+        // LAST, and only now: the scan.
+        //
+        // `%` and `_` are LIKE metacharacters. Left unescaped, `q=%` stops
+        // being a search and becomes "return every message this user can read",
+        // and `q=h_llo` quietly matches "hello" — both are leaks wearing a
+        // feature's clothes. self::likeLiteral() escapes them, and the ESCAPE
+        // clause names the escape character explicitly rather than relying on
+        // the default, which differs between MySQL (backslash) and SQLite
+        // (none at all). `!` is used instead of a backslash because a
+        // backslash cannot be written as a string literal that means the same
+        // thing in both dialects.
+        $query->whereRaw(
+            'body LIKE ? ESCAPE \''.self::LIKE_ESCAPE.'\'',
+            ['%'.self::likeLiteral($request->string('q')->toString()).'%']
+        );
+
+        // Soft-deleted messages are excluded by the model's global scope. That
+        // is intentional: a retracted message keeps its slot in the history as
+        // "[deleted]", and search must not be the one place its text comes back.
+        $page = $query->orderByDesc('id')->paginate(self::SEARCH_PAGE)->withQueryString();
+
+        return response()->json([
+            'results' => collect($page->items())
+                ->map(fn (ChatConversationMessage $m) => $this->searchHit($m))
+                ->all(),
+            'total' => $page->total(),
+            'per_page' => $page->perPage(),
+            'current_page' => $page->currentPage(),
+            'last_page' => $page->lastPage(),
+        ]);
+    }
+
+    /**
+     * Every conversation id this user may read, archived ones included.
+     *
+     * No `notArchived()` here, deliberately. Archive is a freeze, not a
+     * deletion — readable, not postable — and the policy says exactly that
+     * (`view()` has no archived check; `sendMessage()` does). Filtering
+     * archived rooms out of search would make a member unable to find what they
+     * themselves wrote last quarter, and would re-establish the sidebar listing
+     * as an authorisation source, which is the bug fixed in 236d66a0.
+     *
+     * @return list<int>
+     */
+    private function readableConversationIds(User $user): array
+    {
+        return $this->scopeReadableBy(ChatConversation::query(), $user)
+            ->get(['id', 'type', 'is_private', 'department', 'archived_at'])
+            // The policy is the authority; the query above was only a
+            // pre-filter. Department scoping and private membership are decided
+            // here, for every row, exactly as the sidebar decides them.
+            ->filter(fn (ChatConversation $c) => $user->can('view', $c))
+            ->pluck('id')
+            ->map(fn ($id) => (int) $id)
+            ->all();
+    }
+
+    /**
+     * One search result, carrying what the UI needs to jump straight to it.
+     *
+     * @return array<string, mixed>
+     */
+    private function searchHit(ChatConversationMessage $message): array
+    {
+        $conversation = $message->conversation;
+
+        return [
+            'id' => $message->id,
+            'conversation_id' => $message->conversation_id,
+            'conversation_name' => $conversation?->name ?? 'Conversation #'.$message->conversation_id,
+            'conversation_archived' => $conversation?->isArchived() ?? false,
+            'parent_id' => $message->parent_id,
+            'author_name' => $message->authorName(),
+            'body' => (string) $message->body,
+            'created_at' => $message->created_at?->toIso8601String(),
+            // `m` is the message to scroll to and highlight once `c` has loaded.
+            'url' => route('admin.chat.index', ['c' => $message->conversation_id, 'm' => $message->id]),
+        ];
+    }
+
+    /**
+     * The shape returned when the caller can read nothing the filters allow —
+     * identical to a genuine no-match page, on purpose.
+     *
+     * @return array<string, mixed>
+     */
+    private function emptySearchPage(): array
+    {
+        return [
+            'results' => [],
+            'total' => 0,
+            'per_page' => self::SEARCH_PAGE,
+            'current_page' => 1,
+            'last_page' => 1,
+        ];
+    }
+
+    /**
+     * Escape the LIKE metacharacters so a pattern matches the literal text the
+     * user typed. Kept next to the ESCAPE clause in search() — the escape
+     * character and the escaping have to agree, so they live together.
+     */
+    private static function likeLiteral(string $value): string
+    {
+        return str_replace(
+            [self::LIKE_ESCAPE, '%', '_'],
+            [self::LIKE_ESCAPE.self::LIKE_ESCAPE, self::LIKE_ESCAPE.'%', self::LIKE_ESCAPE.'_'],
+            $value,
+        );
     }
 
     public function storeMessage(StoreChatMessageRequest $request, ChatConversation $conversation): JsonResponse

@@ -68,6 +68,20 @@ function initChat(root) {
         toastMessage: document.querySelector('[data-chat-toast-message]'),
         toastRetry: document.querySelector('[data-chat-retry]'),
         toastClose: document.querySelector('[data-chat-toast-close]'),
+        search: document.getElementById('chat-search'),
+        searchOpen: document.getElementById('chat-search-open'),
+        searchForm: document.getElementById('chat-search-form'),
+        searchQuery: document.getElementById('chat-search-q'),
+        searchChannel: document.getElementById('chat-search-channel'),
+        searchFrom: document.getElementById('chat-search-from'),
+        searchTo: document.getElementById('chat-search-to'),
+        searchStatus: document.getElementById('chat-search-status'),
+        searchResults: document.getElementById('chat-search-results'),
+        searchPager: document.getElementById('chat-search-pager'),
+        searchPageLabel: document.getElementById('chat-search-page-label'),
+        switcher: document.getElementById('chat-switcher'),
+        switcherInput: document.getElementById('chat-switcher-input'),
+        switcherResults: document.getElementById('chat-switcher-results'),
         confirm: document.getElementById('chat-confirm'),
         confirmTitle: document.querySelector('[data-chat-confirm-title]'),
         confirmBody: document.querySelector('[data-chat-confirm-body]'),
@@ -566,11 +580,20 @@ function initChat(root) {
 
     // --- history ----------------------------------------------------------
 
-    el.loadOlder?.addEventListener('click', async () => {
+    el.loadOlder?.addEventListener('click', () => loadOlderPage());
+
+    /**
+     * Pull one page backwards from the cursor.
+     *
+     * Resolves true when it actually prepended something, so a caller hunting
+     * for a particular message can page until it appears without guessing at how
+     * long the fetch took.
+     */
+    async function loadOlderPage() {
         const oldest = el.messages?.dataset.oldest;
-        if (!oldest) {
+        if (!oldest || el.loadOlder.disabled) {
             el.loadOlder.disabled = true;
-            return;
+            return false;
         }
 
         el.loadOlder.disabled = true;
@@ -584,7 +607,7 @@ function initChat(root) {
 
             if (result.messages.length === 0) {
                 el.loadOlder.textContent = 'Beginning of the conversation';
-                return;
+                return false;
             }
 
             const previousHeight = el.messages.scrollHeight;
@@ -598,14 +621,18 @@ function initChat(root) {
 
             el.loadOlder.disabled = !result.has_more;
             el.loadOlder.textContent = result.has_more ? 'Load older messages' : 'Beginning of the conversation';
+
+            return true;
         } catch (error) {
             el.loadOlder.disabled = false;
             el.loadOlder.textContent = 'Load older messages';
             toast(`Could not load older messages: ${error.message}`, () => el.loadOlder.click());
+
+            return false;
         } finally {
             showSkeleton(false);
         }
-    });
+    }
 
     // --- sidebar filter ---------------------------------------------------
 
@@ -956,6 +983,388 @@ function initChat(root) {
         if (document.hidden) return;
         api('/admin/chat/presence', { method: 'POST', body: JSON.stringify({ online: true }) }).catch(() => {});
     }
+
+    // --- search -----------------------------------------------------------
+
+    const search = {
+        page: 1,
+        lastPage: 1,
+        running: false,
+    };
+
+    function openSearch(prefill = '') {
+        if (!el.search) return;
+        closeSwitcher();
+        el.search.classList.remove('d-none');
+        if (prefill) el.searchQuery.value = prefill;
+        el.searchQuery.focus();
+        el.searchQuery.select();
+    }
+
+    function closeSearch() {
+        el.search?.classList.add('d-none');
+    }
+
+    function searchIsOpen() {
+        return el.search !== null && !el.search.classList.contains('d-none');
+    }
+
+    async function runSearch(page = 1) {
+        if (!el.searchResults || search.running) return;
+
+        const q = el.searchQuery.value.trim();
+
+        if (q.length < 2) {
+            el.searchResults.innerHTML = '';
+            el.searchPager?.classList.add('d-none');
+            el.searchStatus.textContent = 'Search for at least two characters.';
+            return;
+        }
+
+        const params = new URLSearchParams({ q, page: String(page) });
+        if (el.searchChannel?.value) params.set('channel', el.searchChannel.value);
+        if (el.searchFrom?.value) params.set('from', el.searchFrom.value);
+        if (el.searchTo?.value) params.set('to', el.searchTo.value);
+
+        search.running = true;
+        el.searchStatus.textContent = 'Searching...';
+
+        try {
+            const result = await api(`/admin/chat/search?${params.toString()}`);
+
+            search.page = result.current_page;
+            search.lastPage = result.last_page;
+
+            renderSearchResults(result, q);
+        } catch (error) {
+            el.searchResults.innerHTML = '';
+            el.searchPager?.classList.add('d-none');
+            // A 422 carries per-field messages; anything else carries one.
+            const detail = error.payload?.errors
+                ? Object.values(error.payload.errors).flat().join(' ')
+                : error.message;
+            el.searchStatus.textContent = detail;
+        } finally {
+            search.running = false;
+        }
+    }
+
+    function renderSearchResults(result, q) {
+        el.searchResults.innerHTML = '';
+
+        if (result.total === 0) {
+            el.searchStatus.textContent = `No messages match "${q}".`;
+            el.searchPager?.classList.add('d-none');
+            return;
+        }
+
+        const first = (result.current_page - 1) * result.per_page + 1;
+        const last = first + result.results.length - 1;
+        el.searchStatus.textContent = `${first}-${last} of ${result.total} matching "${q}".`;
+
+        result.results.forEach((hit) => {
+            const li = document.createElement('li');
+            const link = document.createElement('a');
+            link.className = 'chat-palette__result';
+            link.href = hit.url;
+            link.innerHTML = `
+                <span class="chat-palette__meta">
+                    ${escapeHtml(hit.conversation_name)}${hit.conversation_archived ? ' (archived)' : ''}
+                    &middot; ${escapeHtml(hit.author_name)}
+                    &middot; ${escapeHtml(formatHitDate(hit.created_at))}
+                </span>
+                <span>${highlight(hit.body, q)}</span>`;
+            li.append(link);
+            el.searchResults.append(li);
+        });
+
+        if (result.last_page > 1) {
+            el.searchPager.classList.remove('d-none');
+            el.searchPageLabel.textContent = `Page ${result.current_page} of ${result.last_page}`;
+            el.searchPager.querySelector('[data-search-page="prev"]').disabled = result.current_page <= 1;
+            el.searchPager.querySelector('[data-search-page="next"]').disabled = result.current_page >= result.last_page;
+        } else {
+            el.searchPager?.classList.add('d-none');
+        }
+    }
+
+    function formatHitDate(iso) {
+        if (!iso) return '';
+        const date = new Date(iso);
+        return Number.isNaN(date.getTime()) ? '' : date.toLocaleString();
+    }
+
+    /**
+     * Wrap the matched run in <mark>.
+     *
+     * The body is escaped FIRST and the needle is escaped the same way before
+     * being looked for, so the only markup this can ever produce is the <mark>
+     * pair it inserts itself — a message body can never smuggle a tag in here.
+     * The needle is located by indexOf rather than a RegExp so that a query full
+     * of regex metacharacters is matched literally, exactly as the server
+     * matched it.
+     */
+    function highlight(body, q) {
+        const safeBody = escapeHtml(body);
+        const safeNeedle = escapeHtml(q);
+        const at = safeBody.toLowerCase().indexOf(safeNeedle.toLowerCase());
+
+        if (at === -1 || safeNeedle === '') return safeBody;
+
+        return (
+            safeBody.slice(0, at) +
+            '<mark>' +
+            safeBody.slice(at, at + safeNeedle.length) +
+            '</mark>' +
+            safeBody.slice(at + safeNeedle.length)
+        );
+    }
+
+    el.searchOpen?.addEventListener('click', () => openSearch());
+
+    el.searchForm?.addEventListener('submit', (event) => {
+        event.preventDefault();
+        runSearch(1);
+    });
+
+    el.searchPager?.addEventListener('click', (event) => {
+        const button = event.target.closest('[data-search-page]');
+        if (!button) return;
+        runSearch(button.dataset.searchPage === 'next' ? search.page + 1 : search.page - 1);
+    });
+
+    document.querySelectorAll('[data-chat-search-close]').forEach((button) => {
+        button.addEventListener('click', closeSearch);
+    });
+
+    // --- conversation switcher (Ctrl/Cmd+K) -------------------------------
+
+    function switcherIsOpen() {
+        return el.switcher !== null && !el.switcher.classList.contains('d-none');
+    }
+
+    function openSwitcher() {
+        if (!el.switcher) return;
+        closeSearch();
+        el.switcher.classList.remove('d-none');
+        el.switcherInput.value = '';
+        renderSwitcher('');
+        el.switcherInput.focus();
+    }
+
+    function closeSwitcher() {
+        el.switcher?.classList.add('d-none');
+    }
+
+    function renderSwitcher(needle) {
+        if (!el.switcherResults) return;
+
+        el.switcherResults.innerHTML = '';
+
+        // Built from the sidebar links already on the page — one source of
+        // truth for what this user may open.
+        const matches = Array.from(document.querySelectorAll('.chat-sidebar__item')).filter(
+            (item) => needle === '' || item.dataset.name.includes(needle),
+        );
+
+        matches.slice(0, 20).forEach((item, index) => {
+            const li = document.createElement('li');
+            li.setAttribute('role', 'option');
+            li.setAttribute('aria-selected', index === 0 ? 'true' : 'false');
+
+            const link = document.createElement('a');
+            link.className = `chat-palette__result ${index === 0 ? 'is-active' : ''}`;
+            link.href = item.href;
+            link.textContent = item.querySelector('.chat-sidebar__name')?.textContent.trim() ?? '';
+
+            li.append(link);
+            el.switcherResults.append(li);
+        });
+
+        if (matches.length === 0) {
+            const li = document.createElement('li');
+            li.className = 'small text-body-secondary p-2';
+            li.textContent = 'No conversation matches.';
+            el.switcherResults.append(li);
+        }
+    }
+
+    function moveSwitcherCursor(step) {
+        const options = Array.from(el.switcherResults.querySelectorAll('.chat-palette__result'));
+        if (options.length === 0) return;
+
+        const current = options.findIndex((option) => option.classList.contains('is-active'));
+        const next = Math.min(Math.max((current === -1 ? 0 : current) + step, 0), options.length - 1);
+
+        options.forEach((option, index) => {
+            option.classList.toggle('is-active', index === next);
+            option.closest('li')?.setAttribute('aria-selected', index === next ? 'true' : 'false');
+        });
+
+        options[next].scrollIntoView({ block: 'nearest' });
+    }
+
+    el.switcherInput?.addEventListener('input', () => renderSwitcher(el.switcherInput.value.trim().toLowerCase()));
+
+    el.switcherInput?.addEventListener('keydown', (event) => {
+        if (event.key === 'ArrowDown') {
+            event.preventDefault();
+            moveSwitcherCursor(1);
+        } else if (event.key === 'ArrowUp') {
+            event.preventDefault();
+            moveSwitcherCursor(-1);
+        } else if (event.key === 'Enter') {
+            event.preventDefault();
+            el.switcherResults.querySelector('.chat-palette__result.is-active')?.click();
+        }
+    });
+
+    document.querySelectorAll('[data-chat-switcher-close]').forEach((button) => {
+        button.addEventListener('click', closeSwitcher);
+    });
+
+    // --- keyboard shortcuts -----------------------------------------------
+
+    /**
+     * Is the user typing into something?
+     *
+     * THE guard for this whole section. Without it, `e` pressed mid-word in the
+     * composer stops being the letter "e" and starts editing a message, which is
+     * the classic way a shortcut layer ruins a chat client. Checked on the event
+     * target, and also on document.activeElement so a keystroke that arrives
+     * while focus sits in a field (an IME composing, say) is still treated as
+     * typing.
+     *
+     * `isContentEditable` covers rich-text hosts; the `[contenteditable]`
+     * ancestor check covers a click landing on a child node inside one.
+     */
+    function isTypingTarget(node) {
+        if (!node || node.nodeType !== 1) return false;
+
+        const tag = node.tagName;
+
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true;
+        if (node.isContentEditable) return true;
+
+        return node.closest('[contenteditable]:not([contenteditable="false"])') !== null;
+    }
+
+    function isTyping(event) {
+        return isTypingTarget(event.target) || isTypingTarget(document.activeElement);
+    }
+
+    function messageRows() {
+        return Array.from(el.list?.querySelectorAll('.chat-message') ?? []);
+    }
+
+    function cursorRow() {
+        return el.list?.querySelector('.chat-message.is-cursor') ?? null;
+    }
+
+    function moveCursor(step) {
+        const rows = messageRows();
+        if (rows.length === 0) return;
+
+        const current = rows.indexOf(cursorRow());
+        // No cursor yet: `j` starts at the newest message, `k` at the oldest,
+        // so the first keypress always moves into the list from the right end.
+        const next =
+            current === -1
+                ? step > 0
+                    ? rows.length - 1
+                    : 0
+                : Math.min(Math.max(current + step, 0), rows.length - 1);
+
+        rows.forEach((row) => row.classList.remove('is-cursor'));
+        rows[next].classList.add('is-cursor');
+        rows[next].scrollIntoView({ block: 'nearest' });
+    }
+
+    function actOnCursor(action) {
+        const row = cursorRow();
+        if (!row) return;
+
+        // Reuse the buttons rather than reimplementing what they do: if a
+        // message has no edit button (someone else wrote it, or it is deleted)
+        // there is nothing to click, and `e` correctly does nothing.
+        row.querySelector(`[data-action="${action}"]`)?.click();
+    }
+
+    document.addEventListener('keydown', (event) => {
+        // Ctrl/Cmd+K is the one shortcut that fires while typing — it is how
+        // you leave the composer for another room, and every chat client binds
+        // it that way. Nothing else in this handler runs against a text field.
+        if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
+            event.preventDefault();
+            switcherIsOpen() ? closeSwitcher() : openSwitcher();
+            return;
+        }
+
+        if (event.key === 'Escape') {
+            if (switcherIsOpen()) closeSwitcher();
+            else if (searchIsOpen()) closeSearch();
+            return;
+        }
+
+        if (isTyping(event)) return;
+
+        // A modified keystroke belongs to the browser or the OS.
+        if (event.metaKey || event.ctrlKey || event.altKey) return;
+
+        switch (event.key) {
+            case 'j':
+                event.preventDefault();
+                moveCursor(1);
+                break;
+            case 'k':
+                event.preventDefault();
+                moveCursor(-1);
+                break;
+            case 'r':
+                event.preventDefault();
+                actOnCursor('thread');
+                break;
+            case 'e':
+                event.preventDefault();
+                actOnCursor('edit');
+                break;
+            case '/':
+                event.preventDefault();
+                openSearch();
+                break;
+            default:
+                break;
+        }
+    });
+
+    // --- arriving from a search result -------------------------------------
+
+    /**
+     * `?m=` names a message to reveal. It may be older than the 50 rendered
+     * server-side, so page backwards looking for it — bounded, because a hit
+     * from three years ago is not worth walking the whole history for.
+     */
+    async function revealRequestedMessage() {
+        const wanted = Number(new URLSearchParams(window.location.search).get('m'));
+        if (!wanted || !el.list) return;
+
+        for (let attempt = 0; attempt < 10; attempt++) {
+            const row = el.list.querySelector(`[data-message-id="${wanted}"]`);
+
+            if (row) {
+                row.classList.add('is-found', 'is-cursor');
+                row.scrollIntoView({ block: 'center' });
+                return;
+            }
+
+            const gained = await loadOlderPage();
+            if (!gained) break;
+        }
+
+        say('That message is further back in the history.');
+    }
+
+    revealRequestedMessage();
 
     heartbeat();
     setInterval(heartbeat, state.heartbeat * 1000);

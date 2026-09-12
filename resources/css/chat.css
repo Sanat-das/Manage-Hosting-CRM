@@ -570,6 +570,131 @@
     color: var(--bs-secondary-color);
 }
 
+/* --- command palettes (message search + conversation switcher) ------------ */
+
+/* Both overlays share this shell. Every width here is bounded by
+   `calc(100% - 2rem)` with border-box sizing, and every list clips its own
+   overflow, so neither panel can widen the shell into a horizontal scrollbar —
+   this app has none anywhere, by construction. */
+.chat-palette {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding-top: 3rem;
+    z-index: 45;
+}
+
+.chat-palette__backdrop {
+    position: absolute;
+    inset: 0;
+    background-color: rgba(0, 0, 0, 0.35);
+}
+
+.chat-palette__dialog {
+    position: relative;
+    width: min(34rem, calc(100% - 2rem));
+    max-width: 100%;
+    max-height: calc(100% - 4rem);
+    box-sizing: border-box;
+    overflow: hidden;
+}
+
+.chat-palette__dialog > .card-body {
+    overflow-y: auto;
+    overflow-x: hidden;
+    max-height: calc(100vh - 12rem);
+}
+
+.chat-palette__filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.chat-palette__filters > * {
+    flex: 1 1 8rem;
+    min-width: 0;
+}
+
+.chat-palette__results {
+    list-style: none;
+    margin: 0.5rem 0 0;
+    padding: 0;
+    max-height: 20rem;
+    overflow-y: auto;
+    overflow-x: hidden;
+}
+
+.chat-palette__result {
+    display: block;
+    width: 100%;
+    box-sizing: border-box;
+    text-align: left;
+    background: none;
+    border: 0;
+    border-radius: 0.375rem;
+    padding: 0.5rem;
+    color: inherit;
+    overflow-wrap: anywhere;
+}
+
+.chat-palette__result:hover,
+.chat-palette__result.is-active {
+    background-color: var(--bs-secondary-bg);
+}
+
+.chat-palette__meta {
+    display: block;
+    font-size: 0.75rem;
+    color: var(--bs-secondary-color);
+}
+
+.chat-palette__pager {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+}
+
+.chat-shortcut-hint {
+    margin: 0;
+    padding: 0.25rem 0.75rem;
+    border-top: 1px solid var(--bs-border-color);
+    overflow-wrap: anywhere;
+}
+
+/* --- keyboard navigation -------------------------------------------------- */
+
+.chat-message.is-cursor {
+    background-color: var(--bs-secondary-bg);
+    border-radius: 0.375rem;
+}
+
+.chat-message.is-found {
+    animation: chat-found-flash 2.4s ease-out 1;
+}
+
+@keyframes chat-found-flash {
+    0%,
+    40% {
+        background-color: var(--bs-warning-bg-subtle, #fff3cd);
+    }
+
+    100% {
+        background-color: transparent;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .chat-message.is-found {
+        animation: none;
+        background-color: var(--bs-warning-bg-subtle, #fff3cd);
+    }
+}
+
 /* Narrow screens: the thread panel covers the conversation instead of
    squeezing it, and the sidebar gives up a third of its width. */
 @media (max-width: 62rem) {

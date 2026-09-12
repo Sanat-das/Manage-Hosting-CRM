@@ -76,6 +76,11 @@ Route::middleware(['web', 'auth', 'admin', 'throttle:admin'])->prefix('admin')->
         Route::post('chat/conversations/{conversation}/typing', [ChatController::class, 'typingHeartbeat'])->name('chat.typing');
         Route::post('chat/conversations/{conversation}/read', [ChatController::class, 'markRead'])->name('chat.read');
 
+        // Message search. chat.view is permission to search one's OWN readable
+        // rooms; the conversation whitelist is resolved inside the controller
+        // from ChatConversationPolicy before the query touches any message.
+        Route::get('chat/search', [ChatController::class, 'search'])->name('chat.search');
+
         // Entity references in the composer. Each type is additionally gated on
         // the permission that guards its own screen (ChatEntitySearch).
         Route::get('chat/search-entities', [ChatController::class, 'searchEntities'])->name('chat.search-entities');

@@ -38,6 +38,10 @@
                 <div class="p-3 border-bottom d-flex align-items-center gap-2">
                     <input type="search" class="form-control form-control-sm" id="chat-filter"
                            placeholder="Filter conversations" aria-label="Filter conversations">
+                    <button type="button" class="btn btn-sm btn-outline-secondary flex-shrink-0" id="chat-search-open"
+                            title="Search messages (/)" aria-label="Search messages">
+                        <i class="bi bi-search"></i>
+                    </button>
                     @if ($canCreateChannel)
                         <button type="button" class="btn btn-sm btn-primary flex-shrink-0" id="chat-new-channel"
                                 title="New channel" aria-label="New channel">
@@ -282,6 +286,82 @@
                 </div>
             </div>
         </div>
+
+        {{-- Message search — hidden until opened from the sidebar button or `/`.
+             The conversation dropdown lists the rooms in the sidebar; archived
+             rooms are not in it, and are still found by the unfiltered search
+             (they stay readable, so they stay searchable). --}}
+        <div class="chat-palette d-none" id="chat-search" role="dialog" aria-modal="true"
+             aria-labelledby="chat-search-title">
+            <div class="chat-palette__backdrop" data-chat-search-close></div>
+            <div class="chat-palette__dialog card shadow">
+                <div class="card-body">
+                    <div class="d-flex align-items-center gap-2 mb-2">
+                        <h2 class="h6 mb-0 flex-grow-1" id="chat-search-title">Search messages</h2>
+                        <button type="button" class="btn-close" data-chat-search-close aria-label="Close search"></button>
+                    </div>
+
+                    <form id="chat-search-form" autocomplete="off">
+                        <input type="search" class="form-control mb-2" id="chat-search-q" name="q"
+                               placeholder="Search messages" aria-label="Search messages">
+                        <div class="chat-palette__filters">
+                            <select class="form-select form-select-sm" id="chat-search-channel"
+                                    aria-label="Limit to one conversation">
+                                <option value="">All conversations</option>
+                                {{-- "All conversations" stays the default on purpose. Pre-selecting
+                                     the room you happen to be standing in silently narrows every
+                                     search to it, and a search that quietly answers a narrower
+                                     question than the one asked reads as a broken search. --}}
+                                @foreach ($conversations->flatten() as $conversation)
+                                    <option value="{{ $conversation->id }}">{{ $conversation->displayName() }}</option>
+                                @endforeach
+                            </select>
+                            <input type="date" class="form-control form-control-sm" id="chat-search-from"
+                                   aria-label="Search from date">
+                            <input type="date" class="form-control form-control-sm" id="chat-search-to"
+                                   aria-label="Search to date">
+                            <button type="submit" class="btn btn-sm btn-primary">Search</button>
+                        </div>
+                    </form>
+
+                    <p class="small text-body-secondary mt-2 mb-1" id="chat-search-status" aria-live="polite"></p>
+                    <ol class="chat-palette__results" id="chat-search-results"></ol>
+
+                    <nav class="chat-palette__pager d-none" id="chat-search-pager" aria-label="Search result pages">
+                        <button type="button" class="btn btn-sm btn-outline-secondary" data-search-page="prev">Previous</button>
+                        <span class="small text-body-secondary" id="chat-search-page-label"></span>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" data-search-page="next">Next</button>
+                    </nav>
+                </div>
+            </div>
+        </div>
+
+        {{-- Ctrl/Cmd+K conversation switcher. Its list is built from the sidebar
+             links already on the page rather than from a second copy of the
+             conversation data — one source, so it cannot drift out of step with
+             what the sidebar shows. --}}
+        <div class="chat-palette d-none" id="chat-switcher" role="dialog" aria-modal="true"
+             aria-labelledby="chat-switcher-title">
+            <div class="chat-palette__backdrop" data-chat-switcher-close></div>
+            <div class="chat-palette__dialog card shadow">
+                <div class="card-body">
+                    <h2 class="h6 mb-2" id="chat-switcher-title">Jump to a conversation</h2>
+                    <input type="search" class="form-control" id="chat-switcher-input"
+                           placeholder="Type to filter, Enter to open" aria-label="Jump to a conversation"
+                           role="combobox" aria-expanded="true" aria-controls="chat-switcher-results">
+                    <ul class="chat-palette__results" id="chat-switcher-results" role="listbox"></ul>
+                </div>
+            </div>
+        </div>
+
+        {{-- Keyboard shortcut legend, for discoverability and for screen readers. --}}
+        <p class="chat-shortcut-hint small text-body-secondary" id="chat-shortcut-hint">
+            <kbd>j</kbd>/<kbd>k</kbd> move between messages &middot;
+            <kbd>r</kbd> reply in thread &middot;
+            <kbd>e</kbd> edit &middot;
+            <kbd>/</kbd> search &middot;
+            <kbd>Ctrl</kbd>+<kbd>K</kbd> switch conversation
+        </p>
 
         {{-- The emoji set travels as data, not markup: the reaction picker is
              built from it next to whichever message was clicked. --}}
