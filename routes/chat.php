@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Client\ChatGuestAuthController;
+use App\Http\Controllers\Client\ChatWidgetController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -18,4 +19,17 @@ use Illuminate\Support\Facades\Route;
 
 Route::middleware(['web', 'throttle:30,1'])->prefix('chat')->name('chat.')->group(function () {
     Route::post('guest-auth', ChatGuestAuthController::class)->name('guest-auth');
+
+    // The customer widget. Every one of these resolves a single conversation
+    // and proves the caller belongs to it; there is deliberately no endpoint
+    // that LISTS conversations, so a customer cannot discover that others exist.
+    Route::post('start', [ChatWidgetController::class, 'start'])->name('start');
+    Route::get('{conversation}/messages', [ChatWidgetController::class, 'messages'])->name('messages');
+    Route::post('{conversation}/messages', [ChatWidgetController::class, 'send'])->name('send');
+    Route::post('{conversation}/messages/{message}/attachments', [ChatWidgetController::class, 'attach'])
+        ->name('attach');
+    Route::get('{conversation}/attachments/{attachment}', [ChatWidgetController::class, 'attachment'])
+        ->name('attachment');
+    Route::post('{conversation}/typing', [ChatWidgetController::class, 'typing'])->name('typing');
+    Route::post('{conversation}/rate', [ChatWidgetController::class, 'rate'])->name('rate');
 });

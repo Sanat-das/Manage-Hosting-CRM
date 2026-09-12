@@ -69,6 +69,14 @@
         @include('adminlte::partials.control-sidebar')
     </div>
 
+    {{-- The customer support widget, everywhere except the panel itself: staff
+         have the full operator workspace at /admin/chat, and giving them a
+         "chat with us" button on top of it would open a conversation with
+         themselves. --}}
+    @unless (request()->is('admin', 'admin/*'))
+        @include('client.chat.widget')
+    @endunless
+
     @pluginScripts
     @stack('js')
     @yield('js')

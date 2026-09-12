@@ -1,0 +1,190 @@
+/*
+ * The floating customer chat widget.
+ *
+ * Its own stylesheet rather than a section of chat.css: this ships on public
+ * and client-portal pages, where the admin chat's three-column layout has no
+ * business being loaded at all.
+ *
+ * Fixed to the bottom-right corner and never wider than the viewport, so it
+ * cannot be the thing that puts a horizontal scrollbar on a phone. Colours come
+ * from Bootstrap's CSS variables so the widget follows the theme, including
+ * dark mode, without a second palette.
+ */
+
+.client-chat {
+    position: fixed;
+    right: 1rem;
+    bottom: 1rem;
+    z-index: 1045;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0.5rem;
+    max-width: calc(100vw - 2rem);
+}
+
+.client-chat__launcher {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.625rem 1rem;
+    border: 0;
+    border-radius: 2rem;
+    background-color: var(--bs-primary);
+    color: #fff;
+    box-shadow: 0 0.5rem 1rem rgb(0 0 0 / 20%);
+    cursor: pointer;
+}
+
+.client-chat__launcher:hover,
+.client-chat__launcher:focus-visible {
+    filter: brightness(1.08);
+}
+
+.client-chat__unread {
+    border-radius: 1rem;
+}
+
+.client-chat__panel {
+    display: flex;
+    flex-direction: column;
+    width: 22rem;
+    max-width: calc(100vw - 2rem);
+    max-height: min(32rem, calc(100vh - 6rem));
+    overflow: hidden;
+    border: 1px solid var(--bs-border-color);
+    border-radius: 0.75rem;
+    background-color: var(--bs-body-bg);
+    box-shadow: 0 1rem 2rem rgb(0 0 0 / 25%);
+}
+
+.client-chat__header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.75rem 1rem;
+    background-color: var(--bs-primary);
+    color: #fff;
+}
+
+.client-chat__status {
+    margin-inline-start: auto;
+    font-size: 0.75rem;
+    opacity: 0.85;
+}
+
+.client-chat__intro,
+.client-chat__composer,
+.client-chat__rating {
+    padding: 1rem;
+}
+
+/* Only the transcript scrolls; the composer stays put while reading. */
+.client-chat__messages {
+    flex: 1 1 auto;
+    min-height: 8rem;
+    margin: 0;
+    padding: 1rem;
+    overflow-y: auto;
+    list-style: none;
+}
+
+.client-chat__message {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    margin-bottom: 0.75rem;
+}
+
+.client-chat__message--mine {
+    align-items: flex-end;
+}
+
+.client-chat__author {
+    font-size: 0.6875rem;
+    color: var(--bs-secondary-color);
+}
+
+.client-chat__bubble {
+    max-width: 85%;
+    padding: 0.5rem 0.75rem;
+    border-radius: 0.75rem;
+    background-color: var(--bs-tertiary-bg);
+    /* A pasted URL or a long word must wrap rather than widen the bubble. */
+    overflow-wrap: anywhere;
+}
+
+.client-chat__message--mine .client-chat__bubble {
+    background-color: var(--bs-primary);
+    color: #fff;
+}
+
+.client-chat__attachment {
+    margin-top: 0.25rem;
+    font-size: 0.8125rem;
+}
+
+/* Read-only reference card: a customer can see what was referenced, and there
+   is no client endpoint that creates one. */
+.client-chat__entity {
+    margin-top: 0.25rem;
+    padding: 0.125rem 0.5rem;
+    border: 1px solid var(--bs-border-color);
+    border-radius: 0.375rem;
+    font-size: 0.75rem;
+    color: var(--bs-secondary-color);
+}
+
+.client-chat__composer-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+}
+
+.client-chat__attach {
+    padding: 0.25rem 0.5rem;
+    border-radius: 0.375rem;
+    color: var(--bs-secondary-color);
+    cursor: pointer;
+}
+
+.client-chat__attach:hover {
+    background-color: var(--bs-tertiary-bg);
+}
+
+.client-chat__filename {
+    max-width: 9rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.client-chat__stars {
+    display: flex;
+    gap: 0.25rem;
+}
+
+.client-chat__star {
+    border: 0;
+    background: none;
+    font-size: 1.25rem;
+    line-height: 1;
+    color: var(--bs-warning);
+    cursor: pointer;
+}
+
+/* On a phone the panel is the page: a 22rem card floating over a 20rem screen
+   is the horizontal-scrollbar bug waiting to happen. */
+@media (max-width: 30rem) {
+    .client-chat {
+        right: 0.5rem;
+        bottom: 0.5rem;
+        left: 0.5rem;
+        align-items: stretch;
+    }
+
+    .client-chat__panel {
+        width: auto;
+    }
+}

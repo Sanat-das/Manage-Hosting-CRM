@@ -44,6 +44,11 @@
             </div>
         </div>
     </div>
+    {{-- The login page is the only page an unauthenticated visitor ever sees,
+         so it is the only place the guest half of the chat can be reached from.
+         Without this the guest endpoints would ship with no way in. --}}
+    @include('client.chat.widget')
+
     @stack('js')
 </body>
 </html>

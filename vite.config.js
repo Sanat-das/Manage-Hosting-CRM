@@ -17,6 +17,11 @@ export default defineConfig({
                 'resources/js/echo.js',
                 'resources/js/chat.js',
                 'resources/css/chat.css',
+                // The customer widget is its own entry, not part of the admin
+                // chat bundle: it ships on public and client-portal pages and
+                // must not drag the operator workspace's JS along with it.
+                'resources/js/client-chat.js',
+                'resources/css/client-chat.css',
             ],
             refresh: true,
             fonts: [
