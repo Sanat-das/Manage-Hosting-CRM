@@ -7,16 +7,14 @@ namespace Tests\Feature\Chat;
 use App\Models\ChatConversation;
 use App\Models\ChatConversationMessage;
 use App\Models\ChatParticipant;
-use App\Models\Permission;
-use App\Models\Role;
 use App\Models\TicketDepartment;
 use App\Models\User;
 use App\Services\ChatService;
 use App\Services\TicketService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Str;
 use InvalidArgumentException;
 use RuntimeException;
+use Tests\Concerns\CreatesChatUsers;
 use Tests\Concerns\CreatesPanelUsers;
 use Tests\TestCase;
 
@@ -26,6 +24,7 @@ use Tests\TestCase;
  */
 class ChatServiceTest extends TestCase
 {
+    use CreatesChatUsers;
     use CreatesPanelUsers;
     use RefreshDatabase;
 
@@ -36,33 +35,6 @@ class ChatServiceTest extends TestCase
         parent::setUp();
 
         $this->chat = app(ChatService::class);
-    }
-
-    /**
-     * A panel user holding exactly these permissions and no others.
-     *
-     * Not CreatesPanelUsers::panelUserWithPermissions(): that helper puts every
-     * user it builds into one shared `test-scoped-role` and syncs permissions
-     * onto it, so two users created in the same test end up holding the UNION
-     * of both permission sets. Several tests here need one user who has
-     * chat.manage and one who does not, in the same test.
-     */
-    private function chatUser(string ...$permissions): User
-    {
-        $user = User::factory()->create(['role' => 'marketing']);
-
-        $role = Role::create([
-            'name' => 'chat-test-'.Str::random(10),
-            'label' => 'Chat Test Role',
-        ]);
-
-        $role->permissions()->syncWithoutDetaching(
-            Permission::whereIn('name', $permissions)->pluck('id')
-        );
-
-        $user->roles()->attach($role->id);
-
-        return $user->fresh();
     }
 
     public function test_creating_a_channel_puts_its_creator_in_it_as_an_admin(): void

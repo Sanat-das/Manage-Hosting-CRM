@@ -52,8 +52,38 @@ Route::middleware(['web', 'auth', 'admin', 'throttle:admin'])->prefix('admin')->
         ->middleware('permission:chat.view')
         ->name('chat.index');
 
+    /*
+     | The Slack-like engine. Registered BEFORE the legacy `chat/{chat}`
+     | wildcard below: that route would otherwise match `chat/channels` and try
+     | to resolve "channels" as a ChatSession id.
+     |
+     | Every route carries permission:chat.view; per-conversation authorisation
+     | is ChatConversationPolicy's, applied in the controller. Holding chat.view
+     | is permission to use the chat, not permission to read any given room.
+     */
+    Route::middleware('permission:chat.view')->group(function () {
+        Route::post('chat/channels', [ChatController::class, 'storeChannel'])->name('chat.channels.store');
+        Route::put('chat/channels/{conversation}', [ChatController::class, 'updateChannel'])->name('chat.channels.update');
+        Route::post('chat/channels/{conversation}/archive', [ChatController::class, 'archiveChannel'])->name('chat.channels.archive');
+        Route::post('chat/channels/{conversation}/unarchive', [ChatController::class, 'unarchiveChannel'])->name('chat.channels.unarchive');
+        Route::post('chat/channels/{conversation}/join', [ChatController::class, 'joinChannel'])->name('chat.channels.join');
+        Route::post('chat/channels/{conversation}/leave', [ChatController::class, 'leaveChannel'])->name('chat.channels.leave');
+        Route::post('chat/channels/{conversation}/members', [ChatController::class, 'addMember'])->name('chat.channels.members.store');
+        Route::delete('chat/channels/{conversation}/members/{user}', [ChatController::class, 'removeMember'])->name('chat.channels.members.destroy');
+
+        Route::get('chat/conversations/{conversation}/messages', [ChatController::class, 'fetchMessages'])->name('chat.messages.index');
+        Route::post('chat/conversations/{conversation}/messages', [ChatController::class, 'storeMessage'])->name('chat.messages.store');
+        Route::get('chat/conversations/{conversation}/threads/{parent}', [ChatController::class, 'fetchThread'])->name('chat.threads.show');
+        Route::post('chat/conversations/{conversation}/typing', [ChatController::class, 'typingHeartbeat'])->name('chat.typing');
+
+        Route::put('chat/messages/{message}', [ChatController::class, 'updateMessage'])->name('chat.messages.update');
+        Route::delete('chat/messages/{message}', [ChatController::class, 'destroyMessage'])->name('chat.messages.destroy');
+        Route::post('chat/messages/{message}/reactions', [ChatController::class, 'toggleReaction'])->name('chat.messages.reactions');
+    });
+
     Route::get('chat/{chat}', [ChatController::class, 'show'])
         ->middleware('permission:chat.view')
+        ->whereNumber('chat')
         ->name('chat.show');
 
     // Payment Gateway Settings

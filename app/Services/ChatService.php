@@ -7,9 +7,11 @@ namespace App\Services;
 use App\Events\Chat\ChatMessageDeleted;
 use App\Events\Chat\ChatMessageEdited;
 use App\Events\Chat\NewChatMessage;
+use App\Events\Chat\ReactionToggled;
 use App\Models\ChatConversation;
 use App\Models\ChatConversationMessage;
 use App\Models\ChatParticipant;
+use App\Models\ChatReaction;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
@@ -312,6 +314,56 @@ class ChatService
         $message->delete();
 
         DB::afterCommit(static fn () => ChatMessageDeleted::dispatch($messageId, $conversationId, $parentId));
+    }
+
+    /**
+     * Add a reaction, or take it off if this user already left that emoji.
+     *
+     * The unique index on (message, user, emoji) is what makes this a
+     * delete-or-insert rather than a counter, so it cannot drift out of step
+     * with the rows it is meant to summarise.
+     *
+     * @return array{added: bool, count: int}
+     */
+    public function toggleReaction(ChatConversationMessage $message, User $user, string $emoji): array
+    {
+        if (! ChatReaction::isAllowed($emoji)) {
+            throw new InvalidArgumentException('That is not a reaction this chat supports.');
+        }
+
+        $existing = ChatReaction::query()
+            ->where('message_id', $message->id)
+            ->where('user_id', $user->id)
+            ->where('emoji', $emoji)
+            ->first();
+
+        if ($existing !== null) {
+            $existing->delete();
+            $added = false;
+        } else {
+            ChatReaction::create([
+                'message_id' => $message->id,
+                'user_id' => $user->id,
+                'emoji' => $emoji,
+            ]);
+            $added = true;
+        }
+
+        $count = ChatReaction::query()
+            ->where('message_id', $message->id)
+            ->where('emoji', $emoji)
+            ->count();
+
+        DB::afterCommit(static fn () => ReactionToggled::dispatch(
+            (int) $message->id,
+            (int) $message->conversation_id,
+            (int) $user->id,
+            $emoji,
+            $added,
+            $count,
+        ));
+
+        return ['added' => $added, 'count' => $count];
     }
 
     /**
