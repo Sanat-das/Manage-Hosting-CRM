@@ -68,10 +68,16 @@
 
         <ol class="client-chat__messages d-none" id="client-chat-messages"></ol>
 
-        {{-- No inbound typing indicator: TypingIndicator broadcasts on a
-             presence channel a guest cannot join, and the guest auth endpoint
-             authorises exactly one channel shape. Outbound typing (the
-             customer's keystrokes reaching the operator's pane) does work. --}}
+        {{-- "Support is typing". Deliberately generic: the operator's typing
+             arrives on this conversation's own private channel (the only one a
+             guest token authorises), and the event names no one — which
+             operator is replying is not something the transcript reveals
+             either. Hidden at rest; client-chat.js toggles d-none and expires
+             it on a timer, so a dropped "stopped typing" cannot leave it
+             stuck on. --}}
+        <p class="client-chat__typing small text-body-secondary d-none" id="client-chat-typing"
+           aria-live="polite">Support is typing...</p>
+
         <form class="client-chat__composer d-none" id="client-chat-composer">
             @csrf
             <label class="visually-hidden" for="client-chat-body">Message</label>

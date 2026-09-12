@@ -89,6 +89,15 @@
     list-style: none;
 }
 
+/* Sits between the transcript and the composer, and takes no height when
+   hidden — the panel must not jump as the operator starts and stops typing. */
+.client-chat__typing {
+    flex: 0 0 auto;
+    margin: 0;
+    padding: 0 1rem 0.5rem;
+    font-style: italic;
+}
+
 .client-chat__message {
     display: flex;
     flex-direction: column;

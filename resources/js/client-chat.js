@@ -24,6 +24,14 @@ const POLL_MS = 6000;
 /** Quiet period before "stopped typing" goes out. */
 const TYPING_IDLE_MS = 2500;
 
+/**
+ * How long an operator's "typing" claim stands before we assume it is stale.
+ * There is no guaranteed "stopped" — a closed tab or a dropped socket ends the
+ * typing without announcing it — so it expires here rather than sticking on.
+ * Longer than the operator's own 3s heartbeat, so a steady typist never flickers.
+ */
+const TYPING_CLEAR_MS = 8000;
+
 const root = document.getElementById('client-chat');
 
 if (root) {
@@ -39,6 +47,7 @@ function boot(el) {
         open: false,
         unread: 0,
         typingSentAt: 0,
+        typingTimer: null,
         channel: null,
         poller: null,
     };
@@ -56,6 +65,7 @@ function boot(el) {
         intro: document.getElementById('client-chat-intro'),
         introError: document.getElementById('client-chat-intro-error'),
         messages: document.getElementById('client-chat-messages'),
+        typing: document.getElementById('client-chat-typing'),
         composer: document.getElementById('client-chat-composer'),
         body: document.getElementById('client-chat-body'),
         file: document.getElementById('client-chat-file'),
@@ -301,6 +311,30 @@ function boot(el) {
             .catch(() => {});
     });
 
+    /**
+     * Show or hide "Support is typing...".
+     *
+     * The label is static markup the server rendered, so nothing from the event
+     * is ever written into the DOM — the payload carries no name to write.
+     */
+    function showTyping(isTyping) {
+        if (!ui.typing) {
+            return;
+        }
+
+        window.clearTimeout(state.typingTimer);
+        ui.typing.classList.toggle('d-none', !isTyping);
+
+        if (!isTyping) {
+            return;
+        }
+
+        state.typingTimer = window.setTimeout(
+            () => ui.typing.classList.add('d-none'),
+            TYPING_CLEAR_MS,
+        );
+    }
+
     ui.rating.addEventListener('click', async (event) => {
         const button = event.target.closest('[data-rating]');
 
@@ -403,9 +437,14 @@ function boot(el) {
 
             state.channel = echo.private(`chat.conversation.${state.conversationId}`);
             state.channel.listen('.chat.message.new', (event) => {
+                showTyping(false);
                 renderMessage(event.message);
                 stopPolling();
             });
+
+            // Published here only for a customer inbox and only for a staff
+            // typer: our own heartbeat is never echoed back, and it names no one.
+            state.channel.listen('.chat.typing', (event) => showTyping(event.typing));
         } catch {
             // Polling is already running; nothing else to do.
             state.channel = null;
