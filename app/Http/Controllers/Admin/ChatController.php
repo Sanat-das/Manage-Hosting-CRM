@@ -18,6 +18,7 @@ use App\Models\ChatSession;
 use App\Models\User;
 use App\Services\ChatPresence;
 use App\Services\ChatService;
+use App\Services\TicketService;
 use App\Support\ChatMessagePayload;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -289,6 +290,113 @@ class ChatController extends Controller
         }
 
         return response()->json($result);
+    }
+
+    // --- customer inbox (operator side) -----------------------------------
+
+    /**
+     * The operator queue: waiting and active customer conversations.
+     */
+    public function inbox(Request $request): JsonResponse
+    {
+        Gate::authorize('viewAny', ChatConversation::class);
+        abort_unless($request->user()->hasPermission('chat.manage'), 403);
+
+        $conversations = ChatConversation::query()
+            ->where('type', ChatConversation::TYPE_CUSTOMER_INBOX)
+            ->when($request->query('status'), fn ($q, $status) => $q->where('status', $status))
+            ->with(['customer.user', 'assignedOperator'])
+            ->orderByRaw("case status when 'waiting' then 0 when 'active' then 1 else 2 end")
+            ->orderByDesc('id')
+            ->limit(100)
+            ->get();
+
+        return response()->json([
+            'conversations' => $conversations->map(fn (ChatConversation $c) => $this->inboxPayload($c))->all(),
+        ]);
+    }
+
+    public function assignOperator(Request $request, ChatConversation $conversation): JsonResponse
+    {
+        Gate::authorize('operate', $conversation);
+
+        $validated = $request->validate(['user_id' => ['nullable', 'integer', 'exists:users,id']]);
+
+        $operator = isset($validated['user_id'])
+            ? User::findOrFail($validated['user_id'])
+            : $request->user();
+
+        try {
+            $this->chat->assignOperator($conversation, $operator);
+        } catch (InvalidArgumentException|RuntimeException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+
+        return response()->json(['conversation' => $this->inboxPayload($conversation->fresh())]);
+    }
+
+    public function transferConversation(Request $request, ChatConversation $conversation): JsonResponse
+    {
+        Gate::authorize('operate', $conversation);
+
+        $validated = $request->validate(['department' => ['required', 'string', 'max:100']]);
+
+        try {
+            $this->chat->transferConversation($conversation, $validated['department']);
+        } catch (InvalidArgumentException|RuntimeException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+
+        return response()->json(['conversation' => $this->inboxPayload($conversation->fresh())]);
+    }
+
+    public function closeConversation(ChatConversation $conversation): JsonResponse
+    {
+        Gate::authorize('operate', $conversation);
+
+        $this->chat->closeConversation($conversation);
+
+        return response()->json(['conversation' => $this->inboxPayload($conversation->fresh())]);
+    }
+
+    public function convertToTicket(ChatConversation $conversation, TicketService $tickets): JsonResponse
+    {
+        Gate::authorize('operate', $conversation);
+
+        try {
+            $ticket = $this->chat->convertToTicket($conversation, $tickets);
+        } catch (InvalidArgumentException|RuntimeException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+
+        return response()->json([
+            'ticket' => [
+                'id' => $ticket->id,
+                'ticket_no' => $ticket->ticket_no,
+                'url' => route('admin.tickets.show', $ticket),
+            ],
+        ], 201);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function inboxPayload(ChatConversation $conversation): array
+    {
+        return [
+            'id' => $conversation->id,
+            'name' => $conversation->displayName(),
+            'status' => $conversation->status,
+            'department' => $conversation->department,
+            'customer_id' => $conversation->customer_id,
+            'guest_email' => $conversation->guest_email,
+            'operator' => $conversation->assignedOperator === null ? null : [
+                'id' => $conversation->assignedOperator->id,
+                'name' => $conversation->assignedOperator->full_name,
+            ],
+            'rating' => $conversation->rating,
+            'closed_at' => $conversation->closed_at?->toIso8601String(),
+        ];
     }
 
     /**

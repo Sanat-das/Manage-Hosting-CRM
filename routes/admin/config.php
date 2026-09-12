@@ -77,6 +77,14 @@ Route::middleware(['web', 'auth', 'admin', 'throttle:admin'])->prefix('admin')->
         Route::post('chat/conversations/{conversation}/typing', [ChatController::class, 'typingHeartbeat'])->name('chat.typing');
         Route::post('chat/conversations/{conversation}/read', [ChatController::class, 'markRead'])->name('chat.read');
 
+        // Customer inbox, operator side. Each action additionally requires
+        // chat.manage via ChatConversationPolicy::operate().
+        Route::get('chat/inbox', [ChatController::class, 'inbox'])->name('chat.inbox');
+        Route::post('chat/inbox/{conversation}/assign', [ChatController::class, 'assignOperator'])->name('chat.inbox.assign');
+        Route::post('chat/inbox/{conversation}/transfer', [ChatController::class, 'transferConversation'])->name('chat.inbox.transfer');
+        Route::post('chat/inbox/{conversation}/close', [ChatController::class, 'closeConversation'])->name('chat.inbox.close');
+        Route::post('chat/inbox/{conversation}/convert', [ChatController::class, 'convertToTicket'])->name('chat.inbox.convert');
+
         Route::get('chat/unread', [ChatController::class, 'unread'])->name('chat.unread');
         Route::post('chat/presence', [ChatController::class, 'presenceHeartbeat'])->name('chat.presence');
 

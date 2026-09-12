@@ -76,6 +76,10 @@ return Application::configure(basePath: dirname(__DIR__))
 
             require base_path('routes/client.php');
 
+            // Customer chat endpoints reachable without an account; they
+            // authorise from the conversation's guest token.
+            require base_path('routes/chat.php');
+
             // Inbound third-party callbacks (payment gateways). Registered
             // here rather than in web.php so they carry no session/CSRF
             // middleware — see routes/webhooks.php.

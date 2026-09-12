@@ -13,6 +13,9 @@ use App\Models\ChatConversationMessage;
 use App\Models\ChatMessageAttachment;
 use App\Models\ChatParticipant;
 use App\Models\ChatReaction;
+use App\Models\Customer;
+use App\Models\MessageEntityLink;
+use App\Models\Ticket;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\UploadedFile;
@@ -316,6 +319,216 @@ class ChatService
         $message->delete();
 
         DB::afterCommit(static fn () => ChatMessageDeleted::dispatch($messageId, $conversationId, $parentId));
+    }
+
+    // --- customer inbox ---------------------------------------------------
+
+    /**
+     * Open a customer conversation and post its first message.
+     *
+     * `$identity` is either ['customer_id' => n] for a signed-in customer, or
+     * ['name' => …, 'email' => …] for a guest. A guest_token is minted either
+     * way so the widget has one handle to present, and it is written with
+     * forceFill because it is not mass-assignable — it is the only credential a
+     * guest ever has.
+     *
+     * The conversation starts unassigned and `waiting`: that IS the operator
+     * queue. There is no separate queue table to drift out of step with it.
+     */
+    public function startCustomerChat(array $identity, ?string $department, string $body): ChatConversation
+    {
+        $customer = null;
+
+        if (! empty($identity['customer_id'])) {
+            $customer = Customer::findOrFail((int) $identity['customer_id']);
+        } elseif (empty($identity['email'])) {
+            throw new InvalidArgumentException('A customer chat needs either a customer or a guest email.');
+        }
+
+        $department = $this->normaliseDepartment($department);
+        $token = Str::random(40);
+
+        return DB::transaction(function () use ($identity, $customer, $department, $body, $token) {
+            $conversation = new ChatConversation([
+                'type' => ChatConversation::TYPE_CUSTOMER_INBOX,
+                'department' => $department,
+                'customer_id' => $customer?->id,
+                'guest_name' => $customer === null ? ($identity['name'] ?? null) : null,
+                'guest_email' => $customer === null ? ($identity['email'] ?? null) : null,
+                'status' => ChatConversation::STATUS_WAITING,
+            ]);
+            $conversation->guest_token = $token;
+            $conversation->save();
+
+            $participant = new ChatParticipant([
+                'conversation_id' => $conversation->id,
+                'user_id' => $customer?->user_id,
+                'role' => ChatParticipant::ROLE_MEMBER,
+                'joined_at' => now(),
+            ]);
+            $participant->guest_token = $token;
+            $participant->save();
+
+            $this->sendMessage(
+                $conversation,
+                $customer?->user,
+                $body,
+                null,
+                $customer === null ? $token : null,
+            );
+
+            return $conversation->fresh();
+        });
+    }
+
+    /**
+     * Is this token the one this conversation was opened with?
+     *
+     * hash_equals rather than ===: token comparison is the one place in this
+     * service where a timing difference is worth avoiding.
+     */
+    public function guestTokenMatches(ChatConversation $conversation, ?string $token): bool
+    {
+        if ($token === null || $conversation->guest_token === null) {
+            return false;
+        }
+
+        return hash_equals((string) $conversation->guest_token, $token);
+    }
+
+    /**
+     * Take a queued conversation, or hand it to someone else.
+     */
+    public function assignOperator(ChatConversation $conversation, User $operator): ChatConversation
+    {
+        if (! $conversation->isCustomerInbox()) {
+            throw new InvalidArgumentException('Only a customer conversation has an operator.');
+        }
+
+        if ($conversation->status === ChatConversation::STATUS_CLOSED) {
+            throw new RuntimeException('This conversation is closed.');
+        }
+
+        return DB::transaction(function () use ($conversation, $operator) {
+            $conversation->forceFill([
+                'assigned_operator_id' => $operator->id,
+                'status' => ChatConversation::STATUS_ACTIVE,
+            ])->save();
+
+            $this->addMember($conversation, $operator);
+
+            return $conversation;
+        });
+    }
+
+    /**
+     * Move a conversation to another department and put it back in the queue.
+     *
+     * The previous operator is unassigned but stays a participant: they can
+     * still read what they were part of, which is what makes a transfer a
+     * handover rather than a disappearance.
+     */
+    public function transferConversation(ChatConversation $conversation, string $department): ChatConversation
+    {
+        if (! $conversation->isCustomerInbox()) {
+            throw new InvalidArgumentException('Only a customer conversation can be transferred.');
+        }
+
+        if ($conversation->status === ChatConversation::STATUS_CLOSED) {
+            throw new RuntimeException('This conversation is closed.');
+        }
+
+        $conversation->forceFill([
+            'department' => $this->normaliseDepartment($department),
+            'assigned_operator_id' => null,
+            'status' => ChatConversation::STATUS_WAITING,
+        ])->save();
+
+        return $conversation;
+    }
+
+    public function closeConversation(ChatConversation $conversation): ChatConversation
+    {
+        $conversation->forceFill([
+            'status' => ChatConversation::STATUS_CLOSED,
+            'closed_at' => now(),
+        ])->save();
+
+        return $conversation;
+    }
+
+    /**
+     * The customer's rating, 1-5, recorded once the conversation is over.
+     */
+    public function rateConversation(ChatConversation $conversation, int $rating): ChatConversation
+    {
+        if ($rating < 1 || $rating > 5) {
+            throw new InvalidArgumentException('A rating is between 1 and 5.');
+        }
+
+        if ($conversation->status !== ChatConversation::STATUS_CLOSED) {
+            throw new RuntimeException('A conversation can only be rated once it is closed.');
+        }
+
+        $conversation->forceFill(['rating' => $rating])->save();
+
+        return $conversation;
+    }
+
+    /**
+     * Turn a chat into a ticket, carrying the transcript across.
+     *
+     * Delegates to TicketService::create() rather than writing ticket rows
+     * here: that method owns ticket numbering, the guest/customer resolution
+     * and the TicketCreated event, and a second creator would drift from it.
+     *
+     * The chat is NOT closed and its lifecycle is not otherwise touched — the
+     * conversation simply gains a reference to the ticket it produced.
+     */
+    public function convertToTicket(ChatConversation $conversation, TicketService $tickets): Ticket
+    {
+        if (! $conversation->isCustomerInbox()) {
+            throw new InvalidArgumentException('Only a customer conversation can become a ticket.');
+        }
+
+        $messages = $conversation->messages()->with('user')->orderBy('id')->get();
+
+        if ($messages->isEmpty()) {
+            throw new RuntimeException('There is nothing to convert — this conversation is empty.');
+        }
+
+        $first = $messages->first();
+        $subject = Str::limit(trim((string) $first->body), 70, '...');
+
+        $transcript = $messages
+            ->map(fn (ChatConversationMessage $m) => sprintf(
+                '[%s] %s: %s',
+                $m->created_at?->toDateTimeString() ?? '',
+                $m->authorName(),
+                $m->visibleBody(),
+            ))
+            ->implode("\n");
+
+        $ticket = $tickets->create(
+            [
+                'customer_id' => $conversation->customer_id,
+                'guest_email' => $conversation->customer_id === null ? $conversation->guest_email : null,
+                'guest_name' => $conversation->customer_id === null ? $conversation->guest_name : null,
+                'subject' => $subject !== '' ? $subject : 'Chat conversation',
+                'department' => $conversation->department ?? array_key_first(TicketService::departments()),
+                'assigned_to' => $conversation->assigned_operator_id,
+            ],
+            $transcript,
+        );
+
+        MessageEntityLink::create([
+            'message_id' => $first->id,
+            'linkable_type' => Ticket::class,
+            'linkable_id' => $ticket->id,
+            'created_at' => now(),
+        ]);
+
+        return $ticket;
     }
 
     /**
