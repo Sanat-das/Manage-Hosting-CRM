@@ -17,6 +17,10 @@ use App\Models\Customer;
 use App\Models\MessageEntityLink;
 use App\Models\Ticket;
 use App\Models\User;
+use App\Notifications\ChatAssignmentNotification;
+use App\Notifications\ChatMentionNotification;
+use App\Notifications\ChatReplyNotification;
+use App\Support\ChatMentions;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\UploadedFile;
@@ -44,6 +48,15 @@ class ChatService
 
     /** A group DM beyond this is a channel that has not admitted it yet. */
     public const MAX_GROUP_DM_PARTICIPANTS = 50;
+
+    /**
+     * The notification gate is injected so a test can swap it, but it defaults
+     * to a plain instance: every existing `new ChatService` call site in the
+     * app and the test suite keeps working untouched.
+     */
+    public function __construct(
+        private readonly NotificationPreferenceService $preferences = new NotificationPreferenceService,
+    ) {}
 
     /**
      * Create a channel and put its creator in it as an admin.
@@ -272,10 +285,15 @@ class ChatService
 
             // After commit, so no subscriber can ever receive a message that a
             // later failure in this transaction rolled back.
-            DB::afterCommit(static function () use ($message): void {
+            DB::afterCommit(function () use ($message, $conversation, $user, $body): void {
                 $message->loadMissing(['user', 'attachments', 'entityLinks.linkable']);
 
                 NewChatMessage::dispatch($message);
+
+                // Notifications happen after commit as well: a row that later
+                // rolls back must not become a notification, and a message that
+                // later fails must not wake someone who will then ask about it.
+                $this->notifyForNewMessage($message, $conversation, $user, $body);
             });
 
             return $message;
@@ -442,8 +460,14 @@ class ChatService
 
     /**
      * Take a queued conversation, or hand it to someone else.
+     *
+     * The operator assignment notifies the assignee (gated on
+     * `chat.assign`). Self-assignment notifies nobody: you already know.
+     * The optional $actor lets the caller say who did the assigning when they
+     * are not the assignee; when omitted the operator is assumed to have
+     * assigned themselves.
      */
-    public function assignOperator(ChatConversation $conversation, User $operator): ChatConversation
+    public function assignOperator(ChatConversation $conversation, User $operator, ?User $actor = null): ChatConversation
     {
         if (! $conversation->isCustomerInbox()) {
             throw new InvalidArgumentException('Only a customer conversation has an operator.');
@@ -453,13 +477,19 @@ class ChatService
             throw new RuntimeException('This conversation is closed.');
         }
 
-        return DB::transaction(function () use ($conversation, $operator) {
+        $actor = $actor ?? $operator;
+
+        return DB::transaction(function () use ($conversation, $operator, $actor) {
             $conversation->forceFill([
                 'assigned_operator_id' => $operator->id,
                 'status' => ChatConversation::STATUS_ACTIVE,
             ])->save();
 
             $this->addMember($conversation, $operator);
+
+            DB::afterCommit(function () use ($conversation, $operator, $actor): void {
+                $this->notifyForAssignment($conversation, $operator, $actor);
+            });
 
             return $conversation;
         });
@@ -812,5 +842,70 @@ class ChatService
         }
 
         return $department;
+    }
+
+    // --- notifications (Todo 16) ---------------------------------------------
+
+    private function notifyForNewMessage(
+        ChatConversationMessage $message,
+        ChatConversation $conversation,
+        ?User $author,
+        string $body,
+    ): void {
+        if ($author === null) {
+            // Guest messages never generate mention/reply notifications — there
+            // is no actor to attribute and no staff identity to match.
+            return;
+        }
+
+        // Collect everyone already notified via @mention so a thread reply that
+        // is also an @mention does not double-notify the same person.
+        $mentionedIds = collect();
+
+        // @mentions
+        $mentioned = ChatMentions::mentionedUsers($body, $conversation, $author);
+
+        foreach ($mentioned as $user) {
+            if (! $this->preferences->isEnabled($user, 'chat.mention')) {
+                continue;
+            }
+
+            $user->notify(new ChatMentionNotification($message, $conversation, (int) $author->id, $author->full_name));
+            $mentionedIds->push($user->id);
+        }
+
+        // Thread reply — the author of the parent message, if anyone.
+        if ($message->parent_id !== null) {
+            $parent = ChatConversationMessage::find($message->parent_id);
+
+            if ($parent !== null && $parent->user_id !== null && (int) $parent->user_id !== (int) $author->id) {
+                if (! $mentionedIds->contains((int) $parent->user_id)) {
+                    $parentAuthor = User::find($parent->user_id);
+
+                    if ($parentAuthor !== null
+                        && $parentAuthor->can('view', $conversation)
+                        && $this->preferences->isEnabled($parentAuthor, 'chat.reply')) {
+                        $parentAuthor->notify(new ChatReplyNotification($message, $parent, $conversation, (int) $author->id, $author->full_name));
+                    }
+                }
+            }
+        }
+    }
+
+    private function notifyForAssignment(ChatConversation $conversation, User $operator, User $actor): void
+    {
+        if ((int) $operator->id === (int) $actor->id) {
+            return;
+        }
+
+        if (! $operator->can('view', $conversation)) {
+            return;
+        }
+
+        if (! $this->preferences->isEnabled($operator, 'chat.assign')) {
+            return;
+        }
+
+        $operator->notify(new ChatAssignmentNotification($conversation, (int) $actor->id, $actor->full_name));
     }
 }
