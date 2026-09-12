@@ -16,6 +16,7 @@ use App\Http\Requests\Chat\UpdateChatMessageRequest;
 use App\Models\ChatConversation;
 use App\Models\ChatConversationMessage;
 use App\Models\ChatMessageAttachment;
+use App\Models\ChatReaction;
 use App\Models\ChatSession;
 use App\Models\MessageEntityLink;
 use App\Models\User;
@@ -27,6 +28,7 @@ use App\Support\ChatMessagePayload;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\View\View;
@@ -56,34 +58,133 @@ class ChatController extends Controller
         private readonly ChatPresence $presence,
     ) {}
 
-    public function index(Request $request): View
+    /**
+     * The Slack-like workspace: sidebar, message pane, thread panel, composer.
+     *
+     * Rendered server-side with the first page of history already in it, so the
+     * conversation is readable before any websocket connects — and still
+     * readable if none ever does.
+     */
+    public function index(Request $request, ChatEntitySearch $entities): View
     {
-        $status = $request->query('status');
+        $user = $request->user();
 
-        $search = trim((string) $request->query('search'));
+        $conversations = $this->visibleConversations($user);
+        $unread = $this->chat->unreadCounts($user);
 
-        $sessions = ChatSession::query()
-            ->when($status, fn ($q) => $q->where('status', $status))
-            ->when($search !== '', fn ($q) => $q->where(function ($inner) use ($search) {
-                $inner->where('name', 'like', "%{$search}%")
-                    ->orWhere('email', 'like', "%{$search}%")
-                    ->orWhere('department', 'like', "%{$search}%");
-            }))
-            ->gridSort([
-                'id' => 'id',
-                'name' => 'name',
-                'department' => 'department',
-                'status' => 'status',
-                'started_at' => 'started_at',
-            ])
-            ->orderByDesc('started_at')
-            ->paginate(20)
-            ->withQueryString();
+        $selected = $this->resolveSelected($request, $conversations);
+        $messages = collect();
 
-        $statuses = ['waiting', 'active', 'closed'];
-        $stats = ChatSession::selectRaw('status, COUNT(*) as count')->groupBy('status')->pluck('count', 'status');
+        if ($selected !== null) {
+            $messages = $selected->messages()
+                ->withTrashed()
+                ->whereNull('parent_id')
+                ->with(['user', 'attachments', 'entityLinks.linkable'])
+                ->orderByDesc('id')
+                ->limit(self::MESSAGE_PAGE)
+                ->get()
+                ->reverse()
+                ->values();
 
-        return view('admin.chat.index', compact('sessions', 'status', 'statuses', 'stats', 'search'));
+            $this->chat->markRead($selected, $user);
+            $unread[$selected->id] = 0;
+        }
+
+        return view('admin.chat.index', [
+            'conversations' => $conversations,
+            'selected' => $selected,
+            'messages' => $messages->map(fn ($m) => ChatMessagePayload::for($m)),
+            'unread' => $unread,
+            'online' => $this->presence->online(),
+            'canCreateChannel' => $user->can('create', ChatConversation::class),
+            'canOperate' => $user->hasPermission('chat.manage'),
+            'entityTypes' => $entities->availableTypes($user),
+            'mentionables' => $selected === null ? collect() : $this->mentionablesFor($selected),
+            'emojis' => ChatReaction::ALLOWED,
+            'heartbeatSeconds' => ChatPresence::HEARTBEAT_SECONDS,
+        ]);
+    }
+
+    /**
+     * Everything this user may see, grouped the way the sidebar shows it.
+     *
+     * Private rooms are filtered in SQL by participation rather than loaded and
+     * then rejected by the policy — the policy is the authority, but a sidebar
+     * that queries every private channel in the install to discard most of them
+     * gets slower with every channel anyone creates.
+     *
+     * @return Collection<string, Collection<int, ChatConversation>>
+     */
+    private function visibleConversations(User $user): Collection
+    {
+        $canOperate = $user->hasPermission('chat.manage');
+
+        $all = ChatConversation::query()
+            ->notArchived()
+            ->where(function ($q) use ($user, $canOperate) {
+                // Public channels, visible to every chat user.
+                $q->where(fn ($p) => $p->where('type', ChatConversation::TYPE_CHANNEL)->where('is_private', false));
+
+                // Anything at all that this user is a participant of.
+                $q->orWhereHas('participants', fn ($p) => $p->where('user_id', $user->id));
+
+                // The customer queue, for operators.
+                if ($canOperate) {
+                    $q->orWhere('type', ChatConversation::TYPE_CUSTOMER_INBOX);
+                }
+            })
+            ->with(['participants.user', 'customer.user', 'assignedOperator'])
+            ->orderBy('name')
+            ->orderByDesc('id')
+            ->get()
+            // Department scoping and private-channel membership are the policy's
+            // call; the query above is only a cheap pre-filter.
+            ->filter(fn (ChatConversation $c) => $user->can('view', $c))
+            ->values();
+
+        return collect([
+            'channels' => $all->where('type', ChatConversation::TYPE_CHANNEL)->values(),
+            'dms' => $all->whereIn('type', [ChatConversation::TYPE_DM, ChatConversation::TYPE_GROUP_DM])->values(),
+            'inbox' => $all->where('type', ChatConversation::TYPE_CUSTOMER_INBOX)->values(),
+        ]);
+    }
+
+    /**
+     * @param  Collection<string, Collection<int, ChatConversation>>  $conversations
+     */
+    private function resolveSelected(Request $request, Collection $conversations): ?ChatConversation
+    {
+        $flat = $conversations->flatten();
+
+        if ($requested = $request->integer('c')) {
+            $found = $flat->firstWhere('id', $requested);
+
+            // Asking for a conversation that is not yours is a 403, not a
+            // silent fallback to some other room.
+            if ($found === null && ChatConversation::whereKey($requested)->exists()) {
+                abort(403);
+            }
+
+            if ($found !== null) {
+                return $found;
+            }
+        }
+
+        return $flat->first();
+    }
+
+    /**
+     * Who @mention autocomplete may offer in this conversation.
+     *
+     * @return Collection<int, array<string, mixed>>
+     */
+    private function mentionablesFor(ChatConversation $conversation): Collection
+    {
+        return $conversation->participants
+            ->map(fn ($p) => $p->user)
+            ->filter()
+            ->map(fn (User $u) => ['id' => $u->id, 'name' => $u->full_name, 'email' => $u->email])
+            ->values();
     }
 
     public function show(ChatSession $chat): View

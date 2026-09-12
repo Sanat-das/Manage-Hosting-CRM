@@ -70,6 +70,15 @@
     "src": "resources/css/branding.css",
     "isEntry": true
   },
+  "resources/css/chat.css": {
+    "file": "assets/chat-D8h77wxn.css",
+    "name": "chat",
+    "names": [
+      "chat.css"
+    ],
+    "src": "resources/css/chat.css",
+    "isEntry": true
+  },
   "resources/js/adminlte.js": {
     "file": "assets/adminlte-Dja0xY7n.js",
     "name": "adminlte",
@@ -85,8 +94,18 @@
     "src": "resources/js/app.js",
     "isEntry": true
   },
+  "resources/js/chat.js": {
+    "file": "assets/chat-B-3sD6qT.js",
+    "name": "chat",
+    "src": "resources/js/chat.js",
+    "isEntry": true,
+    "imports": [
+      "resources/js/echo.js",
+      "resources/js/echo.js"
+    ]
+  },
   "resources/js/echo.js": {
-    "file": "assets/echo-XMaG7dvn.js",
+    "file": "assets/echo-CIx3G6Mj.js",
     "name": "echo",
     "src": "resources/js/echo.js",
     "isEntry": true,
