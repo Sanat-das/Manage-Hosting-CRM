@@ -75,6 +75,10 @@ Route::middleware(['web', 'auth', 'admin', 'throttle:admin'])->prefix('admin')->
         Route::post('chat/conversations/{conversation}/messages', [ChatController::class, 'storeMessage'])->name('chat.messages.store');
         Route::get('chat/conversations/{conversation}/threads/{parent}', [ChatController::class, 'fetchThread'])->name('chat.threads.show');
         Route::post('chat/conversations/{conversation}/typing', [ChatController::class, 'typingHeartbeat'])->name('chat.typing');
+        Route::post('chat/conversations/{conversation}/read', [ChatController::class, 'markRead'])->name('chat.read');
+
+        Route::get('chat/unread', [ChatController::class, 'unread'])->name('chat.unread');
+        Route::post('chat/presence', [ChatController::class, 'presenceHeartbeat'])->name('chat.presence');
 
         Route::put('chat/messages/{message}', [ChatController::class, 'updateMessage'])->name('chat.messages.update');
         Route::delete('chat/messages/{message}', [ChatController::class, 'destroyMessage'])->name('chat.messages.destroy');

@@ -14,6 +14,7 @@ use App\Models\ChatConversation;
 use App\Models\ChatConversationMessage;
 use App\Models\ChatSession;
 use App\Models\User;
+use App\Services\ChatPresence;
 use App\Services\ChatService;
 use App\Support\ChatMessagePayload;
 use Illuminate\Http\JsonResponse;
@@ -40,7 +41,10 @@ class ChatController extends Controller
     /** Newest-first page size for a conversation's history. */
     private const MESSAGE_PAGE = 50;
 
-    public function __construct(private readonly ChatService $chat) {}
+    public function __construct(
+        private readonly ChatService $chat,
+        private readonly ChatPresence $presence,
+    ) {}
 
     public function index(Request $request): View
     {
@@ -281,6 +285,60 @@ class ChatController extends Controller
         }
 
         return response()->json($result);
+    }
+
+    /**
+     * Move this user's read cursor in one conversation.
+     */
+    public function markRead(Request $request, ChatConversation $conversation): JsonResponse
+    {
+        Gate::authorize('view', $conversation);
+
+        $validated = $request->validate(['message_id' => ['nullable', 'integer']]);
+
+        $cursor = $this->chat->markRead(
+            $conversation,
+            $request->user(),
+            $validated['message_id'] ?? null,
+        );
+
+        return response()->json([
+            'last_read_message_id' => $cursor,
+            'unread' => $this->chat->unreadCount($conversation, $request->user()),
+        ]);
+    }
+
+    /**
+     * Unread badges for the whole sidebar, plus who is online.
+     *
+     * This is also the polling fallback: when the websocket is down the client
+     * asks here on a timer instead of being told.
+     */
+    public function unread(Request $request): JsonResponse
+    {
+        return response()->json([
+            'unread' => $this->chat->unreadCounts($request->user()),
+            'online' => $this->presence->online(),
+        ]);
+    }
+
+    /**
+     * "I am still here" from an open tab, or an explicit goodbye.
+     */
+    public function presenceHeartbeat(Request $request): JsonResponse
+    {
+        $validated = $request->validate(['online' => ['sometimes', 'boolean']]);
+
+        if (($validated['online'] ?? true) === false) {
+            $this->presence->leave($request->user());
+        } else {
+            $this->presence->heartbeat($request->user());
+        }
+
+        return response()->json([
+            'online' => $this->presence->online(),
+            'heartbeat_seconds' => ChatPresence::HEARTBEAT_SECONDS,
+        ]);
     }
 
     /**

@@ -317,6 +317,91 @@ class ChatService
     }
 
     /**
+     * Move a participant's read cursor forward.
+     *
+     * Forward only. A late-arriving "I have read up to 12" from a tab that was
+     * behind must not undo a "read up to 30" from the tab in front, or the
+     * unread badge flickers back on for messages the person has already seen.
+     *
+     * @return int the cursor after the call
+     */
+    public function markRead(ChatConversation $conversation, User $user, ?int $messageId = null): int
+    {
+        $participant = ChatParticipant::query()
+            ->where('conversation_id', $conversation->id)
+            ->where('user_id', $user->id)
+            ->first();
+
+        if ($participant === null) {
+            // Reading a public channel you have not joined is allowed, but
+            // there is no row to carry a cursor, and creating one would silently
+            // enrol you.
+            return 0;
+        }
+
+        $target = $messageId ?? (int) $conversation->messages()->max('id');
+        $current = (int) $participant->last_read_message_id;
+
+        if ($target <= $current) {
+            return $current;
+        }
+
+        $participant->forceFill(['last_read_message_id' => $target])->save();
+
+        return $target;
+    }
+
+    /**
+     * How many messages in this conversation this user has not seen.
+     *
+     * Own messages never count: you do not have unread mail from yourself.
+     */
+    public function unreadCount(ChatConversation $conversation, User $user): int
+    {
+        $participant = ChatParticipant::query()
+            ->where('conversation_id', $conversation->id)
+            ->where('user_id', $user->id)
+            ->first();
+
+        if ($participant === null) {
+            return 0;
+        }
+
+        return $conversation->messages()
+            ->where('id', '>', (int) $participant->last_read_message_id)
+            ->where(fn ($q) => $q->whereNull('user_id')->orWhere('user_id', '!=', $user->id))
+            ->count();
+    }
+
+    /**
+     * Unread counts for every conversation this user belongs to, keyed by
+     * conversation id.
+     *
+     * One grouped query rather than one per conversation: this runs on every
+     * sidebar render and on every poll of the fallback endpoint.
+     *
+     * @return array<int, int>
+     */
+    public function unreadCounts(User $user): array
+    {
+        return ChatParticipant::query()
+            ->where('chat_participants.user_id', $user->id)
+            ->join('chat_conversation_messages as m', function ($join) use ($user) {
+                $join->on('m.conversation_id', '=', 'chat_participants.conversation_id')
+                    ->whereColumn('m.id', '>', DB::raw('coalesce(chat_participants.last_read_message_id, 0)'))
+                    ->whereNull('m.deleted_at')
+                    ->where(function ($q) use ($user) {
+                        $q->whereNull('m.user_id')->orWhere('m.user_id', '!=', $user->id);
+                    });
+            })
+            ->groupBy('chat_participants.conversation_id')
+            ->selectRaw('chat_participants.conversation_id as conversation_id, count(m.id) as unread')
+            ->pluck('unread', 'conversation_id')
+            ->map(static fn ($count) => (int) $count)
+            ->all();
+    }
+
+    /**
      * Add a reaction, or take it off if this user already left that emoji.
      *
      * The unique index on (message, user, emoji) is what makes this a
