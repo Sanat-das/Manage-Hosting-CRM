@@ -72,7 +72,6 @@ Route::middleware(['web', 'auth', 'admin', 'throttle:admin'])->prefix('admin')->
         Route::delete('chat/channels/{conversation}/members/{user}', [ChatController::class, 'removeMember'])->name('chat.channels.members.destroy');
 
         Route::get('chat/conversations/{conversation}/messages', [ChatController::class, 'fetchMessages'])->name('chat.messages.index');
-        Route::post('chat/conversations/{conversation}/messages', [ChatController::class, 'storeMessage'])->name('chat.messages.store');
         Route::get('chat/conversations/{conversation}/threads/{parent}', [ChatController::class, 'fetchThread'])->name('chat.threads.show');
         Route::post('chat/conversations/{conversation}/typing', [ChatController::class, 'typingHeartbeat'])->name('chat.typing');
         Route::post('chat/conversations/{conversation}/read', [ChatController::class, 'markRead'])->name('chat.read');
@@ -94,10 +93,28 @@ Route::middleware(['web', 'auth', 'admin', 'throttle:admin'])->prefix('admin')->
         Route::get('chat/unread', [ChatController::class, 'unread'])->name('chat.unread');
         Route::post('chat/presence', [ChatController::class, 'presenceHeartbeat'])->name('chat.presence');
 
-        Route::put('chat/messages/{message}', [ChatController::class, 'updateMessage'])->name('chat.messages.update');
         Route::delete('chat/messages/{message}', [ChatController::class, 'destroyMessage'])->name('chat.messages.destroy');
-        Route::post('chat/messages/{message}/reactions', [ChatController::class, 'toggleReaction'])->name('chat.messages.reactions');
-        Route::post('chat/messages/{message}/attachments', [ChatController::class, 'storeAttachment'])->name('chat.attachments.store');
+
+        /*
+         | Message writes: 60/min per user (RateLimiter::for('chat')).
+         |
+         | `withoutMiddleware` matters as much as the throttle itself. This
+         | file's group header carries `throttle:admin`, which caps every
+         | non-GET admin request at 30/min — half the budget the chat needs,
+         | and the limiter that would otherwise bite first, making
+         | `throttle:chat` decorative. Both would apply; the tighter one wins.
+         |
+         | Deliberately NOT in this group: deleting a message (rare, and the
+         | tighter admin cap is the right one for a destructive action) and the
+         | typing/read/presence heartbeats (they must not spend the budget a
+         | real message needs).
+         */
+        Route::middleware('throttle:chat')->withoutMiddleware('throttle:admin')->group(function () {
+            Route::post('chat/conversations/{conversation}/messages', [ChatController::class, 'storeMessage'])->name('chat.messages.store');
+            Route::put('chat/messages/{message}', [ChatController::class, 'updateMessage'])->name('chat.messages.update');
+            Route::post('chat/messages/{message}/reactions', [ChatController::class, 'toggleReaction'])->name('chat.messages.reactions');
+            Route::post('chat/messages/{message}/attachments', [ChatController::class, 'storeAttachment'])->name('chat.attachments.store');
+        });
 
         // `signed` bounds how long a URL lasts; the policy check inside the
         // controller is what actually authorises the read.

@@ -290,6 +290,21 @@ class AppServiceProvider extends ServiceProvider
                 : Limit::perMinute(30)->by($key);
         });
 
+        // Chat writes — applied as `throttle:chat` to the chat's message routes,
+        // which additionally opt OUT of `throttle:admin`. Chat is the one admin
+        // surface where a human legitimately posts faster than the 30/min the
+        // `admin` limiter allows for writes: a busy channel plus reactions hits
+        // that ceiling in normal use, and a 429 there loses a message the user
+        // has already typed. 60/min per user is the Slack-like budget the plan
+        // specifies, and it still stops a scripted flood dead.
+        //
+        // Keyed per user (falling back to IP only for an unauthenticated caller
+        // that the route's `auth` middleware would have rejected anyway), so one
+        // noisy staff member cannot throttle everybody else.
+        RateLimiter::for('chat', function (Request $request) {
+            return Limit::perMinute(60)->by($request->user()?->getAuthIdentifier() ?: $request->ip());
+        });
+
         // Password reset email — 3 per 10 minutes per actor+target URL to prevent
         // spamming reset links at a specific user account.
         RateLimiter::for('password-reset-email', function (Request $request) {
