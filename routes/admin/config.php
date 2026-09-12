@@ -49,11 +49,11 @@ Route::middleware(['web', 'auth', 'admin', 'throttle:admin'])->prefix('admin')->
 
     // Live Chat
     Route::get('chat', [ChatController::class, 'index'])
-        ->middleware('permission:tickets.view')
+        ->middleware('permission:chat.view')
         ->name('chat.index');
 
     Route::get('chat/{chat}', [ChatController::class, 'show'])
-        ->middleware('permission:tickets.view')
+        ->middleware('permission:chat.view')
         ->name('chat.show');
 
     // Payment Gateway Settings

@@ -137,6 +137,9 @@ class AdminLteRbacSeeder extends Seeder
             'kb.create' => 'Create KB Articles',
             'kb.edit' => 'Edit KB Articles',
             'kb.delete' => 'Delete KB Articles',
+            'chat.view' => 'View Live Chat',
+            'chat.manage' => 'Manage Live Chat',
+            'chat.create_channel' => 'Create Chat Channels',
 
             // users / email
             'users.view' => 'View Users',
@@ -203,6 +206,7 @@ class AdminLteRbacSeeder extends Seeder
                     'domains.view',
                     'tickets.view', 'tickets.create', 'tickets.edit', 'tickets.assign', 'tickets.transfer',
                     'kb.view', 'kb.create', 'kb.edit',
+                    'chat.view', 'chat.create_channel',
                     'email.view',
                 ],
             ],
@@ -221,6 +225,7 @@ class AdminLteRbacSeeder extends Seeder
                     'domains.view',
                     'tickets.view', 'tickets.create',
                     'kb.view',
+                    'chat.view', 'chat.create_channel',
                 ],
             ],
             'marketing' => [
@@ -255,6 +260,7 @@ class AdminLteRbacSeeder extends Seeder
                     'domains.view',
                     'tickets.view',
                     'kb.view',
+                    'chat.view', 'chat.create_channel',
                 ],
             ],
             // Legacy AdminLTE defaults (kept for compatibility)

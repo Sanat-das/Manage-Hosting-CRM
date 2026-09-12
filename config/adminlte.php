@@ -348,7 +348,7 @@ return [
             'text' => 'Live Chat',
             'route' => 'admin.chat.index',
             'icon' => 'bi bi-chat-dots',
-            'can' => 'tickets.view',
+            'can' => 'chat.view',
         ],
 
         ['header' => 'ANALYTICS', 'can' => 'admin.panel'],
