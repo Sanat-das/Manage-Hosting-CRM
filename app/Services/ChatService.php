@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace App\Services;
 
+use App\Events\Chat\ChatMessageDeleted;
+use App\Events\Chat\ChatMessageEdited;
+use App\Events\Chat\NewChatMessage;
 use App\Models\ChatConversation;
 use App\Models\ChatConversationMessage;
 use App\Models\ChatParticipant;
@@ -259,6 +262,14 @@ class ChatService
                     ->update(['last_read_message_id' => $message->id]);
             }
 
+            // After commit, so no subscriber can ever receive a message that a
+            // later failure in this transaction rolled back.
+            DB::afterCommit(static function () use ($message): void {
+                $message->loadMissing(['user', 'attachments', 'entityLinks']);
+
+                NewChatMessage::dispatch($message);
+            });
+
             return $message;
         });
     }
@@ -277,6 +288,12 @@ class ChatService
 
         $message->forceFill(['body' => $body, 'edited_at' => now()])->save();
 
+        DB::afterCommit(static function () use ($message): void {
+            $message->loadMissing(['user', 'attachments', 'entityLinks']);
+
+            ChatMessageEdited::dispatch($message);
+        });
+
         return $message;
     }
 
@@ -286,7 +303,15 @@ class ChatService
      */
     public function deleteMessage(ChatConversationMessage $message): void
     {
+        // Read the identifiers before the delete: the event carries ids only,
+        // never the retracted text.
+        $messageId = (int) $message->id;
+        $conversationId = (int) $message->conversation_id;
+        $parentId = $message->parent_id === null ? null : (int) $message->parent_id;
+
         $message->delete();
+
+        DB::afterCommit(static fn () => ChatMessageDeleted::dispatch($messageId, $conversationId, $parentId));
     }
 
     /**
