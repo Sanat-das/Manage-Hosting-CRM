@@ -27,6 +27,13 @@
     "file": "assets/instrument-sans-600-normal-B9e8oLYv.woff",
     "src": "_instrument-sans-600-normal-B9e8oLYv.woff"
   },
+  "_pusher-Jdx_Oomx.js": {
+    "file": "assets/pusher-Jdx_Oomx.js",
+    "name": "pusher",
+    "imports": [
+      "_rolldown-runtime-QTnfLwEv.js"
+    ]
+  },
   "_rolldown-runtime-QTnfLwEv.js": {
     "file": "assets/rolldown-runtime-QTnfLwEv.js",
     "name": "rolldown-runtime"
@@ -40,7 +47,7 @@
     "src": "node_modules/bootstrap-icons/font/fonts/bootstrap-icons.woff2"
   },
   "resources/css/adminlte.css": {
-    "file": "assets/adminlte-CV5keGZ9.css",
+    "file": "assets/adminlte-zZVgOjbj.css",
     "name": "adminlte",
     "names": [
       "adminlte.css"
@@ -53,7 +60,7 @@
     ]
   },
   "resources/css/app.css": {
-    "file": "assets/app-BmMIUarJ.css",
+    "file": "assets/app-DMwgVQAt.css",
     "name": "app",
     "names": [
       "app.css"
@@ -71,12 +78,21 @@
     "isEntry": true
   },
   "resources/css/chat.css": {
-    "file": "assets/chat-D8h77wxn.css",
+    "file": "assets/chat-CU3pBedS.css",
     "name": "chat",
     "names": [
       "chat.css"
     ],
     "src": "resources/css/chat.css",
+    "isEntry": true
+  },
+  "resources/css/client-chat.css": {
+    "file": "assets/client-chat-DnJ73dta.css",
+    "name": "client-chat",
+    "names": [
+      "client-chat.css"
+    ],
+    "src": "resources/css/client-chat.css",
     "isEntry": true
   },
   "resources/js/adminlte.js": {
@@ -95,7 +111,7 @@
     "isEntry": true
   },
   "resources/js/chat.js": {
-    "file": "assets/chat-B-3sD6qT.js",
+    "file": "assets/chat-C5CIbky0.js",
     "name": "chat",
     "src": "resources/js/chat.js",
     "isEntry": true,
@@ -104,13 +120,24 @@
       "resources/js/echo.js"
     ]
   },
+  "resources/js/client-chat.js": {
+    "file": "assets/client-chat-2O6dmx1Y.js",
+    "name": "client-chat",
+    "src": "resources/js/client-chat.js",
+    "isEntry": true,
+    "imports": [
+      "_rolldown-runtime-QTnfLwEv.js",
+      "_pusher-Jdx_Oomx.js"
+    ]
+  },
   "resources/js/echo.js": {
-    "file": "assets/echo-CIx3G6Mj.js",
+    "file": "assets/echo-CY1Ta5P1.js",
     "name": "echo",
     "src": "resources/js/echo.js",
     "isEntry": true,
     "imports": [
-      "_rolldown-runtime-QTnfLwEv.js"
+      "_rolldown-runtime-QTnfLwEv.js",
+      "_pusher-Jdx_Oomx.js"
     ]
   }
 }
