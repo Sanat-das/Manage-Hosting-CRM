@@ -18,6 +18,7 @@ use App\Models\MessageEntityLink;
 use App\Models\Ticket;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -272,7 +273,7 @@ class ChatService
             // After commit, so no subscriber can ever receive a message that a
             // later failure in this transaction rolled back.
             DB::afterCommit(static function () use ($message): void {
-                $message->loadMissing(['user', 'attachments', 'entityLinks']);
+                $message->loadMissing(['user', 'attachments', 'entityLinks.linkable']);
 
                 NewChatMessage::dispatch($message);
             });
@@ -296,7 +297,7 @@ class ChatService
         $message->forceFill(['body' => $body, 'edited_at' => now()])->save();
 
         DB::afterCommit(static function () use ($message): void {
-            $message->loadMissing(['user', 'attachments', 'entityLinks']);
+            $message->loadMissing(['user', 'attachments', 'entityLinks.linkable']);
 
             ChatMessageEdited::dispatch($message);
         });
@@ -319,6 +320,49 @@ class ChatService
         $message->delete();
 
         DB::afterCommit(static fn () => ChatMessageDeleted::dispatch($messageId, $conversationId, $parentId));
+    }
+
+    /**
+     * Attach a reference to a domain entity to a message.
+     *
+     * The type key is resolved through MessageEntityLink's whitelist and the
+     * row is confirmed to exist before anything is written: a polymorphic
+     * column filled from request input is otherwise a way to point a record at
+     * an arbitrary class, and a dangling id renders as a card for something
+     * that was never there.
+     */
+    public function linkEntity(ChatConversationMessage $message, string $typeKey, int $entityId): MessageEntityLink
+    {
+        $class = MessageEntityLink::classFor($typeKey);
+
+        if ($class === null) {
+            throw new InvalidArgumentException("[{$typeKey}] is not something a message can reference.");
+        }
+
+        if (! $class::query()->whereKey($entityId)->exists()) {
+            throw new ModelNotFoundException;
+        }
+
+        $existing = MessageEntityLink::query()
+            ->where('message_id', $message->id)
+            ->where('linkable_type', $class)
+            ->where('linkable_id', $entityId)
+            ->first();
+
+        if ($existing !== null) {
+            return $existing;
+        }
+
+        return MessageEntityLink::create([
+            'message_id' => $message->id,
+            'linkable_type' => $class,
+            'linkable_id' => $entityId,
+        ]);
+    }
+
+    public function unlinkEntity(MessageEntityLink $link): void
+    {
+        $link->delete();
     }
 
     // --- customer inbox ---------------------------------------------------

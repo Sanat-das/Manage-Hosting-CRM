@@ -19,15 +19,24 @@ use Illuminate\Support\Str;
  * chat.manage and one without, in the same test — with the shared role every
  * such denial assertion silently becomes unprovable.
  *
- * The `users.role` column is set to `marketing`, the one panel role carrying no
- * chat.*, hosting.* or tickets.* permissions, so the fallback lookup in
- * HasRoles::hasPermission() cannot hand the user anything extra either.
+ * The `users.role` column has to be one of the panel roles or AdminMiddleware
+ * turns the user away at the door before any route gate is reached, so it is
+ * set to `marketing` — and that role's own permissions are then emptied.
+ * Without that, `HasRoles::hasPermission()` falls back to the Role named by the
+ * column and quietly hands every user `customers.view` and `products.view`,
+ * which made "this user cannot search customers" impossible to assert.
+ * RefreshDatabase isolates the change to the test that made it.
  */
 trait CreatesChatUsers
 {
+    /** Must be a panel role AdminMiddleware accepts. */
+    private const BASELINE_ROLE = 'marketing';
+
     protected function chatUser(string ...$permissions): User
     {
-        $user = User::factory()->create(['role' => 'marketing']);
+        Role::where('name', self::BASELINE_ROLE)->first()?->permissions()->detach();
+
+        $user = User::factory()->create(['role' => self::BASELINE_ROLE]);
 
         $role = Role::create([
             'name' => 'chat-test-'.Str::random(10),

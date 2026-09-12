@@ -4,8 +4,10 @@ namespace App\Http\Controllers\Admin;
 
 use App\Events\Chat\TypingIndicator;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Chat\SearchChatEntitiesRequest;
 use App\Http\Requests\Chat\StoreChatAttachmentRequest;
 use App\Http\Requests\Chat\StoreChatChannelRequest;
+use App\Http\Requests\Chat\StoreChatEntityLinkRequest;
 use App\Http\Requests\Chat\StoreChatMessageRequest;
 use App\Http\Requests\Chat\ToggleChatReactionRequest;
 use App\Http\Requests\Chat\TypingHeartbeatRequest;
@@ -15,11 +17,14 @@ use App\Models\ChatConversation;
 use App\Models\ChatConversationMessage;
 use App\Models\ChatMessageAttachment;
 use App\Models\ChatSession;
+use App\Models\MessageEntityLink;
 use App\Models\User;
+use App\Services\ChatEntitySearch;
 use App\Services\ChatPresence;
 use App\Services\ChatService;
 use App\Services\TicketService;
 use App\Support\ChatMessagePayload;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
@@ -194,7 +199,7 @@ class ChatController extends Controller
         $query = $conversation->messages()
             ->withTrashed()
             ->whereNull('parent_id')
-            ->with(['user', 'attachments', 'entityLinks'])
+            ->with(['user', 'attachments', 'entityLinks.linkable'])
             ->orderByDesc('id')
             ->limit(self::MESSAGE_PAGE);
 
@@ -230,7 +235,7 @@ class ChatController extends Controller
             return response()->json(['message' => $e->getMessage()], 422);
         }
 
-        $message->load(['user', 'attachments', 'entityLinks']);
+        $message->load(['user', 'attachments', 'entityLinks.linkable']);
 
         return response()->json(['message' => ChatMessagePayload::for($message)], 201);
     }
@@ -245,7 +250,7 @@ class ChatController extends Controller
             return response()->json(['message' => $e->getMessage()], 422);
         }
 
-        $message->load(['user', 'attachments', 'entityLinks']);
+        $message->load(['user', 'attachments', 'entityLinks.linkable']);
 
         return response()->json(['message' => ChatMessagePayload::for($message)]);
     }
@@ -270,11 +275,11 @@ class ChatController extends Controller
 
         $replies = $parent->replies()
             ->withTrashed()
-            ->with(['user', 'attachments', 'entityLinks'])
+            ->with(['user', 'attachments', 'entityLinks.linkable'])
             ->get();
 
         return response()->json([
-            'parent' => ChatMessagePayload::for($parent->load(['user', 'attachments', 'entityLinks'])),
+            'parent' => ChatMessagePayload::for($parent->load(['user', 'attachments', 'entityLinks.linkable'])),
             'replies' => $replies->map(fn ($m) => ChatMessagePayload::for($m))->all(),
         ]);
     }
@@ -290,6 +295,62 @@ class ChatController extends Controller
         }
 
         return response()->json($result);
+    }
+
+    // --- entity references ------------------------------------------------
+
+    /**
+     * Typeahead for the composer's attach picker.
+     */
+    public function searchEntities(SearchChatEntitiesRequest $request, ChatEntitySearch $search): JsonResponse
+    {
+        $validated = $request->validated();
+
+        // Asking for a type you cannot read is a 403, not an empty list: an
+        // empty list is indistinguishable from "no matches" and quietly hides
+        // the fact that the answer was refused.
+        if (isset($validated['type']) && ! $search->allows($request->user(), $validated['type'])) {
+            abort(403);
+        }
+
+        return response()->json([
+            'results' => $search->search($request->user(), $validated['q'], $validated['type'] ?? null),
+            'types' => $search->availableTypes($request->user()),
+        ]);
+    }
+
+    public function storeEntityLink(StoreChatEntityLinkRequest $request, ChatConversationMessage $message, ChatEntitySearch $search): JsonResponse
+    {
+        Gate::authorize('update', $message);
+
+        $validated = $request->validated();
+
+        // Linking is a read of the target, so it needs the same permission the
+        // search does — otherwise the picker's gate is bypassed by guessing ids.
+        abort_unless($search->allows($request->user(), $validated['type']), 403);
+
+        try {
+            $this->chat->linkEntity($message, $validated['type'], (int) $validated['id']);
+        } catch (InvalidArgumentException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        } catch (ModelNotFoundException) {
+            return response()->json(['message' => 'That record no longer exists.'], 404);
+        }
+
+        $message->load(['user', 'attachments', 'entityLinks.linkable']);
+
+        return response()->json(['message' => ChatMessagePayload::for($message)], 201);
+    }
+
+    public function destroyEntityLink(ChatConversationMessage $message, MessageEntityLink $link): JsonResponse
+    {
+        Gate::authorize('update', $message);
+
+        abort_unless($link->message_id === $message->id, 404);
+
+        $this->chat->unlinkEntity($link);
+
+        return response()->json(['deleted' => true]);
     }
 
     // --- customer inbox (operator side) -----------------------------------

@@ -61,4 +61,50 @@ class MessageEntityLink extends Model
     {
         return self::LINKABLE_TYPES[$typeKey] ?? null;
     }
+
+    /**
+     * What the card in the message says.
+     *
+     * A link whose target has since been deleted renders as a tombstone rather
+     * than disappearing: the message said something about it, and silently
+     * dropping the reference rewrites history.
+     */
+    public function label(): string
+    {
+        $entity = $this->linkable;
+
+        if ($entity === null) {
+            return '(deleted)';
+        }
+
+        return match ($this->typeKey()) {
+            'product' => (string) $entity->name,
+            'customer' => (string) $entity->full_name,
+            'contact' => trim($entity->first_name.' '.$entity->last_name),
+            'ticket' => (string) $entity->ticket_no,
+            default => '#'.$this->linkable_id,
+        };
+    }
+
+    /**
+     * Where the card points. Null when the target is gone, or when the type is
+     * not one with an admin page.
+     */
+    public function url(): ?string
+    {
+        if ($this->linkable === null) {
+            return null;
+        }
+
+        return match ($this->typeKey()) {
+            'product' => route('admin.products.show', $this->linkable_id),
+            'customer' => route('admin.customers.show', $this->linkable_id),
+            'ticket' => route('admin.tickets.show', $this->linkable_id),
+            // Contacts have no page of their own; they live on the customer's.
+            'contact' => $this->linkable->customer_id === null
+                ? null
+                : route('admin.customers.show', $this->linkable->customer_id),
+            default => null,
+        };
+    }
 }

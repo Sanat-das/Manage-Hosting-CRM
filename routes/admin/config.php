@@ -77,6 +77,12 @@ Route::middleware(['web', 'auth', 'admin', 'throttle:admin'])->prefix('admin')->
         Route::post('chat/conversations/{conversation}/typing', [ChatController::class, 'typingHeartbeat'])->name('chat.typing');
         Route::post('chat/conversations/{conversation}/read', [ChatController::class, 'markRead'])->name('chat.read');
 
+        // Entity references in the composer. Each type is additionally gated on
+        // the permission that guards its own screen (ChatEntitySearch).
+        Route::get('chat/search-entities', [ChatController::class, 'searchEntities'])->name('chat.search-entities');
+        Route::post('chat/messages/{message}/entity-links', [ChatController::class, 'storeEntityLink'])->name('chat.entity-links.store');
+        Route::delete('chat/messages/{message}/entity-links/{link}', [ChatController::class, 'destroyEntityLink'])->name('chat.entity-links.destroy');
+
         // Customer inbox, operator side. Each action additionally requires
         // chat.manage via ChatConversationPolicy::operate().
         Route::get('chat/inbox', [ChatController::class, 'inbox'])->name('chat.inbox');

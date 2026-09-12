@@ -6,6 +6,7 @@ namespace App\Support;
 
 use App\Models\ChatConversationMessage;
 use App\Models\ChatMessageAttachment;
+use App\Models\MessageEntityLink;
 use Illuminate\Support\Facades\URL;
 
 /**
@@ -56,10 +57,12 @@ final class ChatMessagePayload
                 ? $message->attachments->map(static fn ($a) => self::attachment($a))->all()
                 : [],
             'entity_links' => $message->relationLoaded('entityLinks')
-                ? $message->entityLinks->map(static fn ($link) => [
+                ? $message->entityLinks->map(static fn (MessageEntityLink $link) => [
                     'id' => $link->id,
                     'type' => $link->typeKey(),
                     'entity_id' => $link->linkable_id,
+                    'label' => $link->label(),
+                    'url' => $link->url(),
                 ])->all()
                 : [],
         ];
