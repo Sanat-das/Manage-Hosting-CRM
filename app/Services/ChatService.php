@@ -8,6 +8,7 @@ use App\Events\Chat\ChatMessageDeleted;
 use App\Events\Chat\ChatMessageEdited;
 use App\Events\Chat\NewChatMessage;
 use App\Events\Chat\ReactionToggled;
+use App\Models\AuditLog;
 use App\Models\ChatConversation;
 use App\Models\ChatConversationMessage;
 use App\Models\ChatMessageAttachment;
@@ -25,9 +26,11 @@ use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use InvalidArgumentException;
 use RuntimeException;
+use Throwable;
 
 /**
  * The write side of the Slack-like chat.
@@ -48,6 +51,12 @@ class ChatService
 
     /** A group DM beyond this is a channel that has not admitted it yet. */
     public const MAX_GROUP_DM_PARTICIPANTS = 50;
+
+    /** `audit_log.entity_type` for a conversation-level action. */
+    private const AUDIT_ENTITY_CONVERSATION = 'chat_conversation';
+
+    /** `audit_log.entity_type` for a message-level action. */
+    private const AUDIT_ENTITY_MESSAGE = 'chat_message';
 
     /**
      * The notification gate is injected so a test can swap it, but it defaults
@@ -91,7 +100,17 @@ class ChatService
                 'created_by' => $creator->id,
             ]);
 
-            $this->addMember($conversation, $creator, ChatParticipant::ROLE_ADMIN);
+            // The creator's own seat comes with the room; it is covered by the
+            // channel_created row below rather than a second member_added one.
+            $this->addMember($conversation, $creator, ChatParticipant::ROLE_ADMIN, recordAudit: false);
+
+            $this->audit('chat.channel_created', self::AUDIT_ENTITY_CONVERSATION, $conversation->id, [
+                'name' => $conversation->name,
+                'slug' => $conversation->slug,
+                'type' => $conversation->type,
+                'is_private' => (bool) $conversation->is_private,
+                'department' => $conversation->department,
+            ], $creator);
 
             return $conversation;
         });
@@ -121,8 +140,9 @@ class ChatService
                 'created_by' => $a->id,
             ]);
 
-            $this->addMember($conversation, $a);
-            $this->addMember($conversation, $b);
+            // The two seats ARE the DM — see addMember()'s $recordAudit note.
+            $this->addMember($conversation, $a, recordAudit: false);
+            $this->addMember($conversation, $b, recordAudit: false);
 
             return $conversation;
         });
@@ -159,6 +179,7 @@ class ChatService
                     $conversation,
                     $person,
                     $person->id === $creator->id ? ChatParticipant::ROLE_ADMIN : ChatParticipant::ROLE_MEMBER,
+                    recordAudit: false,
                 );
             }
 
@@ -168,11 +189,19 @@ class ChatService
 
     /**
      * Add someone to a conversation, or return the row they already have.
+     *
+     * `$recordAudit` is false for the seats that come with a room being created
+     * (the channel creator, both halves of a DM, the operator taking a customer
+     * conversation): those are already described by the audit row for the
+     * action that caused them, and a second "member added" row alongside says
+     * nothing new. An idempotent re-add writes nothing either — an audit trail
+     * records changes, not requests.
      */
     public function addMember(
         ChatConversation $conversation,
         User $user,
         string $role = ChatParticipant::ROLE_MEMBER,
+        bool $recordAudit = true,
     ): ChatParticipant {
         if ($conversation->type === ChatConversation::TYPE_GROUP_DM
             && $conversation->participants()->count() >= self::MAX_GROUP_DM_PARTICIPANTS) {
@@ -188,12 +217,23 @@ class ChatService
             return $participant;
         }
 
-        return ChatParticipant::create([
+        $participant = ChatParticipant::create([
             'conversation_id' => $conversation->id,
             'user_id' => $user->id,
             'role' => $role,
             'joined_at' => now(),
         ]);
+
+        if ($recordAudit) {
+            $this->audit('chat.member_added', self::AUDIT_ENTITY_CONVERSATION, $conversation->id, [
+                'conversation_type' => $conversation->type,
+                'name' => $conversation->name,
+                'member_user_id' => $user->id,
+                'role' => $role,
+            ]);
+        }
+
+        return $participant;
     }
 
     /**
@@ -202,10 +242,19 @@ class ChatService
      */
     public function removeMember(ChatConversation $conversation, User $user): void
     {
-        ChatParticipant::query()
+        $removed = ChatParticipant::query()
             ->where('conversation_id', $conversation->id)
             ->where('user_id', $user->id)
             ->delete();
+
+        // Nothing removed means they were not in the room — no change, no row.
+        if ($removed > 0) {
+            $this->audit('chat.member_removed', self::AUDIT_ENTITY_CONVERSATION, $conversation->id, [
+                'conversation_type' => $conversation->type,
+                'name' => $conversation->name,
+                'member_user_id' => $user->id,
+            ]);
+        }
     }
 
     /**
@@ -215,6 +264,13 @@ class ChatService
     public function archive(ChatConversation $conversation): ChatConversation
     {
         $conversation->forceFill(['archived_at' => now()])->save();
+
+        $this->audit('chat.channel_archived', self::AUDIT_ENTITY_CONVERSATION, $conversation->id, [
+            'conversation_type' => $conversation->type,
+            'name' => $conversation->name,
+            'slug' => $conversation->slug,
+            'archived_at' => $conversation->archived_at?->toDateTimeString(),
+        ]);
 
         return $conversation;
     }
@@ -335,7 +391,20 @@ class ChatService
         $conversationId = (int) $message->conversation_id;
         $parentId = $message->parent_id === null ? null : (int) $message->parent_id;
 
+        // Length, not text: the audit records THAT something was retracted, and
+        // retracting a message must not copy it somewhere it survives.
+        $bodyLength = mb_strlen((string) $message->body);
+        $authorId = $message->user_id === null ? null : (int) $message->user_id;
+
         $message->delete();
+
+        $this->audit('chat.message_deleted', self::AUDIT_ENTITY_MESSAGE, $messageId, [
+            'conversation_id' => $conversationId,
+            'conversation_type' => $message->conversation?->type,
+            'author_user_id' => $authorId,
+            'body_length' => $bodyLength,
+            'was_thread_reply' => $parentId !== null,
+        ]);
 
         DB::afterCommit(static fn () => ChatMessageDeleted::dispatch($messageId, $conversationId, $parentId));
     }
@@ -381,6 +450,62 @@ class ChatService
     public function unlinkEntity(MessageEntityLink $link): void
     {
         $link->delete();
+    }
+
+    // --- audit trail ------------------------------------------------------
+
+    /**
+     * Record a chat action in `audit_log`.
+     *
+     * `audit_log` rather than `activity_log` for two reasons: it is the table
+     * with the entity_type/entity_id pair these actions need (a chat action is
+     * about a conversation or a message, not about a customer), and
+     * `activity_log` is read back to the customer on the client dashboard —
+     * internal staff chat administration has no business appearing there.
+     *
+     * METADATA ONLY. Nothing written here may contain a message body: this
+     * table is long-lived, widely readable, and exported. Identifiers, counts
+     * and lengths describe what happened without republishing what was said.
+     *
+     * Authorisation happens in the policy before any of these methods is
+     * reached, so a refused attempt never gets far enough to write a row.
+     *
+     * Never throws: an audit trail that can break a conversation is worse than
+     * one with a gap in it, and the gap is visible in the log.
+     *
+     * @param  array<string, mixed>  $details
+     */
+    private function audit(
+        string $action,
+        string $entityType,
+        ?int $entityId,
+        array $details = [],
+        ?User $actor = null,
+    ): void {
+        try {
+            $request = app('request');
+
+            AuditLog::create([
+                'user_id' => $actor?->id ?? $request?->user()?->id ?? auth()->id(),
+                'action' => $action,
+                'entity_type' => $entityType,
+                'entity_id' => $entityId,
+                'details' => $details !== [] ? json_encode($details) : null,
+                'ip_address' => $request?->ip(),
+                'user_agent' => $request?->userAgent(),
+                'created_at' => now(),
+            ]);
+        } catch (Throwable $e) {
+            try {
+                Log::warning('ChatService: audit_log insert failed.', [
+                    'action' => $action,
+                    'entity_type' => $entityType,
+                    'entity_id' => $entityId,
+                    'error' => $e->getMessage(),
+                ]);
+            } catch (Throwable) {
+            }
+        }
     }
 
     // --- customer inbox ---------------------------------------------------
@@ -485,7 +610,9 @@ class ChatService
                 'status' => ChatConversation::STATUS_ACTIVE,
             ])->save();
 
-            $this->addMember($conversation, $operator);
+            // Assignment is its own event; the seat it grants is not a separate
+            // membership change.
+            $this->addMember($conversation, $operator, recordAudit: false);
 
             DB::afterCommit(function () use ($conversation, $operator, $actor): void {
                 $this->notifyForAssignment($conversation, $operator, $actor);
@@ -527,6 +654,14 @@ class ChatService
             'status' => ChatConversation::STATUS_CLOSED,
             'closed_at' => now(),
         ])->save();
+
+        $this->audit('chat.conversation_closed', self::AUDIT_ENTITY_CONVERSATION, $conversation->id, [
+            'conversation_type' => $conversation->type,
+            'customer_id' => $conversation->customer_id,
+            'assigned_operator_id' => $conversation->assigned_operator_id,
+            'department' => $conversation->department,
+            'closed_at' => $conversation->closed_at?->toDateTimeString(),
+        ]);
 
         return $conversation;
     }
@@ -600,6 +735,16 @@ class ChatService
             'linkable_type' => Ticket::class,
             'linkable_id' => $ticket->id,
             'created_at' => now(),
+        ]);
+
+        // The transcript itself is deliberately absent: the ticket already
+        // holds it, and the audit trail is a list of what happened.
+        $this->audit('chat.converted_to_ticket', self::AUDIT_ENTITY_CONVERSATION, $conversation->id, [
+            'conversation_type' => $conversation->type,
+            'customer_id' => $conversation->customer_id,
+            'ticket_id' => $ticket->id,
+            'ticket_no' => $ticket->ticket_no,
+            'message_count' => $messages->count(),
         ]);
 
         return $ticket;

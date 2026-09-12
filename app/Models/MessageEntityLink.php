@@ -3,6 +3,8 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -84,6 +86,144 @@ class MessageEntityLink extends Model
             'ticket' => (string) $entity->ticket_no,
             default => '#'.$this->linkable_id,
         };
+    }
+
+    /**
+     * The recent chat messages that reference $entity, for the timeline card on
+     * that entity's admin page.
+     *
+     * Three things this has to get right:
+     *
+     *  - VISIBILITY. An entity page is a side door into chat: without a filter,
+     *    a private channel's message would be readable by anyone who can open
+     *    the product it mentions. Conversations are narrowed in SQL the same
+     *    way ChatController's sidebar narrows them, and the ≤5 survivors are
+     *    then re-checked against ChatConversationPolicy, which stays the single
+     *    authority. The SQL is only a cheap pre-filter.
+     *  - COST. Constant, whether the entity has five links or five thousand:
+     *    the limit is applied in SQL, and the linkable, the message, its author
+     *    and its conversation are all eager-loaded.
+     *  - CONTACTS. A CustomerContact has no page of its own, so a message that
+     *    references one surfaces on the customer it belongs to.
+     *
+     * @return Collection<int, self>
+     */
+    public static function timelineFor(Model $entity, ?User $viewer, int $limit = 5): Collection
+    {
+        $targets = self::timelineTargets($entity);
+
+        if ($viewer === null || $targets === []) {
+            return new Collection;
+        }
+
+        $links = self::query()
+            ->where(function (Builder $query) use ($targets) {
+                foreach ($targets as [$class, $ids]) {
+                    $query->orWhere(
+                        fn (Builder $target) => $target
+                            ->where('linkable_type', $class)
+                            ->whereIn('linkable_id', $ids)
+                    );
+                }
+            })
+            // whereHas also drops links whose message was soft-deleted: a
+            // retracted message does not come back through the side door.
+            ->whereHas(
+                'message',
+                fn (Builder $message) => $message->whereIn('conversation_id', self::readableConversationIds($viewer))
+            )
+            ->with([
+                'linkable',
+                'message.user',
+                'message.conversation.participants.user',
+                'message.conversation.customer.user',
+            ])
+            ->orderByDesc('id')
+            ->limit($limit)
+            ->get();
+
+        // Defence in depth, bounded by $limit: the policy gets the final say on
+        // the handful the pre-filter let through.
+        $decided = [];
+
+        return $links
+            ->filter(function (self $link) use ($viewer, &$decided) {
+                $conversation = $link->message?->conversation;
+
+                if ($conversation === null) {
+                    return false;
+                }
+
+                return $decided[$conversation->id] ??= $viewer->can('view', $conversation);
+            })
+            ->values();
+    }
+
+    /**
+     * Which linkable rows count as "this page", as [class, ids] pairs.
+     *
+     * @return array<int, array{0: class-string, 1: array<int, int>}>
+     */
+    private static function timelineTargets(Model $entity): array
+    {
+        if (! in_array($entity::class, self::LINKABLE_TYPES, true)) {
+            return [];
+        }
+
+        $targets = [[$entity::class, [(int) $entity->getKey()]]];
+
+        if ($entity instanceof Customer) {
+            // Already eager-loaded by CustomerController::show(); the relation
+            // property reuses it rather than querying again.
+            $contactIds = $entity->contacts->pluck('id')->all();
+
+            if ($contactIds !== []) {
+                $targets[] = [CustomerContact::class, $contactIds];
+            }
+        }
+
+        return $targets;
+    }
+
+    /**
+     * A sub-query of the conversation ids $viewer may read, mirroring
+     * ChatConversationPolicy::view() in SQL.
+     */
+    private static function readableConversationIds(User $viewer): Builder
+    {
+        $canManage = $viewer->hasPermission('chat.manage');
+        $canView = $viewer->hasPermission('chat.view');
+
+        return ChatConversation::query()
+            ->select('id')
+            ->where(function (Builder $query) use ($viewer, $canManage, $canView) {
+                // Anything at all you are a participant of.
+                $query->whereHas('participants', fn (Builder $p) => $p->where('user_id', $viewer->id));
+
+                // Public channels, minus the departments you cannot reach.
+                if ($canView) {
+                    $query->orWhere(function (Builder $channel) use ($viewer, $canManage) {
+                        $channel->where('type', ChatConversation::TYPE_CHANNEL)
+                            ->where('is_private', false);
+
+                        if (! $canManage) {
+                            $slugs = $viewer->ticketDepartments()->pluck('slug')->all();
+
+                            $channel->where(
+                                fn (Builder $dept) => $dept
+                                    ->whereNull('department')
+                                    ->orWhere('department', '')
+                                    ->orWhereIn('department', $slugs)
+                            );
+                        }
+                    });
+                }
+
+                // The customer queue, for operators.
+                if ($canManage) {
+                    $query->orWhere('type', ChatConversation::TYPE_CUSTOMER_INBOX);
+                }
+            });
     }
 
     /**
