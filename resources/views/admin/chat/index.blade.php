@@ -29,6 +29,8 @@
          data-user-id="{{ auth()->id() }}"
          data-heartbeat="{{ $heartbeatSeconds }}"
          data-can-operate="{{ $canOperate ? '1' : '0' }}">
+        {{-- Reconnection banner — hidden until JS shows it when Echo is unavailable. --}}
+        <div class="chat-reconnect-banner d-none" id="chat-reconnect-banner" data-reconnect-banner role="status" aria-live="polite">Realtime disconnected — polling</div>
         <div class="card-body p-0 d-flex chat-shell__body">
 
             {{-- Sidebar ------------------------------------------------- --}}
@@ -130,6 +132,13 @@
                             @endif
                         </div>
 
+                        @if ($selected->type === \App\Models\ChatConversation::TYPE_CHANNEL && ! $selected->isArchived())
+                            @can('archive', $selected)
+                                <button type="button" class="btn btn-sm btn-outline-secondary" id="chat-archive"
+                                        data-chat-archive>Archive</button>
+                            @endcan
+                        @endif
+
                         @if ($canOperate && $selected->isCustomerInbox())
                             <div class="d-flex gap-2" role="group" aria-label="Customer conversation actions">
                                 <button type="button" class="btn btn-sm btn-outline-primary" data-inbox-action="assign">Take</button>
@@ -142,6 +151,14 @@
                     <div class="chat-messages" id="chat-messages" data-oldest="{{ $messages->first()['id'] ?? '' }}">
                         <div class="text-center py-2">
                             <button type="button" class="btn btn-sm btn-link" id="chat-load-older">Load older messages</button>
+                        </div>
+                        {{-- Loading skeletons — hidden once history has rendered. JS toggles them. --}}
+                        <div class="chat-skeleton d-none" data-chat-skeleton aria-hidden="true">
+                            <div class="chat-skeleton__line"></div>
+                            <div class="chat-skeleton__line w-75"></div>
+                            <div class="chat-skeleton__line w-50"></div>
+                            <div class="chat-skeleton__line"></div>
+                            <div class="chat-skeleton__line w-75"></div>
                         </div>
                         <ol class="chat-messages__list" id="chat-message-list">
                             {{-- Rendered server-side so the conversation is readable
@@ -220,6 +237,28 @@
                     <button type="submit" class="btn btn-sm btn-primary mt-2">Reply</button>
                 </form>
             </aside>
+        </div>
+
+        {{-- Error toasts — hidden until a send fails. --}}
+        <div class="chat-toast d-none" id="chat-toast" data-chat-toast role="alert" aria-live="assertive">
+            <span class="chat-toast__message" data-chat-toast-message></span>
+            <button type="button" class="btn btn-sm btn-outline-light ms-2 d-none" data-chat-retry>Retry</button>
+            <button type="button" class="btn-close btn-close-white ms-2" data-chat-toast-close aria-label="Dismiss"></button>
+        </div>
+
+        {{-- Confirmation dialog for archive/delete — hidden until needed. --}}
+        <div class="chat-confirm d-none" id="chat-confirm" data-chat-confirm role="dialog" aria-modal="true" aria-labelledby="chat-confirm-title">
+            <div class="chat-confirm__backdrop" data-chat-confirm-cancel></div>
+            <div class="chat-confirm__dialog card shadow">
+                <div class="card-body">
+                    <h2 class="h6 mb-2" id="chat-confirm-title" data-chat-confirm-title>Are you sure?</h2>
+                    <p class="small text-body-secondary mb-3" data-chat-confirm-body></p>
+                    <div class="d-flex justify-content-end gap-2">
+                        <button type="button" class="btn btn-sm btn-outline-secondary" data-chat-confirm-cancel>Cancel</button>
+                        <button type="button" class="btn btn-sm btn-danger" data-chat-confirm-ok>Confirm</button>
+                    </div>
+                </div>
+            </div>
         </div>
 
         {{-- The emoji set travels as data, not markup: the reaction picker is

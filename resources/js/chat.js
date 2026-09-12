@@ -13,7 +13,7 @@
  * first page of history is rendered server-side, and every action is a normal
  * fetch() against an endpoint that also answers when Reverb is down.
  */
-import { realtime } from './echo.js';
+import { realtime, onConnectionStateChange } from './echo.js';
 
 const root = document.getElementById('chat-app');
 
@@ -32,6 +32,13 @@ function initChat(root) {
         pendingEntities: [],
         typingTimer: null,
         typingSentAt: 0,
+        // Fallback bookkeeping. `pollTimer` is the single source of truth for
+        // "is a timer running": every start goes through startPolling(), which
+        // refuses to make a second one.
+        lastMessageId: 0,
+        pollTimer: null,
+        fallback: false,
+        retry: null,
     };
 
     const el = {
@@ -55,6 +62,16 @@ function initChat(root) {
         filter: document.getElementById('chat-filter'),
         presence: document.getElementById('chat-presence-list'),
         noMessages: document.getElementById('chat-no-messages'),
+        banner: document.getElementById('chat-reconnect-banner'),
+        skeleton: document.querySelector('[data-chat-skeleton]'),
+        toast: document.getElementById('chat-toast'),
+        toastMessage: document.querySelector('[data-chat-toast-message]'),
+        toastRetry: document.querySelector('[data-chat-retry]'),
+        toastClose: document.querySelector('[data-chat-toast-close]'),
+        confirm: document.getElementById('chat-confirm'),
+        confirmTitle: document.querySelector('[data-chat-confirm-title]'),
+        confirmBody: document.querySelector('[data-chat-confirm-body]'),
+        confirmOk: document.querySelector('[data-chat-confirm-ok]'),
     };
 
     const csrf = document.querySelector('meta[name="csrf-token"]')?.content ?? '';
@@ -118,6 +135,73 @@ function initChat(root) {
         const div = document.createElement('div');
         div.textContent = value ?? '';
         return div.innerHTML;
+    }
+
+    /**
+     * An error that survives being ignored, unlike the status line, which
+     * clears itself after four seconds. `retry` is the whole action to run
+     * again, so the retry button cannot drift from what actually failed.
+     */
+    function toast(message, retry = null) {
+        if (!el.toast || !el.toastMessage) {
+            say(message, 'error');
+            return;
+        }
+
+        state.retry = retry;
+        el.toastMessage.textContent = message;
+        el.toastRetry?.classList.toggle('d-none', retry === null);
+        el.toast.classList.remove('d-none');
+    }
+
+    function dismissToast() {
+        state.retry = null;
+        el.toast?.classList.add('d-none');
+    }
+
+    el.toastClose?.addEventListener('click', dismissToast);
+
+    el.toastRetry?.addEventListener('click', () => {
+        const again = state.retry;
+        dismissToast();
+        again?.();
+    });
+
+    function confirmAction(title, body) {
+        if (!el.confirm || !el.confirmOk) {
+            return Promise.resolve(window.confirm(`${title}\n\n${body}`));
+        }
+
+        return new Promise((resolve) => {
+            const cancels = el.confirm.querySelectorAll('[data-chat-confirm-cancel]');
+
+            const close = (answer) => {
+                el.confirm.classList.add('d-none');
+                el.confirmOk.removeEventListener('click', accept);
+                cancels.forEach((button) => button.removeEventListener('click', reject));
+                document.removeEventListener('keydown', onKey);
+                resolve(answer);
+            };
+
+            const accept = () => close(true);
+            const reject = () => close(false);
+            const onKey = (event) => {
+                if (event.key === 'Escape') close(false);
+            };
+
+            el.confirmTitle.textContent = title;
+            el.confirmBody.textContent = body;
+            el.confirm.classList.remove('d-none');
+
+            el.confirmOk.addEventListener('click', accept);
+            cancels.forEach((button) => button.addEventListener('click', reject));
+            document.addEventListener('keydown', onKey);
+            el.confirmOk.focus();
+        });
+    }
+
+    function showSkeleton(on) {
+        el.skeleton?.classList.toggle('d-none', !on);
     }
 
     function atBottom() {
@@ -195,7 +279,16 @@ function initChat(root) {
         return li;
     }
 
+    /**
+     * The dedupe point for both transports: a message that arrives over the
+     * websocket and again from the 5s poll replaces its own row instead of
+     * appearing twice, because the row id is the message id.
+     */
     function upsertMessage(message) {
+        if (Number(message.id) > state.lastMessageId) {
+            state.lastMessageId = Number(message.id);
+        }
+
         const existing = document.getElementById(`chat-message-${message.id}`);
         const node = renderMessage(message);
 
@@ -278,8 +371,13 @@ function initChat(root) {
         try {
             await send(body);
             el.body.value = '';
-        } catch {
-            // The message stays in the box so it is not lost.
+            dismissToast();
+        } catch (error) {
+            // The message stays in the box so it is not lost, and the toast
+            // offers to post exactly this body again.
+            toast(error.payload?.errors?.body?.[0] || `Message not sent: ${error.message}`, () => {
+                el.composer.requestSubmit();
+            });
         }
     });
 
@@ -333,14 +431,19 @@ function initChat(root) {
         const id = Number(row.dataset.messageId);
 
         if (button.dataset.action === 'delete') {
-            if (!window.confirm('Delete this message? It will show as [deleted] in the thread.')) return;
+            const confirmed = await confirmAction(
+                'Delete this message?',
+                'It stays in the thread as [deleted] so the conversation still reads in order.',
+            );
+            if (!confirmed) return;
+
             try {
                 await api(`/admin/chat/messages/${id}`, { method: 'DELETE' });
                 row.classList.add('is-deleted');
                 row.querySelector('.chat-message__body').textContent = '[deleted]';
                 row.querySelector('.chat-message__actions')?.remove();
             } catch (error) {
-                say(error.message, 'error');
+                toast(`Could not delete the message: ${error.message}`);
             }
             return;
         }
@@ -430,7 +533,9 @@ function initChat(root) {
     async function openThread(parentId) {
         state.threadParentId = parentId;
         el.thread?.classList.remove('d-none');
-        el.threadBody.innerHTML = '<p class="text-body-secondary p-3 mb-0">Loading...</p>';
+        el.threadBody.innerHTML =
+            '<div class="chat-skeleton"><div class="chat-skeleton__line"></div>' +
+            '<div class="chat-skeleton__line w-75"></div><div class="chat-skeleton__line w-50"></div></div>';
 
         try {
             const result = await api(`/admin/chat/conversations/${state.conversationId}/threads/${parentId}`);
@@ -470,6 +575,7 @@ function initChat(root) {
 
         el.loadOlder.disabled = true;
         el.loadOlder.textContent = 'Loading...';
+        showSkeleton(true);
 
         try {
             const result = await api(
@@ -495,7 +601,9 @@ function initChat(root) {
         } catch (error) {
             el.loadOlder.disabled = false;
             el.loadOlder.textContent = 'Load older messages';
-            say(error.message, 'error');
+            toast(`Could not load older messages: ${error.message}`, () => el.loadOlder.click());
+        } finally {
+            showSkeleton(false);
         }
     });
 
@@ -528,13 +636,31 @@ function initChat(root) {
         }
     });
 
+    document.getElementById('chat-archive')?.addEventListener('click', async () => {
+        const confirmed = await confirmAction(
+            'Archive this channel?',
+            'It disappears from everyone\'s sidebar and nobody can post in it again.',
+        );
+        if (!confirmed) return;
+
+        try {
+            await api(`/admin/chat/channels/${state.conversationId}/archive`, { method: 'POST' });
+            window.location = '/admin/chat';
+        } catch (error) {
+            toast(`Could not archive the channel: ${error.message}`);
+        }
+    });
+
     // --- customer inbox actions -------------------------------------------
 
     document.querySelectorAll('[data-inbox-action]').forEach((button) => {
         button.addEventListener('click', async () => {
             const action = button.dataset.inboxAction;
 
-            if (action === 'close' && !window.confirm('Close this conversation?')) return;
+            if (action === 'close'
+                && !(await confirmAction('Close this conversation?', 'The customer can still read it, but nobody can post again.'))) {
+                return;
+            }
 
             try {
                 const result = await api(`/admin/chat/inbox/${state.conversationId}/${action}`, { method: 'POST' });
@@ -693,6 +819,89 @@ function initChat(root) {
 
         state.pendingEntities.splice(Number(remove.dataset.removeChip), 1);
         renderChips();
+    });
+
+    // --- polling fallback ---------------------------------------------------
+
+    /** How often the fallback asks for new messages, in milliseconds. */
+    const POLL_EVERY = 5000;
+
+    state.lastMessageId = Array.from(el.list?.querySelectorAll('[data-message-id]') ?? []).reduce(
+        (highest, row) => Math.max(highest, Number(row.dataset.messageId) || 0),
+        0,
+    );
+
+    async function pollOnce() {
+        if (!state.conversationId) return;
+
+        try {
+            const result = await api(
+                `/admin/chat/conversations/${state.conversationId}/messages?after_id=${state.lastMessageId}`,
+            );
+            result.messages.forEach(upsertMessage);
+        } catch {
+            // The banner already explains why the room is quiet; a toast on
+            // every failed poll would be a toast every five seconds.
+        }
+    }
+
+    /**
+     * Exactly one interval can exist: the guard on `pollTimer` is what stops a
+     * disconnect/reconnect cycle from stacking timers, and a hidden tab never
+     * starts one at all.
+     */
+    function startPolling() {
+        if (state.pollTimer !== null || !state.conversationId || document.hidden) return;
+
+        state.pollTimer = setInterval(pollOnce, POLL_EVERY);
+        pollOnce();
+    }
+
+    function stopPolling() {
+        if (state.pollTimer === null) return;
+
+        clearInterval(state.pollTimer);
+        state.pollTimer = null;
+    }
+
+    function setFallback(active) {
+        state.fallback = active;
+        el.banner?.classList.toggle('d-none', !active);
+
+        if (active) {
+            startPolling();
+        } else {
+            stopPolling();
+        }
+    }
+
+    // A backgrounded tab must not poll forever. It resumes on the way back in,
+    // and only if the websocket is still down.
+    document.addEventListener('visibilitychange', () => {
+        if (document.hidden) {
+            stopPolling();
+        } else if (state.fallback) {
+            startPolling();
+        }
+    });
+
+    /**
+     * `connecting` and `initialized` are the transient states of a socket that
+     * has not answered yet: they leave the current mode alone rather than
+     * flashing the banner on every page load. Anything that is not `connected`
+     * after that means fall back.
+     */
+    onConnectionStateChange((connectionState) => {
+        if (connectionState === 'connected') {
+            setFallback(false);
+            return;
+        }
+
+        if (connectionState === 'connecting' || connectionState === 'initialized') {
+            return;
+        }
+
+        setFallback(true);
     });
 
     // --- realtime ---------------------------------------------------------
