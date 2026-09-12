@@ -1,8 +1,13 @@
 @php
     $user = auth()->user();
-    $name = $user->name ?? ($user->email ?? 'Guest');
+    $name = $user?->name ?? ($user?->email ?? 'Guest');
     $memberSince = $user?->created_at ? $user->created_at->format('M. Y') : null;
 @endphp
+{{-- Nothing to show a visitor who is not logged in, and $user->hasRole() below
+     is a fatal error on null. That mattered beyond cosmetics: this partial is
+     rendered by the error layout too, so an unguarded null turned every 403
+     shown to a logged-out visitor into a 500, anywhere in the application. --}}
+@if ($user)
 <li class="nav-item dropdown user-menu">
     <a href="#" class="nav-link dropdown-toggle" data-bs-toggle="dropdown">
         <i class="bi bi-person-circle user-image rounded-circle shadow" style="font-size:1.5rem;"></i>
@@ -43,3 +48,4 @@
         </li>
     </ul>
 </li>
+@endif
