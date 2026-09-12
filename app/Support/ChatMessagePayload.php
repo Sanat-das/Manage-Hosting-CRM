@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\Support;
 
 use App\Models\ChatConversationMessage;
+use App\Models\ChatMessageAttachment;
+use Illuminate\Support\Facades\URL;
 
 /**
  * The one shape a message takes on the wire.
@@ -20,6 +22,9 @@ use App\Models\ChatConversationMessage;
  */
 final class ChatMessagePayload
 {
+    /** How long a signed attachment URL stays usable. */
+    public const ATTACHMENT_URL_MINUTES = 60;
+
     /**
      * @return array<string, mixed>
      */
@@ -48,13 +53,7 @@ final class ChatMessagePayload
             'created_at' => $message->created_at?->toIso8601String(),
             'edited_at' => $message->edited_at?->toIso8601String(),
             'attachments' => $message->relationLoaded('attachments')
-                ? $message->attachments->map(static fn ($a) => [
-                    'id' => $a->id,
-                    'filename' => $a->filename,
-                    'mime_type' => $a->mime_type,
-                    'size' => $a->humanSize(),
-                    'is_image' => $a->isImage(),
-                ])->all()
+                ? $message->attachments->map(static fn ($a) => self::attachment($a))->all()
                 : [],
             'entity_links' => $message->relationLoaded('entityLinks')
                 ? $message->entityLinks->map(static fn ($link) => [
@@ -63,6 +62,33 @@ final class ChatMessagePayload
                     'entity_id' => $link->linkable_id,
                 ])->all()
                 : [],
+        ];
+    }
+
+    /**
+     * One attachment, with a time-limited signed URL.
+     *
+     * The signature bounds how long a URL keeps working; it is NOT the
+     * authorisation. The route re-checks the policy on every request, so a
+     * link that leaks out of the conversation is still useless to anyone who
+     * could not have read the message anyway.
+     *
+     * @return array<string, mixed>
+     */
+    public static function attachment(ChatMessageAttachment $attachment): array
+    {
+        return [
+            'id' => $attachment->id,
+            'filename' => $attachment->filename,
+            'mime_type' => $attachment->mime_type,
+            'size' => $attachment->humanSize(),
+            'size_bytes' => (int) $attachment->size_bytes,
+            'is_image' => $attachment->isImage() && $attachment->mime_type !== 'image/svg+xml',
+            'url' => URL::signedRoute(
+                'admin.chat.attachments.show',
+                ['attachment' => $attachment->id],
+                now()->addMinutes(self::ATTACHMENT_URL_MINUTES),
+            ),
         ];
     }
 }

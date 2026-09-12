@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Events\Chat\TypingIndicator;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Chat\StoreChatAttachmentRequest;
 use App\Http\Requests\Chat\StoreChatChannelRequest;
 use App\Http\Requests\Chat\StoreChatMessageRequest;
 use App\Http\Requests\Chat\ToggleChatReactionRequest;
@@ -12,6 +13,7 @@ use App\Http\Requests\Chat\UpdateChatChannelRequest;
 use App\Http\Requests\Chat\UpdateChatMessageRequest;
 use App\Models\ChatConversation;
 use App\Models\ChatConversationMessage;
+use App\Models\ChatMessageAttachment;
 use App\Models\ChatSession;
 use App\Models\User;
 use App\Services\ChatPresence;
@@ -20,9 +22,11 @@ use App\Support\ChatMessagePayload;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\View\View;
 use InvalidArgumentException;
 use RuntimeException;
+use Symfony\Component\HttpFoundation\Response;
 
 /**
  * Admin live chat.
@@ -285,6 +289,67 @@ class ChatController extends Controller
         }
 
         return response()->json($result);
+    }
+
+    /**
+     * Attach a file to a message you just posted.
+     */
+    public function storeAttachment(StoreChatAttachmentRequest $request, ChatConversationMessage $message): JsonResponse
+    {
+        // Attaching is part of authoring, so it is the edit gate, not the read
+        // gate: you may not hang a file off somebody else's message.
+        Gate::authorize('update', $message);
+
+        $attachment = $this->chat->attachFile(
+            $message,
+            $request->file('file'),
+            $request->boolean('inline'),
+        );
+
+        return response()->json(['attachment' => ChatMessagePayload::attachment($attachment)], 201);
+    }
+
+    /**
+     * Serve an attachment.
+     *
+     * The URL is signed, but the signature is not the authorisation — a signed
+     * link that leaked would otherwise be a permanent read token for a private
+     * conversation. The policy is checked on every request as well, so the
+     * signature only bounds how long a URL is usable.
+     */
+    public function showAttachment(Request $request, ChatMessageAttachment $attachment): Response
+    {
+        $message = $attachment->message;
+
+        abort_if($message === null, 404);
+
+        Gate::authorize('view', $message);
+
+        $disk = Storage::disk($attachment->disk);
+
+        abort_unless($disk->exists($attachment->path), 404, 'Attachment file is missing.');
+
+        $mime = $attachment->mime_type ?: 'application/octet-stream';
+
+        // SVG is in the upload whitelist because people paste diagrams, but it
+        // is script-capable markup: never rendered inline, always downloaded.
+        $previewable = $attachment->isImage()
+            && $mime !== 'image/svg+xml';
+
+        if ($previewable && ! $request->boolean('download')) {
+            return response($disk->get($attachment->path), 200, [
+                'Content-Type' => $mime,
+                'Content-Disposition' => 'inline; filename="'.addslashes($attachment->filename).'"',
+                'Content-Length' => (string) $disk->size($attachment->path),
+                'X-Content-Type-Options' => 'nosniff',
+                'Cache-Control' => 'private, max-age=300',
+            ]);
+        }
+
+        return $disk->download($attachment->path, $attachment->filename, [
+            'Content-Type' => $mime,
+            'X-Content-Type-Options' => 'nosniff',
+        ]);
     }
 
     /**

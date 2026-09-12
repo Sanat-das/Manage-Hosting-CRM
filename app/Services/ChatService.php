@@ -10,10 +10,12 @@ use App\Events\Chat\NewChatMessage;
 use App\Events\Chat\ReactionToggled;
 use App\Models\ChatConversation;
 use App\Models\ChatConversationMessage;
+use App\Models\ChatMessageAttachment;
 use App\Models\ChatParticipant;
 use App\Models\ChatReaction;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use InvalidArgumentException;
@@ -314,6 +316,38 @@ class ChatService
         $message->delete();
 
         DB::afterCommit(static fn () => ChatMessageDeleted::dispatch($messageId, $conversationId, $parentId));
+    }
+
+    /**
+     * Store an uploaded file against a message.
+     *
+     * The disk name and the disk-relative path are recorded separately and the
+     * absolute path is never persisted, so the rows survive the application
+     * being moved or the disk repointed. Files go on the `local` disk — under
+     * storage/app/private, outside the web root — and are served only through
+     * a signed, authorised route.
+     *
+     * The stored filename is generated; the user's filename is kept as data.
+     * A user-supplied name on disk is a path-traversal surface and nothing else.
+     */
+    public function attachFile(ChatConversationMessage $message, UploadedFile $file, bool $inline = false): ChatMessageAttachment
+    {
+        $disk = 'local';
+        $path = $file->store('chat-attachments/'.$message->conversation_id, $disk);
+
+        if ($path === false) {
+            throw new RuntimeException('The attachment could not be stored.');
+        }
+
+        return ChatMessageAttachment::create([
+            'message_id' => $message->id,
+            'disk' => $disk,
+            'path' => $path,
+            'filename' => $file->getClientOriginalName(),
+            'mime_type' => $file->getClientMimeType(),
+            'size_bytes' => $file->getSize(),
+            'is_inline' => $inline,
+        ]);
     }
 
     /**

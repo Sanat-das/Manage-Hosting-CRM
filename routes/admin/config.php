@@ -83,6 +83,13 @@ Route::middleware(['web', 'auth', 'admin', 'throttle:admin'])->prefix('admin')->
         Route::put('chat/messages/{message}', [ChatController::class, 'updateMessage'])->name('chat.messages.update');
         Route::delete('chat/messages/{message}', [ChatController::class, 'destroyMessage'])->name('chat.messages.destroy');
         Route::post('chat/messages/{message}/reactions', [ChatController::class, 'toggleReaction'])->name('chat.messages.reactions');
+        Route::post('chat/messages/{message}/attachments', [ChatController::class, 'storeAttachment'])->name('chat.attachments.store');
+
+        // `signed` bounds how long a URL lasts; the policy check inside the
+        // controller is what actually authorises the read.
+        Route::get('chat/attachments/{attachment}', [ChatController::class, 'showAttachment'])
+            ->middleware('signed')
+            ->name('chat.attachments.show');
     });
 
     Route::get('chat/{chat}', [ChatController::class, 'show'])
