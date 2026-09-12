@@ -12,6 +12,9 @@ export default defineConfig({
                 'resources/css/adminlte.css',
                 'resources/js/adminlte.js',
                 'resources/css/branding.css',
+                // A separate entry, not an import inside adminlte.js: the client
+                // portal loads it too, and pusher-js stays out of the main bundle.
+                'resources/js/echo.js',
             ],
             refresh: true,
             fonts: [

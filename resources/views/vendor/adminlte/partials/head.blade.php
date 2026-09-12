@@ -22,7 +22,7 @@
 @endif
 
 {{-- Compiled AdminLTE + Bootstrap from Vite pipeline — branding.css last so :root wins --}}
-@vite(['resources/css/adminlte.css', 'resources/css/branding.css', 'resources/js/adminlte.js'])
+@vite(['resources/css/adminlte.css', 'resources/css/branding.css', 'resources/js/adminlte.js', 'resources/js/echo.js'])
 
 {{-- HostVexa branding: dynamic favicon, OG, theme-color, and primary/accent CSS overrides --}}
 @php
