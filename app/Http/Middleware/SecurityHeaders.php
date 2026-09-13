@@ -3,6 +3,7 @@
 namespace App\Http\Middleware;
 
 use App\Support\AppSettings;
+use App\Support\ReverbConfig;
 use Closure;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -51,13 +52,15 @@ class SecurityHeaders
         // Content Security Policy — minimal and production-safe.
         // - 'self' + 'unsafe-inline' required for AdminLTE inline scripts/styles.
         // - cdn.jsdelivr.net allowed for Bootstrap Icons and related CDN assets.
+        // - connect-src is built at runtime so a configured Reverb host/port is
+        //   permitted (ws:// + wss://) without widening the policy when none is.
         $csp = implode('; ', [
             "default-src 'self'",
             "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net",
             "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net",
             "font-src 'self' https://cdn.jsdelivr.net data:",
             "img-src 'self' data: https:",
-            "connect-src 'self'",
+            'connect-src '.ReverbConfig::cspConnectSrc(),
             "frame-ancestors 'self'",
             "object-src 'none'",
             "base-uri 'self'",

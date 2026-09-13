@@ -17,6 +17,7 @@
  */
 import Echo from 'laravel-echo';
 import Pusher from 'pusher-js';
+import { getReverbConfig } from './reverb-config.js';
 
 /** How often to poll when the websocket is unavailable. */
 const POLL_MS = 6000;
@@ -395,25 +396,23 @@ function boot(el) {
 
         startPolling();
 
-        const key = import.meta.env.VITE_REVERB_APP_KEY;
+        const cfg = getReverbConfig();
 
-        if (!key) {
+        if (!cfg) {
             return;
         }
 
         try {
             window.Pusher = Pusher;
 
-            const scheme = import.meta.env.VITE_REVERB_SCHEME || 'https';
-            const forceTLS = scheme === 'https';
-            const port = Number(import.meta.env.VITE_REVERB_PORT || (forceTLS ? 443 : 80));
+            const forceTLS = cfg.scheme === 'https';
 
             const echo = new Echo({
                 broadcaster: 'reverb',
-                key,
-                wsHost: import.meta.env.VITE_REVERB_HOST || window.location.hostname,
-                wsPort: port,
-                wssPort: port,
+                key: cfg.key,
+                wsHost: cfg.host,
+                wsPort: cfg.port,
+                wssPort: cfg.port,
                 forceTLS,
                 enabledTransports: ['ws', 'wss'],
                 // The customer has no panel session, so the ordinary

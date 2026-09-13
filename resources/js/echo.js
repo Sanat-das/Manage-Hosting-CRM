@@ -9,6 +9,7 @@
  */
 import Echo from 'laravel-echo';
 import Pusher from 'pusher-js';
+import { getReverbConfig } from './reverb-config.js';
 
 // laravel-echo's reverb/pusher connector looks for this global.
 window.Pusher = Pusher;
@@ -26,25 +27,23 @@ export const realtime = {
     reason: '',
 };
 
-const env = import.meta.env;
-const appKey = env.VITE_REVERB_APP_KEY;
+const cfg = getReverbConfig();
 
-if (!appKey) {
+if (!cfg) {
     // Not an error: a panel with no Reverb configured is a supported setup.
-    realtime.reason = 'VITE_REVERB_APP_KEY is not set — real-time chat is off, polling instead.';
+    // The null comes from missing `window.__REVERB__` (most installs) or from
+    // malformed runtime/build-time values — all degrade to polling.
+    realtime.reason = 'Reverb is not configured — real-time chat is off, polling instead.';
 } else {
     try {
-        const scheme = env.VITE_REVERB_SCHEME || 'https';
-        const forceTLS = scheme === 'https';
-        // One port is configured; which of the two Echo uses depends on TLS.
-        const port = Number(env.VITE_REVERB_PORT || (forceTLS ? 443 : 80));
+        const forceTLS = cfg.scheme === 'https';
 
         realtime.echo = new Echo({
             broadcaster: 'reverb',
-            key: appKey,
-            wsHost: env.VITE_REVERB_HOST || window.location.hostname,
-            wsPort: port,
-            wssPort: port,
+            key: cfg.key,
+            wsHost: cfg.host,
+            wsPort: cfg.port,
+            wssPort: cfg.port,
             forceTLS,
             enabledTransports: ['ws', 'wss'],
             // The channel authorisation endpoint is session-authenticated, so

@@ -21,6 +21,18 @@
     @yield('adminlte_css')
 @endif
 
+{{-- Reverb realtime config — resolved at RUNTIME from Laravel config so the
+     committed `public/build/` bundle does not need to be rebuilt per install.
+     `window.__REVERB__` is the ONLY public Reverb surface; the secret never
+     leaves the server (see App\Support\ReverbConfig). When no key is configured
+     nothing is emitted and the JS degrades to polling. --}}
+@php
+    $_reverb = \App\Support\ReverbConfig::forClient();
+@endphp
+@if ($_reverb !== null)
+<script>window.__REVERB__ = @json($_reverb)</script>
+@endif
+
 {{-- Compiled AdminLTE + Bootstrap from Vite pipeline — branding.css last so :root wins --}}
 @vite(['resources/css/adminlte.css', 'resources/css/branding.css', 'resources/js/adminlte.js', 'resources/js/echo.js'])
 

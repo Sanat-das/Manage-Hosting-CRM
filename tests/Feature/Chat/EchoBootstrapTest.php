@@ -21,17 +21,26 @@ class EchoBootstrapTest extends TestCase
 
     public function test_echo_module_initialises_a_reverb_connection(): void
     {
-        $source = file_get_contents(resource_path('js/echo.js'));
+        $echo = file_get_contents(resource_path('js/echo.js'));
+        $cfg = file_get_contents(resource_path('js/reverb-config.js'));
 
-        $this->assertStringContainsString('new Echo(', $source);
-        $this->assertStringContainsString("broadcaster: 'reverb'", $source);
-        $this->assertStringContainsString('VITE_REVERB_APP_KEY', $source);
-        $this->assertStringContainsString('VITE_REVERB_HOST', $source);
-        $this->assertStringContainsString('VITE_REVERB_SCHEME', $source);
+        $this->assertStringContainsString('new Echo(', $echo);
+        $this->assertStringContainsString("broadcaster: 'reverb'", $echo);
+        // Runtime config is primary: echo.js must read window.__REVERB__ via helper.
+        $this->assertStringContainsString('getReverbConfig', $echo);
+        $this->assertStringContainsString("from './reverb-config.js'", $echo);
+        // Dev fallback still references VITE_ vars, but in reverb-config.js, not inlined as the only path.
+        $this->assertStringContainsString('VITE_REVERB_APP_KEY', $cfg);
+        $this->assertStringContainsString('VITE_REVERB_HOST', $cfg);
+        $this->assertStringContainsString('VITE_REVERB_SCHEME', $cfg);
+        $this->assertStringContainsString('window.__REVERB__', $cfg);
 
         // pusher-js must come from the bundle, not a CDN.
-        $this->assertStringContainsString("from 'pusher-js'", $source);
-        $this->assertStringNotContainsString('cdn.', $source);
+        $this->assertStringContainsString("from 'pusher-js'", $echo);
+        $this->assertStringNotContainsString('cdn.', $echo);
+        // The secret must never be referenced client-side.
+        $this->assertStringNotContainsString('REVERB_APP_SECRET', $echo.$cfg);
+        $this->assertStringNotContainsString('VITE_REVERB_APP_SECRET', $echo.$cfg);
     }
 
     public function test_missing_reverb_config_degrades_instead_of_throwing(): void
@@ -40,15 +49,18 @@ class EchoBootstrapTest extends TestCase
 
         // The guard clause, not an unguarded `new Echo`, has to come first:
         // an uncaught throw here would take the whole admin bundle down on any
-        // install that has not configured Reverb.
+        // install that has not configured Reverb. Now the guard is on the
+        // runtime config `cfg`, not a build-time `appKey`.
         $this->assertLessThan(
             strpos($source, 'new Echo('),
-            strpos($source, 'if (!appKey)'),
-            'echo.js must check for a missing app key before constructing Echo.',
+            strpos($source, 'if (!cfg)'),
+            'echo.js must check for a missing runtime config before constructing Echo.',
         );
 
         $this->assertStringContainsString('catch (error)', $source);
         $this->assertStringContainsString('realtime.enabled = false', $source);
+        // No build-time-only early return that Vite could fold away.
+        $this->assertStringNotContainsString('import.meta.env.VITE_REVERB_APP_KEY', $source);
     }
 
     public function test_echo_is_a_vite_entry_point(): void
@@ -62,11 +74,16 @@ class EchoBootstrapTest extends TestCase
 
     public function test_panel_head_loads_the_echo_bundle(): void
     {
+        $head = file_get_contents(resource_path('views/vendor/adminlte/partials/head.blade.php'));
         $this->assertStringContainsString(
             'resources/js/echo.js',
-            file_get_contents(resource_path('views/vendor/adminlte/partials/head.blade.php')),
+            $head,
             'The panel <head> does not @vite echo.js, so no page ever loads it.',
         );
+        // Runtime config must be rendered there so the bundle survives the build.
+        $this->assertStringContainsString('window.__REVERB__', $head, 'The head must render window.__REVERB__ from ReverbConfig::forClient().');
+        $this->assertStringContainsString('ReverbConfig::forClient', $head);
+        $this->assertStringNotContainsString('REVERB_APP_SECRET', $head);
     }
 
     public function test_built_manifest_exposes_the_echo_chunk(): void
