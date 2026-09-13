@@ -63,6 +63,62 @@ quantity is interpreted:
 The legacy `sell_single` flag was removed — `none` is its replacement, and
 existing single-unit products were migrated to it automatically.
 
+## Slack-like Chat
+
+Staff channels, DMs, group DMs, threaded messages, reactions, mentions, file
+attachments, typing and presence, read receipts, search, plus a customer inbox
+that reuses the same engine. Full reference lives in
+[docs/chat-slack.md](docs/chat-slack.md).
+
+### Reverb setup
+
+Realtime is Laravel Reverb, self hosted, no SaaS websocket required. Install
+uses the additive config in `config/broadcasting.php` (`reverb`, `log`, `null`
+only) and `routes/channels.php`, plus Echo plus `pusher-js` and
+`resources/js/reverb-config.js`. The browser config is rendered at request time
+as `window.__REVERB__` from `App\Support\ReverbConfig` so the committed
+`public/build/` does not need a per install rebuild. `REVERB_APP_SECRET` is
+never sent to the client. On a fresh clone `.env.example` ships
+`BROADCAST_CONNECTION=log`; once `scripts/reverb-service.ps1 -Register` is done
+on the IIS host, flip the installed `.env` to `BROADCAST_CONNECTION=reverb` and
+run `php artisan config:clear`. See the operations section in
+[docs/chat-slack.md](docs/chat-slack.md) for the Windows service and IIS
+WebSocket reverse proxy.
+
+### Channel types
+
+`chat_conversations.type` is one of `channel`, `dm`, `group_dm`,
+`customer_inbox`. Channels have a derived slug, optional `is_private` and
+`department` string, plus `topic` or `purpose` and `archived_at` freeze.
+`dm` and `group_dm` are staff only, `customer_inbox` is a single customer or
+guest plus assigned operators via a `guest_token`. Archiving freezes writes
+without deleting history, and archived rooms remain searchable with
+`conversation_archived: true`.
+
+### Entity links
+
+Messages can attach references to `Product`, `Customer`, `CustomerContact`, or
+`Ticket` via `message_entity_links` (polymorphic). Composer typeahead is
+`GET /admin/chat/search-entities`, attach is
+`POST /admin/chat/messages/{message}/entity-links`, and the cards render inline
+and in the entity show timeline.
+
+### Permissions
+
+Three permissions in `AdminLteRbacSeeder` and a backfill migration so
+`php artisan migrate` alone on an upgraded install keeps the Live Chat menu:
+
+- `chat.view` — use chat, see public channels, your DMs, presence. Given to
+  `admin`, `support`, `sales`, `staff`.
+- `chat.manage` — archive, member add or remove, inbox operator actions.
+  Implies `chat.view`.
+- `chat.create_channel` — create a new channel. Given to staff roles alongside
+  `chat.view`.
+
+`config/adminlte.php` and `routes/admin/config.php` gate on `permission:chat.view`,
+with inbox operator actions additionally policy gated via `ChatConversationPolicy`.
+The customer widget is guest token scoped, not permission gated.
+
 ## About Laravel
 
 Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
