@@ -27,9 +27,9 @@
     "file": "assets/instrument-sans-600-normal-B9e8oLYv.woff",
     "src": "_instrument-sans-600-normal-B9e8oLYv.woff"
   },
-  "_pusher-Jdx_Oomx.js": {
-    "file": "assets/pusher-Jdx_Oomx.js",
-    "name": "pusher",
+  "_reverb-config-B3A-HBWw.js": {
+    "file": "assets/reverb-config-B3A-HBWw.js",
+    "name": "reverb-config",
     "imports": [
       "_rolldown-runtime-QTnfLwEv.js"
     ]
@@ -60,7 +60,7 @@
     ]
   },
   "resources/css/app.css": {
-    "file": "assets/app-DMwgVQAt.css",
+    "file": "assets/app-dguVjzu5.css",
     "name": "app",
     "names": [
       "app.css"
@@ -78,7 +78,7 @@
     "isEntry": true
   },
   "resources/css/chat.css": {
-    "file": "assets/chat-CU3pBedS.css",
+    "file": "assets/chat-C4yYICbQ.css",
     "name": "chat",
     "names": [
       "chat.css"
@@ -87,7 +87,7 @@
     "isEntry": true
   },
   "resources/css/client-chat.css": {
-    "file": "assets/client-chat-DnJ73dta.css",
+    "file": "assets/client-chat-Bqseb-oC.css",
     "name": "client-chat",
     "names": [
       "client-chat.css"
@@ -111,7 +111,7 @@
     "isEntry": true
   },
   "resources/js/chat.js": {
-    "file": "assets/chat-C5CIbky0.js",
+    "file": "assets/chat-CjOZMj5x.js",
     "name": "chat",
     "src": "resources/js/chat.js",
     "isEntry": true,
@@ -121,23 +121,23 @@
     ]
   },
   "resources/js/client-chat.js": {
-    "file": "assets/client-chat-2O6dmx1Y.js",
+    "file": "assets/client-chat-CvsIRysO.js",
     "name": "client-chat",
     "src": "resources/js/client-chat.js",
     "isEntry": true,
     "imports": [
       "_rolldown-runtime-QTnfLwEv.js",
-      "_pusher-Jdx_Oomx.js"
+      "_reverb-config-B3A-HBWw.js"
     ]
   },
   "resources/js/echo.js": {
-    "file": "assets/echo-CY1Ta5P1.js",
+    "file": "assets/echo-2KNG92R_.js",
     "name": "echo",
     "src": "resources/js/echo.js",
     "isEntry": true,
     "imports": [
       "_rolldown-runtime-QTnfLwEv.js",
-      "_pusher-Jdx_Oomx.js"
+      "_reverb-config-B3A-HBWw.js"
     ]
   }
 }
