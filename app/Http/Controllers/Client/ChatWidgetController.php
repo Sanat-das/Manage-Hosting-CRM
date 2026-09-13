@@ -321,34 +321,16 @@ class ChatWidgetController extends Controller
     /**
      * The customer's view of a message.
      *
-     * Entity cards are stripped of their links: an internal reference to a
-     * product or ticket may be mentioned in the conversation, and the customer
-     * sees the card, but the admin URL is not theirs to have and would 403
-     * anyway. That is also what makes the card read-only — there is no client
-     * endpoint that creates one.
+     * Delegates to ChatMessagePayload::forClient() — the single place that
+     * strips every identity-bearing field (author_name -> Support, user, email,
+     * avatar/gravatar, entity urls, admin attachment signatures). See that
+     * method's field-by-field audit table.
      *
      * @return array<string, mixed>
      */
     private function clientPayload(ChatConversationMessage $message): array
     {
-        $payload = ChatMessagePayload::for($message);
-
-        $payload['entity_links'] = array_map(
-            static fn (array $link) => ['type' => $link['type'], 'label' => $link['label']],
-            $payload['entity_links'],
-        );
-
-        $payload['attachments'] = array_map(
-            fn (array $attachment) => $this->clientAttachmentUrl($message->conversation_id, $attachment),
-            $payload['attachments'],
-        );
-
-        // That a staff member said it is enough; which staff member, and their
-        // user id, is not the customer's business.
-        $payload['is_operator'] = ! $payload['is_guest'];
-        unset($payload['user']);
-
-        return $payload;
+        return ChatMessagePayload::forClient($message);
     }
 
     /**

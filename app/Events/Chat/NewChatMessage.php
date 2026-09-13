@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Events\Chat;
 
+use App\Models\ChatConversation;
 use App\Models\ChatConversationMessage;
 use App\Support\ChatMessagePayload;
 use Illuminate\Broadcasting\PrivateChannel;
@@ -50,6 +51,14 @@ class NewChatMessage implements ShouldBroadcastNow
      */
     public function broadcastWith(): array
     {
+        $conversation = $this->message->conversation ?? ChatConversation::find($this->message->conversation_id);
+
+        if ($conversation?->isCustomerInbox() === true) {
+            $this->message->loadMissing(['user', 'attachments', 'entityLinks.linkable']);
+
+            return ['message' => ChatMessagePayload::forClient($this->message)];
+        }
+
         return ['message' => ChatMessagePayload::for($this->message)];
     }
 }

@@ -27,6 +27,16 @@ final class ChatMessagePayload
     public const ATTACHMENT_URL_MINUTES = 60;
 
     /**
+     * What the customer is told instead of the operator's real name.
+     *
+     * Matches TypingIndicator::OPERATOR_LABEL — the transcript and the typing
+     * indicator must agree, otherwise the indicator says "Support is typing…"
+     * while the message list above it prints a real full name.
+     * Kept here (public) so the clientPayload helper and the tests share one constant.
+     */
+    public const OPERATOR_LABEL = 'Support';
+
+    /**
      * @return array<string, mixed>
      */
     public static function for(ChatConversationMessage $message): array
@@ -66,6 +76,74 @@ final class ChatMessagePayload
                 ])->all()
                 : [],
         ];
+    }
+
+    /**
+     * The customer-facing view of a message.
+     *
+     * Strips every identity-bearing field so an unauthenticated visitor learns
+     * nothing about which staff member replied. The staff payload (for()) keeps
+     * real names; this one does not. The two are deliberately separate methods
+     * so a future field cannot silently leak by being added to for() alone.
+     *
+     * Field-by-field (guest sees):
+     * - author_name: "Support" when is_guest is false, otherwise the guest's own name
+     * - user: absent (contains id+full_name)
+     * - author_email / user_name / email / avatar* / gravatar* : absent — none are emitted by for(), and this method explicitly unsets them if ever added
+     * - entity_links: type+label only (admin url+entity_id stripped)
+     * - attachments: client route url (admin signed url stripped), no email-derived hash
+     * - is_operator: true for staff, false for guest — the only operator signal the widget needs
+     * - user_id (bare integer): NOT in message payload by design; typing payload's user_id stays bare integer per TypingIndicator and is not removed
+     *
+     * @return array<string, mixed>
+     */
+    public static function forClient(ChatConversationMessage $message): array
+    {
+        $payload = self::for($message);
+
+        // That a staff member said it is enough; which staff member is not the customer's business.
+        // Matches TypingIndicator::OPERATOR_LABEL.
+        if (! $payload['is_guest']) {
+            $payload['author_name'] = self::OPERATOR_LABEL;
+        }
+
+        // Contains {id, name} — the staff full name.
+        unset($payload['user']);
+
+        // Defensive: if any identity field is ever added to for(), it must not reach a guest.
+        unset($payload['author_email'], $payload['user_name'], $payload['email'], $payload['avatar'], $payload['avatar_url'], $payload['gravatar'], $payload['gravatar_url'], $payload['gravatar_hash'], $payload['author_avatar'], $payload['user_id']);
+
+        // Entity cards are read-only for customers: no url, no entity_id to enumerate.
+        $payload['entity_links'] = array_map(
+            static fn (array $link): array => ['type' => $link['type'], 'label' => $link['label']],
+            $payload['entity_links'],
+        );
+
+        // Client attachments use the guest's own download route, not the signed admin one.
+        $payload['attachments'] = array_map(
+            static fn (array $attachment): array => self::clientAttachmentUrl((int) $message->conversation_id, $attachment),
+            $payload['attachments'],
+        );
+
+        $payload['is_operator'] = ! $payload['is_guest'];
+
+        return $payload;
+    }
+
+    /**
+     * Swap the signed admin attachment URL for the customer's own one.
+     *
+     * @param  array<string, mixed>  $attachment
+     * @return array<string, mixed>
+     */
+    private static function clientAttachmentUrl(int $conversationId, array $attachment): array
+    {
+        $attachment['url'] = route('chat.attachment', [
+            'conversation' => $conversationId,
+            'attachment' => $attachment['id'],
+        ]);
+
+        return $attachment;
     }
 
     /**
