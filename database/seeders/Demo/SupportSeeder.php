@@ -2,6 +2,7 @@
 
 namespace Database\Seeders\Demo;
 
+use App\Models\MessageEntityLink;
 use Database\Seeders\Demo\Traits\WithIdempotentSeed;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Carbon;
@@ -153,12 +154,12 @@ class SupportSeeder extends Seeder
      */
     private function report(): void
     {
-        foreach (['tickets', 'ticket_replies', 'knowledge_base', 'chat_sessions', 'chat_messages'] as $table) {
+        foreach (['tickets', 'ticket_replies', 'knowledge_base', 'chat_sessions', 'chat_messages', 'chat_conversations', 'chat_conversation_messages', 'chat_participants', 'chat_reactions', 'chat_message_attachments', 'message_entity_links'] as $table) {
             $count = (int) DB::table($table)->count();
             $min = DummyDataConfig::minRows($table);
             $mark = $count >= $min ? 'OK' : 'SHORT';
 
-            $this->command?->info(sprintf('%-16s %3d rows (min %d) %s', $table, $count, $min, $mark));
+            $this->command?->info(sprintf('%-28s %3d rows (min %d) %s', $table, $count, $min, $mark));
         }
     }
 
@@ -483,6 +484,315 @@ class SupportSeeder extends Seeder
 
                 $this->seedRow('chat_messages', $payload);
             }
+        }
+
+        // Slack-like chat: channels, DMs, customer inbox, threaded messages, reactions, entity links
+        $this->seedModernChat($customerIds, $staffUserIds);
+    }
+
+    /**
+     * Seed Slack-like chat demo data: 3 channels (general, support, billing private),
+     * 4 DMs (staff-only), 1 customer inbox (guest), threaded messages, reactions and entity links.
+     *
+     * Idempotent via WithIdempotentSeed natural keys; re-running updates instead of duplicating.
+     * Uses direct DB writes to avoid side-effects (notifications/broadcasts) during seeding.
+     *
+     * @param  list<int>  $customerIds
+     * @param  list<int>  $staffUserIds
+     */
+    private function seedModernChat(array $customerIds, array $staffUserIds): void
+    {
+        $supportUserId = (int) (DB::table('users')->where('email', 'support@example.com')->value('id') ?? ($staffUserIds[0] ?? 0));
+        $salesUserId = (int) (DB::table('users')->where('email', 'sales@example.com')->value('id') ?? ($staffUserIds[1] ?? 0));
+        $marketingUserId = (int) (DB::table('users')->where('email', 'marketing@example.com')->value('id') ?? ($staffUserIds[2] ?? 0));
+        $adminUserId = (int) (DB::table('users')->where('email', 'admin@localhost.com')->value('id') ?? 0);
+
+        if ($supportUserId === 0 || $salesUserId === 0) {
+            return;
+        }
+
+        // Existing demo rows for entity links
+        $productId = (int) (DB::table('products')->orderBy('id')->value('id') ?? 0);
+        $customerLinkId = $customerIds[0] ?? 0;
+        $ticketId = (int) (DB::table('tickets')->orderBy('id')->value('id') ?? 0);
+        $contactId = (int) (DB::table('customer_contacts')->orderBy('id')->value('id') ?? 0);
+
+        // --- Channels -------------------------------------------------
+        $channels = [
+            ['name' => 'General', 'slug' => 'general', 'is_private' => false, 'department' => null, 'topic' => 'Company-wide announcements', 'purpose' => 'General discussion', 'created_by' => $supportUserId],
+            ['name' => 'Support', 'slug' => 'support', 'is_private' => false, 'department' => 'support', 'topic' => 'Support team channel', 'purpose' => 'Support coordination', 'created_by' => $supportUserId],
+            ['name' => 'Billing', 'slug' => 'billing', 'is_private' => true, 'department' => 'billing', 'topic' => 'Billing • private', 'purpose' => 'Billing matters', 'created_by' => $supportUserId],
+        ];
+
+        $channelIds = [];
+        foreach ($channels as $ch) {
+            $payload = [
+                'type' => 'channel',
+                'name' => $ch['name'],
+                'slug' => $ch['slug'],
+                'is_private' => $ch['is_private'],
+                'department' => $ch['department'],
+                'topic' => $ch['topic'],
+                'purpose' => $ch['purpose'],
+                'created_by' => $ch['created_by'],
+                'guest_token' => null,
+                'customer_id' => null,
+                'assigned_operator_id' => null,
+                'guest_name' => null,
+                'guest_email' => null,
+                'status' => null,
+                'rating' => null,
+                'closed_at' => null,
+                'archived_at' => null,
+            ];
+            $this->seedRow('chat_conversations', $payload);
+            $id = (int) DB::table('chat_conversations')->where('slug', $ch['slug'])->value('id');
+            if ($id !== 0) {
+                $channelIds[$ch['slug']] = $id;
+            }
+        }
+
+        // Channel participants: explicit, billing is private with limited roster
+        $participantsMap = [
+            'general' => [$supportUserId, $salesUserId, $marketingUserId],
+            'support' => [$supportUserId, $salesUserId],
+            'billing' => [$supportUserId, $salesUserId],
+        ];
+
+        foreach ($participantsMap as $slug => $userIds) {
+            $convId = $channelIds[$slug] ?? 0;
+            if ($convId === 0) {
+                continue;
+            }
+            foreach (array_values(array_unique(array_filter($userIds))) as $uid) {
+                $role = ($uid === $supportUserId) ? 'admin' : 'member';
+                $this->seedRow('chat_participants', [
+                    'conversation_id' => $convId,
+                    'user_id' => $uid,
+                    'guest_token' => null,
+                    'role' => $role,
+                    'joined_at' => now()->subDays(5),
+                ]);
+            }
+        }
+
+        // --- DMs (staff-only, 1:1) ----------------------------------
+        $dmDefs = [
+            ['slug' => 'dm-support-sales', 'name' => 'DM Support ↔ Sales', 'pair' => [$supportUserId, $salesUserId], 'creator' => $supportUserId],
+            ['slug' => 'dm-support-marketing', 'name' => 'DM Support ↔ Marketing', 'pair' => [$supportUserId, $marketingUserId], 'creator' => $supportUserId],
+            ['slug' => 'dm-sales-marketing', 'name' => 'DM Sales ↔ Marketing', 'pair' => [$salesUserId, $marketingUserId], 'creator' => $salesUserId],
+            ['slug' => 'dm-admin-support', 'name' => 'DM Admin ↔ Support', 'pair' => [$adminUserId, $supportUserId], 'creator' => $adminUserId],
+        ];
+
+        $dmIds = [];
+        foreach ($dmDefs as $dm) {
+            if (empty($dm['pair'][0]) || empty($dm['pair'][1])) {
+                continue;
+            }
+            $payload = [
+                'type' => 'dm',
+                'name' => $dm['name'],
+                'slug' => $dm['slug'],
+                'is_private' => false,
+                'department' => null,
+                'topic' => null,
+                'purpose' => null,
+                'created_by' => $dm['creator'],
+                'guest_token' => null,
+                'customer_id' => null,
+            ];
+            $this->seedRow('chat_conversations', $payload);
+            $id = (int) DB::table('chat_conversations')->where('slug', $dm['slug'])->value('id');
+            if ($id !== 0) {
+                $dmIds[$dm['slug']] = $id;
+                foreach ($dm['pair'] as $uid) {
+                    if ($uid === 0) {
+                        continue;
+                    }
+                    $this->seedRow('chat_participants', [
+                        'conversation_id' => $id,
+                        'user_id' => $uid,
+                        'guest_token' => null,
+                        'role' => 'member',
+                        'joined_at' => now()->subDays(4),
+                    ]);
+                }
+            }
+        }
+
+        // --- Customer inbox (guest) ---------------------------------
+        $guestToken = 'demo-guest-token-inbox-001';
+        $inboxPayload = [
+            'type' => 'customer_inbox',
+            'name' => null,
+            'slug' => null,
+            'is_private' => false,
+            'department' => 'support',
+            'guest_name' => 'Guest Demo',
+            'guest_email' => 'guest-demo@example.com',
+            'guest_token' => $guestToken,
+            'customer_id' => null,
+            'assigned_operator_id' => null,
+            'status' => 'waiting',
+            'rating' => null,
+            'closed_at' => null,
+            'archived_at' => null,
+            'created_by' => null,
+            'topic' => null,
+            'purpose' => null,
+        ];
+        $this->seedRow('chat_conversations', $inboxPayload);
+        $inboxId = (int) DB::table('chat_conversations')->where('guest_token', $guestToken)->where('type', 'customer_inbox')->value('id');
+        if ($inboxId !== 0) {
+            $this->seedRow('chat_participants', [
+                'conversation_id' => $inboxId,
+                'user_id' => null,
+                'guest_token' => $guestToken,
+                'role' => 'member',
+                'joined_at' => now()->subDays(2),
+            ]);
+        }
+
+        if ($inboxId === 0 || empty($channelIds) || empty($dmIds)) {
+            return;
+        }
+
+        // --- Messages (threaded) ------------------------------------
+        // Helper to seed one message and return its id
+        $seedMsg = function (int $convId, string $body, ?int $userId, ?string $guestToken, ?int $parentId): int {
+            $payload = [
+                'conversation_id' => $convId,
+                'user_id' => $userId,
+                'guest_token' => $guestToken,
+                'parent_id' => $parentId,
+                'body' => $body,
+            ];
+            // created_at/updated_at handled by withTimestamps, but ensure deterministic
+            if (! $this->rowExists('chat_conversation_messages', ['conversation_id' => $convId, 'body' => $body])) {
+                $payload['created_at'] = now()->subDays(1)->addMinutes(crc32($body) % 1440);
+            }
+            $this->seedRow('chat_conversation_messages', $payload);
+
+            return (int) DB::table('chat_conversation_messages')->where('conversation_id', $convId)->where('body', $body)->value('id');
+        };
+
+        // General channel: 5 messages, 2 replies to parent
+        $generalId = $channelIds['general'];
+        $g1 = $seedMsg($generalId, 'Welcome to #general — company-wide announcements live here.', $supportUserId, null, null);
+        $seedMsg($generalId, 'Thanks for setting this up! Happy to be here.', $salesUserId, null, $g1);
+        $seedMsg($generalId, 'Looking forward to collaborating with everyone.', $marketingUserId, null, $g1);
+        $g4 = $seedMsg($generalId, 'Reminder: weekly standup at 10am in this channel. Bring your updates.', $supportUserId, null, null);
+        $seedMsg($generalId, 'Noted, I will join the standup.', $salesUserId, null, null);
+
+        // Support channel: 4 messages, threaded
+        $supportId = $channelIds['support'];
+        $s1 = $seedMsg($supportId, 'Support channel: ongoing incidents are tracked here. See ticket SUP-DEMO-0001.', $supportUserId, null, null);
+        $seedMsg($supportId, 'Acknowledged, monitoring ticket SUP-DEMO-0001 — on it.', $salesUserId, null, $s1);
+        $seedMsg($supportId, 'Customer reported slow admin panel, investigating root cause.', $supportUserId, null, $s1);
+        $seedMsg($supportId, 'Resolved — closing the thread. Thanks team.', $supportUserId, null, null);
+
+        // Billing private: 3 messages, threaded
+        $billingId = $channelIds['billing'];
+        $b1 = $seedMsg($billingId, 'Billing private channel — invoices and renewals discussed here.', $supportUserId, null, null);
+        $seedMsg($billingId, 'Invoice INV-2026-001 is overdue by 3 days.', $salesUserId, null, $b1);
+        $seedMsg($billingId, 'Following up with finance, will update shortly.', $supportUserId, null, $b1);
+
+        // DMs
+        $dmSupportSalesId = $dmIds['dm-support-sales'];
+        $seedMsg($dmSupportSalesId, 'Hey, can you review the quote for Acme Corp?', $supportUserId, null, null);
+        $seedMsg($dmSupportSalesId, 'Sure, sending the updated quote now.', $salesUserId, null, null);
+        $seedMsg($dmSupportSalesId, 'Got it, thanks for the quick turnaround!', $supportUserId, null, null);
+
+        $dmSupportMarketingId = $dmIds['dm-support-marketing'];
+        $seedMsg($dmSupportMarketingId, 'Marketing assets for the launch ready?', $supportUserId, null, null);
+        $seedMsg($dmSupportMarketingId, 'Uploaded to the shared drive — link in #general.', $marketingUserId, null, null);
+
+        $dmSalesMarketingId = $dmIds['dm-sales-marketing'];
+        $seedMsg($dmSalesMarketingId, 'Need pricing details for the new bundle.', $salesUserId, null, null);
+        $seedMsg($dmSalesMarketingId, 'See catalog pricing, I will DM you the sheet.', $marketingUserId, null, null);
+
+        $dmAdminSupportId = $dmIds['dm-admin-support'];
+        $seedMsg($dmAdminSupportId, 'Admin check: billing channel access is private as intended?', $adminUserId, null, null);
+        $seedMsg($dmAdminSupportId, 'Confirmed — billing is private with explicit roster.', $supportUserId, null, null);
+
+        // Customer inbox: 3 messages (guest, staff, guest)
+        $i1 = $seedMsg($inboxId, 'Hi, I need help with my hosting service — site shows 500 on login.', null, $guestToken, null);
+        $seedMsg($inboxId, 'Hello! Sorry to hear that. Could you share your domain name?', $supportUserId, null, null);
+        $seedMsg($inboxId, 'It is demo-client.test — error started this morning.', null, $guestToken, null);
+
+        // --- Reactions ----------------------------------------------
+        $reactionPairs = [
+            ['conv' => $generalId, 'body' => 'Welcome to #general — company-wide announcements live here.', 'emoji' => '👍', 'user' => $salesUserId],
+            ['conv' => $supportId, 'body' => 'Support channel: ongoing incidents are tracked here. See ticket SUP-DEMO-0001.', 'emoji' => '👀', 'user' => $salesUserId],
+            ['conv' => $billingId, 'body' => 'Billing private channel — invoices and renewals discussed here.', 'emoji' => '✅', 'user' => $supportUserId],
+            ['conv' => $dmSupportSalesId, 'body' => 'Sure, sending the updated quote now.', 'emoji' => '❤️', 'user' => $supportUserId],
+        ];
+        foreach ($reactionPairs as $r) {
+            $msgId = (int) DB::table('chat_conversation_messages')->where('conversation_id', $r['conv'])->where('body', $r['body'])->value('id');
+            if ($msgId === 0 || $r['user'] === 0) {
+                continue;
+            }
+            $this->seedRow('chat_reactions', [
+                'message_id' => $msgId,
+                'user_id' => $r['user'],
+                'emoji' => $r['emoji'],
+            ]);
+        }
+
+        // --- Entity links (whitelisted types only) ------------------
+        // Product is whitelisted, CatalogProduct is NOT
+        $links = [];
+        if ($productId !== 0) {
+            $msgId = (int) DB::table('chat_conversation_messages')->where('conversation_id', $generalId)->where('body', 'Reminder: weekly standup at 10am in this channel. Bring your updates.')->value('id');
+            if ($msgId !== 0) {
+                $links[] = ['message_id' => $msgId, 'linkable_type' => MessageEntityLink::LINKABLE_TYPES['product'], 'linkable_id' => $productId];
+            }
+        }
+        if ($ticketId !== 0) {
+            $msgId = (int) DB::table('chat_conversation_messages')->where('conversation_id', $supportId)->where('body', 'Support channel: ongoing incidents are tracked here. See ticket SUP-DEMO-0001.')->value('id');
+            if ($msgId !== 0) {
+                $links[] = ['message_id' => $msgId, 'linkable_type' => MessageEntityLink::LINKABLE_TYPES['ticket'], 'linkable_id' => $ticketId];
+            }
+        }
+        if ($customerLinkId !== 0) {
+            $msgId = $i1 !== 0 ? $i1 : (int) DB::table('chat_conversation_messages')->where('conversation_id', $inboxId)->orderBy('id')->value('id');
+            if ($msgId !== 0) {
+                $links[] = ['message_id' => $msgId, 'linkable_type' => MessageEntityLink::LINKABLE_TYPES['customer'], 'linkable_id' => $customerLinkId];
+            }
+        }
+        // Optional contact link for extra coverage
+        if ($contactId !== 0) {
+            $msgId = (int) DB::table('chat_conversation_messages')->where('conversation_id', $billingId)->where('body', 'Invoice INV-2026-001 is overdue by 3 days.')->value('id');
+            if ($msgId !== 0) {
+                $links[] = ['message_id' => $msgId, 'linkable_type' => MessageEntityLink::LINKABLE_TYPES['contact'], 'linkable_id' => $contactId];
+            }
+        }
+
+        foreach ($links as $link) {
+            $this->seedRow('message_entity_links', $link);
+        }
+
+        // --- Attachments (2 demo rows) ------------------------------
+        $attachDefs = [
+            ['conv' => $generalId, 'body' => 'Welcome to #general — company-wide announcements live here.', 'filename' => 'welcome-banner.png', 'mime' => 'image/png'],
+            ['conv' => $supportId, 'body' => 'Support channel: ongoing incidents are tracked here. See ticket SUP-DEMO-0001.', 'filename' => 'incident-log.pdf', 'mime' => 'application/pdf'],
+        ];
+        foreach ($attachDefs as $a) {
+            $msgId = (int) DB::table('chat_conversation_messages')->where('conversation_id', $a['conv'])->where('body', $a['body'])->value('id');
+            if ($msgId === 0) {
+                continue;
+            }
+            $path = 'chat-attachments/'.$msgId.'/'.$a['filename'];
+            $this->seedRow('chat_message_attachments', [
+                'message_id' => $msgId,
+                'disk' => 'local',
+                'path' => $path,
+                'filename' => $a['filename'],
+                'mime_type' => $a['mime'],
+                'size_bytes' => 2048 + crc32($a['filename']) % 50000,
+                'is_inline' => false,
+                'content_id' => null,
+            ]);
         }
     }
 }

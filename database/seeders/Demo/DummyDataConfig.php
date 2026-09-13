@@ -45,7 +45,7 @@ final class DummyDataConfig
     public const PRODUCTS = 8;
 
     /** Total application tables the demo seed must populate. */
-    public const TOTAL_BUSINESS_TABLES = 93;
+    public const TOTAL_BUSINESS_TABLES = 99;
 
     /**
      * Framework-owned tables intentionally absent from `ROWS`.
@@ -137,6 +137,15 @@ final class DummyDataConfig
         'knowledge_base' => 6,
         'chat_sessions' => 5,
         'chat_messages' => 15,
+
+        // --- Slack-like chat (6) --------------------------------------
+        // 3 channels + 4 DMs + 1 customer inbox; threaded messages, reactions, entity links
+        'chat_conversations' => 8,
+        'chat_conversation_messages' => 24,
+        'chat_participants' => 16,
+        'chat_reactions' => 4,
+        'chat_message_attachments' => 2,
+        'message_entity_links' => 3,
 
         // --- Domains & DNS (8) ----------------------------------------
         'domains' => 8,
@@ -272,6 +281,14 @@ final class DummyDataConfig
         'knowledge_base' => ['slug'],
         'chat_sessions' => ['customer_id', 'email', 'department'],
         'chat_messages' => ['session_id', 'message'],
+
+        // Slack-like chat
+        'chat_conversations' => ['slug', 'guest_token', 'name'],
+        'chat_conversation_messages' => ['conversation_id', 'body'],
+        'chat_participants' => ['conversation_id', 'user_id', 'guest_token'],
+        'chat_reactions' => ['message_id', 'user_id', 'emoji'],
+        'chat_message_attachments' => ['message_id', 'path'],
+        'message_entity_links' => ['message_id', 'linkable_type', 'linkable_id'],
 
         // Domains & DNS
         'domains' => ['name'],
