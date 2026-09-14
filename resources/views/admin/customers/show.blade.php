@@ -663,6 +663,8 @@
         </x-adminlte.partials.detail-tabs>
     </x-adminlte-card>
 
+    @include('admin.chat.partials.entity-timeline', ['entity' => $customer])
+
     @can('customers.edit')
         @foreach ($customer->contacts as $contact)
             <x-adminlte.partials.confirm-modal

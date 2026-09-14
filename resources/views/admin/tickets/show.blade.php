@@ -933,6 +933,8 @@
         </div>
     @endif
 
+    @include('admin.chat.partials.entity-timeline', ['entity' => $ticket])
+
     {{-- Attachment preview modal — Gmail/Outlook style lightbox --}}
     <div class="modal fade" id="attachmentPreviewModal" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog modal-xl modal-dialog-centered">

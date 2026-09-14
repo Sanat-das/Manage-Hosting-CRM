@@ -293,6 +293,8 @@
 </x-adminlte.partials.detail-tabs>
     </x-adminlte-card>
 
+    @include('admin.chat.partials.entity-timeline', ['entity' => $product])
+
     @can('products.delete')
         <x-adminlte.partials.confirm-modal
             id="delete-product-modal"
