@@ -59,6 +59,15 @@ class ChatController extends Controller
     private const SEARCH_PAGE = 30;
 
     /**
+     * How many queued customer conversations the sidebar poll carries.
+     *
+     * A cap, not a page: this payload is fetched every heartbeat by every open
+     * operator tab, and a queue longer than this is a staffing problem that a
+     * bigger JSON response does not solve.
+     */
+    private const INBOX_POLL_LIMIT = 50;
+
+    /**
      * The LIKE escape character for search patterns.
      *
      * Not a backslash: MySQL's default LIKE escape IS a backslash while
@@ -884,17 +893,65 @@ class ChatController extends Controller
     }
 
     /**
-     * Unread badges for the whole sidebar, plus who is online.
+     * Unread badges for the whole sidebar, who is online, and the queue.
      *
-     * This is also the polling fallback: when the websocket is down the client
-     * asks here on a timer instead of being told.
+     * This is the sidebar's only refresh path. Everything else the chat client
+     * subscribes to is scoped to the ONE conversation that is open, so without
+     * this endpoint a badge, a presence dot and a queued customer are all
+     * frozen at whatever the server rendered on page load — and stay frozen for
+     * as long as the tab is open. It is polled on the presence heartbeat tick
+     * whether or not the websocket is up, because the websocket is not
+     * configured at all on a default install (`BROADCAST_CONNECTION=log`).
      */
     public function unread(Request $request): JsonResponse
     {
+        $user = $request->user();
+
         return response()->json([
-            'unread' => $this->chat->unreadCounts($request->user()),
+            'unread' => $this->chat->unreadCounts($user),
             'online' => $this->presence->online(),
+            'inbox' => $this->waitingInbox($user),
         ]);
+    }
+
+    /**
+     * Customer conversations nobody has taken yet.
+     *
+     * The poll-side twin of the CustomerChatWaiting broadcast, so an operator
+     * with no websocket still learns about a waiting customer within one
+     * heartbeat instead of not at all. Only `waiting` rooms: an assigned
+     * conversation already has its operator and is already in their sidebar.
+     *
+     * Empty for anyone without `chat.manage`, which is the same permission
+     * ChatConversationPolicy::view() accepts for a customer inbox — this must
+     * not become a way for a plain `chat.view` holder to enumerate customer
+     * conversations from a corner of an endpoint that looks like a badge count.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function waitingInbox(User $user): array
+    {
+        if (! $user->hasPermission('chat.manage')) {
+            return [];
+        }
+
+        return ChatConversation::query()
+            ->where('type', ChatConversation::TYPE_CUSTOMER_INBOX)
+            ->where('status', ChatConversation::STATUS_WAITING)
+            // customer.user is what displayName() reaches for on a signed-in
+            // customer; without it this is one query per queued room.
+            ->with('customer.user')
+            ->orderByDesc('id')
+            ->limit(self::INBOX_POLL_LIMIT)
+            ->get()
+            ->map(fn (ChatConversation $c) => [
+                'id' => (int) $c->id,
+                'name' => $c->displayName(),
+                'status' => $c->status,
+                'department' => $c->department,
+                'url' => route('admin.chat.index', ['c' => $c->id]),
+            ])
+            ->all();
     }
 
     /**

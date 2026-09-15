@@ -39,6 +39,11 @@ function initChat(root) {
         pollTimer: null,
         fallback: false,
         retry: null,
+        // Sidebar bookkeeping. `knownConversations` is seeded from the rows the
+        // server rendered, so the first sync announces only rooms that really
+        // are new rather than re-announcing the whole queue on page load.
+        knownConversations: new Set(),
+        queued: 0,
     };
 
     const el = {
@@ -962,6 +967,14 @@ function initChat(root) {
             .leaving((user) => removePresence(user.id));
     }
 
+    // Not gated on `state.conversationId`: an operator staring at an empty
+    // chat page is exactly who needs to be told a customer is waiting.
+    if (realtime.enabled && state.canOperate) {
+        realtime.echo
+            .private('chat.inbox')
+            .listen('.chat.inbox.waiting', (event) => noteWaiting(event.conversation, true));
+    }
+
     function addPresence(id, name) {
         if (!el.presence || id === state.userId) return;
         el.presence.querySelector('[data-empty]')?.remove();
@@ -977,11 +990,164 @@ function initChat(root) {
         el.presence?.querySelector(`[data-user-id="${id}"]`)?.remove();
     }
 
+    // --- sidebar sync -------------------------------------------------------
+
+    /**
+     * Everything the chat subscribes to over the websocket is scoped to the one
+     * conversation that is open. The sidebar is not: its unread badges, its
+     * presence dots and its customer queue all describe rooms the client has no
+     * subscription to, so nothing but this poll ever moves them. It runs on the
+     * heartbeat tick whether or not Echo is connected, because the default
+     * install ships BROADCAST_CONNECTION=log and never connects at all.
+     */
+    async function syncSidebar() {
+        let payload;
+
+        try {
+            payload = await api('/admin/chat/unread');
+        } catch {
+            // Silent by design: this runs every heartbeat, and a panel whose
+            // session has expired would otherwise toast once every 30 seconds.
+            return;
+        }
+
+        applyUnread(payload.unread ?? {});
+        applyPresence(payload.online ?? []);
+        (payload.inbox ?? []).forEach((conversation) => noteWaiting(conversation, true));
+    }
+
+    function applyUnread(counts) {
+        document.querySelectorAll('[data-unread-for]').forEach((badge) => {
+            // The open conversation is read by definition — the server marked it
+            // read when it rendered the page — so never badge the room the
+            // operator is currently looking at.
+            const id = Number(badge.dataset.unreadFor);
+            const count = id === state.conversationId ? 0 : Number(counts[id] ?? 0);
+
+            badge.textContent = String(count);
+            badge.classList.toggle('d-none', count === 0);
+        });
+    }
+
+    function applyPresence(people) {
+        if (!el.presence) return;
+
+        const seen = new Set();
+
+        people.forEach((person) => {
+            seen.add(Number(person.id));
+            addPresence(person.id, person.name);
+        });
+
+        el.presence.querySelectorAll('[data-user-id]').forEach((row) => {
+            if (!seen.has(Number(row.dataset.userId))) row.remove();
+        });
+
+        if (!el.presence.querySelector('[data-user-id]') && !el.presence.querySelector('[data-empty]')) {
+            const li = document.createElement('li');
+            li.className = 'chat-sidebar__empty';
+            li.dataset.empty = '';
+            li.textContent = 'Nobody else is here.';
+            el.presence.append(li);
+        }
+    }
+
+    /**
+     * Put a queued customer conversation in the sidebar, and say so out loud if
+     * this is the first time we have seen it.
+     *
+     * Both the websocket event and the poll land here, so a conversation that
+     * arrives on the socket and then shows up in the next poll is announced
+     * once — `knownConversations` is the dedupe, not the transport.
+     */
+    function noteWaiting(conversation, announce) {
+        if (!conversation) return;
+
+        const id = Number(conversation.id);
+        if (!id || state.knownConversations.has(id)) return;
+
+        state.knownConversations.add(id);
+        insertInboxRow(conversation);
+
+        if (!announce) return;
+
+        state.queued += 1;
+        markTitle();
+        say(`${conversation.name} is waiting in the queue.`);
+        chime();
+    }
+
+    function insertInboxRow(conversation) {
+        const group = document.querySelector('.chat-sidebar__group[data-group="inbox"]');
+        if (!group || group.querySelector(`[data-conversation-id="${conversation.id}"]`)) return;
+
+        group.querySelector('.chat-sidebar__empty')?.remove();
+
+        const link = document.createElement('a');
+        link.className = 'chat-sidebar__item is-waiting';
+        link.href = conversation.url;
+        link.dataset.conversationId = conversation.id;
+        link.dataset.name = String(conversation.name ?? '').toLowerCase();
+        link.innerHTML =
+            '<span class="chat-sidebar__icon" aria-hidden="true"><i class="bi bi-life-preserver"></i></span>' +
+            `<span class="chat-sidebar__name">${escapeHtml(conversation.name)}</span>` +
+            `<span class="badge chat-sidebar__status text-bg-warning">${escapeHtml(conversation.status ?? 'waiting')}</span>` +
+            `<span class="badge text-bg-danger chat-unread d-none" data-unread-for="${conversation.id}">0</span>`;
+
+        group.append(link);
+    }
+
+    const baseTitle = document.title;
+
+    function markTitle() {
+        document.title = state.queued > 0 ? `(${state.queued}) ${baseTitle}` : baseTitle;
+    }
+
+    function clearTitle() {
+        state.queued = 0;
+        markTitle();
+    }
+
+    window.addEventListener('focus', clearTitle);
+
+    /**
+     * A short tone for a newly queued customer.
+     *
+     * Synthesised rather than an audio file: it needs no asset, no preload and
+     * no addition to the committed build output. Failure is ignored on purpose
+     * — a browser that blocks audio before a user gesture throws here, and a
+     * missing chime must not take the queue notification down with it.
+     */
+    function chime() {
+        try {
+            const Ctx = window.AudioContext || window.webkitAudioContext;
+            if (!Ctx) return;
+
+            const ctx = new Ctx();
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+
+            osc.type = 'sine';
+            osc.frequency.value = 880;
+            gain.gain.setValueAtTime(0.0001, ctx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.08, ctx.currentTime + 0.01);
+            gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.35);
+
+            osc.connect(gain).connect(ctx.destination);
+            osc.start();
+            osc.stop(ctx.currentTime + 0.36);
+            osc.onended = () => ctx.close();
+        } catch {
+            // See the docblock.
+        }
+    }
+
     // The server-side roster is what a page with no websocket sees, so it is
     // kept warm regardless of whether Echo connected.
     function heartbeat() {
         if (document.hidden) return;
         api('/admin/chat/presence', { method: 'POST', body: JSON.stringify({ online: true }) }).catch(() => {});
+        syncSidebar();
     }
 
     // --- search -----------------------------------------------------------

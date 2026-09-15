@@ -6,6 +6,8 @@ namespace App\Services;
 
 use App\Events\Chat\UserPresence;
 use App\Models\User;
+use Illuminate\Contracts\Cache\LockProvider;
+use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Support\Facades\Cache;
 
 /**
@@ -29,6 +31,15 @@ class ChatPresence
 {
     private const ROSTER_KEY = 'chat:presence:roster';
 
+    /** Guards the read-modify-write of the roster below. */
+    private const LOCK_KEY = 'chat:presence:roster:lock';
+
+    /** How long the lock is held before it is assumed abandoned. */
+    private const LOCK_TTL_SECONDS = 5;
+
+    /** How long a caller waits for the lock before giving up on it. */
+    private const LOCK_WAIT_SECONDS = 2;
+
     /** An entry older than this is treated as gone. Two missed heartbeats. */
     public const STALE_AFTER_SECONDS = 90;
 
@@ -40,17 +51,19 @@ class ChatPresence
      */
     public function heartbeat(User $user): bool
     {
-        $roster = $this->freshRoster();
-        $wasOnline = isset($roster[$user->id]);
+        $wasOnline = $this->mutate(function (array $roster) use ($user): array {
+            $roster[$user->id] = [
+                'id' => $user->id,
+                'name' => $user->full_name,
+                'at' => now()->getTimestamp(),
+            ];
 
-        $roster[$user->id] = [
-            'id' => $user->id,
-            'name' => $user->full_name,
-            'at' => now()->getTimestamp(),
-        ];
+            return $roster;
+        }, static fn (array $roster): bool => isset($roster[$user->id]));
 
-        $this->store($roster);
-
+        // Dispatched outside the critical section: a broadcast is a network
+        // call, and holding the roster lock across one would serialise every
+        // operator's heartbeat behind the slowest socket publish.
         if (! $wasOnline) {
             UserPresence::dispatch($user->id, $user->full_name, UserPresence::ONLINE);
         }
@@ -63,16 +76,73 @@ class ChatPresence
      */
     public function leave(User $user): void
     {
-        $roster = $this->freshRoster();
+        $wasOnline = $this->mutate(static function (array $roster) use ($user): array {
+            unset($roster[$user->id]);
 
-        if (! isset($roster[$user->id])) {
-            return;
+            return $roster;
+        }, static fn (array $roster): bool => isset($roster[$user->id]));
+
+        if ($wasOnline) {
+            UserPresence::dispatch($user->id, $user->full_name, UserPresence::OFFLINE);
+        }
+    }
+
+    /**
+     * Read the roster, change it, and write it back — without losing a
+     * concurrent writer's change.
+     *
+     * The roster is one cache key holding every online user, so a plain
+     * get/modify/put loses an entry whenever two heartbeats overlap: both read
+     * the same array, both write, and the second erases the first. At 30-second
+     * heartbeats across a room of operators that happens routinely, and each
+     * loss reads downstream as "went offline" followed by a spurious ONLINE
+     * broadcast on the victim's next beat.
+     *
+     * The lock is held for the read AND the write, which is the only ordering
+     * that closes the window. `$observe` runs inside it too, so what a caller
+     * learns about the previous state is what the write was actually based on.
+     *
+     * Degrades rather than fails. A store with no lock support, or a lock we
+     * could not get within LOCK_WAIT_SECONDS, falls through to the unlocked
+     * path: a presence dot that flickers is worth less than the heartbeat
+     * request that carried it, and dropping the write outright would make the
+     * user disappear for certain rather than by chance.
+     *
+     * @param  callable(array<int, array{id: int, name: string, at: int}>): array<int, array{id: int, name: string, at: int}>  $mutator
+     * @param  callable(array<int, array{id: int, name: string, at: int}>): bool  $observe
+     */
+    private function mutate(callable $mutator, callable $observe): bool
+    {
+        $store = Cache::getStore();
+
+        if (! $store instanceof LockProvider) {
+            return $this->mutateUnlocked($mutator, $observe);
         }
 
-        unset($roster[$user->id]);
-        $this->store($roster);
+        $lock = Cache::lock(self::LOCK_KEY, self::LOCK_TTL_SECONDS);
 
-        UserPresence::dispatch($user->id, $user->full_name, UserPresence::OFFLINE);
+        try {
+            return $lock->block(
+                self::LOCK_WAIT_SECONDS,
+                fn (): bool => $this->mutateUnlocked($mutator, $observe),
+            );
+        } catch (LockTimeoutException) {
+            return $this->mutateUnlocked($mutator, $observe);
+        }
+    }
+
+    /**
+     * @param  callable(array<int, array{id: int, name: string, at: int}>): array<int, array{id: int, name: string, at: int}>  $mutator
+     * @param  callable(array<int, array{id: int, name: string, at: int}>): bool  $observe
+     */
+    private function mutateUnlocked(callable $mutator, callable $observe): bool
+    {
+        $roster = $this->freshRoster();
+        $observed = $observe($roster);
+
+        $this->store($mutator($roster));
+
+        return $observed;
     }
 
     /**

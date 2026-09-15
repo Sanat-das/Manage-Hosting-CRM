@@ -51,6 +51,7 @@ function boot(el) {
         typingTimer: null,
         channel: null,
         poller: null,
+        connected: false,
     };
 
     const startUrl = el.dataset.startUrl;
@@ -434,6 +435,8 @@ function boot(el) {
                 }),
             });
 
+            watchConnection(echo);
+
             state.channel = echo.private(`chat.conversation.${state.conversationId}`);
             state.channel.listen('.chat.message.new', (event) => {
                 showTyping(false);
@@ -450,8 +453,48 @@ function boot(el) {
         }
     }
 
+    /**
+     * Put polling back when the socket stops carrying messages, so a dropped
+     * connection cannot leave the widget with no working transport at all.
+     *
+     * Two deliberate choices, both of which look wrong until you hit them:
+     * `connecting` resumes polling, because a socket trying to come back is not
+     * one delivering messages; and returning to `connected` does NOT stop the
+     * timer — only the next message over the socket does, which keeps a
+     * flapping connection from toggling the one transport that still works.
+     */
+    function watchConnection(echo) {
+        const connection = echo?.connector?.pusher?.connection;
+
+        if (!connection) {
+            startPolling();
+
+            return;
+        }
+
+        connection.bind('state_change', ({ current }) => {
+            state.connected = current === 'connected';
+
+            if (!state.connected) {
+                startPolling();
+            }
+        });
+    }
+
+    // A hidden tab does not need a 6-second poll; a visible one with no live
+    // socket does. Without this a widget left open in a background tab polls
+    // for as long as the browser is running.
+    document.addEventListener('visibilitychange', () => {
+        if (document.hidden) {
+            stopPolling();
+        } else if (state.conversationId && !state.connected) {
+            startPolling();
+            refresh();
+        }
+    });
+
     function startPolling() {
-        if (state.poller) {
+        if (state.poller || document.hidden) {
             return;
         }
 

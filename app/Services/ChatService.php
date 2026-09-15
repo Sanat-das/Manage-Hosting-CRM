@@ -6,6 +6,7 @@ namespace App\Services;
 
 use App\Events\Chat\ChatMessageDeleted;
 use App\Events\Chat\ChatMessageEdited;
+use App\Events\Chat\CustomerChatWaiting;
 use App\Events\Chat\NewChatMessage;
 use App\Events\Chat\ReactionToggled;
 use App\Models\AuditLog;
@@ -563,6 +564,15 @@ class ChatService
                 null,
                 $customer === null ? $token : null,
             );
+
+            // After commit, and announced separately from the message that
+            // opened it. NewChatMessage goes to `chat.conversation.{id}`, which
+            // nobody is subscribed to yet — this room has no staff participant
+            // and no operator has opened it — so without this the customer sits
+            // in the queue until somebody happens to reload /admin/chat.
+            DB::afterCommit(static function () use ($conversation): void {
+                CustomerChatWaiting::dispatch($conversation);
+            });
 
             return $conversation->fresh();
         });

@@ -143,6 +143,26 @@ class ChannelAuthTest extends TestCase
             ->assertOk();
     }
 
+    /**
+     * The operator queue channel is gated on chat.manage, not chat.view.
+     *
+     * It announces that a named stranger has opened a conversation, so its
+     * audience has to be the pool entitled to read one — the same permission
+     * ChatConversationPolicy::view() accepts for a customer inbox and
+     * ::operate() requires to take it. A plain chat.view holder is refused the
+     * inbox itself two tests above; being told about it is the same disclosure.
+     */
+    public function test_operator_queue_channel_requires_chat_manage(): void
+    {
+        $operator = $this->panelUserWithPermissions('chat.view', 'chat.manage');
+        $this->authAs($operator, 'private-chat.inbox')->assertOk();
+
+        $this->app['auth']->forgetGuards();
+
+        $staff = $this->panelUserWithoutPermission('chat.manage');
+        $this->authAs($staff, 'private-chat.inbox')->assertForbidden();
+    }
+
     public function test_presence_channel_requires_chat_view(): void
     {
         $allowed = $this->panelUserWithPermissions('chat.view');

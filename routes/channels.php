@@ -45,6 +45,23 @@ Broadcast::channel('chat.typing.{conversationId}', static function (User $user, 
 });
 
 /**
+ * The operator queue: one shared channel that announces a customer conversation
+ * nobody has taken yet (CustomerChatWaiting).
+ *
+ * Gated on `chat.manage` rather than `chat.view`, matching
+ * ChatConversationPolicy::operate() and ::view() — `chat.manage` is what makes
+ * a user a member of the answering pool and what lets them read an inbox room
+ * they are not assigned to. A `chat.view` holder who is not an operator has no
+ * business being told that a stranger's conversation exists.
+ *
+ * Private rather than presence: subscribers here do not need each other's
+ * roster, and a presence channel would publish one.
+ */
+Broadcast::channel('chat.inbox', static function (User $user) {
+    return $user->hasPermission('chat.manage');
+});
+
+/**
  * Panel-wide presence: the online dots in the sidebar. Any panel user who can
  * see the chat at all appears here — it carries no message content.
  */
