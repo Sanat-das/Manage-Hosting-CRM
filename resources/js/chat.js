@@ -992,6 +992,14 @@ function initChat(root) {
 
     // --- sidebar sync -------------------------------------------------------
 
+    // Seed from what the server already rendered, BEFORE the first poll runs.
+    // Without this every queued room in the sidebar is announced as a new
+    // arrival on every page load — chime, title counter and all — because the
+    // poll cannot otherwise tell "waiting since yesterday" from "just arrived".
+    document
+        .querySelectorAll('.chat-sidebar__group[data-group="inbox"] [data-conversation-id]')
+        .forEach((row) => state.knownConversations.add(Number(row.dataset.conversationId)));
+
     /**
      * Everything the chat subscribes to over the websocket is scoped to the one
      * conversation that is open. The sidebar is not: its unread badges, its
