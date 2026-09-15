@@ -66,6 +66,12 @@
             <p class="client-chat__error small text-danger mt-2 mb-0 d-none" id="client-chat-intro-error"></p>
         </form>
 
+        {{-- Shown only when the server reports there is history behind the page
+             the widget is holding. The transcript loads newest-first, so this
+             is how a returning customer reaches anything older. --}}
+        <button type="button" class="client-chat__earlier btn btn-sm btn-link w-100 d-none"
+                id="client-chat-earlier">Load earlier messages</button>
+
         <ol class="client-chat__messages d-none" id="client-chat-messages"></ol>
 
         {{-- "Support is typing". Deliberately generic: the operator's typing

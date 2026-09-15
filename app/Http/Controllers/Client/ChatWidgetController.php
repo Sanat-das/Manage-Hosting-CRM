@@ -98,24 +98,80 @@ class ChatWidgetController extends Controller
         ], 201);
     }
 
+    /**
+     * The transcript, in one of two modes.
+     *
+     * `after_id` is the poller asking what has arrived since it last looked:
+     * ascending from the cursor, because those messages are appended in the
+     * order they were said.
+     *
+     * Without it the answer is the NEWEST page, walked backwards and then
+     * reversed for rendering. That ordering is the whole point: this used to be
+     * an unconditional `orderBy('id')->limit(100)`, which handed a returning
+     * customer the hundred OLDEST messages of their conversation — the
+     * beginning of a transcript they had already read, with the operator's
+     * latest reply nowhere on screen. On a long conversation the only way to
+     * reach the present was to wait out enough 6-second poll cycles to page
+     * forward through the whole history, and if the websocket connected first
+     * the polling stopped and the rest never arrived at all.
+     *
+     * `before_id` pages further back from there, for "load earlier".
+     */
     public function messages(Request $request, ChatConversation $conversation): JsonResponse
     {
         $this->authoriseParticipation($request, $conversation);
 
-        $messages = $conversation->messages()
+        $query = $conversation->messages()
             ->withTrashed()
             ->whereNull('parent_id')
-            ->with(['user', 'attachments', 'entityLinks.linkable'])
-            ->when($request->integer('after_id'), fn ($q, $after) => $q->where('id', '>', $after))
-            ->orderBy('id')
-            ->limit(self::MESSAGE_LIMIT)
-            ->get();
+            ->with(['user', 'attachments', 'entityLinks.linkable']);
 
-        return response()->json([
+        if ($after = $request->integer('after_id')) {
+            $messages = (clone $query)->where('id', '>', $after)
+                ->orderBy('id')
+                ->limit(self::MESSAGE_LIMIT)
+                ->get();
+
+            // `has_more` is OMITTED, not false.
+            //
+            // "Is there older history?" is a question this mode cannot answer —
+            // it only ever looked forwards from the cursor. Answering `false`
+            // is a lie the client cannot see through: a poll would arrive a few
+            // seconds after the first load and silently retract the "load
+            // earlier" control, stranding the customer at the newest page with
+            // no way back. Absent means unknown, and the client leaves the flag
+            // alone.
+            $hasMore = null;
+        } else {
+            if ($before = $request->integer('before_id')) {
+                $query->where('id', '<', $before);
+            }
+
+            $messages = $query->orderByDesc('id')
+                ->limit(self::MESSAGE_LIMIT)
+                ->get()
+                ->reverse()
+                ->values();
+
+            $hasMore = $messages->isNotEmpty() && $conversation->messages()
+                ->whereNull('parent_id')
+                ->where('id', '<', $messages->first()->id)
+                ->exists();
+        }
+
+        $response = [
             'status' => $conversation->status,
             'rating' => $conversation->rating,
             'messages' => $messages->map(fn ($m) => $this->clientPayload($m))->all(),
-        ]);
+        ];
+
+        // Only this key is conditional; `status` and `rating` keep their shape
+        // whether or not they are null, because callers already read them.
+        if ($hasMore !== null) {
+            $response['has_more'] = $hasMore;
+        }
+
+        return response()->json($response);
     }
 
     public function send(ClientChatMessageRequest $request, ChatConversation $conversation): JsonResponse

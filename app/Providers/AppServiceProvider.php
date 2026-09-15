@@ -305,6 +305,50 @@ class AppServiceProvider extends ServiceProvider
             return Limit::perMinute(60)->by($request->user()?->getAuthIdentifier() ?: $request->ip());
         });
 
+        // --- customer chat widget (unauthenticated, routes/chat.php) --------
+        //
+        // These three replace a single `throttle:30,1` that covered the whole
+        // guest group. That one limit could not be right for all of it: it was
+        // simultaneously too loose for the endpoint that creates rows and too
+        // tight for the widget's own background traffic. The widget spends 10
+        // requests a minute polling and up to 12 more on typing heartbeats, so
+        // a SINGLE customer who is actively typing could approach 30/min on
+        // their own, and two colleagues behind one office NAT — a guest has no
+        // user id, so the key is the shared IP — went over it reliably. The
+        // resulting 429 surfaced as a widget that had silently stopped working.
+        //
+        // Splitting by what each endpoint costs keeps the cheap, chatty calls
+        // generous while tightening the two that are genuinely expensive.
+
+        // Opening a conversation. This is the one that mints rows, and it is
+        // the abuse the original per-IP limit was really aimed at. A person
+        // opens a chat once; ten a minute is already far past human.
+        RateLimiter::for('chat-start', function (Request $request) {
+            return Limit::perMinute(10)->by('chat-start:'.$request->ip());
+        });
+
+        // File uploads, kept OFF the generous limit below. Attachments are
+        // capped at 10MB each, so letting them run at the widget's rate would
+        // be a way to write a gigabyte a minute to the disk.
+        RateLimiter::for('chat-attach', function (Request $request) {
+            return Limit::perMinute(10)->by('chat-attach:'.$request->ip());
+        });
+
+        // Everything else the widget does: polling for replies, typing
+        // heartbeats, sending messages, websocket channel auth. Sized so that
+        // several visitors behind one address can all be served at once —
+        // roughly 25/min each in the worst case of a customer who never stops
+        // typing, and nearer 11 in ordinary use.
+        //
+        // Still keyed on IP rather than on the guest token. The token is worth
+        // more as a key (it would give each visitor their own budget) but it
+        // arrives in a request header, so a flooder would simply send a fresh
+        // random one per request and buy themselves unlimited buckets. An
+        // attacker-supplied rate-limit key is not a rate limit.
+        RateLimiter::for('chat-widget', function (Request $request) {
+            return Limit::perMinute(120)->by('chat-widget:'.$request->ip());
+        });
+
         // Password reset email — 3 per 10 minutes per actor+target URL to prevent
         // spamming reset links at a specific user account.
         RateLimiter::for('password-reset-email', function (Request $request) {

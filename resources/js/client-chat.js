@@ -22,8 +22,20 @@ import { getReverbConfig } from './reverb-config.js';
 /** How often to poll when the websocket is unavailable. */
 const POLL_MS = 6000;
 
-/** Quiet period before "stopped typing" goes out. */
-const TYPING_IDLE_MS = 2500;
+/**
+ * Minimum gap between typing heartbeats.
+ *
+ * The first keystroke always goes out immediately; this only rations the ones
+ * after it. At 2500ms a customer who kept typing sent 24 requests a minute —
+ * on its own most of the old 30/min guest budget, before a single poll or
+ * message was counted. 5000ms halves that for no perceptible difference: the
+ * operator still sees "typing" within a keystroke, and their end expires the
+ * indicator on TYPING_CLEAR_MS regardless.
+ */
+const TYPING_IDLE_MS = 5000;
+
+/** How long to stop asking after a 429 before trying again. */
+const RATE_LIMIT_BACKOFF_MS = 15000;
 
 /**
  * How long an operator's "typing" claim stands before we assume it is stale.
@@ -52,6 +64,10 @@ function boot(el) {
         channel: null,
         poller: null,
         connected: false,
+        oldestId: 0,
+        hasMore: false,
+        loadingEarlier: false,
+        backoffUntil: 0,
     };
 
     const startUrl = el.dataset.startUrl;
@@ -67,6 +83,7 @@ function boot(el) {
         intro: document.getElementById('client-chat-intro'),
         introError: document.getElementById('client-chat-intro-error'),
         messages: document.getElementById('client-chat-messages'),
+        earlier: document.getElementById('client-chat-earlier'),
         typing: document.getElementById('client-chat-typing'),
         composer: document.getElementById('client-chat-composer'),
         body: document.getElementById('client-chat-body'),
@@ -120,14 +137,26 @@ function boot(el) {
 
     // --- rendering ---------------------------------------------------------
 
-    function renderMessage(message) {
-        if (message.id <= state.lastId) {
+    /**
+     * Render one message, at either end of the transcript.
+     *
+     * Dedupe is by element id, not by comparing against the newest id seen.
+     * That comparison worked only while messages could arrive in one direction;
+     * "load earlier" fetches ids BELOW everything on screen, and every one of
+     * them would have been discarded as already-seen.
+     */
+    function renderMessage(message, prepend = false) {
+        const domId = `client-chat-message-${message.id}`;
+
+        if (document.getElementById(domId)) {
             return;
         }
 
-        state.lastId = message.id;
+        state.lastId = Math.max(state.lastId, message.id);
+        state.oldestId = state.oldestId === 0 ? message.id : Math.min(state.oldestId, message.id);
 
         const item = document.createElement('li');
+        item.id = domId;
         item.className = `client-chat__message client-chat__message--${message.is_guest ? 'mine' : 'theirs'}`;
 
         const who = document.createElement('span');
@@ -159,6 +188,16 @@ function boot(el) {
             card.textContent = `${link.type}: ${link.label}`;
             item.appendChild(card);
         });
+
+        if (prepend) {
+            // Hold the reading position: inserting above the viewport otherwise
+            // shunts whatever the customer was reading off the bottom of it.
+            const before = ui.messages.scrollHeight;
+            ui.messages.prepend(item);
+            ui.messages.scrollTop += ui.messages.scrollHeight - before;
+
+            return;
+        }
 
         ui.messages.appendChild(item);
         ui.messages.scrollTop = ui.messages.scrollHeight;
@@ -192,27 +231,110 @@ function boot(el) {
 
     // --- conversation ------------------------------------------------------
 
+    /**
+     * Fetch the transcript.
+     *
+     * With nothing on screen this asks for the newest page; afterwards it asks
+     * only for what has arrived since. The first call is what puts a returning
+     * customer at the END of their conversation rather than the beginning.
+     */
     async function refresh() {
-        if (!state.conversationId) {
+        if (!state.conversationId || Date.now() < state.backoffUntil) {
             return;
         }
 
-        const url = `${base(state.conversationId)}/messages?after_id=${state.lastId}`;
-        const { ok, payload } = await call(url);
+        const url = state.lastId > 0
+            ? `${base(state.conversationId)}/messages?after_id=${state.lastId}`
+            : `${base(state.conversationId)}/messages`;
 
-        if (!ok || !payload) {
+        const { ok, status, payload } = await call(url);
+
+        if (!ok) {
+            handleRateLimit(status);
+
             return;
         }
 
-        (payload.messages || []).forEach(renderMessage);
+        if (!payload) {
+            return;
+        }
+
+        (payload.messages || []).forEach((message) => renderMessage(message));
+        setHasMore(payload.has_more);
         applyStatus(payload.status, payload.rating);
+    }
+
+    async function loadEarlier() {
+        if (!state.conversationId || state.loadingEarlier || state.oldestId === 0) {
+            return;
+        }
+
+        state.loadingEarlier = true;
+        ui.earlier.disabled = true;
+
+        try {
+            const { ok, status, payload } = await call(
+                `${base(state.conversationId)}/messages?before_id=${state.oldestId}`,
+            );
+
+            if (!ok) {
+                handleRateLimit(status);
+
+                return;
+            }
+
+            // Newest-first on the wire, so walk it backwards: each prepend goes
+            // immediately above the one before it and the block lands in order.
+            [...(payload?.messages || [])].reverse().forEach((message) => renderMessage(message, true));
+            setHasMore(payload?.has_more);
+        } finally {
+            state.loadingEarlier = false;
+            ui.earlier.disabled = false;
+        }
+    }
+
+    function setHasMore(hasMore) {
+        // Absent means "this answer does not know" (the polling mode never
+        // does), which must not be read as "there is nothing older".
+        if (hasMore === undefined) {
+            return;
+        }
+
+        state.hasMore = Boolean(hasMore);
+        ui.earlier?.classList.toggle('d-none', !state.hasMore);
+    }
+
+    /**
+     * A 429 is the one failure the customer has to be told about.
+     *
+     * Every other error here is transient and the next poll fixes it, so it is
+     * swallowed. Rate limiting is different: the widget caused it, polling
+     * harder makes it worse, and saying nothing leaves a window that has simply
+     * stopped updating with no explanation — which is indistinguishable from
+     * the dead-socket bug this file used to have.
+     */
+    function handleRateLimit(status) {
+        if (status !== 429) {
+            return;
+        }
+
+        state.backoffUntil = Date.now() + RATE_LIMIT_BACKOFF_MS;
+        showError(ui.error, 'Too many requests just now — reconnecting in a moment.');
+
+        window.setTimeout(() => {
+            ui.error.classList.add('d-none');
+            refresh();
+        }, RATE_LIMIT_BACKOFF_MS);
     }
 
     function openTranscript() {
         ui.intro.classList.add('d-none');
         ui.messages.classList.remove('d-none');
         ui.composer.classList.remove('d-none');
+        ui.earlier?.classList.toggle('d-none', !state.hasMore);
     }
+
+    ui.earlier?.addEventListener('click', loadEarlier);
 
     ui.intro.addEventListener('submit', async (event) => {
         event.preventDefault();
@@ -254,13 +376,21 @@ function boot(el) {
             return;
         }
 
-        const { ok, payload } = await call(`${base(state.conversationId)}/messages`, {
+        const { ok, status, payload } = await call(`${base(state.conversationId)}/messages`, {
             method: 'POST',
             body: { body: text },
         });
 
         if (!ok) {
-            showError(ui.error, firstError(payload) || 'The message could not be sent.');
+            // Not left to firstError(): Laravel's own 429 body is "Too Many
+            // Requests", which tells a customer nothing and reads like a fault
+            // on their side.
+            showError(
+                ui.error,
+                status === 429
+                    ? 'Sending too quickly — wait a moment and press Send again.'
+                    : firstError(payload) || 'The message could not be sent.',
+            );
 
             return;
         }

@@ -12,24 +12,38 @@ use Illuminate\Support\Facades\Route;
 |
 | These are reachable by a visitor with no account, so every one of them
 | authorises from the conversation's own guest token and nothing else. They
-| carry `web` for the session and CSRF token the widget posts with, and a
-| throttle, because an unauthenticated endpoint that mints rows is exactly what
-| gets hammered.
+| carry `web` for the session and CSRF token the widget posts with.
+|
+| Throttling is split three ways rather than applied once to the group. A guest
+| has no user id, so every limit here is keyed on an IP that a whole office may
+| share, and the widget's own background traffic — a poll every 6 seconds plus a
+| typing heartbeat — is chatty enough that one customer could exhaust a single
+| modest budget by themselves. The limits are therefore sized by what each
+| endpoint actually costs; see AppServiceProvider::boot() for the numbers and
+| the reasoning behind each.
 */
 
-Route::middleware(['web', 'throttle:30,1'])->prefix('chat')->name('chat.')->group(function () {
-    Route::post('guest-auth', ChatGuestAuthController::class)->name('guest-auth');
+Route::middleware(['web'])->prefix('chat')->name('chat.')->group(function () {
+    // Creates a conversation row. Tightest of the three.
+    Route::post('start', [ChatWidgetController::class, 'start'])
+        ->middleware('throttle:chat-start')
+        ->name('start');
 
-    // The customer widget. Every one of these resolves a single conversation
+    // Writes up to 10MB to disk. Kept off the generous limit below.
+    Route::post('{conversation}/messages/{message}/attachments', [ChatWidgetController::class, 'attach'])
+        ->middleware('throttle:chat-attach')
+        ->name('attach');
+
+    // The rest of the widget. Every one of these resolves a single conversation
     // and proves the caller belongs to it; there is deliberately no endpoint
     // that LISTS conversations, so a customer cannot discover that others exist.
-    Route::post('start', [ChatWidgetController::class, 'start'])->name('start');
-    Route::get('{conversation}/messages', [ChatWidgetController::class, 'messages'])->name('messages');
-    Route::post('{conversation}/messages', [ChatWidgetController::class, 'send'])->name('send');
-    Route::post('{conversation}/messages/{message}/attachments', [ChatWidgetController::class, 'attach'])
-        ->name('attach');
-    Route::get('{conversation}/attachments/{attachment}', [ChatWidgetController::class, 'attachment'])
-        ->name('attachment');
-    Route::post('{conversation}/typing', [ChatWidgetController::class, 'typing'])->name('typing');
-    Route::post('{conversation}/rate', [ChatWidgetController::class, 'rate'])->name('rate');
+    Route::middleware('throttle:chat-widget')->group(function () {
+        Route::post('guest-auth', ChatGuestAuthController::class)->name('guest-auth');
+        Route::get('{conversation}/messages', [ChatWidgetController::class, 'messages'])->name('messages');
+        Route::post('{conversation}/messages', [ChatWidgetController::class, 'send'])->name('send');
+        Route::get('{conversation}/attachments/{attachment}', [ChatWidgetController::class, 'attachment'])
+            ->name('attachment');
+        Route::post('{conversation}/typing', [ChatWidgetController::class, 'typing'])->name('typing');
+        Route::post('{conversation}/rate', [ChatWidgetController::class, 'rate'])->name('rate');
+    });
 });
