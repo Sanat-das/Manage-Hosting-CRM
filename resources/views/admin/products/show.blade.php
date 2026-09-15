@@ -187,7 +187,10 @@
                             </span>
                         </div>
                         @if ($link->linkValues->isEmpty())
-                            <p class="text-muted small mb-0">No values defined.</p>
+                            @php
+                                $fixed = \App\Services\OptionPricingResolver::fixedDisplay($link);
+                            @endphp
+                            <p class="text-muted small mb-0">{{ $fixed !== null && ! is_array($fixed) ? 'Fixed value: '.$fixed : 'No values defined.' }}</p>
                         @else
                             <div class="table-responsive">
                                 <table class="table table-sm align-middle mb-0">

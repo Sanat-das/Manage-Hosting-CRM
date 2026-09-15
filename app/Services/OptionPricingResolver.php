@@ -152,6 +152,79 @@ class OptionPricingResolver
     }
 
     /**
+     * What a FIXED (non-customer-editable) link displays as when no customer
+     * input exists — one rule per input type so a fixed feature never renders
+     * as an empty dash while the catalog declares it:
+     *
+     * - dropdown / radio: the declared default, else the first value.
+     * - checkbox: every default-flagged value (the declared set), else the
+     *   single default/first fallback.
+     * - slider / number / quantity: the fixed amount (link input_min, else the
+     *   group input_min) with the group unit ("4 vCPU"). A fixed slider has no
+     *   link values by design (sync is rejected for continuous types), so the
+     *   bound IS the declared allocation.
+     * - text: the link/group input_placeholder hint, else null (free text has
+     *   no fixed value).
+     *
+     * Pricing is untouched: fixed continuous links stay free (see
+     * resolveContinuous) — this only names the feature.
+     *
+     * @return array<int, string>|string|null
+     */
+    public static function fixedDisplay(ProductOptionGroupProduct $link): array|string|null
+    {
+        $type = $link->group?->type;
+
+        if (ProductOptionGroup::isContinuousType($type)) {
+            $amount = self::fixedAmount($link);
+
+            if ($amount === null) {
+                return null;
+            }
+
+            $unit = $link->group?->unit;
+
+            return $unit ? $amount.' '.$unit : (string) $amount;
+        }
+
+        if ($type === 'text') {
+            $placeholder = $link->input_placeholder ?? $link->group?->input_placeholder;
+
+            return ($placeholder !== null && $placeholder !== '') ? (string) $placeholder : null;
+        }
+
+        if ($type === 'checkbox') {
+            $defaults = $link->linkValues->where('is_default', true)->values();
+
+            if ($defaults->isNotEmpty()) {
+                return $defaults->map(fn (ProductOptionLinkValue $value) => (string) $value->label)->all();
+            }
+        }
+
+        $default = self::defaultValue($link);
+
+        return $default !== null ? $default->label : null;
+    }
+
+    /**
+     * The fixed amount of a continuous link: the link's input_min override,
+     * else the catalog group's input_min. Null when neither is numeric (no
+     * declared allocation to display).
+     */
+    public static function fixedAmount(ProductOptionGroupProduct $link): int|float|null
+    {
+        $raw = $link->input_min ?? $link->group?->input_min;
+
+        if (! is_numeric($raw)) {
+            return null;
+        }
+
+        $amount = (float) $raw;
+
+        return $amount == (int) $amount ? (int) $amount : $amount;
+    }
+
+    /**
      * Price one option link against what the customer submitted for it.
      *
      * @return array{value_id: int|null, value_ids: list<int>, selected: mixed,
@@ -163,13 +236,24 @@ class OptionPricingResolver
         $editable = (bool) $link->customer_editable;
 
         if (ProductOptionGroup::isContinuousType($type)) {
-            return $this->resolveContinuous($link, $editable ? $submitted : null, $cycle);
+            // A fixed continuous link displays its declared amount but still
+            // charges nothing (see resolveContinuous): the amount is bundled
+            // into the base price, not multiplied by a unit rate.
+            if (! $editable) {
+                return $this->line(null, [], self::fixedDisplay($link), null, 0.0);
+            }
+
+            return $this->resolveContinuous($link, $submitted, $cycle);
         }
 
         if ($type === 'text') {
             // Free-form text describes the service (a hostname); it carries no
-            // price of its own.
-            return $this->line(null, [], $editable && is_scalar($submitted) ? (string) $submitted : null, null, 0.0);
+            // price of its own. A fixed text link displays its placeholder hint.
+            if (! $editable) {
+                return $this->line(null, [], self::fixedDisplay($link), null, 0.0);
+            }
+
+            return $this->line(null, [], is_scalar($submitted) ? (string) $submitted : null, null, 0.0);
         }
 
         return $this->resolveDiscrete($link, $editable ? $submitted : null, $editable, $cycle);
@@ -204,13 +288,14 @@ class OptionPricingResolver
 
     /**
      * Dropdown / radio / checkbox: the selected values' rates are summed. A
-     * fixed link resolves to its declared default instead of to a submission.
+     * fixed link resolves to its declared set (every default-flagged checkbox
+     * value, otherwise the single default/first value) instead of to a
+     * submission.
      */
     private function resolveDiscrete(ProductOptionGroupProduct $link, mixed $submitted, bool $editable, string $cycle): array
     {
         if (! $editable) {
-            $default = self::defaultValue($link);
-            $values = $default !== null ? collect([$default]) : collect();
+            $values = $this->fixedDiscreteValues($link);
         } else {
             $values = $this->matchValues($link, $submitted);
         }
@@ -235,6 +320,29 @@ class OptionPricingResolver
             $multiple ? null : (float) $rates->first(),
             round((float) $rates->sum(), 2)
         );
+    }
+
+    /**
+     * The declared value set of a FIXED discrete link: every default-flagged
+     * value for checkboxes (the declared set), otherwise the single
+     * default/first fallback. Pricing and display both read this, so the
+     * invoiced set and the shown set can never drift apart.
+     *
+     * @return Collection<int, ProductOptionLinkValue>
+     */
+    private function fixedDiscreteValues(ProductOptionGroupProduct $link): Collection
+    {
+        if (($link->group?->type) === 'checkbox') {
+            $defaults = $link->linkValues->where('is_default', true)->values();
+
+            if ($defaults->isNotEmpty()) {
+                return $defaults;
+            }
+        }
+
+        $default = self::defaultValue($link);
+
+        return $default !== null ? collect([$default]) : collect();
     }
 
     /**

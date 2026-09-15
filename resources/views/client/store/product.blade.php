@@ -114,15 +114,22 @@
                 </div>
 
                 {{-- Informational (non-editable) option links render as a static display list.
-                     No pricing is shown: these are fixed inclusions the customer cannot
-                     change, so a modifier would mislead (e.g. a "+₹50.00/mo" that is
-                     already baked into the base price). --}}
+                     The value follows the same per-type rule as the pricing engine
+                     (OptionPricingResolver::fixedDisplay): discrete links show their
+                     declared value(s), continuous links their fixed amount with unit
+                     ("4 vCPU"), text links their placeholder hint. No pricing is shown:
+                     these are fixed inclusions the customer cannot change, so a modifier
+                     would mislead (e.g. a "+₹50.00/mo" that is already baked into the
+                     base price). --}}
                 @if ($infoLinks->isNotEmpty())
                     <div class="row mt-3">
                         @foreach ($infoLinks as $link)
+                            @php
+                                $fixed = \App\Services\OptionPricingResolver::fixedDisplay($link);
+                            @endphp
                             <div class="col-md-3 col-6">
                                 <strong>{{ $link->group?->name }}</strong><br>
-                                {{ $link->linkValues->isNotEmpty() ? $link->linkValues->map(fn ($v) => $v->label)->implode(', ') : '—' }}
+                                {{ is_array($fixed) ? implode(', ', $fixed) : ($fixed ?? '—') }}
                             </div>
                         @endforeach
                     </div>

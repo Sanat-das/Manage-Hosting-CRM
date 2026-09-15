@@ -16,6 +16,7 @@ use App\Models\ProductPricing;
 use App\Models\Role;
 use App\Models\User;
 use App\Services\Billing\BillingService;
+use App\Services\OptionPricingResolver;
 use App\Services\OrderConfigSnapshot;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -244,6 +245,46 @@ class ConfigurableOptionDisplayTest extends TestCase
             // the removed live-catalog fallback printed.
             ->assertDontSee('8, 16')
             ->assertDontSee('16 GB');
+    }
+
+    public function test_a_fixed_slider_names_its_declared_amount(): void
+    {
+        // A fixed (non-editable) slider has no link values by design, so it
+        // used to render as a dash. It now names its declared amount with the
+        // group unit — still free, bundled into the base price.
+        $group = ProductOptionGroup::create([
+            'name' => 'CPU',
+            'unit' => 'vCPU',
+            'sort_order' => 3,
+            'type' => 'slider',
+            'input_min' => 4,
+            'input_max' => 62,
+            'input_step' => 2,
+        ]);
+
+        $link = ProductOptionGroupProduct::create([
+            'product_id' => $this->product->id,
+            'option_group_id' => $group->id,
+            'customer_editable' => false,
+            'sort_order' => 3,
+        ]);
+
+        $link = $link->fresh(['group', 'linkValues', 'unitPricing']);
+
+        $this->assertSame('4 vCPU', OptionPricingResolver::fixedDisplay($link));
+
+        $snapshot = app(OrderConfigSnapshot::class)->capture($this->product->fresh(), null, [], 'monthly');
+        $entry = collect($snapshot['options'])->firstWhere('id', $link->id);
+
+        $this->assertSame('4 vCPU', $entry['selected']);
+        $this->assertSame(0.0, (float) $entry['price_applied']);
+
+        $customer = $this->makeCustomer();
+
+        $this->actingAs($customer->user)
+            ->get(route('client.store.show', $this->product))
+            ->assertOk()
+            ->assertSee('4 vCPU');
     }
 
     public function test_a_service_without_a_snapshot_still_shows_its_fixed_features(): void

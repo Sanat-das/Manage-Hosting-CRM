@@ -44,6 +44,13 @@
                 // Customer-editable links render controls; informational links
                 // are display-only (their values are fixed by the catalog).
                 'customerEditable' => (bool) $link->customer_editable,
+                // Display-only fallback for fixed links, resolved by the same
+                // rule the pricing engine and snapshots use
+                // (OptionPricingResolver::fixedDisplay): discrete links show
+                // their declared value(s), continuous links their fixed amount
+                // with unit ("4 vCPU"), text links their placeholder hint.
+                'unitLabel' => $link->group?->unit,
+                'fixedDisplay' => \App\Services\OptionPricingResolver::fixedDisplay($link),
             ];
 
             if (in_array($link->group?->type, \App\Models\ProductOptionGroup::CONTINUOUS_TYPES, true)) {
@@ -719,20 +726,21 @@
 
                         // Informational (non-editable) links are display-only:
                         // their value comes from the catalog and cannot be
-                        // changed at order time. Exactly ONE value is shown —
-                        // the one flagged default, else the first in display
-                        // order — because that is the single value the order
-                        // actually gets: OptionPricingResolver::defaultValue()
-                        // resolves and prices a fixed link the same way. This
-                        // used to join every value in the group, so a fixed
-                        // "NVMe SSD" advertised "50 GB, 100 GB, 200 GB" on a
-                        // line that was only ever buying (and being charged
-                        // for) one of them.
+                        // changed at order time. The server pre-resolves the
+                        // per-type fallback (link.fixedDisplay, same rule as
+                        // OptionPricingResolver::fixedDisplay): discrete links
+                        // show their declared value(s), continuous links their
+                        // fixed amount with unit ("4 vCPU"), text links their
+                        // placeholder hint. The values lookup below is only a
+                        // fallback for stale payloads.
                         if (!link.customerEditable) {
                             const values = link.values || [];
                             const chosen = values.find((v) => v.default) || values[0];
+                            const fallback = chosen ? chosen.label : '—';
+                            const disp = link.fixedDisplay ?? fallback;
+                            const text = Array.isArray(disp) ? disp.join(', ') : (disp ?? '—');
                             html += '<div class="col-md-4"><label class="form-label small text-muted mb-1">' + link.name + '</label>' +
-                                '<div class="text-muted small">' + (chosen ? chosen.label : '—') + '</div></div>';
+                                '<div class="text-muted small">' + (text === '' ? '—' : text) + '</div></div>';
                             return;
                         }
 
