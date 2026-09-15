@@ -6,6 +6,7 @@ namespace App\Policies;
 
 use App\Models\ChatConversation;
 use App\Models\ChatParticipant;
+use App\Models\TicketDepartment;
 use App\Models\User;
 
 /**
@@ -156,8 +157,26 @@ class ChatConversationPolicy
         return $conversation->isCustomerInbox() && $user->hasPermission('chat.manage');
     }
 
+    /**
+     * Membership, from the already-loaded relation when there is one.
+     *
+     * The list screens (the sidebar, and search's readable-conversation scope)
+     * eager-load `participants` and then call this policy once per row, so the
+     * unconditional `exists()` this used to be was a query per conversation for
+     * rows whose membership was already in memory.
+     *
+     * A conversation resolved by route-model binding has no loaded relation and
+     * still takes the query — which is the point: this reads what it was given
+     * and never assumes an absent relation means an empty one.
+     */
     private function isParticipant(User $user, ChatConversation $conversation): bool
     {
+        if ($conversation->relationLoaded('participants')) {
+            return $conversation->participants->contains(
+                static fn (ChatParticipant $participant) => (int) $participant->user_id === (int) $user->id,
+            );
+        }
+
         return ChatParticipant::query()
             ->where('conversation_id', $conversation->id)
             ->where('user_id', $user->id)
@@ -182,8 +201,14 @@ class ChatConversationPolicy
             return true;
         }
 
-        return $user->ticketDepartments()
-            ->where('slug', $conversation->department)
-            ->exists();
+        // The relation, not a `->where(...)->exists()`: this runs once per
+        // conversation in the list screens, and the query form asked the
+        // database the same question about the same user every time. Read as a
+        // property it is lazy-loaded once and cached on the user for the rest
+        // of the request. Staff belong to a handful of departments, so holding
+        // them all in memory is cheaper than a query per row.
+        return $user->ticketDepartments->contains(
+            static fn (TicketDepartment $department) => $department->slug === $conversation->department,
+        );
     }
 }

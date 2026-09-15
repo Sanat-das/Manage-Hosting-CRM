@@ -280,6 +280,16 @@ class ChatService
     {
         $conversation->forceFill(['archived_at' => null])->save();
 
+        // Archiving was recorded and thawing was not, so the trail showed rooms
+        // freezing and never reopening — and a room that is archived in the log
+        // but writable in the app is the kind of discrepancy an audit is
+        // supposed to settle, not create.
+        $this->audit('chat.channel_unarchived', self::AUDIT_ENTITY_CONVERSATION, $conversation->id, [
+            'conversation_type' => $conversation->type,
+            'name' => $conversation->name,
+            'slug' => $conversation->slug,
+        ]);
+
         return $conversation;
     }
 
@@ -649,11 +659,25 @@ class ChatService
             throw new RuntimeException('This conversation is closed.');
         }
 
+        $from = $conversation->department;
+        $previousOperator = $conversation->assigned_operator_id;
+
         $conversation->forceFill([
             'department' => $this->normaliseDepartment($department),
             'assigned_operator_id' => null,
             'status' => ChatConversation::STATUS_WAITING,
         ])->save();
+
+        // A handover moves a customer between teams and drops the operator who
+        // was on it. Close and convert were both recorded; this was the one
+        // lifecycle change that left no trace of who used to own the room.
+        $this->audit('chat.conversation_transferred', self::AUDIT_ENTITY_CONVERSATION, $conversation->id, [
+            'conversation_type' => $conversation->type,
+            'customer_id' => $conversation->customer_id,
+            'from_department' => $from,
+            'to_department' => $conversation->department,
+            'previous_operator_id' => $previousOperator,
+        ]);
 
         return $conversation;
     }
@@ -690,6 +714,17 @@ class ChatService
         }
 
         $conversation->forceFill(['rating' => $rating])->save();
+
+        // Recorded without an actor on purpose: the customer is a guest with no
+        // user row, so audit() will resolve user_id to null here. That is the
+        // honest answer — inventing the closing operator as the actor would
+        // attribute their own score to them.
+        $this->audit('chat.conversation_rated', self::AUDIT_ENTITY_CONVERSATION, $conversation->id, [
+            'conversation_type' => $conversation->type,
+            'customer_id' => $conversation->customer_id,
+            'assigned_operator_id' => $conversation->assigned_operator_id,
+            'rating' => $rating,
+        ]);
 
         return $conversation;
     }

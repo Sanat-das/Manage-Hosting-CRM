@@ -502,6 +502,9 @@ class ChatController extends Controller
     private function readableConversationIds(User $user): array
     {
         return $this->scopeReadableBy(ChatConversation::query(), $user)
+            // One eager load rather than a membership query per row: the policy
+            // below reads `participants` for every conversation it is handed.
+            ->with('participants')
             ->get(['id', 'type', 'is_private', 'department', 'archived_at'])
             // The policy is the authority; the query above was only a
             // pre-filter. Department scoping and private membership are decided
