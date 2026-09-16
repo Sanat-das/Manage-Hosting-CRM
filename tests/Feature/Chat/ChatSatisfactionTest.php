@@ -140,11 +140,47 @@ class ChatSatisfactionTest extends TestCase
         $this->assertSame(4.0, $rows[0]['average']);
     }
 
-    public function test_an_unassigned_rated_chat_is_left_out_of_the_operator_table(): void
+    /**
+     * Changed deliberately after reviewing the rendered page.
+     *
+     * These rows were originally filtered out of the operator table, on the
+     * reasoning that "no operator" is not an operator. On screen that read as
+     * broken arithmetic: the headline said 2 chats rated while the table summed
+     * to 1, with nothing accounting for the difference — and the department
+     * table beside it already labelled the same null "Unassigned".
+     */
+    public function test_an_unassigned_rated_chat_gets_its_own_row_so_the_table_reconciles(): void
     {
-        $this->closedChat(5);
+        $operator = User::factory()->create(['first_name' => 'Priya', 'last_name' => 'Nair']);
 
-        $this->assertSame([], app(ChatSatisfactionReport::class)->build()['by_operator']);
+        $this->closedChat(4, ['assigned_operator_id' => $operator->id]);
+        $this->closedChat(2);
+
+        $report = app(ChatSatisfactionReport::class)->build();
+        $rows = collect($report['by_operator'])->keyBy('name');
+
+        $this->assertSame(1, $rows['Priya Nair']['rated']);
+        $this->assertSame(1, $rows[ChatSatisfactionReport::UNASSIGNED_LABEL]['rated']);
+        $this->assertSame(2.0, $rows[ChatSatisfactionReport::UNASSIGNED_LABEL]['average']);
+
+        // The point of the change: the table now adds up to the headline.
+        $this->assertSame(
+            $report['rated'],
+            collect($report['by_operator'])->sum('rated'),
+            'The operator table must account for every rating the headline counts.',
+        );
+    }
+
+    public function test_both_tables_use_the_same_word_for_an_absent_value(): void
+    {
+        // Two spellings of the same absence, in two tables side by side, is how
+        // a reader concludes they are counting different things.
+        $this->closedChat(3);
+
+        $report = app(ChatSatisfactionReport::class)->build();
+
+        $this->assertSame(ChatSatisfactionReport::UNASSIGNED_LABEL, $report['by_operator'][0]['name']);
+        $this->assertSame(ChatSatisfactionReport::UNASSIGNED_LABEL, $report['by_department'][0]['department']);
     }
 
     public function test_scores_are_grouped_by_department_with_a_label_for_none(): void

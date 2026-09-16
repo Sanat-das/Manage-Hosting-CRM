@@ -41,10 +41,48 @@ class ChatSettingController extends Controller
             'departments' => TicketService::departments(),
             // The full IANA list, because the support desk's hours are local to
             // wherever the support desk is, which is not necessarily where the
-            // server is.
-            'timezones' => timezone_identifiers_list(),
+            // server is. Grouped by region into <optgroup>s, the way the main
+            // Settings page already renders its two timezone selects — a flat
+            // list of ~420 identifiers in one dropdown is the same control the
+            // rest of the panel decided against.
+            'timezonesGrouped' => $this->groupedTimezones(),
             'defaultTimezone' => (string) config('app.timezone', 'UTC'),
         ]);
+    }
+
+    /**
+     * IANA identifiers keyed by region, regions alphabetical, "Other" last.
+     *
+     * "Other" collects the identifiers with no `/` in them (UTC, CET, GMT...),
+     * which would otherwise each become a one-entry region of their own.
+     *
+     * @return array<string, array<int, string>>
+     */
+    private function groupedTimezones(): array
+    {
+        $grouped = [];
+
+        foreach (timezone_identifiers_list() as $identifier) {
+            $region = str_contains($identifier, '/')
+                ? explode('/', $identifier, 2)[0]
+                : 'Other';
+
+            $grouped[$region][] = $identifier;
+        }
+
+        uksort($grouped, static function (string $a, string $b): int {
+            if ($a === 'Other') {
+                return 1;
+            }
+
+            if ($b === 'Other') {
+                return -1;
+            }
+
+            return strcmp($a, $b);
+        });
+
+        return $grouped;
     }
 
     public function update(UpdateChatSettingsRequest $request): RedirectResponse

@@ -393,6 +393,29 @@ class ChatCannedReplyTest extends TestCase
             ->assertForbidden();
     }
 
+    public function test_the_picker_distinguishes_an_empty_library_from_no_matches(): void
+    {
+        // The picker showed "No saved replies match" on an install that had
+        // never created one -- blaming a filter for an empty library and
+        // offering nowhere to go. `any` is what lets it tell the two apart.
+        $me = $this->chatUser('chat.view');
+
+        $this->actingAs($me)
+            ->getJson(route('admin.chat.canned-replies.pick'))
+            ->assertOk()
+            ->assertJsonPath('any', false)
+            ->assertJsonPath('replies', []);
+
+        ChatCannedReply::factory()->create(['title' => 'Refund wording', 'shortcut' => 'refund']);
+
+        // A search that matches nothing, in a library that is NOT empty.
+        $this->actingAs($me)
+            ->getJson(route('admin.chat.canned-replies.pick', ['q' => 'zzzznothing']))
+            ->assertOk()
+            ->assertJsonPath('any', true)
+            ->assertJsonPath('replies', []);
+    }
+
     public function test_the_whole_feature_is_closed_to_someone_without_chat_view(): void
     {
         $nobody = $this->chatUser();

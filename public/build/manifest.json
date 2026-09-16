@@ -78,7 +78,7 @@
     "isEntry": true
   },
   "resources/css/chat.css": {
-    "file": "assets/chat-BmXj9QcG.css",
+    "file": "assets/chat-aNO63guF.css",
     "name": "chat",
     "names": [
       "chat.css"
@@ -111,7 +111,7 @@
     "isEntry": true
   },
   "resources/js/chat.js": {
-    "file": "assets/chat-DprVWUCX.js",
+    "file": "assets/chat-951IqBU9.js",
     "name": "chat",
     "src": "resources/js/chat.js",
     "isEntry": true,

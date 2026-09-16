@@ -876,6 +876,7 @@ function initChat(root) {
      */
     const cannedUrl = root.dataset.cannedUrl || '';
     const cannedUsedUrl = root.dataset.cannedUsedUrl || '';
+    const cannedManageUrl = root.dataset.cannedManageUrl || '';
     let cannedRows = [];
     let cannedTimer = null;
 
@@ -891,13 +892,19 @@ function initChat(root) {
         cannedRows = [];
     }
 
-    function renderCanned(rows) {
+    function renderCanned(rows, libraryHasAny = true) {
         cannedRows = rows;
 
         if (!el.cannedResults) return;
 
         if (rows.length === 0) {
-            el.cannedResults.innerHTML = '<li class="p-2 text-body-secondary">No saved replies match.</li>';
+            // "Nothing matched" and "nothing exists" are different problems
+            // with different next steps, and only one of them is the
+            // operator's search. Blaming the filter for an empty library left
+            // them with no way forward.
+            el.cannedResults.innerHTML = libraryHasAny
+                ? '<li class="p-2 text-body-secondary">No saved replies match.</li>'
+                : `<li class="p-2 text-body-secondary">No saved replies yet.${cannedManageUrl ? ` <a href="${cannedManageUrl}">Create one</a> and it can be inserted with <code>/shortcut</code>.` : ''}</li>`;
 
             return;
         }
@@ -919,7 +926,7 @@ function initChat(root) {
 
         try {
             const result = await api(`${cannedUrl}?q=${encodeURIComponent(query)}`);
-            renderCanned(result.replies ?? []);
+            renderCanned(result.replies ?? [], result.any !== false);
         } catch (error) {
             cannedRows = [];
             el.cannedResults.innerHTML = `<li class="p-2 text-danger">${escapeHtml(error.message)}</li>`;

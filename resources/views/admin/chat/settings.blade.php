@@ -69,10 +69,15 @@
 
         <div class="row">
             <div class="col-md-6">
+                @php $selectedTimezone = old('timezone', $settings->timezone); @endphp
                 <x-adminlte-select name="timezone" label="Office hours are in">
                     <option value="">Application default ({{ $defaultTimezone }})</option>
-                    @foreach ($timezones as $timezone)
-                        <option value="{{ $timezone }}" @selected(old('timezone', $settings->timezone) === $timezone)>{{ $timezone }}</option>
+                    @foreach ($timezonesGrouped as $region => $identifiers)
+                        <optgroup label="{{ $region }}">
+                            @foreach ($identifiers as $timezone)
+                                <option value="{{ $timezone }}" @selected($selectedTimezone === $timezone)>{{ $timezone }}</option>
+                            @endforeach
+                        </optgroup>
                     @endforeach
                 </x-adminlte-select>
             </div>

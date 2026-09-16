@@ -34,6 +34,7 @@
               thing that knows. --}}
          data-canned-url="{{ route('admin.chat.canned-replies.pick') }}"
          data-canned-used-url="{{ route('admin.chat.canned-replies.used', ['cannedReply' => '__ID__']) }}"
+         data-canned-manage-url="{{ route('admin.chat.canned-replies.index') }}"
          data-availability-url="{{ route('admin.chat.availability') }}">
         {{-- Reconnection banner — hidden until JS shows it when Echo is unavailable. --}}
         <div class="chat-reconnect-banner d-none" id="chat-reconnect-banner" data-reconnect-banner role="status" aria-live="polite">Realtime disconnected — polling</div>
@@ -55,6 +56,27 @@
                         </button>
                     @endif
                 </div>
+
+                {{-- The operator's own state, OUTSIDE the scrolling list.
+                     It used to sit at the bottom of that list, below every
+                     conversation and the presence roster, which put the one
+                     control that decides whether customers can reach you off
+                     the bottom of the screen. It does not scroll away now.
+
+                     Only for people who can actually take a customer chat
+                     (chat.manage): for anyone else this would set a flag that
+                     nothing reads, while appearing to promise otherwise. --}}
+                @if ($canOperate)
+                    <div class="chat-availability border-bottom px-3 py-2" id="chat-availability-group">
+                        <label class="visually-hidden" for="chat-availability">My availability</label>
+                        <select class="form-select form-select-sm" id="chat-availability">
+                            @foreach ($availabilityOptions as $value => $label)
+                                <option value="{{ $value }}" @selected($availability === $value)>{{ $label }}</option>
+                            @endforeach
+                        </select>
+                        <span class="small text-body-secondary" id="chat-availability-status" aria-live="polite"></span>
+                    </div>
+                @endif
 
                 <div class="chat-sidebar__scroll" id="chat-sidebar-list">
                     @foreach (['channels' => 'Channels', 'dms' => 'Direct messages', 'inbox' => 'Customer inbox'] as $group => $heading)
@@ -124,25 +146,7 @@
                         </ul>
                     </div>
 
-                    {{-- The operator's own state.
-                         Only for people who can actually take a customer chat
-                         (chat.manage): for anyone else this control would set a
-                         flag that nothing reads, and would appear to promise
-                         that marking yourself Away does something. --}}
-                    @if ($canOperate)
-                        <div class="chat-sidebar__group" id="chat-availability-group">
-                            <h2 class="chat-sidebar__heading">My availability</h2>
-                            <div class="px-3 pb-3">
-                                <label class="visually-hidden" for="chat-availability">My availability</label>
-                                <select class="form-select form-select-sm mb-2" id="chat-availability">
-                                    @foreach ($availabilityOptions as $value => $label)
-                                        <option value="{{ $value }}" @selected($availability === $value)>{{ $label }}</option>
-                                    @endforeach
-                                </select>
-                                <span class="small text-body-secondary" id="chat-availability-status" aria-live="polite"></span>
-                            </div>
-                        </div>
-                    @endif
+
                 </div>
             </aside>
 

@@ -200,6 +200,19 @@ class ChatCannedReplyController extends Controller
                 'department' => $reply->department,
                 'shared' => $reply->isShared(),
             ])->all(),
+
+            // Whether this operator has ANY visible reply, regardless of the
+            // search. Without it the picker cannot tell "your search matched
+            // nothing" from "there is nothing to search", and it showed "No
+            // saved replies match" on an install that had never created one —
+            // blaming a filter for an empty library and offering nowhere to go.
+            //
+            // A second count() rather than inferring it from `replies`: with a
+            // query typed, an empty result set says nothing about whether the
+            // library is empty.
+            'any' => $query === ''
+                ? $replies->isNotEmpty()
+                : ChatCannedReply::query()->visibleTo($user)->exists(),
         ]);
     }
 

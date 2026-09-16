@@ -35,6 +35,15 @@ class ChatSatisfactionReport
     public const RECENT_LIMIT = 25;
 
     /**
+     * What a null operator or department is called.
+     *
+     * One constant for both tables: they sit side by side on the same screen,
+     * and two spellings of the same absence is how a reader concludes the two
+     * tables are counting different things.
+     */
+    public const UNASSIGNED_LABEL = 'Unassigned';
+
+    /**
      * @return array{
      *     closed: int,
      *     rated: int,
@@ -123,9 +132,17 @@ class ChatSatisfactionReport
      */
     private function byOperator(CarbonImmutable $start, CarbonImmutable $end, ?string $department): array
     {
+        // Unassigned conversations are INCLUDED, as their own row.
+        //
+        // They used to be filtered out, which made the screen read as broken
+        // arithmetic: the headline said "2 chats rated" while this table summed
+        // to 1, with nothing to account for the difference. The department
+        // table beside it already labels the same null as "Unassigned", so
+        // dropping it here was also two adjacent tables treating one missing
+        // value two different ways. A rating given with no operator assigned is
+        // a real rating and worth seeing.
         $rows = $this->scope($start, $end, $department)
             ->whereNotNull('rating')
-            ->whereNotNull('assigned_operator_id')
             ->groupBy('assigned_operator_id')
             ->select(
                 'assigned_operator_id',
@@ -144,14 +161,17 @@ class ChatSatisfactionReport
         // an email fallback — so assembling the label in SQL would either
         // select a column that does not exist or need every part of it in the
         // GROUP BY to satisfy ONLY_FULL_GROUP_BY.
-        $operators = User::query()
-            ->whereIn('id', $rows->pluck('assigned_operator_id')->all())
-            ->get()
-            ->keyBy('id');
+        $operatorIds = $rows->pluck('assigned_operator_id')->filter()->all();
+
+        $operators = $operatorIds === []
+            ? collect()
+            : User::query()->whereIn('id', $operatorIds)->get()->keyBy('id');
 
         return $rows
             ->map(static fn ($row): array => [
-                'name' => (string) ($operators->get($row->assigned_operator_id)?->full_name ?? 'Unknown'),
+                'name' => $row->assigned_operator_id === null
+                    ? self::UNASSIGNED_LABEL
+                    : (string) ($operators->get($row->assigned_operator_id)?->full_name ?? 'Unknown'),
                 'rated' => (int) $row->rated,
                 'average' => round((float) $row->average, 2),
             ])
@@ -174,7 +194,7 @@ class ChatSatisfactionReport
             ->orderByDesc('average')
             ->get()
             ->map(static fn ($row): array => [
-                'department' => (string) ($row->department ?? 'Unassigned'),
+                'department' => (string) ($row->department ?? self::UNASSIGNED_LABEL),
                 'rated' => (int) $row->rated,
                 'average' => round((float) $row->average, 2),
             ])
