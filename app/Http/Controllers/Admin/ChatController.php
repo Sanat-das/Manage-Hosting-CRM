@@ -12,15 +12,18 @@ use App\Http\Requests\Chat\StoreChatEntityLinkRequest;
 use App\Http\Requests\Chat\StoreChatMessageRequest;
 use App\Http\Requests\Chat\ToggleChatReactionRequest;
 use App\Http\Requests\Chat\TypingHeartbeatRequest;
+use App\Http\Requests\Chat\UpdateChatAvailabilityRequest;
 use App\Http\Requests\Chat\UpdateChatChannelRequest;
 use App\Http\Requests\Chat\UpdateChatMessageRequest;
 use App\Models\ChatConversation;
 use App\Models\ChatConversationMessage;
 use App\Models\ChatMessageAttachment;
+use App\Models\ChatOperatorAvailability;
 use App\Models\ChatReaction;
 use App\Models\ChatSession;
 use App\Models\MessageEntityLink;
 use App\Models\User;
+use App\Services\ChatAvailability;
 use App\Services\ChatEntitySearch;
 use App\Services\ChatPresence;
 use App\Services\ChatService;
@@ -77,9 +80,16 @@ class ChatController extends Controller
      */
     private const LIKE_ESCAPE = '!';
 
+    /**
+     * `$availability` is defaulted rather than required so every existing
+     * `new ChatController($chat, $presence)` — in this app and in the tests —
+     * keeps working untouched. Same reasoning as ChatService's injected
+     * notification gate.
+     */
     public function __construct(
         private readonly ChatService $chat,
         private readonly ChatPresence $presence,
+        private readonly ChatAvailability $availability = new ChatAvailability,
     ) {}
 
     /**
@@ -114,12 +124,22 @@ class ChatController extends Controller
             $unread[$selected->id] = 0;
         }
 
+        $online = $this->presence->online();
+
         return view('admin.chat.index', [
             'conversations' => $conversations,
             'selected' => $selected,
             'messages' => $messages->map(fn ($m) => ChatMessagePayload::for($m)),
             'unread' => $unread,
-            'online' => $this->presence->online(),
+            'online' => $online,
+            // The roster's states, resolved in one query for everyone on it —
+            // a badge per person otherwise costs a query per person on every
+            // render of this page.
+            'availabilityStates' => $this->availability->statesFor(
+                array_map(static fn (array $person): int => (int) $person['id'], $online),
+            ),
+            'availability' => $this->availability->stateFor($user),
+            'availabilityOptions' => ChatOperatorAvailability::LABELS,
             'canCreateChannel' => $user->can('create', ChatConversation::class),
             'canOperate' => $user->hasPermission('chat.manage'),
             'entityTypes' => $entities->availableTypes($user),
@@ -909,10 +929,18 @@ class ChatController extends Controller
     public function unread(Request $request): JsonResponse
     {
         $user = $request->user();
+        $online = $this->presence->online();
 
         return response()->json([
             'unread' => $this->chat->unreadCounts($user),
-            'online' => $this->presence->online(),
+            'online' => $online,
+            // Availability travels with the roster it describes. Sent from the
+            // same payload rather than a second endpoint because the sidebar
+            // repaints the whole list from this response — a roster refreshed
+            // without its states would repaint everyone as Available.
+            'availability' => $this->availability->statesFor(
+                array_map(static fn (array $person): int => (int) $person['id'], $online),
+            ),
             'inbox' => $this->waitingInbox($user),
         ]);
     }
@@ -970,9 +998,48 @@ class ChatController extends Controller
             $this->presence->heartbeat($request->user());
         }
 
+        $online = $this->presence->online();
+
         return response()->json([
-            'online' => $this->presence->online(),
+            'online' => $online,
+            // The roster and its badges travel together: a poll that refreshed
+            // the names without the states would repaint everyone as Available.
+            'availability' => $this->availability->statesFor(
+                array_map(static fn (array $person): int => (int) $person['id'], $online),
+            ),
             'heartbeat_seconds' => ChatPresence::HEARTBEAT_SECONDS,
+        ]);
+    }
+
+    /**
+     * "I am taking chats" / "I am not".
+     *
+     * Deliberately NOT part of the presence heartbeat. Presence is what the
+     * browser knows (a tab is open) and expires by itself after 90 seconds;
+     * this is what the person says, and it has to survive a closed laptop. Two
+     * facts with two lifetimes, so two endpoints — folding the state into the
+     * heartbeat payload would mean every heartbeat re-asserting a choice the
+     * operator made hours ago, and a missed heartbeat quietly undoing it.
+     *
+     * Anyone who may use the chat may set their own state, and only their own:
+     * the user comes from the session, never from the request body.
+     */
+    public function availability(UpdateChatAvailabilityRequest $request): JsonResponse
+    {
+        $row = $this->availability->set(
+            $request->user(),
+            $request->string('state')->toString(),
+            $request->input('note'),
+        );
+
+        return response()->json([
+            'state' => $row->state,
+            'label' => $row->label(),
+            'note' => $row->note,
+            // What the widget would now decide, so the operator can see the
+            // consequence of going Away: if they were the last one accepting,
+            // the chat has just closed to customers.
+            'accepting_operators' => $this->availability->acceptingCount(),
         ]);
     }
 

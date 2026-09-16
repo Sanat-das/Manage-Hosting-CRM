@@ -74,9 +74,25 @@
 }
 
 .client-chat__intro,
+.client-chat__offline,
 .client-chat__composer,
 .client-chat__rating {
     padding: 1rem;
+}
+
+/* The closed notice and the thank-you sit above the form they replace, so they
+   carry the same horizontal padding but no bottom padding of their own. */
+.client-chat__closed,
+.client-chat__offline-thanks {
+    margin: 0;
+    padding: 1rem 1rem 0;
+    color: var(--bs-secondary-color);
+}
+
+.client-chat__reopens {
+    display: block;
+    margin-top: 0.25rem;
+    font-weight: 500;
 }
 
 /* Only the transcript scrolls; the composer stays put while reading. */

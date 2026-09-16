@@ -86,13 +86,16 @@ final class ChatMessagePayload
      * real names; this one does not. The two are deliberately separate methods
      * so a future field cannot silently leak by being added to for() alone.
      *
-     * Field-by-field (guest sees):
-     * - author_name: "Support" when is_guest is false, otherwise the guest's own name
+     * Field-by-field (customer sees):
+     * - author_name: "Support" when STAFF wrote it, otherwise the customer's own name
      * - user: absent (contains id+full_name)
      * - author_email / user_name / email / avatar* / gravatar* : absent — none are emitted by for(), and this method explicitly unsets them if ever added
      * - entity_links: type+label only (admin url+entity_id stripped)
      * - attachments: client route url (admin signed url stripped), no email-derived hash
-     * - is_operator: true for staff, false for guest — the only operator signal the widget needs
+     * - is_operator: true for staff, false for the customer — this is the field the widget renders from
+     * - is_guest: whether the author has NO account at all. Kept because it is
+     *   what the anti-spoof check asserts, but it is NOT "staff wrote this" —
+     *   see isStaffAuthored() for why those are different questions
      * - user_id (bare integer): NOT in message payload by design; typing payload's user_id stays bare integer per TypingIndicator and is not removed
      *
      * @return array<string, mixed>
@@ -101,9 +104,11 @@ final class ChatMessagePayload
     {
         $payload = self::for($message);
 
+        $isStaff = self::isStaffAuthored($message);
+
         // That a staff member said it is enough; which staff member is not the customer's business.
         // Matches TypingIndicator::OPERATOR_LABEL.
-        if (! $payload['is_guest']) {
+        if ($isStaff) {
             $payload['author_name'] = self::OPERATOR_LABEL;
         }
 
@@ -125,9 +130,45 @@ final class ChatMessagePayload
             $payload['attachments'],
         );
 
-        $payload['is_operator'] = ! $payload['is_guest'];
+        $payload['is_operator'] = $isStaff;
 
         return $payload;
+    }
+
+    /**
+     * Did a member of STAFF write this, as opposed to the customer?
+     *
+     * Not the same question as "does the author have a user id", and that
+     * conflation was a real bug: a guest has no `user_id`, but a SIGNED-IN
+     * customer posts under their own, so `user_id !== null` meant the widget
+     * labelled a logged-in customer's own messages "Support" and rendered them
+     * on the operator's side of the panel — a customer watching a conversation
+     * in which they appeared to be the support agent.
+     *
+     * Two tests, therefore: no author at all is the customer (a guest), and an
+     * author who IS this conversation's customer is the customer. Everyone else
+     * is staff.
+     */
+    private static function isStaffAuthored(ChatConversationMessage $message): bool
+    {
+        if ($message->user_id === null) {
+            return false;
+        }
+
+        // Loaded here rather than assumed: forClient() is called from the
+        // broadcast events as well as the transcript endpoint, and one of those
+        // paths hands over a message with nothing eager-loaded.
+        $message->loadMissing('conversation.customer');
+
+        $customerUserId = $message->conversation?->customer?->user_id;
+
+        // A guest conversation has no customer row, so any authored message in
+        // it is staff by definition.
+        if ($customerUserId === null) {
+            return true;
+        }
+
+        return (int) $message->user_id !== (int) $customerUserId;
     }
 
     /**

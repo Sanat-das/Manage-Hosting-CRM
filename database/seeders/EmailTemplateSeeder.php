@@ -434,6 +434,67 @@ The {{app_name}} Support Team
 
 BODY,
         ],
+
+        // ── Live chat ─────────────────────────────────────────────────────
+        //
+        // The body below is BYTE-IDENTICAL to the one in
+        // 2026_09_15_000005_backfill_chat_transcript_email_template, and has to
+        // stay that way. Both exist because the in-app updater runs migrations
+        // and never seeds, so the migration is the only way the template
+        // reaches an upgraded install — and this seeder is the only way it
+        // reaches a fresh one.
+        //
+        // The duplication is deliberate rather than a shared constant: a
+        // migration is a historical snapshot and must keep producing what it
+        // produced on the day it ran, even after this seeder's wording is
+        // edited. What must NOT differ is the two of them today, and this
+        // seeder's `updateOrInsert` on `name` runs AFTER the migration on a
+        // fresh install — so a divergence here would mean fresh and upgraded
+        // installs silently sending different emails.
+        //
+        // HTML, like order_confirmation and invoice_created: the send path
+        // detects it and derives the plain-text alternative itself, so one
+        // body covers both. Sends only while
+        // `chat_settings.send_transcript_on_close` is on.
+        [
+            'name'    => 'chat_transcript',
+            'subject' => 'Your chat with {{company_name}} on {{chat_date}}',
+            'status'  => 'active',
+            'body'    => <<<'BODY'
+<!doctype html>
+<html lang="en">
+<body style="margin:0;padding:0;background:#f6f8fb;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f6f8fb;padding:24px 0;">
+<tr><td align="center">
+<table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#ffffff;border-radius:12px;overflow:hidden;border:1px solid #e5e7eb;">
+<tr><td style="padding:28px 32px 20px;text-align:center;border-bottom:1px solid #f1f5f9;">
+<img src="{{app_logo_url}}" alt="{{app_name}}" width="140" style="max-width:140px;height:auto;display:block;margin:0 auto 10px;">
+<div style="font-size:13px;color:#64748b;letter-spacing:0.04em;text-transform:uppercase;">{{tagline}}</div>
+</td></tr>
+<tr><td style="padding:32px;">
+<p style="margin:0 0 8px;font-size:16px;color:#0f172a;">Hi {{customer_name}},</p>
+<p style="margin:0 0 20px;font-size:15px;line-height:1.6;color:#334155;">Thank you for talking to us today. Here is a copy of the conversation for your records.</p>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;margin:0 0 20px;">
+<tr><td style="padding:16px 20px;">
+<div style="font-size:13px;color:#64748b;margin-bottom:6px;">Started</div>
+<div style="font-size:14px;color:#0f172a;">{{chat_started_at}}</div>
+<div style="margin-top:12px;font-size:13px;color:#64748b;">Messages</div>
+<div style="font-size:14px;color:#0f172a;">{{chat_message_count}}</div>
+</td></tr>
+</table>
+{{transcript_html}}
+<p style="margin:24px 0 0;font-size:13px;color:#94a3b8;">Need anything else? {{company_email}} &middot; {{company_phone}}</p>
+</td></tr>
+<tr><td style="padding:18px 32px;background:#f8fafc;border-top:1px solid #e2e8f0;text-align:center;">
+<div style="font-size:12px;color:#94a3b8;line-height:1.6;">{{company_name}} &middot; {{company_address}}<br>{{footer_text}}</div>
+</td></tr>
+</table>
+</td></tr>
+</table>
+</body>
+</html>
+BODY,
+        ],
     ];
 
     public function run(): void

@@ -71,6 +71,8 @@ function boot(el) {
     };
 
     const startUrl = el.dataset.startUrl;
+    const offlineUrl = el.dataset.offlineUrl;
+    const availabilityUrl = el.dataset.availabilityUrl;
     const guestAuthUrl = el.dataset.guestAuthUrl;
     const urlTemplate = el.dataset.conversationUrlTemplate;
 
@@ -82,6 +84,12 @@ function boot(el) {
         statusLabel: document.getElementById('client-chat-status'),
         intro: document.getElementById('client-chat-intro'),
         introError: document.getElementById('client-chat-intro-error'),
+        closed: document.getElementById('client-chat-closed'),
+        closedMessage: document.getElementById('client-chat-closed-message'),
+        reopens: document.getElementById('client-chat-reopens'),
+        offline: document.getElementById('client-chat-offline'),
+        offlineError: document.getElementById('client-chat-offline-error'),
+        offlineThanks: document.getElementById('client-chat-offline-thanks'),
         messages: document.getElementById('client-chat-messages'),
         earlier: document.getElementById('client-chat-earlier'),
         typing: document.getElementById('client-chat-typing'),
@@ -157,11 +165,15 @@ function boot(el) {
 
         const item = document.createElement('li');
         item.id = domId;
-        item.className = `client-chat__message client-chat__message--${message.is_guest ? 'mine' : 'theirs'}`;
+        // `is_operator`, never `is_guest`. A guest has no user id, but a
+        // SIGNED-IN customer posts under their own, so "has no user id" is not
+        // "this is mine" — reading is_guest here put a logged-in customer's own
+        // messages on the support side of the panel, labelled "Support".
+        item.className = `client-chat__message client-chat__message--${message.is_operator ? 'theirs' : 'mine'}`;
 
         const who = document.createElement('span');
         who.className = 'client-chat__author';
-        who.textContent = message.is_guest ? 'You' : message.author_name;
+        who.textContent = message.is_operator ? message.author_name : 'You';
         item.appendChild(who);
 
         const bubble = document.createElement('div');
@@ -202,7 +214,9 @@ function boot(el) {
         ui.messages.appendChild(item);
         ui.messages.scrollTop = ui.messages.scrollHeight;
 
-        if (!state.open && !message.is_guest) {
+        // Only a reply from support is unread news. Echoing the customer's own
+        // message back as an unread badge is the same conflation as above.
+        if (!state.open && message.is_operator) {
             state.unread += 1;
             ui.unread.textContent = String(state.unread);
             ui.unread.classList.remove('d-none');
@@ -329,9 +343,76 @@ function boot(el) {
 
     function openTranscript() {
         ui.intro.classList.add('d-none');
+        // Whatever the desk is doing, a conversation that already exists wins:
+        // its transcript and composer are what this panel is for, and a "we are
+        // closed" notice over a live conversation would be a lie the customer
+        // can disprove by scrolling.
+        ui.offline?.classList.add('d-none');
+        ui.closed?.classList.add('d-none');
         ui.messages.classList.remove('d-none');
         ui.composer.classList.remove('d-none');
         ui.earlier?.classList.toggle('d-none', !state.hasMore);
+    }
+
+    // --- office hours ------------------------------------------------------
+
+    /**
+     * Show the closed notice, and whichever of the two forms applies.
+     *
+     * Called with what the server just said, so the three elements can never
+     * disagree: a closed notice above a live "Start chat" button is the exact
+     * confusion this function exists to prevent.
+     */
+    function applyAvailability({ open, message, offline_form: offlineForm, next_opens_at: nextOpensAt }) {
+        state.chatOpen = Boolean(open);
+
+        // Never touch the panel of a conversation that is already running.
+        if (state.conversationId) {
+            return;
+        }
+
+        if (ui.closed) {
+            ui.closed.classList.toggle('d-none', state.chatOpen);
+
+            if (ui.closedMessage && message) {
+                ui.closedMessage.textContent = message;
+            }
+
+            if (ui.reopens) {
+                ui.reopens.classList.toggle('d-none', !nextOpensAt);
+                ui.reopens.textContent = nextOpensAt ? `We reopen ${nextOpensAt}.` : '';
+            }
+        }
+
+        ui.intro.classList.toggle('d-none', !state.chatOpen);
+
+        // The offline form is only offered when there is nothing better: closed
+        // AND the admin has left the form switched on. Otherwise the visitor
+        // gets the notice and no form, which is the honest answer when nobody
+        // will read a message either.
+        ui.offline?.classList.toggle('d-none', state.chatOpen || !offlineForm);
+    }
+
+    /**
+     * Ask whether the desk is open, when the panel is opened.
+     *
+     * Not on page load: the answer is already rendered into the markup, and one
+     * request per page view for a widget most visitors never open would be a
+     * request per page view for nothing. This runs when it matters — and it is
+     * the check that catches a tab left open across closing time.
+     */
+    async function checkAvailability() {
+        if (!availabilityUrl || state.conversationId) {
+            return;
+        }
+
+        const { ok, payload } = await call(availabilityUrl);
+
+        if (ok) {
+            applyAvailability(payload);
+        }
+        // A failed check leaves the server-rendered state alone. Guessing
+        // "closed" would shut the chat because of a dropped request.
     }
 
     ui.earlier?.addEventListener('click', loadEarlier);
@@ -351,6 +432,25 @@ function boot(el) {
         });
 
         if (!ok) {
+            // The desk shut between this panel being opened and this form being
+            // submitted. The server refuses and says so; swapping to the
+            // offline form keeps what the visitor typed reachable instead of
+            // handing them an error and a dead button.
+            if (payload?.closed) {
+                applyAvailability({ open: false, ...payload });
+
+                const typed = String(form.get('body') || '');
+                const target = document.getElementById('client-chat-offline-body');
+
+                if (target && !target.value) {
+                    target.value = typed;
+                }
+
+                showError(ui.introError, payload.message || 'Support has just gone offline.');
+
+                return;
+            }
+
             showError(ui.introError, firstError(payload) || 'The chat could not be started.');
 
             return;
@@ -361,6 +461,35 @@ function boot(el) {
         openTranscript();
         await refresh();
         subscribe();
+    });
+
+    ui.offline?.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        ui.offlineError.classList.add('d-none');
+
+        const form = new FormData(ui.offline);
+        const { ok, payload } = await call(offlineUrl, {
+            method: 'POST',
+            body: {
+                name: form.get('name') || undefined,
+                email: form.get('email') || undefined,
+                body: form.get('body') || '',
+            },
+        });
+
+        if (!ok) {
+            showError(ui.offlineError, firstError(payload) || 'The message could not be sent.');
+
+            return;
+        }
+
+        // Swapped, not merely emptied: leaving the form up invites a second
+        // submission of the same message, which becomes a second ticket.
+        ui.offline.classList.add('d-none');
+        ui.offlineThanks.textContent = payload.ticket_no
+            ? `${payload.message} Your reference is ${payload.ticket_no}.`
+            : payload.message;
+        ui.offlineThanks.classList.remove('d-none');
     });
 
     ui.composer.addEventListener('submit', async (event) => {
@@ -497,9 +626,20 @@ function boot(el) {
             openTranscript();
             await refresh();
             subscribe();
+        } else {
+            await checkAvailability();
         }
 
-        ui.body.focus();
+        // Focus follows whatever is actually usable. Focusing the message box of
+        // a hidden composer moves nothing and leaves the visitor typing into a
+        // page that ignores them.
+        if (state.conversationId) {
+            ui.body.focus();
+        } else if (!ui.offline?.classList.contains('d-none')) {
+            document.getElementById('client-chat-offline-body')?.focus();
+        } else if (!ui.intro.classList.contains('d-none')) {
+            document.getElementById('client-chat-first')?.focus();
+        }
     });
 
     ui.minimise.addEventListener('click', () => {

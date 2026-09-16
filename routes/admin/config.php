@@ -1,6 +1,9 @@
 <?php
 
+use App\Http\Controllers\Admin\ChatCannedReplyController;
 use App\Http\Controllers\Admin\ChatController;
+use App\Http\Controllers\Admin\ChatSatisfactionController;
+use App\Http\Controllers\Admin\ChatSettingController;
 use App\Http\Controllers\Admin\CustomerGroupController;
 use App\Http\Controllers\Admin\GatewayController;
 use App\Http\Controllers\Admin\GstSettingController;
@@ -98,6 +101,27 @@ Route::middleware(['web', 'auth', 'admin', 'throttle:admin'])->prefix('admin')->
         Route::get('chat/unread', [ChatController::class, 'unread'])->name('chat.unread');
         Route::post('chat/presence', [ChatController::class, 'presenceHeartbeat'])->name('chat.presence');
 
+        /*
+         | Saved replies.
+         |
+         | chat.view is the floor — anyone who may use the chat may keep their
+         | own snippets. Writing the SHARED library takes chat.manage, checked
+         | per row in the controller: the two live in one table and one screen,
+         | so the gate cannot be a route middleware without either locking
+         | operators out of their own replies or opening the shared set to all
+         | of them.
+         |
+         | `{cannedReply}` deliberately matches the camelCase parameter name the
+         | controller and StoreCannedReplyRequest both read.
+         */
+        Route::get('chat/canned-replies', [ChatCannedReplyController::class, 'index'])->name('chat.canned-replies.index');
+        Route::get('chat/canned-replies/pick', [ChatCannedReplyController::class, 'pick'])->name('chat.canned-replies.pick');
+        Route::get('chat/canned-replies/create', [ChatCannedReplyController::class, 'create'])->name('chat.canned-replies.create');
+        Route::post('chat/canned-replies', [ChatCannedReplyController::class, 'store'])->name('chat.canned-replies.store');
+        Route::get('chat/canned-replies/{cannedReply}/edit', [ChatCannedReplyController::class, 'edit'])->name('chat.canned-replies.edit');
+        Route::put('chat/canned-replies/{cannedReply}', [ChatCannedReplyController::class, 'update'])->name('chat.canned-replies.update');
+        Route::delete('chat/canned-replies/{cannedReply}', [ChatCannedReplyController::class, 'destroy'])->name('chat.canned-replies.destroy');
+
         Route::delete('chat/messages/{message}', [ChatController::class, 'destroyMessage'])->name('chat.messages.destroy');
 
         /*
@@ -119,6 +143,16 @@ Route::middleware(['web', 'auth', 'admin', 'throttle:admin'])->prefix('admin')->
             Route::put('chat/messages/{message}', [ChatController::class, 'updateMessage'])->name('chat.messages.update');
             Route::post('chat/messages/{message}/reactions', [ChatController::class, 'toggleReaction'])->name('chat.messages.reactions');
             Route::post('chat/messages/{message}/attachments', [ChatController::class, 'storeAttachment'])->name('chat.attachments.store');
+
+            // Inserting a saved reply fires this once per insert, so it rides
+            // the chat budget rather than the 30/min admin cap it would
+            // otherwise share with everything else the operator does.
+            Route::post('chat/canned-replies/{cannedReply}/used', [ChatCannedReplyController::class, 'used'])->name('chat.canned-replies.used');
+
+            // Rare in practice, but it is a control inside the chat UI and
+            // being throttled out of marking yourself Away is the one moment
+            // the control matters.
+            Route::post('chat/availability', [ChatController::class, 'availability'])->name('chat.availability');
         });
 
         // `signed` bounds how long a URL lasts; the policy check inside the
@@ -126,6 +160,22 @@ Route::middleware(['web', 'auth', 'admin', 'throttle:admin'])->prefix('admin')->
         Route::get('chat/attachments/{attachment}', [ChatController::class, 'showAttachment'])
             ->middleware('signed')
             ->name('chat.attachments.show');
+    });
+
+    /*
+     | Chat administration: the office-hours schedule and the satisfaction
+     | report.
+     |
+     | chat.manage, not chat.view. Office hours decide whether customers can
+     | reach support at all, and the report is per-operator scores — staff
+     | performance data, not part of using the chat. Both are still registered
+     | before the `chat/{chat}` wildcard, which would otherwise try to resolve
+     | "settings" as a ChatSession id.
+     */
+    Route::middleware('permission:chat.manage')->group(function () {
+        Route::get('chat/settings', [ChatSettingController::class, 'edit'])->name('chat.settings.edit');
+        Route::put('chat/settings', [ChatSettingController::class, 'update'])->name('chat.settings.update');
+        Route::get('chat/satisfaction', [ChatSatisfactionController::class, 'index'])->name('chat.satisfaction');
     });
 
     Route::get('chat/{chat}', [ChatController::class, 'show'])

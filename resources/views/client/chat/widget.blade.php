@@ -23,12 +23,29 @@
     // signed-in user with no customer (staff on a client page) would otherwise
     // be shown a form missing the two fields the server insists on.
     $chatNeedsIdentity = auth()->user()?->customer === null;
+
+    // Office hours, resolved server-side so the widget opens already knowing.
+    //
+    // Wrapped, and defaulting to OPEN. This partial is included from the shared
+    // layout on every non-admin page, so anything that can throw here — a
+    // pending migration on a half-upgraded install, an unreachable cache — would
+    // take down the storefront, the client portal and the login page with it.
+    // A chat that is wrongly open costs one refused start(); a layout that
+    // throws costs the whole site.
+    try {
+        $chatStatus = app(\App\Services\ChatOfficeHours::class)->status();
+    } catch (\Throwable) {
+        $chatStatus = ['open' => true, 'message' => '', 'offline_form' => false, 'next_opens_at' => null];
+    }
 @endphp
 <div class="client-chat" id="client-chat"
      data-conversation-id="{{ $chatConversationId }}"
      data-token="{{ $chatGuestToken }}"
      data-authenticated="{{ auth()->check() ? '1' : '0' }}"
      data-start-url="{{ route('chat.start') }}"
+     data-offline-url="{{ route('chat.offline') }}"
+     data-availability-url="{{ route('chat.availability') }}"
+     data-open="{{ $chatStatus['open'] ? '1' : '0' }}"
      data-guest-auth-url="{{ route('chat.guest-auth') }}"
      data-conversation-url-template="{{ route('chat.messages', ['conversation' => '__ID__']) }}">
 
@@ -47,9 +64,25 @@
                     aria-label="Minimise chat"></button>
         </header>
 
+        {{-- The closed notice. Rendered whenever the desk is shut, above
+             whichever form is on offer, and toggled by client-chat.js when the
+             availability check on open disagrees with what the page was
+             rendered with. --}}
+        <p class="client-chat__closed small {{ $chatStatus['open'] ? 'd-none' : '' }}"
+           id="client-chat-closed" role="status">
+            <span id="client-chat-closed-message">{{ $chatStatus['message'] }}</span>
+            <span class="client-chat__reopens {{ $chatStatus['next_opens_at'] ? '' : 'd-none' }}"
+                  id="client-chat-reopens">We reopen {{ $chatStatus['next_opens_at'] }}.</span>
+        </p>
+
         {{-- Shown until a conversation exists. A signed-in customer skips the
-             name/email fields entirely — we already know who they are. --}}
-        <form class="client-chat__intro" id="client-chat-intro">
+             name/email fields entirely — we already know who they are.
+
+             Hidden from the start when the chat is closed: the offline form
+             below takes its place. Both are in the DOM either way, because the
+             desk can shut while this tab is open and the swap then has to
+             happen without a reload. --}}
+        <form class="client-chat__intro {{ $chatStatus['open'] ? '' : 'd-none' }}" id="client-chat-intro">
             @csrf
             @if ($chatNeedsIdentity)
                 <label class="form-label small mb-1" for="client-chat-name">Your name</label>
@@ -65,6 +98,36 @@
             <button type="submit" class="btn btn-sm btn-primary w-100">Start chat</button>
             <p class="client-chat__error small text-danger mt-2 mb-0 d-none" id="client-chat-intro-error"></p>
         </form>
+
+        {{-- Out of hours. Posts to its own endpoint and opens a support TICKET,
+             which is what makes the reply reach someone who has closed the tab —
+             a queued chat nobody has open would be answered into an empty
+             room. --}}
+        <form class="client-chat__offline {{ ! $chatStatus['open'] && $chatStatus['offline_form'] ? '' : 'd-none' }}"
+              id="client-chat-offline">
+            @csrf
+            @if ($chatNeedsIdentity)
+                <label class="form-label small mb-1" for="client-chat-offline-name">Your name</label>
+                <input type="text" class="form-control form-control-sm mb-2" id="client-chat-offline-name"
+                       name="name" required maxlength="100">
+
+                <label class="form-label small mb-1" for="client-chat-offline-email">Email</label>
+                <input type="email" class="form-control form-control-sm mb-2" id="client-chat-offline-email"
+                       name="email" required maxlength="190">
+            @endif
+
+            <label class="form-label small mb-1" for="client-chat-offline-body">Your message</label>
+            <textarea class="form-control form-control-sm mb-2" id="client-chat-offline-body" name="body"
+                      rows="3" required maxlength="4000"></textarea>
+
+            <button type="submit" class="btn btn-sm btn-primary w-100">Send message</button>
+            <p class="client-chat__error small text-danger mt-2 mb-0 d-none" id="client-chat-offline-error"></p>
+        </form>
+
+        {{-- Replaces the offline form once it has been accepted, and carries the
+             ticket number: a visitor who has just been told "we will email you"
+             needs something to quote if the email does not arrive. --}}
+        <p class="client-chat__offline-thanks small d-none" id="client-chat-offline-thanks" role="status"></p>
 
         {{-- Shown only when the server reports there is history behind the page
              the widget is holding. The transcript loads newest-first, so this

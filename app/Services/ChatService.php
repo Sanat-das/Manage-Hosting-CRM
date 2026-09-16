@@ -66,6 +66,7 @@ class ChatService
      */
     public function __construct(
         private readonly NotificationPreferenceService $preferences = new NotificationPreferenceService,
+        private readonly ChatTranscriptEmailService $transcripts = new ChatTranscriptEmailService,
     ) {}
 
     /**
@@ -696,6 +697,26 @@ class ChatService
             'department' => $conversation->department,
             'closed_at' => $conversation->closed_at?->toDateTimeString(),
         ]);
+
+        // The transcript email, if the install has asked for one.
+        //
+        // After commit so a close that later rolls back cannot have already
+        // emailed the customer a transcript of a conversation that is still
+        // open. Inside a try/catch because mail is not part of closing: an
+        // operator clicking Close must not be told the close failed because the
+        // template was deleted or the queue table is unreachable. The service
+        // itself decides whether the feature is on and skips quietly when it is
+        // not, so the common path is a single settings read.
+        DB::afterCommit(function () use ($conversation): void {
+            try {
+                $this->transcripts->send($conversation);
+            } catch (Throwable $e) {
+                Log::warning('ChatService: transcript email failed.', [
+                    'conversation_id' => $conversation->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        });
 
         return $conversation;
     }

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature\Chat;
 
 use App\Models\ChatConversation;
+use App\Models\Customer;
 use App\Models\User;
 use App\Services\ChatService;
 use App\Support\ChatMessagePayload;
@@ -132,6 +133,59 @@ class OperatorNameLeakTest extends TestCase
         $this->assertFalse($msg['is_operator']);
         $this->assertSame('My Guest Name', $msg['author_name'], 'Guest own name is theirs to see');
         $this->assertStringContainsString('My Guest Name', $raw);
+    }
+
+    /**
+     * The signed-in half of the test above, and the case that was wrong.
+     *
+     * A guest has no `user_id`, so "has no user id" happened to mean "this is
+     * the customer" for as long as only guests were considered. A SIGNED-IN
+     * customer posts under their own user id, so the same test marked their own
+     * messages as staff: the widget rendered them on the support side of the
+     * panel, attributed to "Support". The customer was shown a conversation in
+     * which they appeared to be the agent.
+     */
+    public function test_signed_in_customer_sees_own_name_not_support_on_own_messages(): void
+    {
+        $user = User::factory()->create([
+            'role' => 'client',
+            'first_name' => 'Sam',
+            'last_name' => 'Customer',
+        ]);
+        $customer = Customer::create(['user_id' => $user->id, 'status' => 'active']);
+
+        $start = $this->actingAs($user)
+            ->postJson(route('chat.start'), ['body' => 'Where is my invoice?'])
+            ->assertCreated();
+
+        $operator = $this->chatUser('chat.view', 'chat.manage');
+        $operator->forceFill(['first_name' => 'Priya', 'last_name' => 'Nair'])->save();
+
+        $conversation = ChatConversation::findOrFail($start->json('conversation_id'));
+        $this->chat->assignOperator($conversation, $operator);
+        $this->chat->sendMessage($conversation->fresh(), $operator, 'Looking into it now.');
+
+        $raw = $this->actingAs($user)
+            ->getJson(route('chat.messages', $conversation->id))
+            ->assertOk()
+            ->getContent();
+
+        $messages = json_decode($raw, true)['messages'];
+        $this->assertCount(2, $messages);
+
+        [$own, $reply] = $messages;
+
+        // The customer's own message: theirs, with their own name on it.
+        $this->assertFalse($own['is_operator'], 'A signed-in customer is not an operator in their own chat.');
+        $this->assertSame('Sam Customer', $own['author_name']);
+        // They DO have an account, so is_guest is honestly false — which is
+        // precisely why it cannot be the field that decides authorship.
+        $this->assertFalse($own['is_guest']);
+
+        // The operator's reply: still anonymised.
+        $this->assertTrue($reply['is_operator']);
+        $this->assertSame(ChatMessagePayload::OPERATOR_LABEL, $reply['author_name']);
+        $this->assertStringNotContainsString('Priya', $raw, 'Operator real name must not reach the customer.');
     }
 
     public function test_deleted_operator_message_shows_tombstone_without_real_name(): void

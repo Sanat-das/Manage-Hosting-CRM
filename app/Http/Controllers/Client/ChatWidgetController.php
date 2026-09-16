@@ -10,18 +10,23 @@ use App\Http\Requests\Chat\ClientChatMessageRequest;
 use App\Http\Requests\Chat\RateChatRequest;
 use App\Http\Requests\Chat\StartClientChatRequest;
 use App\Http\Requests\Chat\StoreChatAttachmentRequest;
+use App\Http\Requests\Chat\StoreOfflineMessageRequest;
 use App\Models\ChatConversation;
 use App\Models\ChatConversationMessage;
 use App\Models\ChatMessageAttachment;
 use App\Models\User;
+use App\Services\ChatOfficeHours;
 use App\Services\ChatService;
+use App\Services\TicketService;
 use App\Support\ChatMessagePayload;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use InvalidArgumentException;
 use RuntimeException;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
+use Throwable;
 
 /**
  * The customer-facing side of the chat.
@@ -55,7 +60,46 @@ class ChatWidgetController extends Controller
     /** Newest messages returned by one fetch. */
     private const MESSAGE_LIMIT = 100;
 
-    public function __construct(private readonly ChatService $chat) {}
+    /**
+     * The status code for "the chat is not open right now".
+     *
+     * 409 rather than 422: nothing the visitor typed is invalid, the request
+     * simply conflicts with the current state of the desk. The widget branches
+     * on the `closed` flag in the body, not on the code, so this is
+     * documentation more than protocol — but a 422 here would put a genuine
+     * validation failure and "we are shut" in the same bucket.
+     */
+    private const STATUS_CLOSED_CODE = 409;
+
+    public function __construct(
+        private readonly ChatService $chat,
+        private readonly ChatOfficeHours $hours = new ChatOfficeHours,
+    ) {}
+
+    /**
+     * Are we open, and if not what is on offer instead?
+     *
+     * The widget asks this when it is OPENED, not when the page is rendered.
+     * The closed notice is rendered server-side too, but a tab left open across
+     * closing time would otherwise still be showing "start a chat" at midnight
+     * — and a visitor typing into a form that is about to refuse them is the
+     * failure this endpoint exists to prevent.
+     *
+     * `reason` is deliberately not in the response. "Nobody is available" is an
+     * operational fact about the support desk, and the visitor only needs to
+     * know what they can do next.
+     */
+    public function availability(): JsonResponse
+    {
+        $status = $this->hours->status();
+
+        return response()->json([
+            'open' => $status['open'],
+            'message' => $status['message'],
+            'offline_form' => $status['offline_form'],
+            'next_opens_at' => $status['next_opens_at'],
+        ]);
+    }
 
     public function start(StartClientChatRequest $request): JsonResponse
     {
@@ -71,6 +115,24 @@ class ChatWidgetController extends Controller
                 'token' => $existing->guest_token,
                 'status' => $existing->status,
             ], 200);
+        }
+
+        // Office hours are checked HERE, after the resume branch above, and
+        // deliberately not in send(). Closing time must not eject a customer
+        // who is already mid-conversation or lock them out of history they can
+        // see on screen; it only stops NEW conversations being opened into an
+        // empty room. The gate is repeated on the server because the widget's
+        // own check happened when the panel was opened, which may have been
+        // before the desk shut.
+        $status = $this->hours->status();
+
+        if (! $status['open']) {
+            return response()->json([
+                'closed' => true,
+                'message' => $status['message'],
+                'offline_form' => $status['offline_form'],
+                'next_opens_at' => $status['next_opens_at'],
+            ], self::STATUS_CLOSED_CODE);
         }
 
         $customer = $request->user()?->customer;
@@ -95,6 +157,73 @@ class ChatWidgetController extends Controller
             // The browser needs it to authorise its websocket subscription.
             'token' => $conversation->guest_token,
             'status' => $conversation->status,
+        ], 201);
+    }
+
+    /**
+     * An out-of-hours message.
+     *
+     * It becomes a TICKET, not a chat row, and that is the whole design. The
+     * alternatives were a conversation left `waiting` in the operator queue —
+     * indistinguishable from a customer sitting there right now, and answered
+     * by replying into a widget nobody has open — or a new
+     * `chat_offline_messages` table with its own inbox screen for staff to
+     * forget to check. A ticket already has an owner, a status, a department, an
+     * audit trail, a confirmation email, and inbound mail piping, so the
+     * customer can simply reply to the email that reaches them.
+     *
+     * Delegated to TicketService::create() rather than writing ticket rows
+     * here, for the same reason ChatService::convertToTicket() delegates: that
+     * method owns numbering, the guest/customer resolution and the TicketCreated
+     * event, and a second creator would drift from it.
+     */
+    public function offline(StoreOfflineMessageRequest $request, TicketService $tickets): JsonResponse
+    {
+        // Refused when the chat is open, so this cannot become a way to file a
+        // ticket that skips the ordinary support form, and refused when the
+        // admin has turned the form off.
+        if (! $this->hours->offersOfflineForm()) {
+            return response()->json([
+                'message' => 'Support is available right now — start a chat instead.',
+            ], self::STATUS_CLOSED_CODE);
+        }
+
+        $department = $this->hours->offlineDepartment();
+
+        if ($department === null) {
+            // No enabled ticket departments at all. Saying so plainly beats a
+            // 500 from a constraint, and beats silently dropping the message.
+            return response()->json([
+                'message' => 'We cannot take a message right now. Please email us instead.',
+            ], 503);
+        }
+
+        $customer = $request->user()?->customer;
+        $body = $request->string('body')->toString();
+        $subject = Str::limit(trim($body), 70, '...');
+
+        try {
+            $ticket = $tickets->create([
+                'customer_id' => $customer?->id,
+                // Guest identity only when there is no customer record; a
+                // signed-in customer's ticket is theirs, and their name is
+                // already on their account.
+                'guest_email' => $customer === null ? $request->string('email')->toString() : null,
+                'guest_name' => $customer === null ? $request->string('name')->toString() : null,
+                'subject' => $subject !== '' ? $subject : 'Offline chat message',
+                'department' => $department,
+            ], $body);
+        } catch (Throwable $e) {
+            report($e);
+
+            return response()->json([
+                'message' => 'We could not take your message. Please email us instead.',
+            ], 500);
+        }
+
+        return response()->json([
+            'ticket_no' => $ticket->ticket_no,
+            'message' => 'Thank you — we have your message and will reply by email.',
         ], 201);
     }
 

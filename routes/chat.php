@@ -29,6 +29,14 @@ Route::middleware(['web'])->prefix('chat')->name('chat.')->group(function () {
         ->middleware('throttle:chat-start')
         ->name('start');
 
+    // An out-of-hours message. Creates a TICKET row, so it is budgeted with
+    // `start` rather than with the read traffic below — the two are mutually
+    // exclusive (one is refused whenever the other is allowed) and share the
+    // same "this visitor is opening something" cost.
+    Route::post('offline', [ChatWidgetController::class, 'offline'])
+        ->middleware('throttle:chat-start')
+        ->name('offline');
+
     // Writes up to 10MB to disk. Kept off the generous limit below.
     Route::post('{conversation}/messages/{message}/attachments', [ChatWidgetController::class, 'attach'])
         ->middleware('throttle:chat-attach')
@@ -39,6 +47,13 @@ Route::middleware(['web'])->prefix('chat')->name('chat.')->group(function () {
     // that LISTS conversations, so a customer cannot discover that others exist.
     Route::middleware('throttle:chat-widget')->group(function () {
         Route::post('guest-auth', ChatGuestAuthController::class)->name('guest-auth');
+
+        // "Are you open?", asked when the widget is opened rather than when the
+        // page was rendered — a tab left open past closing time would otherwise
+        // still be offering a chat nobody is there to answer. Reads two cached
+        // values and no conversation at all, so it belongs on the generous
+        // limit with the rest of the widget's background traffic.
+        Route::get('availability', [ChatWidgetController::class, 'availability'])->name('availability');
         Route::get('{conversation}/messages', [ChatWidgetController::class, 'messages'])->name('messages');
         Route::post('{conversation}/messages', [ChatWidgetController::class, 'send'])->name('send');
         Route::get('{conversation}/attachments/{attachment}', [ChatWidgetController::class, 'attachment'])

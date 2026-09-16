@@ -78,7 +78,7 @@
     "isEntry": true
   },
   "resources/css/chat.css": {
-    "file": "assets/chat-Ckx_T_7G.css",
+    "file": "assets/chat-BmXj9QcG.css",
     "name": "chat",
     "names": [
       "chat.css"
@@ -87,7 +87,7 @@
     "isEntry": true
   },
   "resources/css/client-chat.css": {
-    "file": "assets/client-chat-Bqseb-oC.css",
+    "file": "assets/client-chat-qhZM9w3-.css",
     "name": "client-chat",
     "names": [
       "client-chat.css"
@@ -111,7 +111,7 @@
     "isEntry": true
   },
   "resources/js/chat.js": {
-    "file": "assets/chat-BsPI5bq4.js",
+    "file": "assets/chat-DprVWUCX.js",
     "name": "chat",
     "src": "resources/js/chat.js",
     "isEntry": true,
@@ -121,7 +121,7 @@
     ]
   },
   "resources/js/client-chat.js": {
-    "file": "assets/client-chat-DD56K2as.js",
+    "file": "assets/client-chat-DJkBYU4G.js",
     "name": "client-chat",
     "src": "resources/js/client-chat.js",
     "isEntry": true,

@@ -346,9 +346,14 @@ return [
         ],
         [
             'text' => 'Live Chat',
-            'route' => 'admin.chat.index',
             'icon' => 'bi bi-chat-dots',
             'can' => 'chat.view',
+            'submenu' => [
+                ['text' => 'Conversations', 'route' => 'admin.chat.index', 'icon' => 'bi bi-circle', 'can' => 'chat.view'],
+                ['text' => 'Saved Replies', 'route' => 'admin.chat.canned-replies.index', 'icon' => 'bi bi-circle', 'can' => 'chat.view'],
+                ['text' => 'Satisfaction', 'route' => 'admin.chat.satisfaction', 'icon' => 'bi bi-circle', 'can' => 'chat.manage'],
+                ['text' => 'Chat Settings', 'route' => 'admin.chat.settings.edit', 'icon' => 'bi bi-circle', 'can' => 'chat.manage'],
+            ],
         ],
 
         ['header' => 'ANALYTICS', 'can' => 'admin.panel'],

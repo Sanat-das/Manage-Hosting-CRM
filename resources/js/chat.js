@@ -59,6 +59,11 @@ function initChat(root) {
         entityType: document.getElementById('chat-entity-type'),
         entityQuery: document.getElementById('chat-entity-query'),
         entityResults: document.getElementById('chat-entity-results'),
+        cannedPicker: document.getElementById('chat-canned-picker'),
+        cannedQuery: document.getElementById('chat-canned-query'),
+        cannedResults: document.getElementById('chat-canned-results'),
+        availability: document.getElementById('chat-availability'),
+        availabilityStatus: document.getElementById('chat-availability-status'),
         thread: document.getElementById('chat-thread'),
         threadBody: document.getElementById('chat-thread-body'),
         threadComposer: document.getElementById('chat-thread-composer'),
@@ -401,14 +406,33 @@ function initChat(root) {
     });
 
     el.body?.addEventListener('keydown', (event) => {
+        // Escape closes the saved-reply picker without sending or clearing.
+        if (event.key === 'Escape' && !el.cannedPicker?.classList.contains('d-none')) {
+            event.preventDefault();
+            closeCanned();
+
+            return;
+        }
+
         if (event.key === 'Enter' && !event.shiftKey) {
             event.preventDefault();
+
+            // A composer holding nothing but `/shortcut` is a reply being
+            // chosen, not a message being written. Sending it would put the
+            // literal "/refund" in front of the customer.
+            if (slashToken() !== null && cannedRows.length > 0) {
+                insertCanned(cannedRows[0]);
+
+                return;
+            }
+
             el.composer.requestSubmit();
         }
     });
 
     el.body?.addEventListener('input', () => {
         handleMentionTyping();
+        handleCannedTyping();
         announceTyping();
     });
 
@@ -833,6 +857,185 @@ function initChat(root) {
         el.entityResults.innerHTML = '';
     });
 
+    // --- saved replies ----------------------------------------------------
+
+    /**
+     * Two ways in, one list.
+     *
+     * The button opens the picker and focuses its search box. Typing `/word` at
+     * the very start of an empty composer opens the same picker but leaves focus
+     * where it is, so the operator can keep typing the shortcut — and Enter then
+     * inserts the top match instead of sending. That interception is the point:
+     * without it, an operator who types `/refund` and hits Enter out of habit
+     * sends the literal text "/refund" to a customer.
+     *
+     * The fetched rows are kept in a JS array and the DOM carries only their
+     * index. Serialising each row into a `data-` attribute (as the entity picker
+     * above does) puts unescaped apostrophes from real names and real reply text
+     * inside a single-quoted attribute.
+     */
+    const cannedUrl = root.dataset.cannedUrl || '';
+    const cannedUsedUrl = root.dataset.cannedUsedUrl || '';
+    let cannedRows = [];
+    let cannedTimer = null;
+
+    /** The `/shortcut` being typed, or null when the composer is not in slash mode. */
+    function slashToken() {
+        const match = /^\/([\w-]*)$/.exec(el.body?.value ?? '');
+
+        return match === null ? null : match[1];
+    }
+
+    function closeCanned() {
+        el.cannedPicker?.classList.add('d-none');
+        cannedRows = [];
+    }
+
+    function renderCanned(rows) {
+        cannedRows = rows;
+
+        if (!el.cannedResults) return;
+
+        if (rows.length === 0) {
+            el.cannedResults.innerHTML = '<li class="p-2 text-body-secondary">No saved replies match.</li>';
+
+            return;
+        }
+
+        el.cannedResults.innerHTML = rows
+            .map(
+                (row, index) =>
+                    `<li role="option"><button type="button" data-canned-index="${index}">` +
+                    `<strong>${escapeHtml(row.title)}</strong>` +
+                    (row.shortcut ? ` <code>/${escapeHtml(row.shortcut)}</code>` : '') +
+                    `<span class="chat-canned__preview text-body-secondary">${escapeHtml(row.body.slice(0, 90))}</span>` +
+                    '</button></li>',
+            )
+            .join('');
+    }
+
+    async function loadCanned(query) {
+        if (!cannedUrl || !el.cannedPicker) return;
+
+        try {
+            const result = await api(`${cannedUrl}?q=${encodeURIComponent(query)}`);
+            renderCanned(result.replies ?? []);
+        } catch (error) {
+            cannedRows = [];
+            el.cannedResults.innerHTML = `<li class="p-2 text-danger">${escapeHtml(error.message)}</li>`;
+        }
+    }
+
+    function insertCanned(row) {
+        if (!row || !el.body) return;
+
+        // In slash mode the token IS the whole composer, so the reply replaces
+        // it. Otherwise the reply is appended to whatever has been written,
+        // because the operator opened the picker deliberately mid-sentence.
+        if (slashToken() !== null) {
+            el.body.value = row.body;
+        } else {
+            const current = el.body.value;
+            el.body.value = current === '' ? row.body : `${current.replace(/\s*$/, '')} ${row.body}`;
+        }
+
+        closeCanned();
+        el.body.focus();
+
+        // Bookkeeping, fired and forgotten: the count tells an admin which
+        // snippets earn their place, and a lost increment costs nothing.
+        if (cannedUsedUrl) {
+            api(cannedUsedUrl.replace('__ID__', String(row.id)), { method: 'POST' }).catch(() => {});
+        }
+    }
+
+    document.getElementById('chat-canned-open')?.addEventListener('click', () => {
+        if (!el.cannedPicker) return;
+
+        const opening = el.cannedPicker.classList.contains('d-none');
+
+        el.cannedPicker.classList.toggle('d-none');
+
+        if (opening) {
+            el.cannedQuery.value = '';
+            el.cannedQuery.focus();
+            loadCanned('');
+        }
+    });
+
+    el.cannedQuery?.addEventListener('input', () => {
+        clearTimeout(cannedTimer);
+        cannedTimer = setTimeout(() => loadCanned(el.cannedQuery.value.trim()), 200);
+    });
+
+    el.cannedResults?.addEventListener('click', (event) => {
+        const choice = event.target.closest('[data-canned-index]');
+        if (!choice) return;
+
+        insertCanned(cannedRows[Number(choice.dataset.cannedIndex)]);
+    });
+
+    function handleCannedTyping() {
+        const token = slashToken();
+
+        if (token === null) {
+            if (!el.cannedPicker?.classList.contains('d-none')) {
+                closeCanned();
+            }
+
+            return;
+        }
+
+        el.cannedPicker?.classList.remove('d-none');
+
+        clearTimeout(cannedTimer);
+        cannedTimer = setTimeout(() => loadCanned(token), 200);
+    }
+
+    // --- availability -----------------------------------------------------
+
+    /**
+     * The operator's own Available / Away / Busy.
+     *
+     * The consequence is reported back, not just the new state: an operator who
+     * was the last one accepting has, by going Away, just closed the chat to
+     * customers. That is a decision they should be able to see they made.
+     *
+     * A failed request reverts the control. Leaving it showing "Away" while the
+     * server still has "Available" is the worst outcome — the operator believes
+     * they are off the queue and keeps receiving customers.
+     */
+    el.availability?.addEventListener('change', async () => {
+        const url = root.dataset.availabilityUrl;
+        const chosen = el.availability.value;
+        const previous = el.availability.dataset.current || chosen;
+
+        if (!url) return;
+
+        try {
+            const result = await api(url, {
+                method: 'POST',
+                body: JSON.stringify({ state: chosen }),
+            });
+
+            el.availability.dataset.current = result.state;
+
+            if (el.availabilityStatus) {
+                el.availabilityStatus.textContent =
+                    result.accepting_operators === 0
+                        ? 'Nobody is accepting chats.'
+                        : `${result.accepting_operators} accepting chats.`;
+            }
+        } catch (error) {
+            el.availability.value = previous;
+            say(`Could not change your availability: ${error.message}`, 'error');
+        }
+    });
+
+    if (el.availability) {
+        el.availability.dataset.current = el.availability.value;
+    }
+
     function renderChips() {
         if (!el.chips) return;
 
@@ -1021,7 +1224,41 @@ function initChat(root) {
 
         applyUnread(payload.unread ?? {});
         applyPresence(payload.online ?? []);
+        // After applyPresence, which is what creates the rows this paints.
+        applyAvailabilityStates(payload.availability ?? {});
         (payload.inbox ?? []).forEach((conversation) => noteWaiting(conversation, true));
+    }
+
+    /**
+     * Paint each roster row with its declared state.
+     *
+     * Only the exceptions are labelled. A badge reading "Available" on every
+     * row next to a green dot is noise that hides the one row saying Away,
+     * which is the only row anyone is looking for.
+     */
+    function applyAvailabilityStates(states) {
+        if (!el.presence) return;
+
+        el.presence.querySelectorAll('[data-user-id]').forEach((row) => {
+            const entry = states[row.dataset.userId];
+            const state = entry?.state ?? 'available';
+
+            row.dataset.state = state;
+
+            const dot = row.querySelector('.chat-presence__dot');
+            if (dot) {
+                dot.className = `chat-presence__dot chat-presence__dot--${state}`;
+            }
+
+            row.querySelector('.chat-presence__state')?.remove();
+
+            if (state !== 'available') {
+                const badge = document.createElement('span');
+                badge.className = 'badge text-bg-light text-body chat-presence__state';
+                badge.textContent = entry?.label ?? state;
+                row.append(badge);
+            }
+        });
     }
 
     function applyUnread(counts) {

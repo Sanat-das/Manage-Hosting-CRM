@@ -28,7 +28,13 @@
          data-conversation-id="{{ $selected?->id }}"
          data-user-id="{{ auth()->id() }}"
          data-heartbeat="{{ $heartbeatSeconds }}"
-         data-can-operate="{{ $canOperate ? '1' : '0' }}">
+         data-can-operate="{{ $canOperate ? '1' : '0' }}"
+         {{-- Endpoints as data, not as string literals in the bundle: the app
+              can be installed under a subdirectory, and route() is the only
+              thing that knows. --}}
+         data-canned-url="{{ route('admin.chat.canned-replies.pick') }}"
+         data-canned-used-url="{{ route('admin.chat.canned-replies.used', ['cannedReply' => '__ID__']) }}"
+         data-availability-url="{{ route('admin.chat.availability') }}">
         {{-- Reconnection banner — hidden until JS shows it when Echo is unavailable. --}}
         <div class="chat-reconnect-banner d-none" id="chat-reconnect-banner" data-reconnect-banner role="status" aria-live="polite">Realtime disconnected — polling</div>
         <div class="card-body p-0 d-flex chat-shell__body">
@@ -96,14 +102,47 @@
                         <h2 class="chat-sidebar__heading">Online now</h2>
                         <ul class="chat-presence" id="chat-presence-list">
                             @forelse ($online as $person)
-                                <li data-user-id="{{ $person['id'] }}">
-                                    <span class="chat-presence__dot" aria-hidden="true"></span>{{ $person['name'] }}
+                                @php $state = $availabilityStates[$person['id']] ?? null; @endphp
+                                <li data-user-id="{{ $person['id'] }}"
+                                    data-state="{{ $state['state'] ?? 'available' }}">
+                                    <span class="chat-presence__dot chat-presence__dot--{{ $state['state'] ?? 'available' }}"
+                                          aria-hidden="true"></span>{{ $person['name'] }}
+                                    {{-- Only the exceptions are labelled. A badge
+                                         reading "Available" next to a green dot on
+                                         every row is noise that hides the one row
+                                         that says Away. --}}
+                                    @if (($state['state'] ?? 'available') !== 'available')
+                                        <span class="badge text-bg-light text-body chat-presence__state">{{ $state['label'] }}</span>
+                                    @endif
+                                    @if (! empty($state['note']))
+                                        <span class="chat-presence__note">{{ $state['note'] }}</span>
+                                    @endif
                                 </li>
                             @empty
                                 <li class="chat-sidebar__empty" data-empty>Nobody else is here.</li>
                             @endforelse
                         </ul>
                     </div>
+
+                    {{-- The operator's own state.
+                         Only for people who can actually take a customer chat
+                         (chat.manage): for anyone else this control would set a
+                         flag that nothing reads, and would appear to promise
+                         that marking yourself Away does something. --}}
+                    @if ($canOperate)
+                        <div class="chat-sidebar__group" id="chat-availability-group">
+                            <h2 class="chat-sidebar__heading">My availability</h2>
+                            <div class="px-3 pb-3">
+                                <label class="visually-hidden" for="chat-availability">My availability</label>
+                                <select class="form-select form-select-sm mb-2" id="chat-availability">
+                                    @foreach ($availabilityOptions as $value => $label)
+                                        <option value="{{ $value }}" @selected($availability === $value)>{{ $label }}</option>
+                                    @endforeach
+                                </select>
+                                <span class="small text-body-secondary" id="chat-availability-status" aria-live="polite"></span>
+                            </div>
+                        </div>
+                    @endif
                 </div>
             </aside>
 
@@ -219,6 +258,11 @@
                                         <i class="bi bi-link-45deg"></i>
                                     </button>
                                 @endif
+                                <button type="button" class="btn btn-sm btn-outline-secondary" id="chat-canned-open"
+                                        title="Insert a saved reply (type / in an empty box)"
+                                        aria-label="Insert a saved reply" {{ $isArchived ? 'disabled' : '' }}>
+                                    <i class="bi bi-lightning"></i>
+                                </button>
                                 <span class="text-body-secondary small ms-1" id="chat-status" aria-live="polite"></span>
                             </div>
                             <button type="submit" class="btn btn-sm btn-primary" {{ $isArchived ? 'disabled' : '' }}>Send</button>
@@ -238,6 +282,26 @@
                                        placeholder="Search records" aria-label="Search records">
                             </div>
                             <ul class="chat-autocomplete__list" id="chat-entity-results" role="listbox"></ul>
+                        </div>
+
+                        {{-- Saved replies. Same shape as the entity picker above,
+                             and deliberately not a <select>: the list is searched
+                             server-side and each row shows the text as well as the
+                             title, because a title alone is not enough to tell two
+                             refund snippets apart. --}}
+                        <div class="chat-canned-picker d-none" id="chat-canned-picker">
+                            <div class="d-flex gap-2 p-2 border-bottom">
+                                <input type="search" class="form-control form-control-sm" id="chat-canned-query"
+                                       placeholder="Search saved replies" aria-label="Search saved replies">
+                                @can('chat.manage')
+                                    <a href="{{ route('admin.chat.canned-replies.index') }}"
+                                       class="btn btn-sm btn-outline-secondary flex-shrink-0"
+                                       title="Manage saved replies" aria-label="Manage saved replies">
+                                        <i class="bi bi-gear"></i>
+                                    </a>
+                                @endcan
+                            </div>
+                            <ul class="chat-autocomplete__list" id="chat-canned-results" role="listbox"></ul>
                         </div>
                     </form>
                 @endif
