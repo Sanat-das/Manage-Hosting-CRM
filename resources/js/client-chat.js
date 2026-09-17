@@ -55,12 +55,16 @@ function boot(el) {
     const state = {
         conversationId: Number(el.dataset.conversationId) || null,
         token: el.dataset.token || '',
+        // Seeded from what the server rendered, so a failed availability check
+        // falls back to the truth at page load rather than to `undefined`.
+        chatOpen: el.dataset.open === '1',
         status: null,
         lastId: 0,
         open: false,
         unread: 0,
         typingSentAt: 0,
         typingTimer: null,
+        echo: null,
         channel: null,
         poller: null,
         connected: false,
@@ -100,6 +104,7 @@ function boot(el) {
         error: document.getElementById('client-chat-error'),
         rating: document.getElementById('client-chat-rating'),
         thanks: document.getElementById('client-chat-thanks'),
+        restart: document.getElementById('client-chat-restart'),
     };
 
     const csrf = document.querySelector('meta[name="csrf-token"]')?.content || '';
@@ -233,8 +238,75 @@ function boot(el) {
         ui.composer.classList.toggle('d-none', closed);
         ui.rating.classList.toggle('d-none', !closed || Boolean(rating));
 
+        // Offered on every closed conversation, rated or not: the rating is the
+        // end of the last chat, this is the start of the next one.
+        ui.restart?.classList.toggle('d-none', !closed);
+
         if (rating) {
             ui.thanks.classList.remove('d-none');
+        }
+    }
+
+    /**
+     * Put the panel back to the state it was in before any of this started, so
+     * a customer whose chat was closed can open another one.
+     *
+     * The server needs no help here: start() already discards a CLOSED
+     * conversation held in the session and mints a new one, overwriting both
+     * session keys. What was missing was any way to ask it a second time — the
+     * conversation id rendered into the markup survives the close, and it is
+     * what hides the intro form and short-circuits the availability check.
+     */
+    function resetForNewChat() {
+        // Leave the old room before forgetting which one it was, or its socket
+        // would keep delivering a closed conversation into the new transcript.
+        if (state.echo && state.conversationId) {
+            try {
+                state.echo.leave(`chat.conversation.${state.conversationId}`);
+            } catch {
+                // A connection that never came up has nothing to leave.
+            }
+        }
+
+        stopPolling();
+        window.clearTimeout(state.typingTimer);
+
+        state.channel = null;
+        state.conversationId = null;
+        // The old token authorises only the old conversation; start() returns
+        // the new one, and until then there is nothing to present.
+        state.token = '';
+        state.status = null;
+        state.lastId = 0;
+        state.oldestId = 0;
+        state.hasMore = false;
+        state.loadingEarlier = false;
+        state.typingSentAt = 0;
+        state.backoffUntil = 0;
+        state.unread = 0;
+
+        ui.messages.replaceChildren();
+        ui.messages.classList.add('d-none');
+        ui.unread.classList.add('d-none');
+        ui.composer.classList.add('d-none');
+        ui.rating.classList.add('d-none');
+        ui.thanks.classList.add('d-none');
+        ui.restart?.classList.add('d-none');
+        ui.earlier?.classList.add('d-none');
+        ui.typing?.classList.add('d-none');
+        ui.error.classList.add('d-none');
+        ui.introError.classList.add('d-none');
+        ui.offlineThanks?.classList.add('d-none');
+        ui.statusLabel.textContent = '';
+        // The availability check that follows will correct this; showing the
+        // form on the last known state is what keeps a dropped request from
+        // stranding the customer a second time.
+        ui.intro.classList.toggle('d-none', !state.chatOpen);
+
+        const firstMessage = document.getElementById('client-chat-first');
+
+        if (firstMessage) {
+            firstMessage.value = '';
         }
     }
 
@@ -613,6 +685,17 @@ function boot(el) {
         }
     });
 
+    ui.restart?.addEventListener('click', async () => {
+        resetForNewChat();
+
+        // Asked again rather than assumed: the desk may have shut during the
+        // conversation that just ended, and the intro form must not be offered
+        // for a chat the server is about to refuse.
+        await checkAvailability();
+
+        document.getElementById('client-chat-first')?.focus();
+    });
+
     // --- open / minimise ---------------------------------------------------
 
     ui.launcher.addEventListener('click', async () => {
@@ -667,6 +750,15 @@ function boot(el) {
 
         startPolling();
 
+        // A second conversation in the same tab reuses the socket the first one
+        // opened. Building another Echo would leave two connections up, both
+        // authorising as this browser, for one panel.
+        if (state.echo) {
+            listenOnConversation(state.echo);
+
+            return;
+        }
+
         const cfg = getReverbConfig();
 
         if (!cfg) {
@@ -707,20 +799,25 @@ function boot(el) {
 
             watchConnection(echo);
 
-            state.channel = echo.private(`chat.conversation.${state.conversationId}`);
-            state.channel.listen('.chat.message.new', (event) => {
-                showTyping(false);
-                renderMessage(event.message);
-                stopPolling();
-            });
-
-            // Published here only for a customer inbox and only for a staff
-            // typer: our own heartbeat is never echoed back, and it names no one.
-            state.channel.listen('.chat.typing', (event) => showTyping(event.typing));
+            state.echo = echo;
+            listenOnConversation(echo);
         } catch {
             // Polling is already running; nothing else to do.
             state.channel = null;
         }
+    }
+
+    function listenOnConversation(echo) {
+        state.channel = echo.private(`chat.conversation.${state.conversationId}`);
+        state.channel.listen('.chat.message.new', (event) => {
+            showTyping(false);
+            renderMessage(event.message);
+            stopPolling();
+        });
+
+        // Published here only for a customer inbox and only for a staff
+        // typer: our own heartbeat is never echoed back, and it names no one.
+        state.channel.listen('.chat.typing', (event) => showTyping(event.typing));
     }
 
     /**

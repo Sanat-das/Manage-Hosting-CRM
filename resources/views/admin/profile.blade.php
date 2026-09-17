@@ -1,20 +1,9 @@
-@extends('adminlte::page')
+﻿@extends('adminlte::page')
 
 @section('title', 'My Profile')
 
 @section('content_header')
-    <div class="row">
-        <div class="col-sm-6">
-            <h1 class="m-0">My Profile</h1>
-        </div>
-        <div class="col-sm-6">
-            <ol class="breadcrumb float-sm-end">
-                <li class="breadcrumb-item"><a href="{{ url('/') }}">{{ __('adminlte.home') }}</a></li>
-                <li class="breadcrumb-item"><a href="{{ route('admin.dashboard') }}">Dashboard</a></li>
-                <li class="breadcrumb-item active" aria-current="page">Profile</li>
-            </ol>
-        </div>
-    </div>
+    <x-ui.page-header title="My Profile" subtitle="Manage your profile and preferences" :breadcrumbs="[['label' => __('adminlte.home'), 'url' => url('/')],['label' => 'Dashboard','url' => route('admin.dashboard')],['label' => 'My Profile','active' => true]]" />
 @stop
 
 @section('content')
@@ -40,7 +29,7 @@
             </dd>
 
             <dt class="col-sm-3">Member since</dt>
-            <dd class="col-sm-9">{{ $user->created_at?->format('M j, Y') ?? '—' }}</dd>
+            <dd class="col-sm-9">{{ $user->created_at?->format('M j, Y') ?? 'â€”' }}</dd>
         </dl>
     </x-adminlte-card>
 
@@ -64,3 +53,4 @@
     {{-- Two-Factor Authentication management --}}
     @include('auth.two-factor-manage')
 @stop
+

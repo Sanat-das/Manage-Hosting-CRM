@@ -3,18 +3,11 @@
 @section('title', $hostingAccount->host_name)
 
 @section('content_header')
-    <div class="row">
-        <div class="col-sm-6">
-            <h1 class="m-0">{{ $hostingAccount->host_name }}</h1>
-        </div>
-        <div class="col-sm-6">
-            <ol class="breadcrumb float-sm-end">
-                <li class="breadcrumb-item"><a href="{{ url('/') }}">{{ __('adminlte.home') }}</a></li>
-                <li class="breadcrumb-item"><a href="{{ route('admin.hosting.index') }}">Products/Services</a></li>
-                <li class="breadcrumb-item active" aria-current="page">#{{ $hostingAccount->id }}</li>
-            </ol>
-        </div>
-    </div>
+    <x-ui.page-header title="{{ $hostingAccount->host_name }}" subtitle="View product/service details" :breadcrumbs="[
+        ['label' => __('adminlte.home'), 'url' => url('/')],
+        ['label' => 'Products/Services', 'url' => route('admin.hosting.index')],
+        ['label' => '#'.$hostingAccount->id, 'active' => true],
+    ]" />
 @stop
 
 @php

@@ -3,15 +3,10 @@
 @section('title', 'Product Upgrade Paths')
 
 @section('content_header')
-    <div class="row">
-        <div class="col-sm-6"><h1 class="m-0">Product Upgrade Paths</h1></div>
-        <div class="col-sm-6">
-            <ol class="breadcrumb float-sm-end">
-                <li class="breadcrumb-item"><a href="{{ url('/') }}">{{ __('adminlte.home') }}</a></li>
-                <li class="breadcrumb-item active">Product Upgrade Paths</li>
-            </ol>
-        </div>
-    </div>
+    <x-ui.page-header title="Product Upgrade Paths" subtitle="Browse and manage all upgrade paths" :breadcrumbs="[
+        ['label' => __('adminlte.home'), 'url' => url('/')],
+        ['label' => 'Product Upgrade Paths', 'active' => true],
+    ]" />
 @stop
 
 @section('content')

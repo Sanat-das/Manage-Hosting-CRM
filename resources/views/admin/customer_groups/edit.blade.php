@@ -3,16 +3,7 @@
 @section('title', 'Edit: ' . $group->name)
 
 @section('content_header')
-    <div class="row">
-        <div class="col-sm-6"><h1 class="m-0">Edit Customer Group</h1></div>
-        <div class="col-sm-6">
-            <ol class="breadcrumb float-sm-end">
-                <li class="breadcrumb-item"><a href="{{ url('/') }}">{{ __('adminlte.home') }}</a></li>
-                <li class="breadcrumb-item"><a href="{{ route('admin.customer-groups.index') }}">Customer Groups</a></li>
-                <li class="breadcrumb-item active">{{ $group->name }}</li>
-            </ol>
-        </div>
-    </div>
+    <x-ui.page-header title="Edit Customer Group" subtitle="Update customer group details and hierarchy" :breadcrumbs="[['label' => __('adminlte.home'), 'url' => url('/')], ['label' => 'Customer Groups', 'url' => route('admin.customer-groups.index')], ['label' => $group->name, 'active' => true]]" />
 @stop
 
 @section('content')

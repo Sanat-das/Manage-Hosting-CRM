@@ -1,17 +1,9 @@
-@extends('adminlte::page')
+﻿@extends('adminlte::page')
 
 @section('title', 'Activity Log')
 
 @section('content_header')
-    <div class="row">
-        <div class="col-sm-6"><h1 class="m-0">Activity Log</h1></div>
-        <div class="col-sm-6">
-            <ol class="breadcrumb float-sm-end">
-                <li class="breadcrumb-item"><a href="{{ url('/') }}">{{ __('adminlte.home') }}</a></li>
-                <li class="breadcrumb-item active">Activity Log</li>
-            </ol>
-        </div>
-    </div>
+    <x-ui.page-header title="Activity Log" subtitle="Review system activity and audit trail" :breadcrumbs="[['label' => __('adminlte.home'), 'url' => url('/')], ['label' => 'Activity Log', 'active' => true]]" />
 @stop
 
 @section('content')
@@ -38,13 +30,14 @@
             <tr>
                 <td class="text-muted small text-nowrap">{{ $log->created_at?->format('M j, H:i') }}</td>
                 <td><span class="badge text-bg-info">{{ $log->action }}</span></td>
-                <td>{{ $log->user?->full_name ?? '—' }}</td>
-                <td>{{ $log->customer?->full_name ?? '—' }}</td>
+                <td>{{ $log->user?->full_name ?? 'â€”' }}</td>
+                <td>{{ $log->customer?->full_name ?? 'â€”' }}</td>
                 <td>{{ Str::limit($log->description, 80) }}</td>
-                <td class="text-muted small">{{ $log->ip_address ?? '—' }}</td>
+                <td class="text-muted small">{{ $log->ip_address ?? 'â€”' }}</td>
             </tr>
         @empty
             <tr><td colspan="6" class="text-center text-muted py-4">No activity logged.</td></tr>
         @endforelse
     </x-adminlte.partials.datatable>
 @stop
+

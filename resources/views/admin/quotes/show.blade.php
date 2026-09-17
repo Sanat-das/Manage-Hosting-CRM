@@ -3,16 +3,7 @@
 @section('title', $quote->quote_no)
 
 @section('content_header')
-    <div class="row">
-        <div class="col-sm-6"><h1 class="m-0">{{ $quote->quote_no }}</h1></div>
-        <div class="col-sm-6">
-            <ol class="breadcrumb float-sm-end">
-                <li class="breadcrumb-item"><a href="{{ url('/') }}">{{ __('adminlte.home') }}</a></li>
-                <li class="breadcrumb-item"><a href="{{ route('admin.quotes.index') }}">Quotes</a></li>
-                <li class="breadcrumb-item active">{{ $quote->quote_no }}</li>
-            </ol>
-        </div>
-    </div>
+    <x-ui.page-header title="{{ $quote->quote_no }}" subtitle="View quote details and conversion status" :breadcrumbs="[['label' => __('adminlte.home'), 'url' => url('/')], ['label' => 'Quotes', 'url' => route('admin.quotes.index')], ['label' => $quote->quote_no, 'active' => true]]" />
 @stop
 
 @section('content')

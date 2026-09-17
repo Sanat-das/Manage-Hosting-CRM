@@ -1,20 +1,9 @@
-@extends('adminlte::page')
+﻿@extends('adminlte::page')
 
 @section('title', 'Add Staff User')
 
 @section('content_header')
-    <div class="row">
-        <div class="col-sm-6">
-            <h1 class="m-0">Add Staff User</h1>
-        </div>
-        <div class="col-sm-6">
-            <ol class="breadcrumb float-sm-end">
-                <li class="breadcrumb-item"><a href="{{ url('/') }}">{{ __('adminlte.home') }}</a></li>
-                <li class="breadcrumb-item"><a href="{{ route('admin.users.index') }}">Staff Users</a></li>
-                <li class="breadcrumb-item active" aria-current="page">Add Staff User</li>
-            </ol>
-        </div>
-    </div>
+    <x-ui.page-header title="Add Staff User" subtitle="Add a new staff user" :breadcrumbs="[['label' => __('adminlte.home'), 'url' => url('/')],['label' => 'Staff Users','url' => route('admin.users.index')],['label' => 'Add Staff User','active' => true]]" />
 @stop
 
 @php
@@ -100,7 +89,7 @@
             <div class="d-flex align-items-center gap-2 mb-3">
                 <i class="bi bi-geo-alt text-primary"></i>
                 <h6 class="mb-0 fw-semibold">Address</h6>
-                <span class="text-muted small ms-1">— standard e-commerce fields</span>
+                <span class="text-muted small ms-1">â€” standard e-commerce fields</span>
             </div>
             <div class="row">
                 <div class="col-md-6">
@@ -125,3 +114,4 @@
         </div>
     </x-adminlte.partials.form-card>
 @stop
+

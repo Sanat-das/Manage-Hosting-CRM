@@ -6,18 +6,11 @@
 @section('title', 'SNMP Monitor · '.$account->host_name)
 
 @section('content_header')
-    <div class="row align-items-center">
-        <div class="col-sm-6">
-            <h1 class="m-0">SNMP Monitor <small class="text-muted fw-normal">/ {{ $account->host_name }}</small></h1>
-        </div>
-        <div class="col-sm-6">
-            <ol class="breadcrumb float-sm-end">
-                <li class="breadcrumb-item"><a href="{{ url('/admin') }}">Home</a></li>
-                <li class="breadcrumb-item"><a href="{{ $dashboardUrl }}">SNMP Monitor</a></li>
-                <li class="breadcrumb-item active" aria-current="page">{{ $account->host_name }}</li>
-            </ol>
-        </div>
-    </div>
+    <x-ui.page-header :title="'SNMP Monitor / ' . $account->host_name" :subtitle="'Detailed metrics and health history for ' . $account->host_name" :breadcrumbs="[
+        ['label' => __('adminlte.home'), 'url' => url('/admin')],
+        ['label' => 'SNMP Monitor', 'url' => $dashboardUrl],
+        ['label' => $account->host_name, 'active' => true],
+    ]" />
 @stop
 
 @section('content')

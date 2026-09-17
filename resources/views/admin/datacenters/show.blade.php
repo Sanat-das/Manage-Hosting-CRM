@@ -1,8 +1,11 @@
 @extends('adminlte::page')
 @section('title', 'Datacenter — '.$datacenter->name)
 @section('content_header')
-    <div class="row"><div class="col-sm-6"><h1 class="m-0">{{ $datacenter->name }}</h1></div>
-        <div class="col-sm-6"><ol class="breadcrumb float-sm-end"><li class="breadcrumb-item"><a href="{{ url('/') }}">{{ __('adminlte.home') }}</a></li><li class="breadcrumb-item"><a href="{{ route('admin.datacenters.index') }}">Datacenters</a></li><li class="breadcrumb-item active">{{ $datacenter->name }}</li></ol></div></div>
+    <x-ui.page-header title="{{ $datacenter->name }}" subtitle="View datacenter details" :breadcrumbs="[
+        ['label' => __('adminlte.home'), 'url' => url('/')],
+        ['label' => 'Datacenters', 'url' => route('admin.datacenters.index')],
+        ['label' => $datacenter->name, 'active' => true],
+    ]" />
 @stop
 @section('content')
     @if (session('success')) <x-adminlte-alert theme="success" dismissible>{{ session('success') }}</x-adminlte-alert> @endif

@@ -1,8 +1,7 @@
-@extends('adminlte::page')
-@section('title', 'Resource Pool — '.$resourcePool->name)
+﻿@extends('adminlte::page')
+@section('title', 'Resource Pool â€” '.$resourcePool->name)
 @section('content_header')
-    <div class="row"><div class="col-sm-6"><h1 class="m-0">{{ $resourcePool->name }}</h1></div>
-        <div class="col-sm-6"><ol class="breadcrumb float-sm-end"><li class="breadcrumb-item"><a href="{{ url('/') }}">{{ __('adminlte.home') }}</a></li><li class="breadcrumb-item"><a href="{{ route('admin.resource-pools.index') }}">Resource Pools</a></li><li class="breadcrumb-item active">{{ $resourcePool->name }}</li></ol></div></div>
+    <x-ui.page-header title="{{ $resourcePool->name }}" subtitle="View resource pool details" :breadcrumbs="[['label' => __('adminlte.home'), 'url' => url('/')],['label' => 'Resource Pools','url' => route('admin.resource-pools.index')],['label' => $resourcePool->name,'active' => true]]" />
 @stop
 @section('content')
     @if (session('success')) <x-adminlte-alert theme="success" dismissible>{{ session('success') }}</x-adminlte-alert> @endif
@@ -12,10 +11,11 @@
             <tbody>
                 <tr><th class="text-muted w-25">Name</th><td>{{ $resourcePool->name }}</td></tr>
                 <tr><th class="text-muted">Type</th><td>{{ $resourcePool->pool_type }}</td></tr>
-                <tr><th class="text-muted">Server</th><td>{{ $resourcePool->server?->name ?? '—' }}</td></tr>
-                <tr><th class="text-muted">Capacity</th><td>{{ $resourcePool->total_capacity ?? '—' }} {{ $resourcePool->unit ?? '' }}</td></tr>
+                <tr><th class="text-muted">Server</th><td>{{ $resourcePool->server?->name ?? 'â€”' }}</td></tr>
+                <tr><th class="text-muted">Capacity</th><td>{{ $resourcePool->total_capacity ?? 'â€”' }} {{ $resourcePool->unit ?? '' }}</td></tr>
                 <tr><th class="text-muted">Status</th><td><x-adminlte.partials.status-badge :status="$resourcePool->status" /></td></tr>
             </tbody>
         </table>
     </x-adminlte-card>
 @stop
+

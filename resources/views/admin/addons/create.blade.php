@@ -1,20 +1,9 @@
-@extends('adminlte::page')
+﻿@extends('adminlte::page')
 
 @section('title', 'Add Add-on')
 
 @section('content_header')
-    <div class="row">
-        <div class="col-sm-6">
-            <h1 class="m-0">Add Add-on</h1>
-        </div>
-        <div class="col-sm-6">
-            <ol class="breadcrumb float-sm-end">
-                <li class="breadcrumb-item"><a href="{{ url('/') }}">{{ __('adminlte.home') }}</a></li>
-                <li class="breadcrumb-item"><a href="{{ route('admin.addons.index') }}">Add-ons</a></li>
-                <li class="breadcrumb-item active" aria-current="page">Add Add-on</li>
-            </ol>
-        </div>
-    </div>
+    <x-ui.page-header title="Add Add-on" subtitle="Add a new add-on" :breadcrumbs="[['label' => __('adminlte.home'), 'url' => url('/')],['label' => 'Add-ons','url' => route('admin.addons.index')],['label' => 'Add Add-on','active' => true]]" />
 @stop
 
 @section('content')
@@ -78,3 +67,4 @@
         </x-adminlte-select>
     </x-adminlte.partials.form-card>
 @stop
+

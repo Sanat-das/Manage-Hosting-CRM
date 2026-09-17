@@ -1,8 +1,7 @@
-@extends('adminlte::page')
+﻿@extends('adminlte::page')
 @section('title', 'Provisioning Event #'.$provisioningEvent->id)
 @section('content_header')
-    <div class="row"><div class="col-sm-6"><h1 class="m-0">Provisioning Event #{{ $provisioningEvent->id }}</h1></div>
-        <div class="col-sm-6"><ol class="breadcrumb float-sm-end"><li class="breadcrumb-item"><a href="{{ url('/') }}">{{ __('adminlte.home') }}</a></li><li class="breadcrumb-item"><a href="{{ route('admin.provisioning-events.index') }}">Events</a></li><li class="breadcrumb-item active">#{{ $provisioningEvent->id }}</li></ol></div></div>
+    <x-ui.page-header title="Provisioning Event #{{ $provisioningEvent->id }}" subtitle="View provisioning event details" :breadcrumbs="[['label' => __('adminlte.home'), 'url' => url('/')],['label' => 'Provisioning Events','url' => route('admin.provisioning-events.index')],['label' => '#' . $provisioningEvent->id,'active' => true]]" />
 @stop
 @section('content')
     <x-adminlte-card icon="bi bi-info-circle" title="Details">
@@ -30,3 +29,4 @@
         </div>
     </div>
 @stop
+

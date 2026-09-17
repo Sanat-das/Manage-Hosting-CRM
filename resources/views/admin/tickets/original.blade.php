@@ -3,17 +3,12 @@
 @section('title', 'Original message — ' . $ticket->ticket_no)
 
 @section('content_header')
-    <div class="row">
-        <div class="col-sm-6"><h1 class="m-0">Original message</h1></div>
-        <div class="col-sm-6">
-            <ol class="breadcrumb float-sm-end">
-                <li class="breadcrumb-item"><a href="{{ url('/') }}">{{ __('adminlte.home') }}</a></li>
-                <li class="breadcrumb-item"><a href="{{ route('admin.tickets.index') }}">Tickets</a></li>
-                <li class="breadcrumb-item"><a href="{{ route('admin.tickets.show', $ticket) }}">{{ $ticket->ticket_no }}</a></li>
-                <li class="breadcrumb-item active" aria-current="page">Original</li>
-            </ol>
-        </div>
-    </div>
+    <x-ui.page-header title="Original message" subtitle="View original ticket message source" :breadcrumbs="[
+        ['label' => __('adminlte.home'), 'url' => url('/')],
+        ['label' => 'Tickets', 'url' => route('admin.tickets.index')],
+        ['label' => $ticket->ticket_no, 'url' => route('admin.tickets.show', $ticket)],
+        ['label' => 'Original', 'active' => true],
+    ]" />
 @stop
 
 @section('content')

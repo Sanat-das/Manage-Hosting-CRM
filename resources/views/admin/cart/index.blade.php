@@ -1,8 +1,10 @@
 @extends('adminlte::page')
 @section('title', 'Shopping Cart')
 @section('content_header')
-    <div class="row"><div class="col-sm-6"><h1 class="m-0">Shopping Cart</h1></div>
-        <div class="col-sm-6"><ol class="breadcrumb float-sm-end"><li class="breadcrumb-item"><a href="{{ url('/') }}">{{ __('adminlte.home') }}</a></li><li class="breadcrumb-item active">Shopping Cart</li></ol></div></div>
+    <x-ui.page-header title="Shopping Cart" subtitle="Browse and manage cart products" :breadcrumbs="[
+        ['label' => __('adminlte.home'), 'url' => url('/')],
+        ['label' => 'Shopping Cart', 'active' => true],
+    ]" />
 @stop
 @section('content')
     @if (session('success')) <x-adminlte-alert theme="success" dismissible>{{ session('success') }}</x-adminlte-alert> @endif

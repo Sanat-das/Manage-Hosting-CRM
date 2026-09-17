@@ -3,18 +3,11 @@
 @section('title', 'Server — '.$server->name)
 
 @section('content_header')
-    <div class="row">
-        <div class="col-sm-6">
-            <h1 class="m-0">{{ $server->name }}</h1>
-        </div>
-        <div class="col-sm-6">
-            <ol class="breadcrumb float-sm-end">
-                <li class="breadcrumb-item"><a href="{{ url('/') }}">{{ __('adminlte.home') }}</a></li>
-                <li class="breadcrumb-item"><a href="{{ route('admin.servers.index') }}">Servers</a></li>
-                <li class="breadcrumb-item active" aria-current="page">{{ $server->name }}</li>
-            </ol>
-        </div>
-    </div>
+    <x-ui.page-header title="{{ $server->name }}" subtitle="View server details" :breadcrumbs="[
+        ['label' => __('adminlte.home'), 'url' => url('/')],
+        ['label' => 'Servers', 'url' => route('admin.servers.index')],
+        ['label' => $server->name, 'active' => true],
+    ]" />
 @stop
 
 @section('content')

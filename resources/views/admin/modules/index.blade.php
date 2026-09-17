@@ -1,20 +1,9 @@
-@extends('adminlte::page')
+﻿@extends('adminlte::page')
 
 @section('title', 'Modules')
 
 @section('content_header')
-    <div class="row">
-        <div class="col-sm-6">
-            <h1 class="m-0">Modules</h1>
-        </div>
-        <div class="col-sm-6">
-            <ol class="breadcrumb float-sm-end">
-                <li class="breadcrumb-item"><a href="{{ url('/') }}">{{ __('adminlte.home') }}</a></li>
-                <li class="breadcrumb-item">System</li>
-                <li class="breadcrumb-item active" aria-current="page">Modules</li>
-            </ol>
-        </div>
-    </div>
+    <x-ui.page-header title="Modules" subtitle="Overview and management of modules" :breadcrumbs="[['label' => __('adminlte.home'), 'url' => url('/')],['label' => 'System'],['label' => 'Modules','active' => true]]" />
 @stop
 
 @section('content')
@@ -149,3 +138,4 @@
         @endif
     @endforeach
 @stop
+

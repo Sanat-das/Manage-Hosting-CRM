@@ -1,8 +1,11 @@
 @extends('adminlte::page')
 @section('title', $product->name)
 @section('content_header')
-    <div class="row"><div class="col-sm-6"><h1 class="m-0">{{ $product->name }}</h1></div>
-        <div class="col-sm-6"><ol class="breadcrumb float-sm-end"><li class="breadcrumb-item"><a href="{{ url('/') }}">{{ __('adminlte.home') }}</a></li><li class="breadcrumb-item"><a href="{{ route('admin.cart.index') }}">Cart</a></li><li class="breadcrumb-item active">{{ $product->name }}</li></ol></div></div>
+    <x-ui.page-header title="{{ $product->name }}" subtitle="View product details and pricing" :breadcrumbs="[
+        ['label' => __('adminlte.home'), 'url' => url('/')],
+        ['label' => 'Cart', 'url' => route('admin.cart.index')],
+        ['label' => $product->name, 'active' => true],
+    ]" />
 @stop
 @section('content')
     <div class="row">

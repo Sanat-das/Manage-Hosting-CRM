@@ -8,6 +8,7 @@ use App\Http\Requests\Chat\SearchChatEntitiesRequest;
 use App\Http\Requests\Chat\SearchChatMessagesRequest;
 use App\Http\Requests\Chat\StoreChatAttachmentRequest;
 use App\Http\Requests\Chat\StoreChatChannelRequest;
+use App\Http\Requests\Chat\StoreChatDirectMessageRequest;
 use App\Http\Requests\Chat\StoreChatEntityLinkRequest;
 use App\Http\Requests\Chat\StoreChatMessageRequest;
 use App\Http\Requests\Chat\ToggleChatReactionRequest;
@@ -19,11 +20,13 @@ use App\Models\ChatConversation;
 use App\Models\ChatConversationMessage;
 use App\Models\ChatMessageAttachment;
 use App\Models\ChatOperatorAvailability;
+use App\Models\ChatParticipant;
 use App\Models\ChatReaction;
 use App\Models\ChatSession;
 use App\Models\MessageEntityLink;
 use App\Models\User;
 use App\Services\ChatAvailability;
+use App\Services\ChatDirectory;
 use App\Services\ChatEntitySearch;
 use App\Services\ChatPresence;
 use App\Services\ChatService;
@@ -60,6 +63,9 @@ class ChatController extends Controller
 
     /** Newest-first page size for search results. */
     private const SEARCH_PAGE = 30;
+
+    /** Rows in the public-channel directory. Searchable, so not a pager. */
+    private const BROWSE_LIMIT = 50;
 
     /**
      * How many queued customer conversations the sidebar poll carries.
@@ -334,9 +340,32 @@ class ChatController extends Controller
         return response()->json(['channel' => $this->channelPayload($conversation->fresh())]);
     }
 
+    /**
+     * Refuse a membership change the conversation's shape does not allow.
+     *
+     * Repeated here rather than left to the policy because an admin passes
+     * every policy unread: the AdminLTE package's Gate::before answers true
+     * for any ability they ask about. This is not an authorisation question —
+     * nobody at all may add a third person to a 1:1 DM.
+     */
+    private function refuseIfMembershipIsFixed(ChatConversation $conversation): ?JsonResponse
+    {
+        if ($conversation->allowsMembershipChanges()) {
+            return null;
+        }
+
+        return response()->json([
+            'message' => 'A direct message is the people in it. Start a group message instead.',
+        ], 422);
+    }
+
     public function joinChannel(Request $request, ChatConversation $conversation): JsonResponse
     {
         Gate::authorize('join', $conversation);
+
+        if (! $conversation->isSelfJoinable()) {
+            return response()->json(['message' => 'This conversation cannot be joined.'], 422);
+        }
 
         $this->chat->addMember($conversation, $request->user());
 
@@ -347,6 +376,10 @@ class ChatController extends Controller
     {
         Gate::authorize('leave', $conversation);
 
+        if ($refusal = $this->refuseIfMembershipIsFixed($conversation)) {
+            return $refusal;
+        }
+
         $this->chat->removeMember($conversation, $request->user());
 
         return response()->json(['joined' => false]);
@@ -355,6 +388,10 @@ class ChatController extends Controller
     public function addMember(Request $request, ChatConversation $conversation): JsonResponse
     {
         Gate::authorize('addMember', $conversation);
+
+        if ($refusal = $this->refuseIfMembershipIsFixed($conversation)) {
+            return $refusal;
+        }
 
         $validated = $request->validate(['user_id' => ['required', 'integer', 'exists:users,id']]);
 
@@ -371,9 +408,184 @@ class ChatController extends Controller
     {
         Gate::authorize('removeMember', $conversation);
 
+        if ($refusal = $this->refuseIfMembershipIsFixed($conversation)) {
+            return $refusal;
+        }
+
         $this->chat->removeMember($conversation, $user);
 
         return response()->json(['members' => $conversation->participants()->count()]);
+    }
+
+    /**
+     * Who is in this conversation.
+     *
+     * Gated on `view`, not on `addMember`: a plain member may see who else is
+     * in the room they are already reading. The flags say what this caller may
+     * then do about it, so the panel never offers a button the server refuses.
+     */
+    public function members(Request $request, ChatConversation $conversation): JsonResponse
+    {
+        Gate::authorize('view', $conversation);
+
+        $user = $request->user();
+        $conversation->load('participants.user');
+
+        // Membership is a fact, not a permission. Asking the policy alone
+        // would offer an admin "Join" in a room they are already standing in,
+        // because the Gate answers true for them before the policy is read.
+        $isMember = $conversation->participants->contains(
+            fn (ChatParticipant $participant) => (int) $participant->user_id === (int) $user->id,
+        );
+
+        return response()->json([
+            'members' => $conversation->participants
+                ->map(fn (ChatParticipant $participant) => [
+                    'user_id' => $participant->user_id === null ? null : (int) $participant->user_id,
+                    // A customer inbox holds a seat with no user behind it.
+                    'name' => $participant->user?->full_name
+                        ?? $participant->user?->email
+                        ?? $conversation->displayName(),
+                    'role' => $participant->role,
+                    'is_you' => (int) $participant->user_id === (int) $user->id,
+                ])
+                ->values()
+                ->all(),
+            'can_manage' => $conversation->allowsMembershipChanges() && $user->can('addMember', $conversation),
+            'can_leave' => $isMember
+                && $conversation->allowsMembershipChanges()
+                && $user->can('leave', $conversation),
+            'can_join' => ! $isMember
+                && $conversation->isSelfJoinable()
+                && $user->can('join', $conversation),
+        ]);
+    }
+
+    /**
+     * The public channels this user could join.
+     *
+     * The sidebar lists rooms you are IN; without this there is no way to find
+     * a public channel somebody else made, and "public" means nothing.
+     *
+     * Private rooms are absent by construction rather than by filtering: a
+     * directory that omits what you may not see cannot leak its existence.
+     */
+    public function browseChannels(Request $request): JsonResponse
+    {
+        $user = $request->user();
+
+        $query = ChatConversation::query()
+            ->ofType(ChatConversation::TYPE_CHANNEL)
+            ->where('is_private', false)
+            ->notArchived()
+            // Loaded, so the policy reads membership from memory rather than
+            // running a query per row.
+            ->with('participants');
+
+        $term = trim((string) $request->query('q', ''));
+
+        if ($term !== '') {
+            $like = '%'.$term.'%';
+            $query->where(fn ($q) => $q->where('name', 'like', $like)->orWhere('topic', 'like', $like));
+        }
+
+        $channels = $query
+            ->orderBy('name')
+            ->limit(self::BROWSE_LIMIT)
+            ->get()
+            // Department channels belong to their department; the policy owns
+            // that rule and this list must not invent a second copy of it.
+            ->filter(fn (ChatConversation $channel) => $user->can('view', $channel))
+            ->map(fn (ChatConversation $channel) => [
+                'id' => (int) $channel->id,
+                'name' => $channel->displayName(),
+                'topic' => $channel->topic,
+                'members' => $channel->participants->count(),
+                'joined' => $channel->participants->contains(
+                    fn (ChatParticipant $participant) => (int) $participant->user_id === (int) $user->id,
+                ),
+            ])
+            ->values()
+            ->all();
+
+        return response()->json(['channels' => $channels]);
+    }
+
+    // --- direct messages --------------------------------------------------
+
+    /**
+     * People this user can start a conversation with.
+     *
+     * With `conversation`, it is the add-member picker and answers only to
+     * somebody who may actually add to that room, with its existing members
+     * already removed. Without one, it is the DM picker.
+     */
+    public function people(Request $request, ChatDirectory $directory): JsonResponse
+    {
+        $conversation = null;
+
+        if ($request->filled('conversation')) {
+            $conversation = ChatConversation::query()->find((int) $request->query('conversation'));
+
+            abort_if($conversation === null, 404);
+            Gate::authorize('addMember', $conversation);
+        }
+
+        return response()->json([
+            'people' => $directory->search(
+                $request->user(),
+                (string) $request->query('q', ''),
+                $conversation,
+            ),
+        ]);
+    }
+
+    /**
+     * Open a direct message, or the group version of one.
+     *
+     * One target is a 1:1 DM and is idempotent — asking twice reopens the same
+     * history rather than starting a second one beside it. Two or more is a
+     * group DM, which is not: "me, Ana and Bo" is a room, not a lookup.
+     */
+    public function storeDirectMessage(StoreChatDirectMessageRequest $request, ChatDirectory $directory): JsonResponse
+    {
+        Gate::authorize('startDirectMessage', ChatConversation::class);
+
+        $me = $request->user();
+
+        $targets = User::query()
+            ->whereIn('id', $request->input('user_ids'))
+            ->whereKeyNot($me->getKey())
+            ->get();
+
+        if ($targets->isEmpty()) {
+            return response()->json(['message' => 'Choose somebody other than yourself.'], 422);
+        }
+
+        // Refused before anything is written: a conversation with somebody who
+        // cannot open the chat is a message into a room with no door.
+        foreach ($targets as $target) {
+            if (! $directory->isChatUser($target)) {
+                return response()->json([
+                    'message' => $target->full_name.' does not have access to the chat.',
+                ], 422);
+            }
+        }
+
+        try {
+            $conversation = $targets->count() === 1
+                ? $this->chat->findOrCreateDirectMessage($me, $targets->first())
+                : $this->chat->createGroupDirectMessage($targets, $me, $request->input('name'));
+        } catch (InvalidArgumentException|RuntimeException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+
+        $conversation->load('participants.user');
+
+        return response()->json(
+            ['conversation' => $this->channelPayload($conversation)],
+            $conversation->wasRecentlyCreated ? 201 : 200,
+        );
     }
 
     // --- messages ---------------------------------------------------------

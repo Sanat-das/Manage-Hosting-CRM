@@ -3,18 +3,11 @@
 @section('title', $domain->name)
 
 @section('content_header')
-    <div class="row">
-        <div class="col-sm-6">
-            <h1 class="m-0 text-truncate" title="{{ $domain->name }}">{{ $domain->name }}</h1>
-        </div>
-        <div class="col-sm-6">
-            <ol class="breadcrumb float-sm-end">
-                <li class="breadcrumb-item"><a href="{{ url('/') }}">{{ __('adminlte.home') }}</a></li>
-                <li class="breadcrumb-item"><a href="{{ route('admin.domains.index') }}">Domains</a></li>
-                <li class="breadcrumb-item active" aria-current="page">{{ $domain->name }}</li>
-            </ol>
-        </div>
-    </div>
+    <x-ui.page-header title="{{ $domain->name }}" subtitle="View domain details" :breadcrumbs="[
+        ['label' => __('adminlte.home'), 'url' => url('/')],
+        ['label' => 'Domains', 'url' => route('admin.domains.index')],
+        ['label' => $domain->name, 'active' => true],
+    ]" />
 @stop
 
 @php

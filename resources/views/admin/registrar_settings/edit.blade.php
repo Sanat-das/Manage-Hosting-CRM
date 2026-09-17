@@ -1,18 +1,9 @@
-@extends('adminlte::page')
+﻿@extends('adminlte::page')
 
 @section('title', 'Edit: ' . ucfirst($registrar))
 
 @section('content_header')
-    <div class="row">
-        <div class="col-sm-6"><h1 class="m-0">Edit {{ ucfirst($registrar) }} Settings</h1></div>
-        <div class="col-sm-6">
-            <ol class="breadcrumb float-sm-end">
-                <li class="breadcrumb-item"><a href="{{ url('/') }}">{{ __('adminlte.home') }}</a></li>
-                <li class="breadcrumb-item"><a href="{{ route('admin.registrar-settings.index') }}">Registrars</a></li>
-                <li class="breadcrumb-item active">{{ ucfirst($registrar) }}</li>
-            </ol>
-        </div>
-    </div>
+    <x-ui.page-header title="Edit {{ ucfirst($registrar) }} Settings" subtitle="Update registrar settings" :breadcrumbs="[['label' => __('adminlte.home'), 'url' => url('/')],['label' => 'Registrars','url' => route('admin.registrar-settings.index')],['label' => ucfirst($registrar),'active' => true]]" />
 @stop
 
 @section('content')
@@ -55,3 +46,4 @@
         </div>
     </x-adminlte.partials.form-card>
 @stop
+

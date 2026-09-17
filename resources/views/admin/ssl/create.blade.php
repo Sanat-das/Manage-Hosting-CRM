@@ -3,18 +3,11 @@
 @section('title', 'Add SSL Certificate')
 
 @section('content_header')
-    <div class="row">
-        <div class="col-sm-6">
-            <h1 class="m-0">Add SSL Certificate</h1>
-        </div>
-        <div class="col-sm-6">
-            <ol class="breadcrumb float-sm-end">
-                <li class="breadcrumb-item"><a href="{{ url('/') }}">{{ __('adminlte.home') }}</a></li>
-                <li class="breadcrumb-item"><a href="{{ route('admin.ssl.index') }}">SSL Certificates</a></li>
-                <li class="breadcrumb-item active" aria-current="page">Add Certificate</li>
-            </ol>
-        </div>
-    </div>
+    <x-ui.page-header title="Add SSL Certificate" subtitle="Provision a new SSL certificate" :breadcrumbs="[
+        ['label' => __('adminlte.home'), 'url' => url('/')],
+        ['label' => 'SSL Certificates', 'url' => route('admin.ssl.index')],
+        ['label' => 'Add Certificate', 'active' => true],
+    ]" />
 @stop
 
 @section('content')

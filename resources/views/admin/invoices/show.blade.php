@@ -16,18 +16,7 @@
 @section('title', $invoice->invoice_no)
 
 @section('content_header')
-    <div class="row">
-        <div class="col-sm-6">
-            <h1 class="m-0 text-truncate" title="{{ $invoice->invoice_no }}">{{ $invoice->invoice_no }}</h1>
-        </div>
-        <div class="col-sm-6">
-            <ol class="breadcrumb float-sm-end">
-                <li class="breadcrumb-item"><a href="{{ url('/') }}">{{ __('adminlte.home') }}</a></li>
-                <li class="breadcrumb-item"><a href="{{ route('admin.invoices.index') }}">Invoices</a></li>
-                <li class="breadcrumb-item active" aria-current="page">{{ $invoice->invoice_no }}</li>
-            </ol>
-        </div>
-    </div>
+    <x-ui.page-header title="{{ $invoice->invoice_no }}" subtitle="View invoice details, payments and GST breakdown" :breadcrumbs="[['label' => __('adminlte.home'), 'url' => url('/')], ['label' => 'Invoices', 'url' => route('admin.invoices.index')], ['label' => $invoice->invoice_no, 'active' => true]]" />
 @stop
 
 @section('content')

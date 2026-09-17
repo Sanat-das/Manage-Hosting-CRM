@@ -52,20 +52,39 @@
     --bs-link-hover-color: var(--color-primary-hover);
 }
 
-/* ── Shell — header / content hierarchy (8px system) ───────────────────── */
+/* ── Global type scale — compact enterprise (overrides Bootstrap/AdminLTE 2.5rem h1) */
+h1, .h1 { font-size: var(--text-2xl) !important; line-height: var(--leading-tight); font-weight: 600; letter-spacing: var(--tracking-tight); }
+h2, .h2 { font-size: var(--text-xl) !important; line-height: var(--leading-tight); font-weight: 600; letter-spacing: var(--tracking-tight); }
+h3, .h3 { font-size: var(--text-lg) !important; line-height: var(--leading-tight); font-weight: 600; }
+h4, .h4 { font-size: var(--text-md) !important; line-height: var(--leading-tight); font-weight: 600; }
+h5, .h5 { font-size: var(--text-base) !important; line-height: var(--leading-normal); font-weight: 600; }
+h6, .h6 { font-size: var(--text-sm) !important; line-height: var(--leading-normal); font-weight: 600; }
+@media (min-width: 1200px) {
+    h1, .h1 { font-size: var(--text-2xl) !important; }
+    h2, .h2 { font-size: var(--text-xl) !important; }
+    h3, .h3 { font-size: var(--text-lg) !important; }
+    h4, .h4 { font-size: var(--text-md) !important; }
+}
+
 .app-content-header {
-    padding-block: var(--space-4); /* py-3 fallback via config, token here ensures consistency */
+    padding-block: var(--space-2);
     border-bottom: 1px solid var(--bs-border-color);
     background: var(--color-surface);
+}
+.app-content-header h1,
+.app-content-header .h1 {
+    font-size: var(--text-xl) !important;
+    line-height: var(--leading-tight);
+    font-weight: 600;
+    letter-spacing: var(--tracking-tight);
+    margin: 0;
 }
 .app-content-header .breadcrumb { font-size: var(--text-sm); gap: var(--space-1); }
 .app-content-header .breadcrumb-item + .breadcrumb-item::before { color: var(--color-text-faint); }
 .app-content {
-    padding-block: var(--space-4);
+    padding-block: var(--space-3);
 }
-/* Sticky header polish — layout_fixed_navbar already pins .app-header;
-   ensure content-header respects sticky offset via AdminLTE vars. */
-.app-main .app-content-header + .app-content { padding-top: var(--space-4); }
+.app-main .app-content-header + .app-content { padding-top: var(--space-3); }
 
 /* ── Content stack — every sub-page inside .container-fluid gets uniform
    vertical rhythm via flex gap (16px = var(--space-4)). This replaces the

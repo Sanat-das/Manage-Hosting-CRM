@@ -1,18 +1,9 @@
-@extends('adminlte::page')
+﻿@extends('adminlte::page')
 
 @section('title', $template->name)
 
 @section('content_header')
-    <div class="row align-items-center">
-        <div class="col-sm-6"><h1 class="m-0">{{ $template->name }}</h1></div>
-        <div class="col-sm-6">
-            <ol class="breadcrumb float-sm-end mb-0">
-                <li class="breadcrumb-item"><a href="{{ url('/') }}">{{ __('adminlte.home') }}</a></li>
-                <li class="breadcrumb-item"><a href="{{ route('admin.email-templates.index') }}">Email Templates</a></li>
-                <li class="breadcrumb-item active">{{ $template->name }}</li>
-            </ol>
-        </div>
-    </div>
+    <x-ui.page-header title="{{ $template->name }}" subtitle="View email template details" :breadcrumbs="[['label' => __('adminlte.home'), 'url' => url('/')],['label' => 'Email Templates','url' => route('admin.email-templates.index')],['label' => $template->name,'active' => true]]" />
 @stop
 
 @section('content')
@@ -49,7 +40,7 @@
         <div class="col-lg-8">
             <x-adminlte-card icon="bi bi-eye" title="Rendered preview (sample data)">
                 <div class="d-flex justify-content-between align-items-center mb-2">
-                    <small class="text-muted">Sample invoice INV-2026-00001 · Shyamolesh Ghosh</small>
+                    <small class="text-muted">Sample invoice INV-2026-00001 Â· Shyamolesh Ghosh</small>
                     <button type="button" class="btn btn-sm btn-outline-secondary py-0" id="btnRefresh"><i class="bi bi-arrow-clockwise"></i> Refresh</button>
                 </div>
                 <div id="previewSubjectBadge" class="small fw-semibold p-2 bg-body-tertiary border rounded mb-2 text-truncate"></div>
@@ -111,17 +102,18 @@ document.getElementById('btnSendTest')?.addEventListener('click', async ()=>{
   const email = document.getElementById('testEmail').value.trim();
   const result = document.getElementById('testResult');
   if(!email){ result.textContent='Enter an email'; return; }
-  result.textContent='Sending…';
+  result.textContent='Sendingâ€¦';
   try{
     const res = await fetch('{{ route('admin.email-templates.send-test', $template) }}', {
       method:'POST', headers:{'Content-Type':'application/json','X-CSRF-TOKEN':'{{ csrf_token() }}','Accept':'application/json'},
       body: JSON.stringify({ email })
     });
     const data = await res.json();
-    result.textContent = res.ok ? '✓ '+data.message : '✗ '+(data.message||res.statusText);
+    result.textContent = res.ok ? 'âœ“ '+data.message : 'âœ— '+(data.message||res.statusText);
     result.className = res.ok ? 'small mt-2 text-success' : 'small mt-2 text-danger';
-  }catch(e){ result.textContent='✗ '+e.message; }
+  }catch(e){ result.textContent='âœ— '+e.message; }
 });
 })();
 </script>
 @endpush
+

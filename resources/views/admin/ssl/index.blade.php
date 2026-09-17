@@ -3,17 +3,10 @@
 @section('title', 'SSL Certificates')
 
 @section('content_header')
-    <div class="row">
-        <div class="col-sm-6">
-            <h1 class="m-0">SSL Certificates</h1>
-        </div>
-        <div class="col-sm-6">
-            <ol class="breadcrumb float-sm-end">
-                <li class="breadcrumb-item"><a href="{{ url('/') }}">{{ __('adminlte.home') }}</a></li>
-                <li class="breadcrumb-item active" aria-current="page">SSL Certificates</li>
-            </ol>
-        </div>
-    </div>
+    <x-ui.page-header title="SSL Certificates" subtitle="Manage SSL certificates inventory" :breadcrumbs="[
+        ['label' => __('adminlte.home'), 'url' => url('/')],
+        ['label' => 'SSL Certificates', 'active' => true],
+    ]" />
 @stop
 
 @php

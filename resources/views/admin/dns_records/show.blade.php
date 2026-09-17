@@ -1,8 +1,11 @@
 @extends('adminlte::page')
 @section('title', 'DNS Record — '.$dnsRecord->name)
 @section('content_header')
-    <div class="row"><div class="col-sm-6"><h1 class="m-0">{{ $dnsRecord->name }} ({{ $dnsRecord->type }})</h1></div>
-        <div class="col-sm-6"><ol class="breadcrumb float-sm-end"><li class="breadcrumb-item"><a href="{{ url('/') }}">{{ __('adminlte.home') }}</a></li><li class="breadcrumb-item"><a href="{{ route('admin.dns-zones.records.index', $dnsZone) }}">Records</a></li><li class="breadcrumb-item active">{{ $dnsRecord->name }}</li></ol></div></div>
+    <x-ui.page-header title="{{ $dnsRecord->name }} ({{ $dnsRecord->type }})" subtitle="View DNS record details" :breadcrumbs="[
+        ['label' => __('adminlte.home'), 'url' => url('/')],
+        ['label' => 'Records', 'url' => route('admin.dns-zones.records.index', $dnsZone)],
+        ['label' => $dnsRecord->name, 'active' => true],
+    ]" />
 @stop
 @section('content')
     <x-adminlte-card icon="bi bi-info-circle" title="Record Details">

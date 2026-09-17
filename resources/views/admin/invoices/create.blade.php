@@ -3,16 +3,7 @@
 @section('title', 'Create Invoice')
 
 @section('content_header')
-    <div class="row">
-        <div class="col-sm-6"><h1 class="m-0">Create Invoice</h1></div>
-        <div class="col-sm-6">
-            <ol class="breadcrumb float-sm-end">
-                <li class="breadcrumb-item"><a href="{{ url('/') }}">{{ __('adminlte.home') }}</a></li>
-                <li class="breadcrumb-item"><a href="{{ route('admin.invoices.index') }}">Invoices</a></li>
-                <li class="breadcrumb-item active">Create</li>
-            </ol>
-        </div>
-    </div>
+    <x-ui.page-header title="Create Invoice" subtitle="Create a new invoice for billing" :breadcrumbs="[['label' => __('adminlte.home'), 'url' => url('/')], ['label' => 'Invoices', 'url' => route('admin.invoices.index')], ['label' => 'Create', 'active' => true]]" />
 @stop
 
 @section('content')

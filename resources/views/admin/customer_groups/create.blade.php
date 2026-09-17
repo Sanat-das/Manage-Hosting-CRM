@@ -3,16 +3,7 @@
 @section('title', 'New Customer Group')
 
 @section('content_header')
-    <div class="row">
-        <div class="col-sm-6"><h1 class="m-0">New Customer Group</h1></div>
-        <div class="col-sm-6">
-            <ol class="breadcrumb float-sm-end">
-                <li class="breadcrumb-item"><a href="{{ url('/') }}">{{ __('adminlte.home') }}</a></li>
-                <li class="breadcrumb-item"><a href="{{ route('admin.customer-groups.index') }}">Customer Groups</a></li>
-                <li class="breadcrumb-item active">New</li>
-            </ol>
-        </div>
-    </div>
+    <x-ui.page-header title="New Customer Group" subtitle="Create a new customer group for segmentation" :breadcrumbs="[['label' => __('adminlte.home'), 'url' => url('/')], ['label' => 'Customer Groups', 'url' => route('admin.customer-groups.index')], ['label' => 'New', 'active' => true]]" />
 @stop
 
 @section('content')

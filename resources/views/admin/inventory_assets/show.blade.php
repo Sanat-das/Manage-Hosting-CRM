@@ -1,8 +1,7 @@
-@extends('adminlte::page')
-@section('title', 'Asset — '.$inventoryAsset->asset_tag)
+﻿@extends('adminlte::page')
+@section('title', 'Asset â€” '.$inventoryAsset->asset_tag)
 @section('content_header')
-    <div class="row"><div class="col-sm-6"><h1 class="m-0">{{ $inventoryAsset->asset_tag }}</h1></div>
-        <div class="col-sm-6"><ol class="breadcrumb float-sm-end"><li class="breadcrumb-item"><a href="{{ url('/') }}">{{ __('adminlte.home') }}</a></li><li class="breadcrumb-item"><a href="{{ route('admin.inventory-assets.index') }}">Inventory</a></li><li class="breadcrumb-item active">{{ $inventoryAsset->name }}</li></ol></div></div>
+    <x-ui.page-header title="{{ $inventoryAsset->asset_tag }}" subtitle="View inventory asset details" :breadcrumbs="[['label' => __('adminlte.home'), 'url' => url('/')],['label' => 'Inventory','url' => route('admin.inventory-assets.index')],['label' => $inventoryAsset->asset_tag,'active' => true]]" />
 @stop
 @section('content')
     @if (session('success')) <x-adminlte-alert theme="success" dismissible>{{ session('success') }}</x-adminlte-alert> @endif
@@ -16,16 +15,16 @@
                     <tbody>
                         <tr><th class="text-muted w-25">Asset Tag</th><td>{{ $inventoryAsset->asset_tag }}</td></tr>
                         <tr><th class="text-muted">Type</th><td><span class="badge text-bg-info">{{ ucfirst($inventoryAsset->asset_type) }}</span></td></tr>
-                        <tr><th class="text-muted">Serial</th><td>{{ $inventoryAsset->serial_number ?? '—' }}</td></tr>
-                        <tr><th class="text-muted">Model</th><td>{{ $inventoryAsset->model ?? '—' }}</td></tr>
-                        <tr><th class="text-muted">Manufacturer</th><td>{{ $inventoryAsset->manufacturer ?? '—' }}</td></tr>
-                        <tr><th class="text-muted">Datacenter</th><td>{{ $inventoryAsset->datacenter?->name ?? '—' }}</td></tr>
-                        <tr><th class="text-muted">Rack</th><td>{{ $inventoryAsset->rack?->name ?? '—' }}</td></tr>
-                        <tr><th class="text-muted">U Position</th><td>{{ $inventoryAsset->rack_u_position ?? '—' }}</td></tr>
-                        <tr><th class="text-muted">Purchase Date</th><td>{{ $inventoryAsset->purchase_date?->format('Y-m-d') ?? '—' }}</td></tr>
-                        <tr><th class="text-muted">Warranty Expiry</th><td>{{ $inventoryAsset->warranty_expiry?->format('Y-m-d') ?? '—' }}</td></tr>
+                        <tr><th class="text-muted">Serial</th><td>{{ $inventoryAsset->serial_number ?? 'â€”' }}</td></tr>
+                        <tr><th class="text-muted">Model</th><td>{{ $inventoryAsset->model ?? 'â€”' }}</td></tr>
+                        <tr><th class="text-muted">Manufacturer</th><td>{{ $inventoryAsset->manufacturer ?? 'â€”' }}</td></tr>
+                        <tr><th class="text-muted">Datacenter</th><td>{{ $inventoryAsset->datacenter?->name ?? 'â€”' }}</td></tr>
+                        <tr><th class="text-muted">Rack</th><td>{{ $inventoryAsset->rack?->name ?? 'â€”' }}</td></tr>
+                        <tr><th class="text-muted">U Position</th><td>{{ $inventoryAsset->rack_u_position ?? 'â€”' }}</td></tr>
+                        <tr><th class="text-muted">Purchase Date</th><td>{{ $inventoryAsset->purchase_date?->format('Y-m-d') ?? 'â€”' }}</td></tr>
+                        <tr><th class="text-muted">Warranty Expiry</th><td>{{ $inventoryAsset->warranty_expiry?->format('Y-m-d') ?? 'â€”' }}</td></tr>
                         <tr><th class="text-muted">Status</th><td><x-adminlte.partials.status-badge :status="$inventoryAsset->status" /></td></tr>
-                        <tr><th class="text-muted">Notes</th><td>{{ $inventoryAsset->notes ?? '—' }}</td></tr>
+                        <tr><th class="text-muted">Notes</th><td>{{ $inventoryAsset->notes ?? 'â€”' }}</td></tr>
                     </tbody>
                 </table>
             </x-adminlte-card>
@@ -41,3 +40,4 @@
         </div>
     </div>
 @stop
+

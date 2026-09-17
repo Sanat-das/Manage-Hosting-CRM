@@ -1,23 +1,15 @@
-@extends('adminlte::page')
+﻿@extends('adminlte::page')
 
 @section('title', 'Sales Report')
 
 @section('content_header')
-    <div class="row">
-        <div class="col-sm-6"><h1 class="m-0">Sales Report</h1></div>
-        <div class="col-sm-6">
-            <ol class="breadcrumb float-sm-end">
-                <li class="breadcrumb-item"><a href="{{ url('/') }}">{{ __('adminlte.home') }}</a></li>
-                <li class="breadcrumb-item active">Reports</li>
-            </ol>
-        </div>
-    </div>
+    <x-ui.page-header title="Sales Report" subtitle="Sales performance and order trends" :breadcrumbs="[['label' => __('adminlte.home'), 'url' => url('/')],['label' => 'Reports'],['label' => 'Sales Report','active' => true]]" />
 @stop
 
 @section('content')
     <div class="row mb-4">
         <div class="col-lg-3 col-6">
-            <x-adminlte-small-box :title="'₹' . number_format($totalRevenue, 0)" text="Total Revenue" icon="bi bi-currency-rupee" theme="success" />
+            <x-adminlte-small-box :title="'â‚¹' . number_format($totalRevenue, 0)" text="Total Revenue" icon="bi bi-currency-rupee" theme="success" />
         </div>
         <div class="col-lg-3 col-6">
             <x-adminlte-small-box :title="$orderCount" text="Total Orders" icon="bi bi-cart" theme="primary" />
@@ -42,11 +34,11 @@
                 @forelse ($orders as $order)
                     <tr>
                         <td><strong>#{{ $order->id }}</strong></td>
-                        <td>{{ $order->customer?->full_name ?? '—' }}</td>
+                        <td>{{ $order->customer?->full_name ?? 'â€”' }}</td>
                         <td>
                             <x-adminlte.partials.status-badge :status="$order->status ?? 'pending'" />
                         </td>
-                        <td class="text-end fw-bold">₹{{ number_format($order->total ?? 0, 2) }}</td>
+                        <td class="text-end fw-bold">â‚¹{{ number_format($order->total ?? 0, 2) }}</td>
                         <td class="text-muted">{{ $order->created_at?->format('M j, Y') }}</td>
                     </tr>
                 @empty
@@ -57,3 +49,4 @@
         {{ $orders->links() }}
     </x-adminlte-card>
 @stop
+

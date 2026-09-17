@@ -3,19 +3,12 @@
 @section('title', 'Edit '.$ssl->domain_name)
 
 @section('content_header')
-    <div class="row">
-        <div class="col-sm-6">
-            <h1 class="m-0">Edit {{ $ssl->domain_name }}</h1>
-        </div>
-        <div class="col-sm-6">
-            <ol class="breadcrumb float-sm-end">
-                <li class="breadcrumb-item"><a href="{{ url('/') }}">{{ __('adminlte.home') }}</a></li>
-                <li class="breadcrumb-item"><a href="{{ route('admin.ssl.index') }}">SSL Certificates</a></li>
-                <li class="breadcrumb-item"><a href="{{ route('admin.ssl.show', $ssl) }}">{{ $ssl->domain_name }}</a></li>
-                <li class="breadcrumb-item active" aria-current="page">Edit</li>
-            </ol>
-        </div>
-    </div>
+    <x-ui.page-header title="Edit {{ $ssl->domain_name }}" subtitle="Update SSL certificate configuration" :breadcrumbs="[
+        ['label' => __('adminlte.home'), 'url' => url('/')],
+        ['label' => 'SSL Certificates', 'url' => route('admin.ssl.index')],
+        ['label' => $ssl->domain_name, 'url' => route('admin.ssl.show', $ssl)],
+        ['label' => 'Edit', 'active' => true],
+    ]" />
 @stop
 
 @section('content')

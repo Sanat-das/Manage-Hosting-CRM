@@ -3,18 +3,11 @@
 @section('title', $order->order_no)
 
 @section('content_header')
-    <div class="row">
-        <div class="col-sm-6">
-            <h1 class="m-0">{{ $order->order_no }}</h1>
-        </div>
-        <div class="col-sm-6">
-            <ol class="breadcrumb float-sm-end">
-                <li class="breadcrumb-item"><a href="{{ url('/') }}">{{ __('adminlte.home') }}</a></li>
-                <li class="breadcrumb-item"><a href="{{ route('admin.orders.index') }}">Orders</a></li>
-                <li class="breadcrumb-item active" aria-current="page">{{ $order->order_no }}</li>
-            </ol>
-        </div>
-    </div>
+    <x-ui.page-header title="{{ $order->order_no }}" subtitle="View order details and history" :breadcrumbs="[
+        ['label' => __('adminlte.home'), 'url' => url('/')],
+        ['label' => 'Orders', 'url' => route('admin.orders.index')],
+        ['label' => $order->order_no, 'active' => true],
+    ]" />
 @stop
 
 @php

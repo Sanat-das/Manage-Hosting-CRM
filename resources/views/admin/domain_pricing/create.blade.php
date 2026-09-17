@@ -1,8 +1,7 @@
-@extends('adminlte::page')
+﻿@extends('adminlte::page')
 @section('title', 'Add Domain Pricing')
 @section('content_header')
-    <div class="row"><div class="col-sm-6"><h1 class="m-0">Add Domain Pricing</h1></div>
-        <div class="col-sm-6"><ol class="breadcrumb float-sm-end"><li class="breadcrumb-item"><a href="{{ url('/') }}">{{ __('adminlte.home') }}</a></li><li class="breadcrumb-item"><a href="{{ route('admin.domain-pricing.index') }}">Domain Pricing</a></li><li class="breadcrumb-item active">Add</li></ol></div></div>
+    <x-ui.page-header title="Add Domain Pricing" subtitle="Add a new domain pricing entry" :breadcrumbs="[['label' => __('adminlte.home'), 'url' => url('/')],['label' => 'Domain Pricing','url' => route('admin.domain-pricing.index')],['label' => 'Add Domain Pricing','active' => true]]" />
 @stop
 @section('content')
     @if ($errors->any()) <x-adminlte-alert theme="danger" dismissible><ul class="mb-0">@foreach ($errors->all() as $error)<li>{{ $error }}</li>@endforeach</ul></x-adminlte-alert> @endif
@@ -37,7 +36,7 @@
             <div class="row mb-2">
                 <div class="col-md-4">
                     <x-adminlte-select name="terms[{{ $i }}][term_years]" label="{{ $i === 0 ? 'Term (Years)' : '' }}">
-                        <option value="">—</option>
+                        <option value="">â€”</option>
                         @foreach (range(1, 10) as $year)
                             <option value="{{ $year }}" @selected(old("terms.$i.term_years") == $year)>{{ $year }} year{{ $year > 1 ? 's' : '' }}</option>
                         @endforeach
@@ -49,3 +48,4 @@
         @endfor
     </x-adminlte.partials.form-card>
 @stop
+

@@ -7,25 +7,12 @@
 @section('title', 'SSH Terminal — #'.$hostingAccount->id)
 
 @section('content_header')
-    <div class="row">
-        <div class="col-sm-8">
-            <h1 class="m-0">SSH Terminal</h1>
-            <p class="text-muted mb-0 small">
-                <i class="bi bi-terminal me-1"></i>
-                {{ $hostingAccount->username }}
-                @if($hostingAccount->domain) <span class="mx-1">·</span> {{ $hostingAccount->domain }} @endif
-                <span class="mx-1">·</span> #{{ $hostingAccount->id }}
-            </p>
-        </div>
-        <div class="col-sm-4">
-            <ol class="breadcrumb float-sm-end">
-                <li class="breadcrumb-item"><a href="{{ url('/') }}">{{ __('adminlte.home') }}</a></li>
-                <li class="breadcrumb-item"><a href="{{ route('admin.hosting.index') }}">Products/Services</a></li>
-                <li class="breadcrumb-item"><a href="{{ route('admin.hosting.show', $hostingAccount) }}">#{{ $hostingAccount->id }}</a></li>
-                <li class="breadcrumb-item active">SSH</li>
-            </ol>
-        </div>
-    </div>
+    <x-ui.page-header title="SSH Terminal" :subtitle="$hostingAccount->username . ($hostingAccount->domain ? ' · ' . $hostingAccount->domain : '') . ' · #' . $hostingAccount->id . ' — Browser shell via xterm.js'" :breadcrumbs="[
+        ['label' => __('adminlte.home'), 'url' => url('/')],
+        ['label' => 'Products/Services', 'url' => route('admin.hosting.index')],
+        ['label' => '#' . $hostingAccount->id, 'url' => route('admin.hosting.show', $hostingAccount)],
+        ['label' => 'SSH', 'active' => true],
+    ]" />
 @stop
 
 @section('content')

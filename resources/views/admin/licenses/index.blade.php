@@ -1,17 +1,9 @@
-@extends('adminlte::page')
+﻿@extends('adminlte::page')
 
 @section('title', 'Licenses')
 
 @section('content_header')
-    <div class="row">
-        <div class="col-sm-6"><h1 class="m-0">Licenses</h1></div>
-        <div class="col-sm-6">
-            <ol class="breadcrumb float-sm-end">
-                <li class="breadcrumb-item"><a href="{{ url('/') }}">{{ __('adminlte.home') }}</a></li>
-                <li class="breadcrumb-item active" aria-current="page">Licenses</li>
-            </ol>
-        </div>
-    </div>
+    <x-ui.page-header title="Licenses" subtitle="Overview and management of licenses" :breadcrumbs="[['label' => __('adminlte.home'), 'url' => url('/')],['label' => 'Licenses','active' => true]]" />
 @stop
 
 @section('content')
@@ -43,9 +35,9 @@
             <tr>
                 <td><a href="{{ route('admin.licenses.show', $license) }}"><strong>{{ $license->license_type }}</strong></a></td>
                 <td class="text-muted" title="{{ $license->license_key }}">{{ $license->license_key }}</td>
-                <td>{{ $license->vendor ?? '—' }}</td>
-                <td>{{ $license->seats_available ?? '—' }} / {{ $license->seats ?? '—' }}</td>
-                <td>{{ $license->expiry_date?->format('Y-m-d') ?? '—' }}</td>
+                <td>{{ $license->vendor ?? 'â€”' }}</td>
+                <td>{{ $license->seats_available ?? 'â€”' }} / {{ $license->seats ?? 'â€”' }}</td>
+                <td>{{ $license->expiry_date?->format('Y-m-d') ?? 'â€”' }}</td>
                 <td><x-adminlte.partials.status-badge :status="$license->status" /></td>
                 <td class="text-end">
                     <div class="table-actions">
@@ -58,3 +50,4 @@
         @endforelse
     </x-adminlte.partials.datatable>
 @stop
+

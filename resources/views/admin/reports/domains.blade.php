@@ -1,17 +1,9 @@
-@extends('adminlte::page')
+﻿@extends('adminlte::page')
 
 @section('title', 'Domain Report')
 
 @section('content_header')
-    <div class="row">
-        <div class="col-sm-6"><h1 class="m-0">Domain Report</h1></div>
-        <div class="col-sm-6">
-            <ol class="breadcrumb float-sm-end">
-                <li class="breadcrumb-item"><a href="{{ url('/') }}">{{ __('adminlte.home') }}</a></li>
-                <li class="breadcrumb-item active">Reports</li>
-            </ol>
-        </div>
-    </div>
+    <x-ui.page-header title="Domain Report" subtitle="Domain registration and status overview" :breadcrumbs="[['label' => __('adminlte.home'), 'url' => url('/')],['label' => 'Reports'],['label' => 'Domain Report','active' => true]]" />
 @stop
 
 @section('content')
@@ -22,7 +14,7 @@
                 @forelse ($expiring as $d)
                     <tr>
                         <td><strong>{{ $d->name }}</strong></td>
-                        <td>{{ $d->customer?->full_name ?? '—' }}</td>
+                        <td>{{ $d->customer?->full_name ?? 'â€”' }}</td>
                         <td class="text-warning fw-bold">{{ $d->expiry_date?->format('M j, Y') }}</td>
                     </tr>
                 @empty
@@ -40,3 +32,4 @@
         </table>
     </x-adminlte-card>
 @stop
+

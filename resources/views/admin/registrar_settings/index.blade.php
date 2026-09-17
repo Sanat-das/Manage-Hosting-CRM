@@ -1,17 +1,9 @@
-@extends('adminlte::page')
+﻿@extends('adminlte::page')
 
 @section('title', 'Registrar Settings')
 
 @section('content_header')
-    <div class="row">
-        <div class="col-sm-6"><h1 class="m-0">Registrar Settings</h1></div>
-        <div class="col-sm-6">
-            <ol class="breadcrumb float-sm-end">
-                <li class="breadcrumb-item"><a href="{{ url('/') }}">{{ __('adminlte.home') }}</a></li>
-                <li class="breadcrumb-item active">Registrar Settings</li>
-            </ol>
-        </div>
-    </div>
+    <x-ui.page-header title="Registrar Settings" subtitle="Overview and management of registrar settings" :breadcrumbs="[['label' => __('adminlte.home'), 'url' => url('/')],['label' => 'Registrar Settings','active' => true]]" />
 @stop
 
 @section('content')
@@ -55,3 +47,4 @@
         />
     @endforeach
 @stop
+

@@ -65,7 +65,12 @@ Route::middleware(['web', 'auth', 'admin', 'throttle:admin'])->prefix('admin')->
      | is permission to use the chat, not permission to read any given room.
      */
     Route::middleware('permission:chat.view')->group(function () {
+        // The public-channel directory. Registered before the `{conversation}`
+        // routes below so `chat/channels` is the listing, not a channel named
+        // "channels" — it is a GET against the same path segment.
+        Route::get('chat/channels', [ChatController::class, 'browseChannels'])->name('chat.channels.browse');
         Route::post('chat/channels', [ChatController::class, 'storeChannel'])->name('chat.channels.store');
+        Route::get('chat/channels/{conversation}/members', [ChatController::class, 'members'])->name('chat.channels.members.index');
         Route::put('chat/channels/{conversation}', [ChatController::class, 'updateChannel'])->name('chat.channels.update');
         Route::post('chat/channels/{conversation}/archive', [ChatController::class, 'archiveChannel'])->name('chat.channels.archive');
         Route::post('chat/channels/{conversation}/unarchive', [ChatController::class, 'unarchiveChannel'])->name('chat.channels.unarchive');
@@ -73,6 +78,12 @@ Route::middleware(['web', 'auth', 'admin', 'throttle:admin'])->prefix('admin')->
         Route::post('chat/channels/{conversation}/leave', [ChatController::class, 'leaveChannel'])->name('chat.channels.leave');
         Route::post('chat/channels/{conversation}/members', [ChatController::class, 'addMember'])->name('chat.channels.members.store');
         Route::delete('chat/channels/{conversation}/members/{user}', [ChatController::class, 'removeMember'])->name('chat.channels.members.destroy');
+
+        // Direct messages. The staff roster is a GET so the picker can search
+        // it; opening the conversation is the POST. Both are chat.view — a DM
+        // with a colleague is not the channel-creation permission.
+        Route::get('chat/people', [ChatController::class, 'people'])->name('chat.people');
+        Route::post('chat/dms', [ChatController::class, 'storeDirectMessage'])->name('chat.dms.store');
 
         Route::get('chat/conversations/{conversation}/messages', [ChatController::class, 'fetchMessages'])->name('chat.messages.index');
         Route::get('chat/conversations/{conversation}/threads/{parent}', [ChatController::class, 'fetchThread'])->name('chat.threads.show');

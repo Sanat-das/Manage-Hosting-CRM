@@ -1,17 +1,9 @@
-@extends('adminlte::page')
+﻿@extends('adminlte::page')
 
 @section('title', 'Resource Types')
 
 @section('content_header')
-    <div class="row">
-        <div class="col-sm-6"><h1 class="m-0">Resource Types</h1></div>
-        <div class="col-sm-6">
-            <ol class="breadcrumb float-sm-end">
-                <li class="breadcrumb-item"><a href="{{ url('/') }}">{{ __('adminlte.home') }}</a></li>
-                <li class="breadcrumb-item active" aria-current="page">Resource Types</li>
-            </ol>
-        </div>
-    </div>
+    <x-ui.page-header title="Resource Types" subtitle="Overview and management of resource types" :breadcrumbs="[['label' => __('adminlte.home'), 'url' => url('/')],['label' => 'Resource Types','active' => true]]" />
 @stop
 
 @section('content')
@@ -40,9 +32,9 @@
             <tr>
                 <td><a href="{{ route('admin.resource-types.show', $type) }}"><strong>{{ $type->name }}</strong></a></td>
                 <td><code>{{ $type->slug }}</code></td>
-                <td>{{ $type->category ?? '—' }}</td>
-                <td>{{ $type->unit ?? '—' }}</td>
-                <td class="text-muted">{{ $type->description ?? '—' }}</td>
+                <td>{{ $type->category ?? 'â€”' }}</td>
+                <td>{{ $type->unit ?? 'â€”' }}</td>
+                <td class="text-muted">{{ $type->description ?? 'â€”' }}</td>
                 <td class="text-end">
                     <div class="table-actions">
                         <a href="{{ route('admin.resource-types.edit', $type) }}" class="btn btn-sm btn-outline-secondary btn-icon" title="Edit" aria-label="Edit"><i class="bi bi-pencil"></i></a>
@@ -54,3 +46,4 @@
         @endforelse
     </x-adminlte.partials.datatable>
 @stop
+

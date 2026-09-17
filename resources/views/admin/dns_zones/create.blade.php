@@ -1,8 +1,11 @@
 @extends('adminlte::page')
 @section('title', 'Add DNS Zone')
 @section('content_header')
-    <div class="row"><div class="col-sm-6"><h1 class="m-0">Add DNS Zone</h1></div>
-        <div class="col-sm-6"><ol class="breadcrumb float-sm-end"><li class="breadcrumb-item"><a href="{{ url('/') }}">{{ __('adminlte.home') }}</a></li><li class="breadcrumb-item"><a href="{{ route('admin.dns-zones.index') }}">DNS Zones</a></li><li class="breadcrumb-item active">Add</li></ol></div></div>
+    <x-ui.page-header title="Add DNS Zone" subtitle="Provision a new DNS zone" :breadcrumbs="[
+        ['label' => __('adminlte.home'), 'url' => url('/')],
+        ['label' => 'DNS Zones', 'url' => route('admin.dns-zones.index')],
+        ['label' => 'Add', 'active' => true],
+    ]" />
 @stop
 @section('content')
     @if ($errors->any()) <x-adminlte-alert theme="danger" dismissible><ul class="mb-0">@foreach ($errors->all() as $error)<li>{{ $error }}</li>@endforeach</ul></x-adminlte-alert> @endif

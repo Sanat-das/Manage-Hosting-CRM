@@ -1,17 +1,9 @@
-@extends('adminlte::page')
+﻿@extends('adminlte::page')
 
 @section('title', 'Notifications')
 
 @section('content_header')
-    <div class="row">
-        <div class="col-sm-6"><h1 class="m-0">Notifications</h1></div>
-        <div class="col-sm-6">
-            <ol class="breadcrumb float-sm-end">
-                <li class="breadcrumb-item"><a href="{{ url('/') }}">{{ __('adminlte.home') }}</a></li>
-                <li class="breadcrumb-item active" aria-current="page">Notifications</li>
-            </ol>
-        </div>
-    </div>
+    <x-ui.page-header title="Notifications" subtitle="Overview and management of notifications" :breadcrumbs="[['label' => __('adminlte.home'), 'url' => url('/')],['label' => 'Notifications','active' => true]]" />
 @stop
 
 @section('content')
@@ -78,3 +70,4 @@
         @endforelse
     </x-adminlte.partials.datatable>
 @stop
+

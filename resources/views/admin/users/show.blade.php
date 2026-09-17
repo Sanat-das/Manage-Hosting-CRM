@@ -1,20 +1,9 @@
-@extends('adminlte::page')
+﻿@extends('adminlte::page')
 
 @section('title', $user->full_name)
 
 @section('content_header')
-    <div class="row">
-        <div class="col-sm-6">
-            <h1 class="m-0">{{ $user->full_name }}</h1>
-        </div>
-        <div class="col-sm-6">
-            <ol class="breadcrumb float-sm-end">
-                <li class="breadcrumb-item"><a href="{{ url('/') }}">{{ __('adminlte.home') }}</a></li>
-                <li class="breadcrumb-item"><a href="{{ route('admin.users.index') }}">Staff Users</a></li>
-                <li class="breadcrumb-item active" aria-current="page">{{ $user->id }}</li>
-            </ol>
-        </div>
-    </div>
+    <x-ui.page-header title="{{ $user->full_name }}" subtitle="View staff user details" :breadcrumbs="[['label' => __('adminlte.home'), 'url' => url('/')],['label' => 'Staff Users','url' => route('admin.users.index')],['label' => $user->full_name,'active' => true]]" />
 @stop
 
 @php
@@ -94,7 +83,7 @@
                     <tbody>
                         <tr><th class="w-25 text-muted">ID</th><td>{{ $user->id }}</td></tr>
                         <tr><th class="text-muted">Email</th><td>{{ $user->email }}</td></tr>
-                        <tr><th class="text-muted">Phone</th><td>{{ $user->phone ?? '—' }}</td></tr>
+                        <tr><th class="text-muted">Phone</th><td>{{ $user->phone ?? 'â€”' }}</td></tr>
                         <tr><th class="text-muted">Role</th><td><span class="badge text-bg-{{ $roleBadges[$user->role] ?? 'secondary' }}">{{ ucfirst($user->role) }}</span></td></tr>
                         <tr><th class="text-muted">Status</th><td><x-adminlte.partials.status-badge :status="$user->status" /></td></tr>
                         <tr><th class="text-muted">Last login</th><td>{{ $user->last_login_at?->format('M j, Y H:i') ?? 'Never' }}</td></tr>
@@ -144,7 +133,7 @@
                     @csrf
                     <div class="modal-content">
                         <div class="modal-header">
-                            <h5 class="modal-title" id="set-password-modal-label">Set Password — {{ $user->full_name }}</h5>
+                            <h5 class="modal-title" id="set-password-modal-label">Set Password â€” {{ $user->full_name }}</h5>
                             <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                         </div>
                         <div class="modal-body">
@@ -181,3 +170,4 @@
         @endpush
     @endif
 @stop
+

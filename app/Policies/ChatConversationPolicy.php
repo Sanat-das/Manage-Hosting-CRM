@@ -65,6 +65,19 @@ class ChatConversationPolicy
     }
 
     /**
+     * Open a direct message with a colleague.
+     *
+     * Deliberately not `create()`: that permission governs shared rooms every
+     * staff member can see, and gating a private word with a colleague behind
+     * it would leave anyone without it able to read the chat and unable to use
+     * it for the one thing it is for.
+     */
+    public function startDirectMessage(User $user): bool
+    {
+        return $user->hasPermission('chat.view');
+    }
+
+    /**
      * Rename, re-topic, archive, or change the membership of a conversation.
      *
      * The creator, a participant holding the conversation's own admin role, or
@@ -95,12 +108,12 @@ class ChatConversationPolicy
 
     public function addMember(User $user, ChatConversation $conversation): bool
     {
-        return $this->update($user, $conversation);
+        return $conversation->allowsMembershipChanges() && $this->update($user, $conversation);
     }
 
     public function removeMember(User $user, ChatConversation $conversation): bool
     {
-        return $this->update($user, $conversation);
+        return $conversation->allowsMembershipChanges() && $this->update($user, $conversation);
     }
 
     /**
@@ -133,20 +146,20 @@ class ChatConversationPolicy
      */
     public function join(User $user, ChatConversation $conversation): bool
     {
-        if ($conversation->isArchived()) {
-            return false;
-        }
-
-        if ($conversation->type !== ChatConversation::TYPE_CHANNEL || $conversation->is_private) {
+        if (! $conversation->isSelfJoinable()) {
             return false;
         }
 
         return $user->hasPermission('chat.view') && $this->mayReachDepartment($user, $conversation);
     }
 
+    /**
+     * Leaving is removing yourself, so it answers to the same structural rule:
+     * there is no walking out of a conversation that is defined by who is in it.
+     */
     public function leave(User $user, ChatConversation $conversation): bool
     {
-        return $this->isParticipant($user, $conversation);
+        return $conversation->allowsMembershipChanges() && $this->isParticipant($user, $conversation);
     }
 
     /**

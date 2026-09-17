@@ -178,6 +178,14 @@
             </div>
             <p class="small text-success mt-2 mb-0 d-none" id="client-chat-thanks">Thank you.</p>
         </div>
+
+        {{-- The way back. A closed conversation ends that conversation, not
+             support: the session still names it, so without this button the
+             intro form above stays hidden on every reload and the only escape
+             is clearing cookies. Shown next to the rating rather than instead
+             of it — rating is optional, and neither should block the other. --}}
+        <button type="button" class="client-chat__restart btn btn-sm btn-outline-primary w-100 mt-2 d-none"
+                id="client-chat-restart">Start a new chat</button>
     </section>
 </div>
 

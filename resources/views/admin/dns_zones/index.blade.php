@@ -1,8 +1,10 @@
 @extends('adminlte::page')
 @section('title', 'DNS Zones')
 @section('content_header')
-    <div class="row"><div class="col-sm-6"><h1 class="m-0">DNS Zones</h1></div>
-        <div class="col-sm-6"><ol class="breadcrumb float-sm-end"><li class="breadcrumb-item"><a href="{{ url('/') }}">{{ __('adminlte.home') }}</a></li><li class="breadcrumb-item active">DNS Zones</li></ol></div></div>
+    <x-ui.page-header title="DNS Zones" subtitle="Manage DNS zones inventory" :breadcrumbs="[
+        ['label' => __('adminlte.home'), 'url' => url('/')],
+        ['label' => 'DNS Zones', 'active' => true],
+    ]" />
 @stop
 @section('content')
     @if (session('success')) <x-adminlte-alert theme="success" dismissible>{{ session('success') }}</x-adminlte-alert> @endif

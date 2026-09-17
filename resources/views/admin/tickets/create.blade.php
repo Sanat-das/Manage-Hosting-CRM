@@ -3,18 +3,11 @@
 @section('title', 'Create Ticket')
 
 @section('content_header')
-    <div class="row">
-        <div class="col-sm-6">
-            <h1 class="m-0">Create Ticket</h1>
-        </div>
-        <div class="col-sm-6">
-            <ol class="breadcrumb float-sm-end">
-                <li class="breadcrumb-item"><a href="{{ url('/') }}">{{ __('adminlte.home') }}</a></li>
-                <li class="breadcrumb-item"><a href="{{ route('admin.tickets.index') }}">Tickets</a></li>
-                <li class="breadcrumb-item active" aria-current="page">Create</li>
-            </ol>
-        </div>
-    </div>
+    <x-ui.page-header title="Create Ticket" subtitle="Create a new support ticket" :breadcrumbs="[
+        ['label' => __('adminlte.home'), 'url' => url('/')],
+        ['label' => 'Tickets', 'url' => route('admin.tickets.index')],
+        ['label' => 'Create', 'active' => true],
+    ]" />
 @stop
 
 @push('css')

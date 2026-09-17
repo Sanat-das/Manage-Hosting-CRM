@@ -3,18 +3,11 @@
 @section('title', $ssl->domain_name.' SSL Certificate')
 
 @section('content_header')
-    <div class="row">
-        <div class="col-sm-6">
-            <h1 class="m-0">{{ $ssl->domain_name }}</h1>
-        </div>
-        <div class="col-sm-6">
-            <ol class="breadcrumb float-sm-end">
-                <li class="breadcrumb-item"><a href="{{ url('/') }}">{{ __('adminlte.home') }}</a></li>
-                <li class="breadcrumb-item"><a href="{{ route('admin.ssl.index') }}">SSL Certificates</a></li>
-                <li class="breadcrumb-item active" aria-current="page">{{ $ssl->domain_name }}</li>
-            </ol>
-        </div>
-    </div>
+    <x-ui.page-header title="{{ $ssl->domain_name }}" subtitle="View SSL certificate details" :breadcrumbs="[
+        ['label' => __('adminlte.home'), 'url' => url('/')],
+        ['label' => 'SSL Certificates', 'url' => route('admin.ssl.index')],
+        ['label' => $ssl->domain_name, 'active' => true],
+    ]" />
 @stop
 
 @php

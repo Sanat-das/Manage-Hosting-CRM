@@ -1,8 +1,7 @@
-@extends('adminlte::page')
+﻿@extends('adminlte::page')
 @section('title', 'Provisioning Events')
 @section('content_header')
-    <div class="row"><div class="col-sm-6"><h1 class="m-0">Provisioning Events</h1></div>
-        <div class="col-sm-6"><ol class="breadcrumb float-sm-end"><li class="breadcrumb-item"><a href="{{ url('/') }}">{{ __('adminlte.home') }}</a></li><li class="breadcrumb-item active">Provisioning Events</li></ol></div></div>
+    <x-ui.page-header title="Provisioning Events" subtitle="Overview and management of provisioning events" :breadcrumbs="[['label' => __('adminlte.home'), 'url' => url('/')],['label' => 'Provisioning Events','active' => true]]" />
 @stop
 @section('content')
     @if (session('success')) <x-adminlte-alert theme="success" dismissible>{{ session('success') }}</x-adminlte-alert> @endif
@@ -47,3 +46,4 @@
         @endforelse
     </x-adminlte.partials.datatable>
 @stop
+

@@ -70,7 +70,6 @@ function initChat(root) {
         threadInput: document.getElementById('chat-thread-body-input'),
         loadOlder: document.getElementById('chat-load-older'),
         filter: document.getElementById('chat-filter'),
-        presence: document.getElementById('chat-presence-list'),
         noMessages: document.getElementById('chat-no-messages'),
         banner: document.getElementById('chat-reconnect-banner'),
         skeleton: document.querySelector('[data-chat-skeleton]'),
@@ -671,6 +670,36 @@ function initChat(root) {
         document.querySelectorAll('.chat-sidebar__item').forEach((item) => {
             item.classList.toggle('d-none', needle !== '' && !item.dataset.name.includes(needle));
         });
+
+        document.querySelectorAll('details[data-closed-group]').forEach((group) => {
+            if (needle === '') {
+                group.removeAttribute('open');
+                return;
+            }
+            const hasHit = Array.from(group.querySelectorAll('.chat-sidebar__item'))
+                .some((item) => !item.classList.contains('d-none'));
+            if (hasHit) group.setAttribute('open', '');
+        });
+    });
+
+    const drawerToggles = [
+        document.getElementById('chat-drawer-open'),
+        document.getElementById('chat-drawer-open-empty'),
+    ].filter(Boolean);
+    const drawerBackdrop = document.getElementById('chat-drawer-backdrop');
+
+    const setDrawer = (open) => {
+        root.classList.toggle('drawer-open', open);
+        drawerToggles.forEach((btn) => btn.setAttribute('aria-expanded', open ? 'true' : 'false'));
+        drawerBackdrop?.classList.toggle('d-none', !open);
+    };
+
+    drawerToggles.forEach((btn) => btn.addEventListener('click', () => {
+        setDrawer(!root.classList.contains('drawer-open'));
+    }));
+    drawerBackdrop?.addEventListener('click', () => setDrawer(false));
+    document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape' && root.classList.contains('drawer-open')) setDrawer(false);
     });
 
     // --- new channel ------------------------------------------------------
@@ -689,6 +718,441 @@ function initChat(root) {
             window.location = `/admin/chat?c=${result.channel.id}`;
         } catch (error) {
             say(error.payload?.errors?.name?.[0] || error.message, 'error');
+        }
+    });
+
+    // --- people, channels and membership ----------------------------------
+
+    /**
+     * Built from the rendered route rather than written as a literal, because
+     * the app can be installed under a subdirectory and only route() knows.
+     */
+    const chatBase = (root.dataset.base || '/admin/chat').replace(/\/$/, '');
+
+    const goTo = (conversationId) => {
+        window.location = `${chatBase}?c=${conversationId}`;
+    };
+
+    const pick = {
+        dialog: document.getElementById('chat-people'),
+        title: document.getElementById('chat-people-title'),
+        query: document.getElementById('chat-people-q'),
+        chosen: document.getElementById('chat-people-chosen'),
+        results: document.getElementById('chat-people-results'),
+        error: document.getElementById('chat-people-error'),
+        go: document.getElementById('chat-people-go'),
+    };
+
+    const browse = {
+        dialog: document.getElementById('chat-browse'),
+        query: document.getElementById('chat-browse-q'),
+        results: document.getElementById('chat-browse-results'),
+    };
+
+    const members = {
+        dialog: document.getElementById('chat-members'),
+        list: document.getElementById('chat-members-list'),
+        error: document.getElementById('chat-members-error'),
+        count: document.getElementById('chat-members-count'),
+        leave: document.getElementById('chat-members-leave'),
+        join: document.getElementById('chat-members-join'),
+        add: document.getElementById('chat-members-add'),
+        settings: document.getElementById('chat-channel-settings'),
+        settingsStatus: document.getElementById('chat-channel-settings-status'),
+    };
+
+    /**
+     * The picker's own state.
+     *
+     * `rows` holds the fetched people and the DOM carries only their index —
+     * the same reason the saved-reply picker does it: a real name with an
+     * apostrophe in it breaks out of a single-quoted data attribute.
+     */
+    const roster = { mode: 'dm', rows: [], chosen: [], timer: null };
+
+    function showDialog(node, on) {
+        node?.classList.toggle('d-none', !on);
+    }
+
+    function dialogIsOpen(node) {
+        return node !== null && node !== undefined && !node.classList.contains('d-none');
+    }
+
+    function openPeople(mode) {
+        if (!pick.dialog) return;
+
+        roster.mode = mode;
+        roster.rows = [];
+        roster.chosen = [];
+
+        pick.title.textContent = mode === 'dm' ? 'New direct message' : 'Add people';
+        pick.go.textContent = mode === 'dm' ? 'Start conversation' : 'Add to conversation';
+        pick.query.value = '';
+        pick.error.classList.add('d-none');
+
+        renderChosen();
+        showDialog(pick.dialog, true);
+        pick.query.focus();
+        searchPeople();
+    }
+
+    function closePeople() {
+        showDialog(pick.dialog, false);
+    }
+
+    async function searchPeople() {
+        const params = new URLSearchParams({ q: pick.query.value.trim() });
+
+        if (roster.mode === 'members' && state.conversationId) {
+            params.set('conversation', String(state.conversationId));
+        }
+
+        try {
+            const result = await api(`${chatBase}/people?${params.toString()}`);
+            roster.rows = result.people;
+            renderPeopleResults();
+        } catch (error) {
+            pick.results.innerHTML = `<li class="p-2 text-danger">${escapeHtml(error.message)}</li>`;
+        }
+    }
+
+    // Presence in the people picker, matching the DM rows: painted from the
+    // online set the sidebar poll already maintains, so no new endpoint.
+    // Painted at render time (open + each search); a poll landing while the
+    // dialog is open does not rebuild the list under the operator's cursor.
+    function presenceDot(person) {
+        const id = Number(person.id);
+        const online = state.onlineIds?.has(id) === true;
+        const entry = state.availabilityStates?.[id];
+        const mod = online ? (entry?.state ?? 'available') : 'offline';
+        const label = online ? (entry?.label ?? 'Online') : 'Offline';
+
+        return (
+            `<span class="chat-presence__dot chat-presence__dot--${mod}" ` +
+            `title="${escapeHtml(label)}" aria-hidden="true"></span> `
+        );
+    }
+
+    function renderPeopleResults() {
+        const taken = new Set(roster.chosen.map((person) => person.id));
+        const rows = roster.rows
+            .map((person, index) => ({ person, index }))
+            .filter(({ person }) => !taken.has(person.id));
+
+        if (rows.length === 0) {
+            pick.results.innerHTML = '<li class="p-2 text-body-secondary">Nobody else to show.</li>';
+
+            return;
+        }
+
+        pick.results.innerHTML = rows
+            .map(
+                ({ person, index }) =>
+                    `<li role="option"><button type="button" class="chat-palette__result" data-person="${index}">` +
+                    `${presenceDot(person)}` +
+                    `<strong>${escapeHtml(person.name)}</strong> ` +
+                    `<span class="text-body-secondary">${escapeHtml(person.email)}</span></button></li>`,
+            )
+            .join('');
+    }
+
+    function renderChosen() {
+        pick.go.disabled = roster.chosen.length === 0;
+
+        if (roster.mode === 'dm') {
+            pick.go.textContent = roster.chosen.length > 1 ? 'Start group message' : 'Start conversation';
+        }
+
+        pick.chosen.innerHTML = roster.chosen
+            .map(
+                (person, index) =>
+                    `<span class="badge text-bg-secondary chat-people-chip">${escapeHtml(person.name)}` +
+                    `<button type="button" class="btn-close btn-close-white btn-sm" data-drop="${index}" ` +
+                    `aria-label="Remove ${escapeHtml(person.name)}"></button></span>`,
+            )
+            .join('');
+    }
+
+    pick.results?.addEventListener('click', (event) => {
+        const choice = event.target.closest('[data-person]');
+        if (!choice) return;
+
+        roster.chosen.push(roster.rows[Number(choice.dataset.person)]);
+        renderChosen();
+        renderPeopleResults();
+        pick.query.focus();
+    });
+
+    pick.chosen?.addEventListener('click', (event) => {
+        const drop = event.target.closest('[data-drop]');
+        if (!drop) return;
+
+        roster.chosen.splice(Number(drop.dataset.drop), 1);
+        renderChosen();
+        renderPeopleResults();
+    });
+
+    pick.query?.addEventListener('input', () => {
+        clearTimeout(roster.timer);
+        roster.timer = setTimeout(searchPeople, 250);
+    });
+
+    document.querySelectorAll('[data-chat-people-close]').forEach((button) => {
+        button.addEventListener('click', closePeople);
+    });
+
+    pick.go?.addEventListener('click', async () => {
+        if (roster.chosen.length === 0) return;
+
+        pick.error.classList.add('d-none');
+        pick.go.disabled = true;
+
+        try {
+            if (roster.mode === 'dm') {
+                const result = await api(`${chatBase}/dms`, {
+                    method: 'POST',
+                    body: JSON.stringify({ user_ids: roster.chosen.map((person) => person.id) }),
+                });
+
+                goTo(result.conversation.id);
+
+                return;
+            }
+
+            // One request per person: the endpoint takes a single user_id, and
+            // a partly-failed batch has to be able to name who it could not add.
+            for (const person of roster.chosen) {
+                await api(`${chatBase}/channels/${state.conversationId}/members`, {
+                    method: 'POST',
+                    body: JSON.stringify({ user_id: person.id }),
+                });
+            }
+
+            closePeople();
+            say(`Added ${roster.chosen.length === 1 ? roster.chosen[0].name : `${roster.chosen.length} people`}.`);
+            await loadMembers();
+            showDialog(members.dialog, true);
+        } catch (error) {
+            pick.error.textContent = error.message;
+            pick.error.classList.remove('d-none');
+        } finally {
+            pick.go.disabled = roster.chosen.length === 0;
+        }
+    });
+
+    document.getElementById('chat-new-dm')?.addEventListener('click', () => openPeople('dm'));
+
+    // --- browse channels ---------------------------------------------------
+
+    document.getElementById('chat-browse-open')?.addEventListener('click', () => {
+        showDialog(browse.dialog, true);
+        browse.query.value = '';
+        browse.query.focus();
+        loadChannels();
+    });
+
+    document.querySelectorAll('[data-chat-browse-close]').forEach((button) => {
+        button.addEventListener('click', () => showDialog(browse.dialog, false));
+    });
+
+    let browseTimer = null;
+    browse.query?.addEventListener('input', () => {
+        clearTimeout(browseTimer);
+        browseTimer = setTimeout(loadChannels, 250);
+    });
+
+    async function loadChannels() {
+        try {
+            const result = await api(`${chatBase}/channels?q=${encodeURIComponent(browse.query.value.trim())}`);
+
+            if (result.channels.length === 0) {
+                browse.results.innerHTML = '<li class="p-2 text-body-secondary">No public channels to show.</li>';
+
+                return;
+            }
+
+            browse.results.innerHTML = result.channels
+                .map(
+                    (channel) =>
+                        '<li class="d-flex align-items-center gap-2 p-2 border-bottom">' +
+                        `<span class="flex-grow-1"><strong>#${escapeHtml(channel.name)}</strong>` +
+                        (channel.topic ? ` <span class="text-body-secondary">${escapeHtml(channel.topic)}</span>` : '') +
+                        `<br><span class="small text-body-secondary">${channel.members} member${channel.members === 1 ? '' : 's'}</span></span>` +
+                        `<button type="button" class="btn btn-sm ${channel.joined ? 'btn-outline-secondary' : 'btn-primary'}" ` +
+                        `data-channel="${channel.id}" data-joined="${channel.joined ? '1' : '0'}">` +
+                        `${channel.joined ? 'Open' : 'Join'}</button></li>`,
+                )
+                .join('');
+        } catch (error) {
+            browse.results.innerHTML = `<li class="p-2 text-danger">${escapeHtml(error.message)}</li>`;
+        }
+    }
+
+    browse.results?.addEventListener('click', async (event) => {
+        const button = event.target.closest('[data-channel]');
+        if (!button) return;
+
+        const id = Number(button.dataset.channel);
+
+        if (button.dataset.joined === '1') {
+            goTo(id);
+
+            return;
+        }
+
+        button.disabled = true;
+
+        try {
+            await api(`${chatBase}/channels/${id}/join`, { method: 'POST' });
+            goTo(id);
+        } catch (error) {
+            button.disabled = false;
+            toast(`Could not join that channel: ${error.message}`);
+        }
+    });
+
+    // --- members and channel settings --------------------------------------
+
+    document.getElementById('chat-members-open')?.addEventListener('click', async () => {
+        showDialog(members.dialog, true);
+        await loadMembers();
+    });
+
+    document.querySelectorAll('[data-chat-members-close]').forEach((button) => {
+        button.addEventListener('click', () => showDialog(members.dialog, false));
+    });
+
+    async function loadMembers() {
+        if (!members.list || !state.conversationId) return;
+
+        members.error.classList.add('d-none');
+
+        try {
+            const result = await api(`${chatBase}/channels/${state.conversationId}/members`);
+
+            members.list.innerHTML = result.members
+                .map(
+                    (member) =>
+                        '<li class="d-flex align-items-center gap-2 p-2 border-bottom">' +
+                        `<span class="flex-grow-1">${escapeHtml(member.name)}` +
+                        (member.is_you ? ' <span class="small text-body-secondary">(you)</span>' : '') +
+                        (member.role === 'admin' ? ' <span class="badge text-bg-light text-body">admin</span>' : '') +
+                        '</span>' +
+                        (result.can_manage && !member.is_you && member.user_id !== null
+                            ? `<button type="button" class="btn btn-sm btn-outline-danger" data-remove="${member.user_id}" ` +
+                              `aria-label="Remove ${escapeHtml(member.name)}">Remove</button>`
+                            : '') +
+                        '</li>',
+                )
+                .join('');
+
+            members.count.textContent = String(result.members.length);
+            members.add.classList.toggle('d-none', !result.can_manage);
+            members.leave.classList.toggle('d-none', !result.can_leave);
+            members.join.classList.toggle('d-none', !result.can_join);
+        } catch (error) {
+            members.list.innerHTML = `<li class="p-2 text-danger">${escapeHtml(error.message)}</li>`;
+        }
+    }
+
+    members.list?.addEventListener('click', async (event) => {
+        const button = event.target.closest('[data-remove]');
+        if (!button) return;
+
+        const confirmed = await confirmAction(
+            'Remove this person?',
+            'They lose access to the conversation. What they have already said stays in it.',
+        );
+        if (!confirmed) return;
+
+        try {
+            await api(`${chatBase}/channels/${state.conversationId}/members/${button.dataset.remove}`, {
+                method: 'DELETE',
+            });
+            await loadMembers();
+        } catch (error) {
+            members.error.textContent = error.message;
+            members.error.classList.remove('d-none');
+        }
+    });
+
+    members.add?.addEventListener('click', () => {
+        showDialog(members.dialog, false);
+        openPeople('members');
+    });
+
+    members.join?.addEventListener('click', async () => {
+        try {
+            await api(`${chatBase}/channels/${state.conversationId}/join`, { method: 'POST' });
+            // Reloaded rather than patched: joining is what makes the composer
+            // usable, and that is rendered server-side.
+            window.location.reload();
+        } catch (error) {
+            members.error.textContent = error.message;
+            members.error.classList.remove('d-none');
+        }
+    });
+
+    members.leave?.addEventListener('click', async () => {
+        const confirmed = await confirmAction(
+            'Leave this conversation?',
+            'It disappears from your sidebar. A public channel can be rejoined from Browse channels.',
+        );
+        if (!confirmed) return;
+
+        try {
+            await api(`${chatBase}/channels/${state.conversationId}/leave`, { method: 'POST' });
+            window.location = chatBase;
+        } catch (error) {
+            members.error.textContent = error.message;
+            members.error.classList.remove('d-none');
+        }
+    });
+
+    members.settings?.addEventListener('submit', async (event) => {
+        event.preventDefault();
+
+        const payload = {};
+        const name = document.getElementById('chat-channel-name')?.value.trim() ?? '';
+        const topic = document.getElementById('chat-channel-topic');
+        const purpose = document.getElementById('chat-channel-purpose');
+
+        // An empty name is left out, not sent as "": the rule is
+        // `sometimes|required`, so sending it empty is a validation error while
+        // omitting it keeps an unnamed group message unnamed.
+        if (name !== '') {
+            payload.name = name;
+        }
+
+        if (topic) {
+            payload.topic = topic.value.trim();
+        }
+
+        if (purpose) {
+            payload.purpose = purpose.value.trim();
+        }
+
+        members.settingsStatus.textContent = 'Saving...';
+
+        try {
+            await api(`${chatBase}/channels/${state.conversationId}`, {
+                method: 'PUT',
+                body: JSON.stringify(payload),
+            });
+            window.location.reload();
+        } catch (error) {
+            members.settingsStatus.textContent = '';
+            members.error.textContent = error.payload?.errors?.name?.[0] || error.message;
+            members.error.classList.remove('d-none');
+        }
+    });
+
+    document.getElementById('chat-unarchive')?.addEventListener('click', async () => {
+        try {
+            await api(`${chatBase}/channels/${state.conversationId}/unarchive`, { method: 'POST' });
+            window.location.reload();
+        } catch (error) {
+            toast(`Could not unarchive the channel: ${error.message}`);
         }
     });
 
@@ -724,6 +1188,7 @@ function initChat(root) {
                     say(`Created ticket ${result.ticket.ticket_no}.`);
                 } else {
                     say(`Conversation ${result.conversation.status}.`);
+                    refreshInboxRow(state.conversationId, result.conversation.status);
                 }
             } catch (error) {
                 say(error.message, 'error');
@@ -1068,6 +1533,12 @@ function initChat(root) {
     /** How often the fallback asks for new messages, in milliseconds. */
     const POLL_EVERY = 5000;
 
+    // Sidebar data (unread, presence, inbox) rides the same cadence as the
+    // message poll. The presence *write* stays on the slow heartbeat below —
+    // the roster only needs to know I'm here every 30s, but my screen should
+    // learn about everyone else every 5s.
+    const SIDEBAR_SYNC_EVERY = 5000;
+
     state.lastMessageId = Array.from(el.list?.querySelectorAll('[data-message-id]') ?? []).reduce(
         (highest, row) => Math.max(highest, Number(row.dataset.messageId) || 0),
         0,
@@ -1106,9 +1577,16 @@ function initChat(root) {
         state.pollTimer = null;
     }
 
-    function setFallback(active) {
+    function setFallback(active, subtle = false) {
         state.fallback = active;
         el.banner?.classList.toggle('d-none', !active);
+        el.banner?.classList.toggle('is-subtle', active && subtle);
+
+        if (active && el.banner) {
+            el.banner.textContent = subtle
+                ? 'Live updates every 5s — realtime off'
+                : 'Realtime disconnected — polling';
+        }
 
         if (active) {
             startPolling();
@@ -1143,7 +1621,10 @@ function initChat(root) {
             return;
         }
 
-        setFallback(true);
+        // Reverb was never configured on this install: polling is the
+        // expected mode, not an outage, so show the subtle indicator.
+        // A configured socket that drops gets the warning variant.
+        setFallback(true, !realtime.enabled);
     });
 
     // --- realtime ---------------------------------------------------------
@@ -1185,19 +1666,33 @@ function initChat(root) {
             .listen('.chat.inbox.waiting', (event) => noteWaiting(event.conversation, true));
     }
 
-    function addPresence(id, name) {
-        if (!el.presence || id === state.userId) return;
-        el.presence.querySelector('[data-empty]')?.remove();
-        if (el.presence.querySelector(`[data-user-id="${id}"]`)) return;
+    state.onlineIds = new Set(readJson('chat-online', []).map(Number));
+    state.availabilityStates = {};
 
-        const li = document.createElement('li');
-        li.dataset.userId = id;
-        li.innerHTML = `<span class="chat-presence__dot"></span>${escapeHtml(name)}`;
-        el.presence.append(li);
+    function paintDmDots() {
+        document.querySelectorAll('[data-dm-user]').forEach((dot) => {
+            const id = Number(dot.dataset.dmUser);
+            const online = state.onlineIds.has(id);
+            const entry = state.availabilityStates?.[id];
+            const mod = online ? (entry?.state ?? 'available') : 'offline';
+            const label = online ? (entry?.label ?? 'Online') : 'Offline';
+
+            dot.className = `chat-presence__dot chat-presence__dot--${mod}`;
+            dot.title = label;
+            const sr = dot.parentElement?.querySelector('[data-dm-state]');
+
+            if (sr) sr.textContent = ` — ${label}`;
+        });
+    }
+
+    function addPresence(id) {
+        state.onlineIds.add(Number(id));
+        paintDmDots();
     }
 
     function removePresence(id) {
-        el.presence?.querySelector(`[data-user-id="${id}"]`)?.remove();
+        state.onlineIds.delete(Number(id));
+        paintDmDots();
     }
 
     // --- sidebar sync -------------------------------------------------------
@@ -1212,10 +1707,10 @@ function initChat(root) {
 
     /**
      * Everything the chat subscribes to over the websocket is scoped to the one
-     * conversation that is open. The sidebar is not: its unread badges, its
+     * conversation that is open. The sidebar is not: its unread badges, its DM
      * presence dots and its customer queue all describe rooms the client has no
-     * subscription to, so nothing but this poll ever moves them. It runs on the
-     * heartbeat tick whether or not Echo is connected, because the default
+     * subscription to, so nothing but this poll ever moves them. It runs every
+     * SIDEBAR_SYNC_EVERY whether or not Echo is connected, because the default
      * install ships BROADCAST_CONNECTION=log and never connects at all.
      */
     async function syncSidebar() {
@@ -1231,41 +1726,54 @@ function initChat(root) {
 
         applyUnread(payload.unread ?? {});
         applyPresence(payload.online ?? []);
-        // After applyPresence, which is what creates the rows this paints.
         applyAvailabilityStates(payload.availability ?? {});
         (payload.inbox ?? []).forEach((conversation) => noteWaiting(conversation, true));
+        await syncInboxStatuses();
     }
 
-    /**
-     * Paint each roster row with its declared state.
-     *
-     * Only the exceptions are labelled. A badge reading "Available" on every
-     * row next to a green dot is noise that hides the one row saying Away,
-     * which is the only row anyone is looking for.
-     */
-    function applyAvailabilityStates(states) {
-        if (!el.presence) return;
+    // Status transitions made by OTHER operators never arrive as events — the
+    // waiting-only poll above only announces new arrivals. So once per
+    // heartbeat the full inbox list is reconciled: badge repaints and section
+    // moves for rows already on screen, silent inserts for rooms that appeared
+    // straight into active. Never deletes: the list endpoint is capped, and a
+    // cap is not proof a room is gone.
+    async function syncInboxStatuses() {
+        if (!state.canOperate) return;
 
-        el.presence.querySelectorAll('[data-user-id]').forEach((row) => {
-            const entry = states[row.dataset.userId];
-            const state = entry?.state ?? 'available';
+        const group = inboxGroup();
+        if (!group) return;
 
-            row.dataset.state = state;
+        let payload;
 
-            const dot = row.querySelector('.chat-presence__dot');
-            if (dot) {
-                dot.className = `chat-presence__dot chat-presence__dot--${state}`;
+        try {
+            payload = await api(`${chatBase}/inbox`);
+        } catch {
+            return;
+        }
+
+        (payload.conversations ?? []).forEach((conversation) => {
+            const id = Number(conversation.id);
+            if (!id) return;
+
+            const row = group.querySelector(`[data-conversation-id="${id}"]`);
+
+            if (!row) {
+                if (conversation.status === 'waiting' || conversation.status === 'active') {
+                    state.knownConversations.add(id);
+                    insertInboxRow(conversation);
+                }
+                return;
             }
 
-            row.querySelector('.chat-presence__state')?.remove();
-
-            if (state !== 'available') {
-                const badge = document.createElement('span');
-                badge.className = 'badge text-bg-light text-body chat-presence__state';
-                badge.textContent = entry?.label ?? state;
-                row.append(badge);
+            if (rowStatus(row) !== conversation.status) {
+                refreshInboxRow(id, conversation.status);
             }
         });
+    }
+
+    function applyAvailabilityStates(states) {
+        state.availabilityStates = states ?? {};
+        paintDmDots();
     }
 
     function applyUnread(counts) {
@@ -1282,26 +1790,8 @@ function initChat(root) {
     }
 
     function applyPresence(people) {
-        if (!el.presence) return;
-
-        const seen = new Set();
-
-        people.forEach((person) => {
-            seen.add(Number(person.id));
-            addPresence(person.id, person.name);
-        });
-
-        el.presence.querySelectorAll('[data-user-id]').forEach((row) => {
-            if (!seen.has(Number(row.dataset.userId))) row.remove();
-        });
-
-        if (!el.presence.querySelector('[data-user-id]') && !el.presence.querySelector('[data-empty]')) {
-            const li = document.createElement('li');
-            li.className = 'chat-sidebar__empty';
-            li.dataset.empty = '';
-            li.textContent = 'Nobody else is here.';
-            el.presence.append(li);
-        }
+        state.onlineIds = new Set((people ?? []).map((person) => Number(person.id)));
+        paintDmDots();
     }
 
     /**
@@ -1329,24 +1819,116 @@ function initChat(root) {
         chime();
     }
 
+    function inboxGroup() {
+        return document.querySelector('.chat-sidebar__group[data-group="inbox"]');
+    }
+
+    function statusBadgeClass(status) {
+        return status === 'waiting' ? 'warning' : (status === 'active' ? 'success' : 'secondary');
+    }
+
+    function rowStatus(row) {
+        return row.dataset.status ?? row.querySelector('.chat-sidebar__status')?.textContent.trim() ?? '';
+    }
+
+    function ensureClosedDetails(group) {
+        let details = group.querySelector('details[data-closed-group]');
+
+        if (!details) {
+            details = document.createElement('details');
+            details.className = 'chat-inbox-closed';
+            details.dataset.closedGroup = '';
+            const summary = document.createElement('summary');
+            summary.className = 'chat-sidebar__empty chat-inbox-closed__summary';
+            details.append(summary);
+            group.append(details);
+        }
+
+        return details;
+    }
+
+    function updateClosedCount(group) {
+        const details = group.querySelector('details[data-closed-group]');
+        if (!details) return;
+
+        const rows = details.querySelectorAll('.chat-sidebar__item');
+        const summary = details.querySelector('summary');
+        if (summary) summary.textContent = `Closed (${rows.length})`;
+        if (rows.length === 0) details.remove();
+    }
+
+    function buildInboxRow(conversation) {
+        const status = conversation.status ?? 'waiting';
+        const meta = [conversation.department, `#${conversation.id}`].filter(Boolean).join(' · ');
+
+        const link = document.createElement('a');
+        link.className = 'chat-sidebar__item';
+        link.href = `${chatBase}?c=${conversation.id}`;
+        link.dataset.conversationId = conversation.id;
+        link.dataset.status = status;
+        link.dataset.name =
+            `${conversation.name ?? ''} ${conversation.department ?? ''} ${status} ${conversation.id}`.trim().toLowerCase();
+        link.innerHTML =
+            '<span class="chat-sidebar__icon" aria-hidden="true"><i class="bi bi-life-preserver"></i></span>' +
+            '<span class="chat-sidebar__text">' +
+            `<span class="chat-sidebar__name">${escapeHtml(conversation.name ?? '')}</span>` +
+            (meta !== '' ? `<span class="chat-sidebar__meta">${escapeHtml(meta)}</span>` : '') +
+            '</span>' +
+            `<span class="badge chat-sidebar__status text-bg-${statusBadgeClass(status)}">${escapeHtml(status)}</span>` +
+            `<span class="badge text-bg-danger chat-unread d-none" data-unread-for="${conversation.id}">0</span>`;
+
+        if (Number(conversation.id) === state.conversationId) link.classList.add('is-active');
+
+        return link;
+    }
+
+    // Waiting rows go first (newest on top), then active, then the Closed
+    // archive — mirroring the server render, so a poll never un-sorts it.
+    function placeInboxRow(group, link, status) {
+        link.dataset.status = status;
+
+        if (status === 'closed') {
+            ensureClosedDetails(group).append(link);
+            updateClosedCount(group);
+            return;
+        }
+
+        const heading = group.querySelector('.chat-sidebar__heading');
+        const openRows = Array.from(group.querySelectorAll(':scope > .chat-sidebar__item'));
+
+        if (status === 'waiting' || openRows.length === 0 || !heading) {
+            heading ? heading.after(link) : group.prepend(link);
+            return;
+        }
+
+        const lastWaiting = openRows.filter((row) => rowStatus(row) === 'waiting').pop();
+        (lastWaiting ?? heading).after(link);
+    }
+
     function insertInboxRow(conversation) {
-        const group = document.querySelector('.chat-sidebar__group[data-group="inbox"]');
+        const group = inboxGroup();
         if (!group || group.querySelector(`[data-conversation-id="${conversation.id}"]`)) return;
 
         group.querySelector('.chat-sidebar__empty')?.remove();
+        placeInboxRow(group, buildInboxRow(conversation), conversation.status ?? 'waiting');
+        updateClosedCount(group);
+    }
 
-        const link = document.createElement('a');
-        link.className = 'chat-sidebar__item is-waiting';
-        link.href = conversation.url;
-        link.dataset.conversationId = conversation.id;
-        link.dataset.name = String(conversation.name ?? '').toLowerCase();
-        link.innerHTML =
-            '<span class="chat-sidebar__icon" aria-hidden="true"><i class="bi bi-life-preserver"></i></span>' +
-            `<span class="chat-sidebar__name">${escapeHtml(conversation.name)}</span>` +
-            `<span class="badge chat-sidebar__status text-bg-warning">${escapeHtml(conversation.status ?? 'waiting')}</span>` +
-            `<span class="badge text-bg-danger chat-unread d-none" data-unread-for="${conversation.id}">0</span>`;
+    // A status change (Take/Close, by me or anyone) moves the row and repaints
+    // its badge in place — the sidebar never needs a reload to tell the truth.
+    function refreshInboxRow(id, status) {
+        const group = inboxGroup();
+        const row = group?.querySelector(`[data-conversation-id="${id}"]`);
+        if (!group || !row) return;
 
-        group.append(link);
+        const badge = row.querySelector('.chat-sidebar__status');
+        if (badge) {
+            badge.textContent = status;
+            badge.className = `badge chat-sidebar__status text-bg-${statusBadgeClass(status)}`;
+        }
+
+        placeInboxRow(group, row, status);
+        updateClosedCount(group);
     }
 
     const baseTitle = document.title;
@@ -1721,6 +2303,9 @@ function initChat(root) {
         if (event.key === 'Escape') {
             if (switcherIsOpen()) closeSwitcher();
             else if (searchIsOpen()) closeSearch();
+            else if (dialogIsOpen(pick.dialog)) closePeople();
+            else if (dialogIsOpen(browse.dialog)) showDialog(browse.dialog, false);
+            else if (dialogIsOpen(members.dialog)) showDialog(members.dialog, false);
             return;
         }
 
@@ -1786,6 +2371,9 @@ function initChat(root) {
 
     heartbeat();
     setInterval(heartbeat, state.heartbeat * 1000);
+    setInterval(() => {
+        if (!document.hidden) syncSidebar();
+    }, SIDEBAR_SYNC_EVERY);
 
     window.addEventListener('beforeunload', () => {
         navigator.sendBeacon?.(

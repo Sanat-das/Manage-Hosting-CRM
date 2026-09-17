@@ -3,17 +3,10 @@
 @section('title', 'SNMP Monitor')
 
 @section('content_header')
-    <div class="row align-items-center">
-        <div class="col-sm-6">
-            <h1 class="m-0">SNMP Monitor</h1>
-        </div>
-        <div class="col-sm-6">
-            <ol class="breadcrumb float-sm-end">
-                <li class="breadcrumb-item"><a href="{{ url('/admin') }}">Home</a></li>
-                <li class="breadcrumb-item active" aria-current="page">SNMP Monitor</li>
-            </ol>
-        </div>
-    </div>
+    <x-ui.page-header title="SNMP Monitor" subtitle="Real-time host health, polling status and resource utilisation" :breadcrumbs="[
+        ['label' => __('adminlte.home'), 'url' => url('/admin')],
+        ['label' => 'SNMP Monitor', 'active' => true],
+    ]" />
 @stop
 
 @section('content')

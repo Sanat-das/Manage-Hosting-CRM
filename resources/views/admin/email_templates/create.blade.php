@@ -1,4 +1,4 @@
-@extends('adminlte::page')
+﻿@extends('adminlte::page')
 
 @section('title', 'New Email Template')
 
@@ -24,16 +24,7 @@
 @endpush
 
 @section('content_header')
-    <div class="row align-items-center">
-        <div class="col-sm-6"><h1 class="m-0">New Email Template</h1></div>
-        <div class="col-sm-6">
-            <ol class="breadcrumb float-sm-end mb-0">
-                <li class="breadcrumb-item"><a href="{{ url('/') }}">{{ __('adminlte.home') }}</a></li>
-                <li class="breadcrumb-item"><a href="{{ route('admin.email-templates.index') }}">Email Templates</a></li>
-                <li class="breadcrumb-item active">New</li>
-            </ol>
-        </div>
-    </div>
+    <x-ui.page-header title="New Email Template" subtitle="Add a new email template" :breadcrumbs="[['label' => __('adminlte.home'), 'url' => url('/')],['label' => 'Email Templates','url' => route('admin.email-templates.index')],['label' => 'New Email Template','active' => true]]" />
 @stop
 
 @section('content')
@@ -49,7 +40,7 @@
             <button class="btn btn-outline-secondary btn-sm dropdown-toggle" data-bs-toggle="dropdown"><i class="bi bi-collection me-1"></i> Load starter</button>
             <ul class="dropdown-menu dropdown-menu-end" style="max-height:320px; overflow:auto;">
                 @foreach($defaults as $key => $def)
-                    <li><a class="dropdown-item small starter-item" href="#" data-name="{{ $key }}" data-subject="{{ $def['subject'] }}">{{ $key }} <span class="text-muted">— {{ Str::limit($def['subject'], 36) }}</span></a></li>
+                    <li><a class="dropdown-item small starter-item" href="#" data-name="{{ $key }}" data-subject="{{ $def['subject'] }}">{{ $key }} <span class="text-muted">â€” {{ Str::limit($def['subject'], 36) }}</span></a></li>
                 @endforeach
             </ul>
         </div>
@@ -81,13 +72,13 @@
                             Subject <span class="text-danger">*</span>
                             <small class="text-muted">click a variable to insert</small>
                         </label>
-                        <input type="text" id="subjectInput" name="subject" value="{{ old('subject') }}" class="form-control" required placeholder="e.g. Invoice @{{invoice_no}} — @{{currency_symbol}}@{{total}} due @{{due_date}}">
+                        <input type="text" id="subjectInput" name="subject" value="{{ old('subject') }}" class="form-control" required placeholder="e.g. Invoice @{{invoice_no}} â€” @{{currency_symbol}}@{{total}} due @{{due_date}}">
                         <div class="mt-1 small text-muted">Rendered: <span id="subjectPreview" class="fw-semibold text-body"></span></div>
                     </div>
 
                     <div class="mb-2 d-flex justify-content-between align-items-center">
                         <label class="form-label fw-semibold mb-0">Body (HTML) <span class="text-danger">*</span></label>
-                        <small class="text-muted">Variables insert at cursor • HTML tables supported</small>
+                        <small class="text-muted">Variables insert at cursor â€¢ HTML tables supported</small>
                     </div>
 
                     {{-- Editor tabs --}}
@@ -113,10 +104,10 @@
                                 <button type="button" data-q="italic"><i>I</i></button>
                                 <button type="button" data-q="underline"><u>U</u></button>
                                 <button type="button" data-q="h2">H2</button>
-                                <button type="button" data-q="link">🔗</button>
+                                <button type="button" data-q="link">ðŸ”—</button>
                                 <button type="button" data-q="list-ordered">1.</button>
-                                <button type="button" data-q="list-bullet">•</button>
-                                <button type="button" data-q="clean">✕</button>
+                                <button type="button" data-q="list-bullet">â€¢</button>
+                                <button type="button" data-q="clean">âœ•</button>
                             </div>
                             <div id="quillEditor"></div>
                         </div>
@@ -132,7 +123,7 @@
 
         <div class="col-lg-4">
             {{-- Variable palette --}}
-            <x-adminlte-card icon="bi bi-braces" title="Variables — click to insert" class="sticky-top" style="top:1rem;">
+            <x-adminlte-card icon="bi bi-braces" title="Variables â€” click to insert" class="sticky-top" style="top:1rem;">
                 <div class="mb-2">
                     <input type="search" id="varSearch" class="form-control form-control-sm" placeholder="Filter variables...">
                 </div>
@@ -142,7 +133,7 @@
                             <div class="small fw-bold text-uppercase text-muted mb-1">{{ $group }}</div>
                             <div class="d-flex flex-wrap gap-1">
                                 @foreach($vars as $v)
-                                    <span class="et-var-chip" data-key="{{ $v['key'] }}" title="{{ $v['desc'] }} — {{ chr(123).chr(123).$v['key'].chr(125).chr(125) }}"><code>{{ chr(123).chr(123).$v['key'].chr(125).chr(125) }}</code></span>
+                                    <span class="et-var-chip" data-key="{{ $v['key'] }}" title="{{ $v['desc'] }} â€” {{ chr(123).chr(123).$v['key'].chr(125).chr(125) }}"><code>{{ chr(123).chr(123).$v['key'].chr(125).chr(125) }}</code></span>
                                 @endforeach
                             </div>
                         </div>
@@ -301,3 +292,4 @@ function getTextareaSelection(el){
 })();
 </script>
 @endpush
+

@@ -3,18 +3,11 @@
 @section('title', 'Edit Support Department')
 
 @section('content_header')
-    <div class="row">
-        <div class="col-sm-6">
-            <h1 class="m-0">Edit Support Department</h1>
-        </div>
-        <div class="col-sm-6">
-            <ol class="breadcrumb float-sm-end">
-                <li class="breadcrumb-item"><a href="{{ url('/') }}">{{ __('adminlte.home') }}</a></li>
-                <li class="breadcrumb-item"><a href="{{ route('admin.ticket-departments.index') }}">Support Departments</a></li>
-                <li class="breadcrumb-item active" aria-current="page">{{ $department->name }}</li>
-            </ol>
-        </div>
-    </div>
+    <x-ui.page-header title="Edit Support Department" subtitle="Update support department details" :breadcrumbs="[
+        ['label' => __('adminlte.home'), 'url' => url('/')],
+        ['label' => 'Support Departments', 'url' => route('admin.ticket-departments.index')],
+        ['label' => $department->name, 'active' => true],
+    ]" />
 @stop
 
 @section('content')

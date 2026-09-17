@@ -1,8 +1,12 @@
 @extends('adminlte::page')
 @section('title', 'DNS Records — '.$dnsZone->domain)
 @section('content_header')
-    <div class="row"><div class="col-sm-6"><h1 class="m-0">Records: {{ $dnsZone->domain }}</h1></div>
-        <div class="col-sm-6"><ol class="breadcrumb float-sm-end"><li class="breadcrumb-item"><a href="{{ url('/') }}">{{ __('adminlte.home') }}</a></li><li class="breadcrumb-item"><a href="{{ route('admin.dns-zones.index') }}">DNS Zones</a></li><li class="breadcrumb-item"><a href="{{ route('admin.dns-zones.show', $dnsZone) }}">{{ $dnsZone->domain }}</a></li><li class="breadcrumb-item active">Records</li></ol></div></div>
+    <x-ui.page-header title="Records: {{ $dnsZone->domain }}" subtitle="Manage DNS records inventory" :breadcrumbs="[
+        ['label' => __('adminlte.home'), 'url' => url('/')],
+        ['label' => 'DNS Zones', 'url' => route('admin.dns-zones.index')],
+        ['label' => $dnsZone->domain, 'url' => route('admin.dns-zones.show', $dnsZone)],
+        ['label' => 'Records', 'active' => true],
+    ]" />
 @stop
 @section('content')
     @if (session('success')) <x-adminlte-alert theme="success" dismissible>{{ session('success') }}</x-adminlte-alert> @endif

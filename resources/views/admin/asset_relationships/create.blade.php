@@ -1,8 +1,7 @@
-@extends('adminlte::page')
+﻿@extends('adminlte::page')
 @section('title', 'Add Asset Relationship')
 @section('content_header')
-    <div class="row"><div class="col-sm-6"><h1 class="m-0">Add Asset Relationship</h1></div>
-        <div class="col-sm-6"><ol class="breadcrumb float-sm-end"><li class="breadcrumb-item"><a href="{{ url('/') }}">{{ __('adminlte.home') }}</a></li><li class="breadcrumb-item"><a href="{{ route('admin.asset-relationships.index') }}">Asset Relationships</a></li><li class="breadcrumb-item active">Add</li></ol></div></div>
+    <x-ui.page-header title="Add Asset Relationship" subtitle="Add a new asset relationship" :breadcrumbs="[['label' => __('adminlte.home'), 'url' => url('/')],['label' => 'Asset Relationships','url' => route('admin.asset-relationships.index')],['label' => 'Add Asset Relationship','active' => true]]" />
 @stop
 @section('content')
     @if ($errors->any()) <x-adminlte-alert theme="danger" dismissible><ul class="mb-0">@foreach ($errors->all() as $error)<li>{{ $error }}</li>@endforeach</ul></x-adminlte-alert> @endif
@@ -41,3 +40,4 @@
         <x-adminlte-textarea name="notes" label="Notes (optional)" rows="2" placeholder="Context for this reporting link">{{ old('notes') }}</x-adminlte-textarea>
     </x-adminlte.partials.form-card>
 @stop
+

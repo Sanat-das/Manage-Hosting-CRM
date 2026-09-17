@@ -3,15 +3,10 @@
 @section('title', 'Product Bundles')
 
 @section('content_header')
-    <div class="row">
-        <div class="col-sm-6"><h1 class="m-0">Product Bundles</h1></div>
-        <div class="col-sm-6">
-            <ol class="breadcrumb float-sm-end">
-                <li class="breadcrumb-item"><a href="{{ url('/') }}">{{ __('adminlte.home') }}</a></li>
-                <li class="breadcrumb-item active">Product Bundles</li>
-            </ol>
-        </div>
-    </div>
+    <x-ui.page-header title="Product Bundles" subtitle="Browse and manage all product bundles" :breadcrumbs="[
+        ['label' => __('adminlte.home'), 'url' => url('/')],
+        ['label' => 'Product Bundles', 'active' => true],
+    ]" />
 @stop
 
 @section('content')

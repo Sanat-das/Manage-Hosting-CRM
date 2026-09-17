@@ -1,17 +1,9 @@
-@extends('adminlte::page')
+﻿@extends('adminlte::page')
 
 @section('title', 'Email Logs')
 
 @section('content_header')
-    <div class="row">
-        <div class="col-sm-6"><h1 class="m-0">Email Logs</h1></div>
-        <div class="col-sm-6">
-            <ol class="breadcrumb float-sm-end">
-                <li class="breadcrumb-item"><a href="{{ url('/') }}">{{ __('adminlte.home') }}</a></li>
-                <li class="breadcrumb-item active">Email Logs</li>
-            </ol>
-        </div>
-    </div>
+    <x-ui.page-header title="Email Logs" subtitle="Overview and management of email logs" :breadcrumbs="[['label' => __('adminlte.home'), 'url' => url('/')],['label' => 'Email Logs','active' => true]]" />
 @stop
 
 @section('content')
@@ -33,7 +25,7 @@
         @forelse ($logs as $log)
             <tr>
                 <td class="text-muted small text-nowrap">{{ $log->created_at?->format('M j, H:i') }}</td>
-                <td>{{ $log->to_email ?? '—' }}</td>
+                <td>{{ $log->to_email ?? 'â€”' }}</td>
                 <td>{{ Str::limit($log->subject, 60) }}</td>
                 <td><x-adminlte.partials.status-badge :status="$log->status" /></td>
             </tr>
@@ -42,3 +34,4 @@
         @endforelse
     </x-adminlte.partials.datatable>
 @stop
+

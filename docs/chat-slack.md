@@ -83,8 +83,8 @@ php artisan config:clear
 | `type` | Meaning | Created by | Visible to |
 |---|---|---|---|
 | `channel` | Slack style channel, created with a name that derives a slug `^[a-z0-9][a-z0-9_\-]*$`. `is_private` false means any `chat.view` holder can read. `is_private` true means invite only. Optional `department` string scopes via `ticket_department_user`. `topic` and `purpose` are optional. Supports `archived_at` freeze. | Any `chat.create_channel` holder or `chat.manage` | Public: every `chat.view` user. Private: only its participants. |
-| `dm` | Direct message, exactly two `chat.view` staff. Staff only. | ChatService creates on first message to another user | Only the two participants |
-| `group_dm` | Multi party DM, up to 50 participants. Staff only. | Service, validates max participants | Only its participants |
+| `dm` | Direct message, exactly two `chat.view` staff. Staff only. Membership is fixed: `allowsMembershipChanges()` is false, so nobody adds a third person, removes one, or leaves. | The sidebar's **Direct messages ➕** picker (`POST /admin/chat/dms`) via `ChatService::findOrCreateDirectMessage` — idempotent, so reopening one reopens its history | Only the two participants |
+| `group_dm` | Multi party DM, up to 50 participants. Staff only. Members can be added and removed, and it can be given a name. | The same picker, with two or more people chosen (`ChatService::createGroupDirectMessage`) | Only its participants |
 | `customer_inbox` | One customer or guest plus operators. Created by `ChatService::startCustomerChat` from the guest widget or an authenticated customer. `guest_token` is `Str::random(40)` on the conversation and on the guest participant. Operator is assigned later through the inbox. | Customer widget (`/chat/start`) or staff | Customer or guest with the token plus assigned operators, never other customers. Isolated from staff channels by `ChatConversationPolicy`. |
 
 Common notes:
@@ -92,6 +92,8 @@ Common notes:
 - Channel names are human display strings. The `^[a-z0-9][a-z0-9_\-]*$` regex is enforced on the **derived slug**, not the display name (deviation 4), so `Deploys` does not break.
 - `archived_at` freezes a room. Writes and reactions are blocked, reads and search stay allowed, and hits carry `conversation_archived: true` in the payload linking back into the read only room (deviation 9).
 - Group DM cap is 50. Channel member add and remove go through `ChatService` with `ChatConversationPolicy` checks. Archiving does not delete messages.
+- A DM is labelled by who *else* is in it. `displayName()` stays viewer agnostic for the audit log and the transcript email; the chat screen renders `labelFor(auth()->user())`, which drops the viewer — otherwise every DM reads "You, Ana" in your own sidebar.
+- Two rules are structural rather than permissions, and are enforced in the controller as well as the policy: `allowsMembershipChanges()` (false for `dm` and `customer_inbox`) and `isSelfJoinable()` (public, unarchived channels only). See section 7 for why the policy alone is not enough.
 
 ---
 
@@ -205,6 +207,18 @@ The migration is idempotent, guarded on `Schema::hasTable` for `adminlte_roles`,
 - `config/adminlte.php` Live Chat menu item uses `'can' => 'chat.view'`.
 - `routes/admin/config.php` group wraps every chat route with `permission:chat.view`. Inbox operator routes additionally call `ChatConversationPolicy::operate()` so `chat.manage` is checked at the conversation level, not just the route gate.
 - `ChatConversationPolicy::view` is the per conversation check used by both controllers and the `Broadcast::channel` closures, combining public membership, private invite, department scoping via `ticket_department_user`, and the `customer_inbox` isolation that keeps customers out of staff channels and staff channels unreadable to guests.
+- `ChatConversationPolicy::startDirectMessage` gates `POST /admin/chat/dms` on `chat.view`, deliberately not on `chat.create_channel`: that permission governs shared rooms, and gating a private word with a colleague behind it would leave a `chat.view` holder able to read the chat and unable to use it.
+
+#### An admin passes every policy unread
+
+`vendor/colorlibhq/adminlte-laravel/src/AdminLteServiceProvider.php:196` registers a `Gate::before` that returns **true for any ability at all** when `$user->isAdmin()`. It runs before every policy in the app, so for an admin `can('join', $dm)` and `can('addMember', $dm)` are both true no matter what `ChatConversationPolicy` says.
+
+Two consequences, both handled rather than worked around:
+
+- Anything that is a **fact** rather than a permission is asked directly. `members` computes `is_member` from the participant rows, so an admin is not offered "Join" in a room they are already in.
+- Anything that is **structurally impossible** is refused in the controller too, not only in the policy — `allowsMembershipChanges()` and `isSelfJoinable()` return 422 from `addMember`, `removeMember`, `leaveChannel` and `joinChannel`. Nobody, admin included, may add a third person to a 1:1 DM.
+
+`ChatDirectoryTest::test_nobody_can_edit_the_membership_of_a_one_to_one_direct_message` asserts the bypass is live before asserting the refusal, so it fails loudly if the package ever drops it.
 
 ### Customer and guest
 
@@ -214,7 +228,7 @@ The customer widget is not gated on `chat.view`. Guest auth is the conversation 
 
 ## 8. API and Route Table
 
-There are **39** chat routes. Admin routes are in `routes/admin/config.php` (group `prefix('admin') name('admin.') middleware('web','auth','admin','throttle:admin')`) with per route permission gates. Client routes are in `routes/chat.php` (`prefix('chat') name('chat.') middleware('web','throttle:30,1')`, unauthenticated, guest token scoped).
+There are **57** chat routes as of 2026-09-16 (47 admin, 10 client) — `php artisan route:list --path=chat` is the authority, and the tables below cover the engine rather than every saved-reply and settings route added since. Admin routes are in `routes/admin/config.php` (group `prefix('admin') name('admin.') middleware('web','auth','admin','throttle:admin')`) with per route permission gates. Client routes are in `routes/chat.php` (`prefix('chat') name('chat.') middleware('web','throttle:30,1')`, unauthenticated, guest token scoped).
 
 Run `php artisan route:list --path=chat` to reproduce this table verbatim.
 
@@ -228,14 +242,18 @@ Run `php artisan route:list --path=chat` to reproduce this table verbatim.
 | GET | `admin/chat/inbox` | `admin.chat.inbox` | `permission:chat.view` plus `policy:operate` for mutate | `ChatController@inbox` | Operator queue. List unassigned `customer_inbox` rooms. |
 | GET | `admin/chat/unread` | `admin.chat.unread` | `permission:chat.view` | `ChatController@unread` | Badge counts. Derived from `last_read_message_id`. |
 | POST | `admin/chat/presence` | `admin.chat.presence` | `permission:chat.view` | `ChatController@presenceHeartbeat` | Presence heartbeat. Not throttled on the chat limiter. |
+| GET | `admin/chat/channels` | `admin.chat.channels.browse` | `permission:chat.view` | `ChatController@browseChannels` | The public channel directory. Public, non archived rooms the caller may `view`, each flagged `joined`. The only way to find a channel you are not in, since the sidebar lists membership. 50 rows, `?q=` over name and topic. |
 | POST | `admin/chat/channels` | `admin.chat.channels.store` | `permission:chat.view` | `ChatController@storeChannel` | Create a channel. Requires `chat.create_channel` or `chat.manage`. Body max not on slug. |
+| GET | `admin/chat/channels/{c}/members` | `admin.chat.channels.members.index` | `permission:chat.view` plus `policy:view` | `ChatController@members` | Roster plus `can_manage` / `can_leave` / `can_join` for the caller. The flags combine the policy with membership and the conversation's shape, so an admin (who passes every policy, see section 7) is not offered Join in a room they are standing in. |
 | PUT | `admin/chat/channels/{conversation}` | `admin.chat.channels.update` | `permission:chat.view` | `ChatController@updateChannel` | Rename, update topic or purpose. Policy gated. |
 | POST | `admin/chat/channels/{c}/archive` | `admin.chat.channels.archive` | `permission:chat.view` plus `policy:operate` | `ChatController@archiveChannel` | Sets `archived_at`, freezes writes. |
 | POST | `admin/chat/channels/{c}/unarchive` | `admin.chat.channels.unarchive` | `permission:chat.view` plus `policy:operate` | `ChatController@unarchiveChannel` | Clears `archived_at`. |
-| POST | `admin/chat/channels/{c}/join` | `admin.chat.channels.join` | `permission:chat.view` | `ChatController@joinChannel` | Join a public channel. Private requires invite. |
-| POST | `admin/chat/channels/{c}/leave` | `admin.chat.channels.leave` | `permission:chat.view` | `ChatController@leaveChannel` | Leave. |
-| POST | `admin/chat/channels/{c}/members` | `admin.chat.channels.members.store` | `permission:chat.view` plus policy | `ChatController@addMember` | Add member by user id. |
-| DELETE | `admin/chat/channels/{c}/members/{user}` | `admin.chat.channels.members.destroy` | `permission:chat.view` plus policy | `ChatController@removeMember` | Remove member. |
+| POST | `admin/chat/channels/{c}/join` | `admin.chat.channels.join` | `permission:chat.view` | `ChatController@joinChannel` | Join a public channel. 422 unless `ChatConversation::isSelfJoinable()` — public, a channel, not archived. Private requires invite. |
+| POST | `admin/chat/channels/{c}/leave` | `admin.chat.channels.leave` | `permission:chat.view` | `ChatController@leaveChannel` | Leave. 422 on a 1:1 DM. |
+| POST | `admin/chat/channels/{c}/members` | `admin.chat.channels.members.store` | `permission:chat.view` plus policy | `ChatController@addMember` | Add member by user id. 422 on a 1:1 DM (`allowsMembershipChanges()`). |
+| DELETE | `admin/chat/channels/{c}/members/{user}` | `admin.chat.channels.members.destroy` | `permission:chat.view` plus policy | `ChatController@removeMember` | Remove member. Same 1:1 DM refusal. |
+| GET | `admin/chat/people` | `admin.chat.people` | `permission:chat.view` | `ChatController@people` | The staff roster (`ChatDirectory`): active users whose roles hold `chat.view`, minus the caller, 20 rows, `?q=` over name and email. With `?conversation=`, it is the add member picker instead — authorised with `policy:addMember` and with that room's existing members removed. |
+| POST | `admin/chat/dms` | `admin.chat.dms.store` | `permission:chat.view` plus `policy:startDirectMessage` | `ChatController@storeDirectMessage` | Open a direct message. `user_ids[]`: one is a 1:1 DM (idempotent, 200 when it already existed), two or more a group DM (`name` optional). 422 if a target cannot reach the chat. |
 | GET | `admin/chat/conversations/{conversation}/messages` | `admin.chat.messages.index` | `permission:chat.view` plus `policy:view` | `ChatController@fetchMessages` | History fetch. `?before_id=` cursor plus `?after_id=` for polling fallback. Max 50. |
 | POST | `admin/chat/conversations/{conversation}/messages` | `admin.chat.messages.store` | `permission:chat.view` plus `throttle:chat(60/min)` | `ChatController@storeMessage` | Send message. `body` max 4000, `parent_id` optional, `attachments[]` optional. `ShouldBroadcastNow` publish. |
 | PUT | `admin/chat/messages/{message}` | `admin.chat.messages.update` | `permission:chat.view` plus `throttle:chat` | `ChatController@updateMessage` | Edit own message. Sets `edited_at`. |
@@ -266,6 +284,8 @@ Run `php artisan route:list --path=chat` to reproduce this table verbatim.
 | GET | `chat/{conversation}/attachments/{attachment}` | `chat.attachment` | guest token | `ChatWidgetController@attachment` | Customer attachment download via same signed path policy. |
 | POST | `chat/{conversation}/typing` | `chat.typing` | guest token | `ChatWidgetController@typing` | Customer typing heartbeat to the same presence typing channel. |
 | POST | `chat/{conversation}/rate` | `chat.rate` | guest token | `ChatWidgetController@rate` | Rate a closed conversation. |
+
+**Starting again after a close.** `start` reuses the session's conversation only while it is open; a CLOSED one falls through and mints a new conversation, overwriting both session keys. No new endpoint was needed — what was missing was any way to ask a second time. The session still names the closed room, so the widget bound to it, `openTranscript()` hid the intro form and `applyAvailability()` short-circuited, leaving the customer with a rating widget and no way back short of clearing cookies. `#client-chat-restart` ("Start a new chat", shown beside the rating on any closed conversation) calls `resetForNewChat()`: it leaves the old websocket channel, clears the transcript and the old guest token, and re-checks office hours so the intro form is only offered when the desk will accept it.
 
 Every mutate in the admin group except `destroyMessage` and the `typing` / `read` / `presence` heartbeats is wrapped in `throttle:chat` **without** the `throttle:admin`. That `withoutMiddleware` call is load bearing, the group header caps non GET admin requests at 30/min, which would otherwise bite before the 60/min chat budget and silently lose a composed message. Deviation 5 explains why chat writes are set looser (60 vs 30) and deviation 6 why the `chat` limiter is registered in `AppServiceProvider::boot()` rather than `bootstrap/app.php`.
 

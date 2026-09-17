@@ -1,24 +1,16 @@
-@extends('adminlte::page')
+﻿@extends('adminlte::page')
 
 @section('title', 'Analytics')
 
 @section('content_header')
-    <div class="row">
-        <div class="col-sm-6"><h1 class="m-0">Analytics</h1></div>
-        <div class="col-sm-6">
-            <ol class="breadcrumb float-sm-end">
-                <li class="breadcrumb-item"><a href="{{ url('/') }}">{{ __('adminlte.home') }}</a></li>
-                <li class="breadcrumb-item active">Analytics</li>
-            </ol>
-        </div>
-    </div>
+    <x-ui.page-header title="Analytics" subtitle="Insights and usage trends" :breadcrumbs="[['label' => __('adminlte.home'), 'url' => url('/')],['label' => 'Analytics','active' => true]]" />
 @stop
 
 @section('content')
     {{-- Summary cards --}}
     <div class="row mb-4">
         <div class="col-lg-3 col-6">
-            <x-adminlte-small-box :title="'₹' . number_format($totalRevenue, 0)" text="Total Revenue"
+            <x-adminlte-small-box :title="'â‚¹' . number_format($totalRevenue, 0)" text="Total Revenue"
                                   icon="bi bi-currency-rupee" theme="success" />
         </div>
         <div class="col-lg-3 col-6">
@@ -162,3 +154,4 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 </script>
 @endpush
+

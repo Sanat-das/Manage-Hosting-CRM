@@ -1,8 +1,11 @@
 @extends('adminlte::page')
 @section('title', 'Domain Search')
 @section('content_header')
-    <div class="row"><div class="col-sm-6"><h1 class="m-0">Domain Search</h1></div>
-        <div class="col-sm-6"><ol class="breadcrumb float-sm-end"><li class="breadcrumb-item"><a href="{{ url('/') }}">{{ __('adminlte.home') }}</a></li><li class="breadcrumb-item"><a href="{{ route('admin.cart.index') }}">Cart</a></li><li class="breadcrumb-item active">Domain Search</li></ol></div></div>
+    <x-ui.page-header title="Domain Search" subtitle="Search and check domain availability" :breadcrumbs="[
+        ['label' => __('adminlte.home'), 'url' => url('/')],
+        ['label' => 'Cart', 'url' => route('admin.cart.index')],
+        ['label' => 'Domain Search', 'active' => true],
+    ]" />
 @stop
 @section('content')
     <x-adminlte-card icon="bi bi-globe" title="Check Domain Availability">

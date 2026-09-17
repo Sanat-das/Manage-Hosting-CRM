@@ -4,25 +4,12 @@
 @section('title', 'RDP — '.$hostingAccount->username.' — HTML')
 
 @section('content_header')
-    <div class="row">
-        <div class="col-sm-8">
-            <h1 class="m-0">Remote Desktop — HTML</h1>
-            <p class="text-muted mb-0 small">
-                <i class="bi bi-display me-1"></i>
-                {{ $hostingAccount->username }}
-                @if($hostingAccount->domain) <span class="mx-1">·</span> {{ $hostingAccount->domain }} @endif
-                <span class="mx-1">·</span> #{{ $hostingAccount->id }}
-            </p>
-        </div>
-        <div class="col-sm-4">
-            <ol class="breadcrumb float-sm-end">
-                <li class="breadcrumb-item"><a href="{{ url('/') }}">{{ __('adminlte.home') }}</a></li>
-                <li class="breadcrumb-item"><a href="{{ route('admin.hosting.index') }}">Products/Services</a></li>
-                <li class="breadcrumb-item"><a href="{{ route('admin.hosting.show', $hostingAccount) }}">#{{ $hostingAccount->id }}</a></li>
-                <li class="breadcrumb-item active">RDP HTML</li>
-            </ol>
-        </div>
-    </div>
+    <x-ui.page-header title="Remote Desktop — HTML" :subtitle="$hostingAccount->username . ($hostingAccount->domain ? ' · ' . $hostingAccount->domain : '') . ' · #' . $hostingAccount->id . ' — Browser RDP via Guacamole'" :breadcrumbs="[
+        ['label' => __('adminlte.home'), 'url' => url('/')],
+        ['label' => 'Products/Services', 'url' => route('admin.hosting.index')],
+        ['label' => '#' . $hostingAccount->id, 'url' => route('admin.hosting.show', $hostingAccount)],
+        ['label' => 'RDP HTML', 'active' => true],
+    ]" />
 @stop
 
 @section('content')

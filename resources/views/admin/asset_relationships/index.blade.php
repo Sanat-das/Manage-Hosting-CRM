@@ -1,17 +1,9 @@
-@extends('adminlte::page')
+﻿@extends('adminlte::page')
 
 @section('title', 'Asset Relationships')
 
 @section('content_header')
-    <div class="row">
-        <div class="col-sm-6"><h1 class="m-0">Asset Relationships</h1></div>
-        <div class="col-sm-6">
-            <ol class="breadcrumb float-sm-end">
-                <li class="breadcrumb-item"><a href="{{ url('/') }}">{{ __('adminlte.home') }}</a></li>
-                <li class="breadcrumb-item active" aria-current="page">Asset Relationships</li>
-            </ol>
-        </div>
-    </div>
+    <x-ui.page-header title="Asset Relationships" subtitle="Overview and management of asset relationships" :breadcrumbs="[['label' => __('adminlte.home'), 'url' => url('/')],['label' => 'Asset Relationships','active' => true]]" />
 @stop
 
 @section('content')
@@ -71,7 +63,7 @@
                     <span class="badge text-bg-secondary">{{ $kinds[$relationship->child_kind] ?? $relationship->child_kind }}</span>
                     <code>#{{ $relationship->child_id }}</code>
                 </td>
-                <td class="text-muted">{{ $relationship->label ?? '—' }}</td>
+                <td class="text-muted">{{ $relationship->label ?? 'â€”' }}</td>
                 <td class="text-end">{{ $relationship->sort_order }}</td>
                 <td class="text-end">
                     <div class="table-actions">
@@ -100,3 +92,4 @@
         @endcan
     @endforeach
 @stop
+

@@ -1,21 +1,9 @@
-@extends('adminlte::page')
+﻿@extends('adminlte::page')
 
-@section('title', 'Module — ' . $module->name . ' Config')
+@section('title', 'Module â€” ' . $module->name . ' Config')
 
 @section('content_header')
-    <div class="row">
-        <div class="col-sm-6">
-            <h1 class="m-0">{{ $module->name }} — Configuration</h1>
-        </div>
-        <div class="col-sm-6">
-            <ol class="breadcrumb float-sm-end">
-                <li class="breadcrumb-item"><a href="{{ url('/') }}">{{ __('adminlte.home') }}</a></li>
-                <li class="breadcrumb-item">System</li>
-                <li class="breadcrumb-item"><a href="{{ route('admin.modules.index') }}">Modules</a></li>
-                <li class="breadcrumb-item active" aria-current="page">{{ $module->name }}</li>
-            </ol>
-        </div>
-    </div>
+    <x-ui.page-header title="{{ $module->name }} â€” Configuration" subtitle="View module configuration details" :breadcrumbs="[['label' => __('adminlte.home'), 'url' => url('/')],['label' => 'System'],['label' => 'Modules','url' => route('admin.modules.index')],['label' => $module->name,'active' => true]]" />
 @stop
 
 @section('content')
@@ -159,3 +147,4 @@
         @endif
     </x-adminlte-card>
 @stop
+

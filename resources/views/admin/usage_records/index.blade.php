@@ -1,17 +1,9 @@
-@extends('adminlte::page')
+﻿@extends('adminlte::page')
 
 @section('title', 'Usage Records')
 
 @section('content_header')
-    <div class="row">
-        <div class="col-sm-6"><h1 class="m-0">Usage Records</h1></div>
-        <div class="col-sm-6">
-            <ol class="breadcrumb float-sm-end">
-                <li class="breadcrumb-item"><a href="{{ url('/') }}">{{ __('adminlte.home') }}</a></li>
-                <li class="breadcrumb-item active" aria-current="page">Usage Records</li>
-            </ol>
-        </div>
-    </div>
+    <x-ui.page-header title="Usage Records" subtitle="Overview and management of usage records" :breadcrumbs="[['label' => __('adminlte.home'), 'url' => url('/')],['label' => 'Usage Records','active' => true]]" />
 @stop
 
 @section('content')
@@ -48,9 +40,9 @@
 
         @forelse ($records as $record)
             <tr>
-                <td><a href="{{ route('admin.usage-records.show', $record) }}">{{ $record->recorded_at?->format('Y-m-d') ?? '—' }}</a></td>
-                <td>{{ $record->service?->domain ?? '—' }}</td>
-                <td>{{ $record->resourceType?->name ?? '—' }}</td>
+                <td><a href="{{ route('admin.usage-records.show', $record) }}">{{ $record->recorded_at?->format('Y-m-d') ?? 'â€”' }}</a></td>
+                <td>{{ $record->service?->domain ?? 'â€”' }}</td>
+                <td>{{ $record->resourceType?->name ?? 'â€”' }}</td>
                 <td>{{ number_format($record->quantity, 2) }} {{ $record->resourceType?->unit ?? '' }}</td>
                 <td>${{ number_format($record->unit_cost ?? 0, 4) }}</td>
                 <td>${{ number_format($record->total_cost ?? 0, 2) }}</td>
@@ -60,3 +52,4 @@
         @endforelse
     </x-adminlte.partials.datatable>
 @stop
+

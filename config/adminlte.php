@@ -172,8 +172,7 @@ return [
     'classes_brand' => '',
     'classes_brand_text' => 'fw-light',
     'classes_content_wrapper' => '',
-    // 8px system: py-3 = 1rem = --space-4, border + bg tokens via Bootstrap vars
-    'classes_content_header' => 'py-3 border-bottom bg-body',
+    'classes_content_header' => 'py-2 border-bottom bg-body',
     'classes_content' => 'py-3',
     'classes_sidebar' => 'bg-body-secondary shadow',
     'classes_sidebar_nav' => '',

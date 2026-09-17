@@ -64,18 +64,18 @@
 
     @unless ($message['is_deleted'])
         <div class="chat-message__actions">
-            <button type="button" class="chat-action" data-action="react" title="React">
+            <button type="button" class="chat-action" data-action="react" title="React" aria-label="React">
                 <i class="bi bi-emoji-smile" aria-hidden="true"></i>
             </button>
-            <button type="button" class="chat-action" data-action="thread" title="Reply in thread">
+            <button type="button" class="chat-action" data-action="thread" title="Reply in thread" aria-label="Reply in thread">
                 <i class="bi bi-chat-right-text" aria-hidden="true"></i>
             </button>
             @if (($message['user']['id'] ?? null) === auth()->id())
-                <button type="button" class="chat-action" data-action="edit" title="Edit">
+                <button type="button" class="chat-action" data-action="edit" title="Edit" aria-label="Edit message">
                     <i class="bi bi-pencil" aria-hidden="true"></i>
                 </button>
             @endif
-            <button type="button" class="chat-action" data-action="delete" title="Delete">
+            <button type="button" class="chat-action" data-action="delete" title="Delete" aria-label="Delete message">
                 <i class="bi bi-trash" aria-hidden="true"></i>
             </button>
         </div>

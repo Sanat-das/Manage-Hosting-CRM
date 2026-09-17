@@ -1,8 +1,7 @@
 @extends('adminlte::page')
 @section('title', 'Edit Tax Rate — '.($rate->name ?? 'Unnamed'))
 @section('content_header')
-    <div class="row"><div class="col-sm-6"><h1 class="m-0">Edit: {{ $rate->name ?? 'Unnamed' }}</h1></div>
-        <div class="col-sm-6"><ol class="breadcrumb float-sm-end"><li class="breadcrumb-item"><a href="{{ url('/') }}">{{ __('adminlte.home') }}</a></li><li class="breadcrumb-item"><a href="{{ route('admin.tax-rates.index') }}">Tax Rates</a></li><li class="breadcrumb-item active">Edit</li></ol></div></div>
+    <x-ui.page-header title="Edit: {{ $rate->name ?? 'Unnamed' }}" subtitle="Update tax rate configuration" :breadcrumbs="[['label' => __('adminlte.home'), 'url' => url('/')], ['label' => 'Tax Rates', 'url' => route('admin.tax-rates.index')], ['label' => 'Edit', 'active' => true]]" />
 @stop
 @section('content')
     @if ($errors->any()) <x-adminlte-alert theme="danger" dismissible><ul class="mb-0">@foreach ($errors->all() as $error)<li>{{ $error }}</li>@endforeach</ul></x-adminlte-alert> @endif

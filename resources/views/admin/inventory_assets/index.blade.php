@@ -1,8 +1,7 @@
-@extends('adminlte::page')
+﻿@extends('adminlte::page')
 @section('title', 'Inventory Assets')
 @section('content_header')
-    <div class="row"><div class="col-sm-6"><h1 class="m-0">Inventory Assets</h1></div>
-        <div class="col-sm-6"><ol class="breadcrumb float-sm-end"><li class="breadcrumb-item"><a href="{{ url('/') }}">{{ __('adminlte.home') }}</a></li><li class="breadcrumb-item active">Inventory</li></ol></div></div>
+    <x-ui.page-header title="Inventory Assets" subtitle="Overview and management of inventory assets" :breadcrumbs="[['label' => __('adminlte.home'), 'url' => url('/')],['label' => 'Inventory Assets','active' => true]]" />
 @stop
 @section('content')
     @if (session('success')) <x-adminlte-alert theme="success" dismissible>{{ session('success') }}</x-adminlte-alert> @endif
@@ -46,10 +45,10 @@
             <tr>
                 <td><a href="{{ route('admin.inventory-assets.show', $asset) }}"><strong>{{ $asset->asset_tag }}</strong></a></td>
                 <td><span class="badge text-bg-info">{{ ucfirst($asset->asset_type) }}</span></td>
-                <td class="text-muted">{{ $asset->serial_number ?? '—' }}</td>
-                <td>{{ $asset->model ?? '—' }}</td>
-                <td>{{ $asset->datacenter?->name ?? '—' }}</td>
-                <td>{{ $asset->rack?->name ?? '—' }}</td>
+                <td class="text-muted">{{ $asset->serial_number ?? 'â€”' }}</td>
+                <td>{{ $asset->model ?? 'â€”' }}</td>
+                <td>{{ $asset->datacenter?->name ?? 'â€”' }}</td>
+                <td>{{ $asset->rack?->name ?? 'â€”' }}</td>
                 <td><x-adminlte.partials.status-badge :status="$asset->status" /></td>
                 <td class="text-end">
                     <div class="table-actions">
@@ -62,3 +61,4 @@
         @endforelse
     </x-adminlte.partials.datatable>
 @stop
+

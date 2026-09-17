@@ -3,18 +3,11 @@
 @section('title', 'Add Product Group')
 
 @section('content_header')
-    <div class="row">
-        <div class="col-sm-6">
-            <h1 class="m-0">Add Product Group</h1>
-        </div>
-        <div class="col-sm-6">
-            <ol class="breadcrumb float-sm-end">
-                <li class="breadcrumb-item"><a href="{{ url('/') }}">{{ __('adminlte.home') }}</a></li>
-                <li class="breadcrumb-item"><a href="{{ route('admin.product-groups.index') }}">Product Groups</a></li>
-                <li class="breadcrumb-item active" aria-current="page">Add Product Group</li>
-            </ol>
-        </div>
-    </div>
+    <x-ui.page-header title="Add Product Group" subtitle="Create a new product group" :breadcrumbs="[
+        ['label' => __('adminlte.home'), 'url' => url('/')],
+        ['label' => 'Product Groups', 'url' => route('admin.product-groups.index')],
+        ['label' => 'Add Product Group', 'active' => true],
+    ]" />
 @stop
 
 @section('content')

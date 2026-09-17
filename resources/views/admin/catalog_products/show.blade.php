@@ -3,16 +3,11 @@
 @section('title', 'Catalog Product — '.$product->name)
 
 @section('content_header')
-    <div class="row">
-        <div class="col-sm-6"><h1 class="m-0">{{ $product->name }}</h1></div>
-        <div class="col-sm-6">
-            <ol class="breadcrumb float-sm-end">
-                <li class="breadcrumb-item"><a href="{{ url('/') }}">{{ __('adminlte.home') }}</a></li>
-                <li class="breadcrumb-item"><a href="{{ route('admin.catalog-products.index') }}">Catalog Products</a></li>
-                <li class="breadcrumb-item active" aria-current="page">{{ $product->name }}</li>
-            </ol>
-        </div>
-    </div>
+    <x-ui.page-header title="{{ $product->name }}" subtitle="View catalog product details and history" :breadcrumbs="[
+        ['label' => __('adminlte.home'), 'url' => url('/')],
+        ['label' => 'Catalog Products', 'url' => route('admin.catalog-products.index')],
+        ['label' => $product->name, 'active' => true],
+    ]" />
 @stop
 
 @section('content')

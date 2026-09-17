@@ -3,16 +3,7 @@
 @section('title', 'Record Payment')
 
 @section('content_header')
-    <div class="row">
-        <div class="col-sm-6"><h1 class="m-0">Record Payment</h1></div>
-        <div class="col-sm-6">
-            <ol class="breadcrumb float-sm-end">
-                <li class="breadcrumb-item"><a href="{{ url('/') }}">{{ __('adminlte.home') }}</a></li>
-                <li class="breadcrumb-item"><a href="{{ route('admin.payments.index') }}">Payments</a></li>
-                <li class="breadcrumb-item active">Record</li>
-            </ol>
-        </div>
-    </div>
+    <x-ui.page-header title="Record Payment" subtitle="Record a new payment against an invoice" :breadcrumbs="[['label' => __('adminlte.home'), 'url' => url('/')], ['label' => 'Payments', 'url' => route('admin.payments.index')], ['label' => 'Record', 'active' => true]]" />
 @stop
 
 @section('content')

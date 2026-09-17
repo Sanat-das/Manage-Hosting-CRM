@@ -1,8 +1,7 @@
-@extends('adminlte::page')
+﻿@extends('adminlte::page')
 @section('title', 'Add Inventory Asset')
 @section('content_header')
-    <div class="row"><div class="col-sm-6"><h1 class="m-0">Add Inventory Asset</h1></div>
-        <div class="col-sm-6"><ol class="breadcrumb float-sm-end"><li class="breadcrumb-item"><a href="{{ url('/') }}">{{ __('adminlte.home') }}</a></li><li class="breadcrumb-item"><a href="{{ route('admin.inventory-assets.index') }}">Inventory</a></li><li class="breadcrumb-item active">Add</li></ol></div></div>
+    <x-ui.page-header title="Add Inventory Asset" subtitle="Add a new inventory asset" :breadcrumbs="[['label' => __('adminlte.home'), 'url' => url('/')],['label' => 'Inventory','url' => route('admin.inventory-assets.index')],['label' => 'Add Inventory Asset','active' => true]]" />
 @stop
 @section('content')
     @if ($errors->any()) <x-adminlte-alert theme="danger" dismissible><ul class="mb-0">@foreach ($errors->all() as $error)<li>{{ $error }}</li>@endforeach</ul></x-adminlte-alert> @endif
@@ -25,7 +24,7 @@
         <div class="row">
             <div class="col-md-4">
                 <x-adminlte-select name="datacenter_id" label="Datacenter">
-                    <option value="">— None —</option>
+                    <option value="">â€” None â€”</option>
                     @foreach ($datacenters as $dc)
                         <option value="{{ $dc->id }}" @selected(old('datacenter_id') == $dc->id)>{{ $dc->name }}</option>
                     @endforeach
@@ -33,7 +32,7 @@
             </div>
             <div class="col-md-4">
                 <x-adminlte-select name="rack_id" label="Rack">
-                    <option value="">— None —</option>
+                    <option value="">â€” None â€”</option>
                     @foreach ($racks as $rack)
                         <option value="{{ $rack->id }}" @selected(old('rack_id') == $rack->id)>{{ $rack->name }}</option>
                     @endforeach
@@ -55,3 +54,4 @@
         <x-adminlte-textarea name="notes" label="Notes" rows="2">{{ old('notes') }}</x-adminlte-textarea>
     </x-adminlte.partials.form-card>
 @stop
+

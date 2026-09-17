@@ -1,17 +1,9 @@
-@extends('adminlte::page')
+﻿@extends('adminlte::page')
 
 @section('title', 'Ticket Report')
 
 @section('content_header')
-    <div class="row">
-        <div class="col-sm-6"><h1 class="m-0">Ticket Report</h1></div>
-        <div class="col-sm-6">
-            <ol class="breadcrumb float-sm-end">
-                <li class="breadcrumb-item"><a href="{{ url('/') }}">{{ __('adminlte.home') }}</a></li>
-                <li class="breadcrumb-item active">Reports</li>
-            </ol>
-        </div>
-    </div>
+    <x-ui.page-header title="Ticket Report" subtitle="Support ticket volume and resolution trends" :breadcrumbs="[['label' => __('adminlte.home'), 'url' => url('/')],['label' => 'Reports'],['label' => 'Ticket Report','active' => true]]" />
 @stop
 
 @section('content')
@@ -45,3 +37,4 @@
         </div>
     </div>
 @stop
+

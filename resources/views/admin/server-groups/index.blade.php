@@ -3,17 +3,10 @@
 @section('title', 'Server Groups')
 
 @section('content_header')
-    <div class="row">
-        <div class="col-sm-6">
-            <h1 class="m-0">Server Groups</h1>
-        </div>
-        <div class="col-sm-6">
-            <ol class="breadcrumb float-sm-end">
-                <li class="breadcrumb-item"><a href="{{ url('/') }}">{{ __('adminlte.home') }}</a></li>
-                <li class="breadcrumb-item active" aria-current="page">Server Groups</li>
-            </ol>
-        </div>
-    </div>
+    <x-ui.page-header title="Server Groups" subtitle="Manage server groups inventory" :breadcrumbs="[
+        ['label' => __('adminlte.home'), 'url' => url('/')],
+        ['label' => 'Server Groups', 'active' => true],
+    ]" />
 @stop
 
 @section('content')

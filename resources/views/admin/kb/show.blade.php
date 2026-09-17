@@ -3,18 +3,11 @@
 @section('title', $article->title)
 
 @section('content_header')
-    <div class="row">
-        <div class="col-sm-6">
-            <h1 class="m-0">{{ $article->title }}</h1>
-        </div>
-        <div class="col-sm-6">
-            <ol class="breadcrumb float-sm-end">
-                <li class="breadcrumb-item"><a href="{{ url('/') }}">{{ __('adminlte.home') }}</a></li>
-                <li class="breadcrumb-item"><a href="{{ route('admin.kb.index') }}">Knowledge Base</a></li>
-                <li class="breadcrumb-item active" aria-current="page">{{ $article->title }}</li>
-            </ol>
-        </div>
-    </div>
+    <x-ui.page-header title="{{ $article->title }}" subtitle="View knowledge article details and history" :breadcrumbs="[
+        ['label' => __('adminlte.home'), 'url' => url('/')],
+        ['label' => 'Knowledge Base', 'url' => route('admin.kb.index')],
+        ['label' => $article->title, 'active' => true],
+    ]" />
 @stop
 
 @section('content')

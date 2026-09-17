@@ -3,18 +3,11 @@
 @section('title', 'Edit IP — '.$ipAddress->ip_address)
 
 @section('content_header')
-    <div class="row">
-        <div class="col-sm-6">
-            <h1 class="m-0">Edit IP: {{ $ipAddress->ip_address }} <x-adminlte.partials.status-badge :status="$ipAddress->status" /></h1>
-        </div>
-        <div class="col-sm-6">
-            <ol class="breadcrumb float-sm-end">
-                <li class="breadcrumb-item"><a href="{{ url('/') }}">{{ __('adminlte.home') }}</a></li>
-                <li class="breadcrumb-item"><a href="{{ route('admin.ip-addresses.index') }}">IP Addresses</a></li>
-                <li class="breadcrumb-item active" aria-current="page">Edit</li>
-            </ol>
-        </div>
-    </div>
+    <x-ui.page-header title="Edit IP: {{ $ipAddress->ip_address }}" subtitle="Update IP address configuration" :breadcrumbs="[
+        ['label' => __('adminlte.home'), 'url' => url('/')],
+        ['label' => 'IP Addresses', 'url' => route('admin.ip-addresses.index')],
+        ['label' => 'Edit', 'active' => true],
+    ]" />
 @stop
 
 @section('content')

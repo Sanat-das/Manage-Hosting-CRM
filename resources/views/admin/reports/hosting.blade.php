@@ -1,17 +1,9 @@
-@extends('adminlte::page')
+﻿@extends('adminlte::page')
 
 @section('title', 'Hosting Report')
 
 @section('content_header')
-    <div class="row">
-        <div class="col-sm-6"><h1 class="m-0">Hosting Report</h1></div>
-        <div class="col-sm-6">
-            <ol class="breadcrumb float-sm-end">
-                <li class="breadcrumb-item"><a href="{{ url('/') }}">{{ __('adminlte.home') }}</a></li>
-                <li class="breadcrumb-item active">Reports</li>
-            </ol>
-        </div>
-    </div>
+    <x-ui.page-header title="Hosting Report" subtitle="Hosting services and utilization report" :breadcrumbs="[['label' => __('adminlte.home'), 'url' => url('/')],['label' => 'Reports'],['label' => 'Hosting Report','active' => true]]" />
 @stop
 
 @section('content')
@@ -35,10 +27,10 @@
             <tbody>
                 @forelse ($accounts as $a)
                     <tr>
-                        <td>{{ $a->customer?->full_name ?? '—' }}</td>
-                        <td>{{ $a->product?->name ?? '—' }}</td>
-                        <td>{{ $a->domain ?? '—' }}</td>
-                        <td class="text-muted">{{ $a->server?->name ?? '—' }}</td>
+                        <td>{{ $a->customer?->full_name ?? 'â€”' }}</td>
+                        <td>{{ $a->product?->name ?? 'â€”' }}</td>
+                        <td>{{ $a->domain ?? 'â€”' }}</td>
+                        <td class="text-muted">{{ $a->server?->name ?? 'â€”' }}</td>
                         <td>
                             <x-adminlte.partials.status-badge :status="$a->status" />
                         </td>
@@ -51,3 +43,4 @@
         {{ $accounts->links() }}
     </x-adminlte-card>
 @stop
+

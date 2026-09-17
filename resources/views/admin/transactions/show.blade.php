@@ -3,16 +3,7 @@
 @section('title', 'Transaction #' . $transaction->id)
 
 @section('content_header')
-    <div class="row">
-        <div class="col-sm-6"><h1 class="m-0">Transaction #{{ $transaction->id }}</h1></div>
-        <div class="col-sm-6">
-            <ol class="breadcrumb float-sm-end">
-                <li class="breadcrumb-item"><a href="{{ url('/') }}">{{ __('adminlte.home') }}</a></li>
-                <li class="breadcrumb-item"><a href="{{ route('admin.transactions.index') }}">Transactions</a></li>
-                <li class="breadcrumb-item active">#{{ $transaction->id }}</li>
-            </ol>
-        </div>
-    </div>
+    <x-ui.page-header title="Transaction #{{ $transaction->id }}" subtitle="View transaction details and payment status" :breadcrumbs="[['label' => __('adminlte.home'), 'url' => url('/')], ['label' => 'Transactions', 'url' => route('admin.transactions.index')], ['label' => '#' . $transaction->id, 'active' => true]]" />
 @stop
 
 @section('content')

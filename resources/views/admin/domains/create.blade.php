@@ -3,16 +3,11 @@
 @section('title', 'Register Domain')
 
 @section('content_header')
-    <div class="row">
-        <div class="col-sm-6"><h1 class="m-0">Register Domain</h1></div>
-        <div class="col-sm-6">
-            <ol class="breadcrumb float-sm-end">
-                <li class="breadcrumb-item"><a href="{{ url('/') }}">{{ __('adminlte.home') }}</a></li>
-                <li class="breadcrumb-item"><a href="{{ route('admin.domains.index') }}">Domains</a></li>
-                <li class="breadcrumb-item active">Register</li>
-            </ol>
-        </div>
-    </div>
+    <x-ui.page-header title="Register Domain" subtitle="Provision a new domain" :breadcrumbs="[
+        ['label' => __('adminlte.home'), 'url' => url('/')],
+        ['label' => 'Domains', 'url' => route('admin.domains.index')],
+        ['label' => 'Register', 'active' => true],
+    ]" />
 @stop
 
 @section('content')

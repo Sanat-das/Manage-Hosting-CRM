@@ -3,16 +3,11 @@
 @section('title', 'Add VLAN')
 
 @section('content_header')
-    <div class="row">
-        <div class="col-sm-6"><h1 class="m-0">Add VLAN</h1></div>
-        <div class="col-sm-6">
-            <ol class="breadcrumb float-sm-end">
-                <li class="breadcrumb-item"><a href="{{ url('/') }}">{{ __('adminlte.home') }}</a></li>
-                <li class="breadcrumb-item"><a href="{{ route('admin.vlans.index') }}">VLANs</a></li>
-                <li class="breadcrumb-item active" aria-current="page">Add</li>
-            </ol>
-        </div>
-    </div>
+    <x-ui.page-header title="Add VLAN" subtitle="Provision a new VLAN" :breadcrumbs="[
+        ['label' => __('adminlte.home'), 'url' => url('/')],
+        ['label' => 'VLANs', 'url' => route('admin.vlans.index')],
+        ['label' => 'Add', 'active' => true],
+    ]" />
 @stop
 
 @section('content')

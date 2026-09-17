@@ -1,19 +1,9 @@
-@extends('adminlte::page')
+﻿@extends('adminlte::page')
 
 @section('title', 'Staff Users')
 
 @section('content_header')
-    <div class="row">
-        <div class="col-sm-6">
-            <h1 class="m-0">Staff Users</h1>
-        </div>
-        <div class="col-sm-6">
-            <ol class="breadcrumb float-sm-end">
-                <li class="breadcrumb-item"><a href="{{ url('/') }}">{{ __('adminlte.home') }}</a></li>
-                <li class="breadcrumb-item active" aria-current="page">Staff Users</li>
-            </ol>
-        </div>
-    </div>
+    <x-ui.page-header title="Staff Users" subtitle="Overview and management of staff users" :breadcrumbs="[['label' => __('adminlte.home'), 'url' => url('/')],['label' => 'Staff Users','active' => true]]" />
 @stop
 
 @php
@@ -120,3 +110,4 @@
         @endcan
     @endforeach
 @stop
+

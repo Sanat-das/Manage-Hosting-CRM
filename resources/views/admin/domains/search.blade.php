@@ -3,16 +3,11 @@
 @section('title', 'Domain Search')
 
 @section('content_header')
-    <div class="row">
-        <div class="col-sm-6"><h1 class="m-0">Domain Search</h1></div>
-        <div class="col-sm-6">
-            <ol class="breadcrumb float-sm-end">
-                <li class="breadcrumb-item"><a href="{{ url('/') }}">{{ __('adminlte.home') }}</a></li>
-                <li class="breadcrumb-item"><a href="{{ route('admin.domains.index') }}">Domains</a></li>
-                <li class="breadcrumb-item active">Search</li>
-            </ol>
-        </div>
-    </div>
+    <x-ui.page-header title="Domain Search" subtitle="Search domain availability" :breadcrumbs="[
+        ['label' => __('adminlte.home'), 'url' => url('/')],
+        ['label' => 'Domains', 'url' => route('admin.domains.index')],
+        ['label' => 'Search', 'active' => true],
+    ]" />
 @stop
 
 @section('content')

@@ -1,18 +1,9 @@
-@extends('adminlte::page')
+﻿@extends('adminlte::page')
 
-@section('title', 'License — '.$license->license_type)
+@section('title', 'License â€” '.$license->license_type)
 
 @section('content_header')
-    <div class="row">
-        <div class="col-sm-6"><h1 class="m-0">{{ $license->license_type }}</h1></div>
-        <div class="col-sm-6">
-            <ol class="breadcrumb float-sm-end">
-                <li class="breadcrumb-item"><a href="{{ url('/') }}">{{ __('adminlte.home') }}</a></li>
-                <li class="breadcrumb-item"><a href="{{ route('admin.licenses.index') }}">Licenses</a></li>
-                <li class="breadcrumb-item active" aria-current="page">{{ $license->license_type }}</li>
-            </ol>
-        </div>
-    </div>
+    <x-ui.page-header title="{{ $license->license_type }}" subtitle="View license details" :breadcrumbs="[['label' => __('adminlte.home'), 'url' => url('/')],['label' => 'Licenses','url' => route('admin.licenses.index')],['label' => $license->license_type,'active' => true]]" />
 @stop
 
 @section('content')
@@ -27,14 +18,14 @@
                 <table class="table table-sm table-borderless mb-0">
                     <tbody>
                         <tr><th class="text-muted w-25">Type</th><td>{{ $license->license_type }}</td></tr>
-                        <tr><th class="text-muted">Vendor</th><td>{{ $license->vendor ?? '—' }}</td></tr>
+                        <tr><th class="text-muted">Vendor</th><td>{{ $license->vendor ?? 'â€”' }}</td></tr>
                         <tr><th class="text-muted">Key</th><td><code>{{ $license->license_key }}</code></td></tr>
-                        <tr><th class="text-muted">Seats</th><td>{{ $license->seats_available ?? '—' }} / {{ $license->seats ?? '—' }}</td></tr>
-                        <tr><th class="text-muted">Cost</th><td>{{ $license->cost ? '$' . number_format($license->cost, 2) : '—' }}</td></tr>
-                        <tr><th class="text-muted">Expiry</th><td>{{ $license->expiry_date?->format('Y-m-d') ?? '—' }}</td></tr>
-                        <tr><th class="text-muted">Renewal</th><td>{{ $license->renewal_date?->format('Y-m-d') ?? '—' }}</td></tr>
+                        <tr><th class="text-muted">Seats</th><td>{{ $license->seats_available ?? 'â€”' }} / {{ $license->seats ?? 'â€”' }}</td></tr>
+                        <tr><th class="text-muted">Cost</th><td>{{ $license->cost ? '$' . number_format($license->cost, 2) : 'â€”' }}</td></tr>
+                        <tr><th class="text-muted">Expiry</th><td>{{ $license->expiry_date?->format('Y-m-d') ?? 'â€”' }}</td></tr>
+                        <tr><th class="text-muted">Renewal</th><td>{{ $license->renewal_date?->format('Y-m-d') ?? 'â€”' }}</td></tr>
                         <tr><th class="text-muted">Status</th><td><x-adminlte.partials.status-badge :status="$license->status" /></td></tr>
-                        <tr><th class="text-muted">PO</th><td>{{ $license->purchase_order ?? '—' }}</td></tr>
+                        <tr><th class="text-muted">PO</th><td>{{ $license->purchase_order ?? 'â€”' }}</td></tr>
                     </tbody>
                 </table>
             </x-adminlte-card>
@@ -43,7 +34,7 @@
             <x-adminlte-card icon="bi bi-people" title="Assignments">
                 @forelse ($license->assignments as $assignment)
                     <div class="d-flex justify-content-between">
-                        <span>{{ $assignment->service?->domain ?? $assignment->customer?->full_name ?? '—' }}</span>
+                        <span>{{ $assignment->service?->domain ?? $assignment->customer?->full_name ?? 'â€”' }}</span>
                         <x-adminlte.partials.status-badge :status="$assignment->status ?? 'active'" />
                     </div>
                 @empty
@@ -53,3 +44,4 @@
         </div>
     </div>
 @stop
+

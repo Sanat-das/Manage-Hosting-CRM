@@ -1,18 +1,9 @@
-@extends('adminlte::page')
+﻿@extends('adminlte::page')
 
 @section('title', 'Add License')
 
 @section('content_header')
-    <div class="row">
-        <div class="col-sm-6"><h1 class="m-0">Add License</h1></div>
-        <div class="col-sm-6">
-            <ol class="breadcrumb float-sm-end">
-                <li class="breadcrumb-item"><a href="{{ url('/') }}">{{ __('adminlte.home') }}</a></li>
-                <li class="breadcrumb-item"><a href="{{ route('admin.licenses.index') }}">Licenses</a></li>
-                <li class="breadcrumb-item active" aria-current="page">Add</li>
-            </ol>
-        </div>
-    </div>
+    <x-ui.page-header title="Add License" subtitle="Add a new license" :breadcrumbs="[['label' => __('adminlte.home'), 'url' => url('/')],['label' => 'Licenses','url' => route('admin.licenses.index')],['label' => 'Add License','active' => true]]" />
 @stop
 
 @section('content')
@@ -52,3 +43,4 @@
         <x-adminlte-textarea name="notes" label="Notes" rows="2">{{ old('notes') }}</x-adminlte-textarea>
     </x-adminlte.partials.form-card>
 @stop
+

@@ -123,6 +123,16 @@ class ChatFeatureRenderTest extends TestCase
         );
     }
 
+    public function test_the_widget_ships_the_way_back_out_of_a_closed_conversation(): void
+    {
+        // Without this control a closed conversation is a dead end: the session
+        // still names it, so the intro form stays hidden on every reload.
+        $html = $this->get(route('login'))->assertOk()->getContent();
+
+        $this->assertStringContainsString('id="client-chat-restart"', $html);
+        $this->assertStringContainsString('Start a new chat', $html);
+    }
+
     public function test_the_new_tables_are_fixed_layout_so_nothing_scrolls_sideways(): void
     {
         $operator = $this->chatUser('chat.view', 'chat.manage');
@@ -132,6 +142,73 @@ class ChatFeatureRenderTest extends TestCase
 
             $this->assertStringContainsString('table-layout: fixed', $html, "{$url} has no fixed-layout table");
         }
+    }
+
+    public function test_the_sidebar_offers_a_way_to_find_a_channel_and_a_colleague(): void
+    {
+        // Both were unreachable from the UI: the channel directory did not
+        // exist, and the DM service method had no route in front of it.
+        $operator = $this->chatUser('chat.view');
+
+        $html = $this->actingAs($operator)->get(route('admin.chat.index'))->assertOk()->getContent();
+
+        $this->assertStringContainsString('id="chat-browse-open"', $html);
+        $this->assertStringContainsString('id="chat-new-dm"', $html);
+        $this->assertStringContainsString('id="chat-people"', $html);
+        $this->assertStringContainsString('id="chat-browse"', $html);
+    }
+
+    public function test_a_channel_admin_is_offered_the_member_and_settings_controls(): void
+    {
+        $operator = $this->chatUser('chat.view', 'chat.create_channel');
+        $channel = app(\App\Services\ChatService::class)->createChannel('Deploys', $operator);
+
+        $html = $this->actingAs($operator)
+            ->get(route('admin.chat.index', ['c' => $channel->id]))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('id="chat-members-open"', $html);
+        $this->assertStringContainsString('id="chat-members-list"', $html);
+        $this->assertStringContainsString('id="chat-members-add"', $html);
+        $this->assertStringContainsString('id="chat-channel-settings"', $html);
+        $this->assertStringContainsString('value="Deploys"', $html);
+    }
+
+    public function test_a_plain_member_gets_no_channel_settings_form(): void
+    {
+        $owner = $this->chatUser('chat.view', 'chat.create_channel');
+        $member = $this->chatUser('chat.view');
+
+        $chat = app(\App\Services\ChatService::class);
+        $channel = $chat->createChannel('Deploys', $owner);
+        $chat->addMember($channel, $member);
+
+        $html = $this->actingAs($member)
+            ->get(route('admin.chat.index', ['c' => $channel->id]))
+            ->assertOk()
+            ->getContent();
+
+        // The roster is still offered — seeing who else is in the room is not
+        // the same as being able to rename it.
+        $this->assertStringContainsString('id="chat-members-open"', $html);
+        $this->assertStringNotContainsString('id="chat-channel-settings"', $html);
+    }
+
+    public function test_an_archived_channel_offers_unarchive_instead_of_archive(): void
+    {
+        $operator = $this->chatUser('chat.view', 'chat.create_channel');
+        $chat = app(\App\Services\ChatService::class);
+        $channel = $chat->createChannel('Old News', $operator);
+        $chat->archive($channel);
+
+        $html = $this->actingAs($operator)
+            ->get(route('admin.chat.index', ['c' => $channel->id]))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('id="chat-unarchive"', $html);
+        $this->assertStringNotContainsString('id="chat-archive"', $html);
     }
 
     public function test_the_composer_offers_the_saved_reply_picker(): void

@@ -1,8 +1,7 @@
-@extends('adminlte::page')
+﻿@extends('adminlte::page')
 @section('title', 'Search Results')
 @section('content_header')
-    <div class="row"><div class="col-sm-6"><h1 class="m-0">Search Results</h1></div>
-        <div class="col-sm-6"><ol class="breadcrumb float-sm-end"><li class="breadcrumb-item"><a href="{{ url('/') }}">{{ __('adminlte.home') }}</a></li><li class="breadcrumb-item active">Search</li></ol></div></div>
+    <x-ui.page-header title="Search Results" subtitle="Find records across the platform" :breadcrumbs="[['label' => __('adminlte.home'), 'url' => url('/')],['label' => 'Search Results','active' => true]]" />
 @stop
 @section('content')
     <x-adminlte-card icon="bi bi-search" title="Search">
@@ -26,7 +25,7 @@
                 <ul class="list-group list-group-flush">
                     @foreach ($results['customers'] as $c)
                         <li class="list-group-item d-flex justify-content-between align-items-center">
-                            <span><a href="{{ route('admin.customers.show', $c) }}" class="table-link"><strong>{{ $c->full_name }}</strong></a> — {{ $c->user?->email }}</span>
+                            <span><a href="{{ route('admin.customers.show', $c) }}" class="table-link"><strong>{{ $c->full_name }}</strong></a> â€” {{ $c->user?->email }}</span>
                         </li>
                     @endforeach
                 </ul>
@@ -38,7 +37,7 @@
                 <ul class="list-group list-group-flush">
                     @foreach ($results['services'] as $s)
                         <li class="list-group-item d-flex justify-content-between align-items-center">
-                            <span><a href="{{ route('admin.service-instances.show', $s) }}" class="table-link"><strong>{{ $s->domain ?? $s->username }}</strong></a> — {{ $s->customer?->full_name ?? '—' }}</span>
+                            <span><a href="{{ route('admin.service-instances.show', $s) }}" class="table-link"><strong>{{ $s->domain ?? $s->username }}</strong></a> â€” {{ $s->customer?->full_name ?? 'â€”' }}</span>
                         </li>
                     @endforeach
                 </ul>
@@ -50,7 +49,7 @@
                 <ul class="list-group list-group-flush">
                     @foreach ($results['invoices'] as $inv)
                         <li class="list-group-item d-flex justify-content-between align-items-center">
-                            <span><a href="{{ route('admin.invoices.show', $inv) }}" class="table-link"><strong>{{ $inv->invoice_no }}</strong></a> — ${{ number_format($inv->total, 2) }}</span>
+                            <span><a href="{{ route('admin.invoices.show', $inv) }}" class="table-link"><strong>{{ $inv->invoice_no }}</strong></a> â€” ${{ number_format($inv->total, 2) }}</span>
                         </li>
                     @endforeach
                 </ul>
@@ -62,7 +61,7 @@
                 <ul class="list-group list-group-flush">
                     @foreach ($results['tickets'] as $t)
                         <li class="list-group-item d-flex justify-content-between align-items-center">
-                            <span><a href="{{ route('admin.tickets.show', $t) }}" class="table-link"><strong>{{ $t->ticket_no }}</strong></a> — {{ $t->subject }}</span>
+                            <span><a href="{{ route('admin.tickets.show', $t) }}" class="table-link"><strong>{{ $t->ticket_no }}</strong></a> â€” {{ $t->subject }}</span>
                         </li>
                     @endforeach
                 </ul>
@@ -74,7 +73,7 @@
                 <ul class="list-group list-group-flush">
                     @foreach ($results['products'] as $p)
                         <li class="list-group-item d-flex justify-content-between align-items-center">
-                            <span><a href="{{ route('admin.catalog-products.show', $p) }}" class="table-link"><strong>{{ $p->name }}</strong></a> — <code>{{ $p->sku }}</code></span>
+                            <span><a href="{{ route('admin.catalog-products.show', $p) }}" class="table-link"><strong>{{ $p->name }}</strong></a> â€” <code>{{ $p->sku }}</code></span>
                         </li>
                     @endforeach
                 </ul>
@@ -82,3 +81,4 @@
         @endif
     @endif
 @stop
+
