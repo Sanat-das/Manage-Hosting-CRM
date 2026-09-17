@@ -110,6 +110,7 @@ Route::middleware(['web', 'auth', 'admin', 'throttle:admin'])->prefix('admin')->
         Route::post('chat/inbox/{conversation}/convert', [ChatController::class, 'convertToTicket'])->name('chat.inbox.convert');
 
         Route::get('chat/unread', [ChatController::class, 'unread'])->name('chat.unread');
+        Route::get('chat/navbar', [ChatController::class, 'navbar'])->name('chat.navbar');
         Route::post('chat/presence', [ChatController::class, 'presenceHeartbeat'])->name('chat.presence');
 
         /*

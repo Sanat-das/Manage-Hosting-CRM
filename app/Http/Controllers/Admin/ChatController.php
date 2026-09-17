@@ -32,6 +32,7 @@ use App\Services\ChatPresence;
 use App\Services\ChatService;
 use App\Services\TicketService;
 use App\Support\ChatMessagePayload;
+use App\Support\ChatNavbar;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\JsonResponse;
@@ -1154,6 +1155,24 @@ class ChatController extends Controller
                 array_map(static fn (array $person): int => (int) $person['id'], $online),
             ),
             'inbox' => $this->waitingInbox($user),
+        ]);
+    }
+
+    /**
+     * The navbar messages dropdown, as JSON.
+     *
+     * Same rows ChatNavbar::messages() renders into the navbar on page load,
+     * re-fetched when the dropdown opens so the list matches the live badge.
+     * Route middleware already enforces chat.view; per-conversation policy
+     * runs inside ChatNavbar, row by row.
+     */
+    public function navbar(Request $request): JsonResponse
+    {
+        $user = $request->user();
+
+        return response()->json([
+            'messages' => ChatNavbar::messages($user),
+            'count' => ChatNavbar::messageCount($user),
         ]);
     }
 
