@@ -311,6 +311,14 @@
                                                     data-chat-archive>Archive</button>
                                         @endcan
                                     @endif
+                                    {{-- Delete sits beside archive rather than inside the
+                                         members dialog: archiving and deleting are the
+                                         two ends of one decision, and splitting them
+                                         across screens is how rooms get deleted by
+                                         people who never saw the freeze option. --}}
+                                    @can('delete', $selected)
+                                        <button type="button" class="btn btn-sm btn-outline-danger" id="chat-delete">Delete</button>
+                                    @endcan
                                 @endif
                             </div>
                         @endif

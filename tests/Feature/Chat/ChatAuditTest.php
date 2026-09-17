@@ -178,6 +178,32 @@ class ChatAuditTest extends TestCase
         $this->assertSame('Ops Room', $this->detailsOf($row)['name'] ?? null);
     }
 
+    public function test_deleting_a_channel_writes_exactly_one_audit_row_with_counts_not_bodies(): void
+    {
+        $user = $this->viewer();
+        $channel = $this->chat->createChannel('Ops Room', $user);
+        $this->chat->sendMessage($channel, $user, 'Secret plans.');
+
+        $channelId = $channel->id;
+
+        $this->actingAs($user)
+            ->deleteJson(route('admin.chat.channels.destroy', $channel))
+            ->assertOk();
+
+        $rows = $this->auditRows('chat.channel_deleted');
+        $this->assertCount(1, $rows, 'Deleting a channel did not write exactly one audit row.');
+
+        $row = $rows->first();
+        $this->assertSame('chat_conversation', $row->entity_type);
+        $this->assertSame($channelId, (int) $row->entity_id);
+        $this->assertSame($user->id, (int) $row->user_id);
+
+        $details = $this->detailsOf($row);
+        $this->assertSame('Ops Room', $details['name'] ?? null);
+        $this->assertSame(1, $details['message_count'] ?? null);
+        $this->assertArrayNotHasKey('body', $details);
+    }
+
     public function test_adding_a_member_writes_exactly_one_audit_row(): void
     {
         $owner = $this->viewer();

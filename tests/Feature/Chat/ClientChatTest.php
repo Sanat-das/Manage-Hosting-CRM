@@ -6,6 +6,7 @@ namespace Tests\Feature\Chat;
 
 use App\Events\Chat\TypingIndicator;
 use App\Models\ChatConversation;
+use App\Models\ChatSetting;
 use App\Models\Customer;
 use App\Models\TicketDepartment;
 use App\Models\User;
@@ -141,6 +142,33 @@ class ClientChatTest extends TestCase
         ])->assertCreated();
 
         $this->assertNotSame($first->json('conversation_id'), $second->json('conversation_id'));
+    }
+
+    public function test_a_disabled_chat_refuses_new_conversations(): void
+    {
+        ChatSetting::current()->update(['customer_chat_enabled' => false]);
+
+        $this->postJson(route('chat.start'), [
+            'name' => 'Jo', 'email' => 'jo@example.com', 'body' => 'Hello',
+        ])->assertForbidden();
+
+        $this->assertSame(0, ChatConversation::query()->count());
+    }
+
+    public function test_a_disabled_chat_still_resumes_the_open_conversation(): void
+    {
+        $first = $this->postJson(route('chat.start'), [
+            'name' => 'Jo', 'email' => 'jo@example.com', 'body' => 'Hello',
+        ])->assertCreated();
+
+        ChatSetting::current()->update(['customer_chat_enabled' => false]);
+
+        $second = $this->postJson(route('chat.start'), [
+            'name' => 'Jo', 'email' => 'jo@example.com', 'body' => 'Hello again',
+        ])->assertOk();
+
+        $this->assertSame($first->json('conversation_id'), $second->json('conversation_id'));
+        $this->assertSame(1, ChatConversation::query()->count());
     }
 
     // --- isolation / 403 -----------------------------------------------------

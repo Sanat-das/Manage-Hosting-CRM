@@ -6,12 +6,15 @@ namespace Tests\Feature\Chat;
 
 use App\Models\ChatConversation;
 use App\Models\ChatConversationMessage;
+use App\Models\ChatMessageAttachment;
 use App\Models\ChatParticipant;
+use App\Models\ChatReaction;
 use App\Models\TicketDepartment;
 use App\Models\User;
 use App\Services\ChatService;
 use App\Services\TicketService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Storage;
 use InvalidArgumentException;
 use RuntimeException;
 use Tests\Concerns\CreatesChatUsers;
@@ -201,6 +204,49 @@ class ChatServiceTest extends TestCase
         $message = $this->chat->sendMessage($channel->fresh(), $creator, 'Back.');
 
         $this->assertNotNull($message->id);
+    }
+
+    public function test_deleting_a_channel_removes_everything_but_the_audit_trail(): void
+    {
+        Storage::fake('local');
+
+        $creator = $this->chatUser('chat.create_channel');
+        $member = $this->chatUser('chat.view');
+        $channel = $this->chat->createChannel('Doomed', $creator);
+        $this->chat->addMember($channel, $member);
+
+        $message = $this->chat->sendMessage($channel, $creator, 'Evidence.');
+        ChatReaction::create(['message_id' => $message->id, 'user_id' => $member->id, 'emoji' => '👍']);
+        Storage::disk('local')->put('chat/doomed.txt', 'contents');
+        ChatMessageAttachment::create([
+            'message_id' => $message->id,
+            'disk' => 'local',
+            'path' => 'chat/doomed.txt',
+            'filename' => 'doomed.txt',
+            'mime_type' => 'text/plain',
+            'size_bytes' => 8,
+        ]);
+
+        $channelId = $channel->id;
+
+        $this->chat->deleteChannel($channel);
+
+        $this->assertDatabaseMissing('chat_conversations', ['id' => $channelId]);
+        $this->assertSame(0, ChatConversationMessage::withTrashed()->where('conversation_id', $channelId)->count());
+        $this->assertSame(0, ChatParticipant::where('conversation_id', $channelId)->count());
+        $this->assertSame(0, ChatReaction::where('message_id', $message->id)->count());
+        $this->assertSame(0, ChatMessageAttachment::where('message_id', $message->id)->count());
+        Storage::disk('local')->assertMissing('chat/doomed.txt');
+    }
+
+    public function test_only_channels_can_be_deleted(): void
+    {
+        $a = $this->chatUser('chat.view');
+        $b = $this->chatUser('chat.view');
+        $dm = $this->chat->findOrCreateDirectMessage($a, $b);
+
+        $this->expectException(InvalidArgumentException::class);
+        $this->chat->deleteChannel($dm);
     }
 
     public function test_sending_a_message_marks_it_read_for_its_own_author(): void

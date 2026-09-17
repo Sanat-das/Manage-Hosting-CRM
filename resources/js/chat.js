@@ -1171,6 +1171,21 @@ function initChat(root) {
         }
     });
 
+    document.getElementById('chat-delete')?.addEventListener('click', async () => {
+        const confirmed = await confirmAction(
+            'Delete this channel?',
+            'This permanently deletes the channel, every message in it and every attached file. This cannot be undone — archive instead if you only want it out of the way.',
+        );
+        if (!confirmed) return;
+
+        try {
+            await api(`${chatBase}/channels/${state.conversationId}`, { method: 'DELETE' });
+            window.location = chatBase;
+        } catch (error) {
+            toast(`Could not delete the channel: ${error.message}`);
+        }
+    });
+
     // --- customer inbox actions -------------------------------------------
 
     document.querySelectorAll('[data-inbox-action]').forEach((button) => {

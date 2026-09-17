@@ -46,6 +46,7 @@ class UpdateChatSettingsRequest extends FormRequest
             'require_available_operator' => ['sometimes', 'boolean'],
             'offline_form_enabled' => ['sometimes', 'boolean'],
             'send_transcript_on_close' => ['sometimes', 'boolean'],
+            'customer_chat_enabled' => ['sometimes', 'boolean'],
 
             // Blank is allowed and means "the application's timezone"; anything
             // else has to be a real identifier or every comparison against it

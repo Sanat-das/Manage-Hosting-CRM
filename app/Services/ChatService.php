@@ -28,6 +28,7 @@ use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use InvalidArgumentException;
 use RuntimeException;
@@ -292,6 +293,67 @@ class ChatService
         ]);
 
         return $conversation;
+    }
+
+    /**
+     * Permanently delete a channel and everything in it: messages (including
+     * soft-deleted ones), reactions, entity links, attachments with their
+     * files, and memberships.
+     *
+     * Channels only. A DM is defined by who is in it and a customer inbox is
+     * support history with transcript obligations — neither is deletable
+     * through this path, enforced here as well as in the controller so a
+     * future caller cannot bypass the shape check by calling the service.
+     *
+     * @throws InvalidArgumentException on a non-channel conversation
+     */
+    public function deleteChannel(ChatConversation $conversation): void
+    {
+        if ($conversation->type !== ChatConversation::TYPE_CHANNEL) {
+            throw new InvalidArgumentException('Only channels can be deleted.');
+        }
+
+        $messageIds = $conversation->messages()->withTrashed()->pluck('id');
+        $participantCount = $conversation->participants()->count();
+
+        $attachments = ChatMessageAttachment::query()->whereIn('message_id', $messageIds)->get();
+
+        // Files first and best-effort: a missing file must not abort the
+        // delete, and deleting the rows first would strand files no row points
+        // at. Either order can leave an orphan on a crash midway; files-first
+        // leaves the retryable one (the rows still know their paths).
+        foreach ($attachments as $attachment) {
+            try {
+                Storage::disk($attachment->disk)->delete($attachment->path);
+            } catch (Throwable $e) {
+                Log::warning('Could not delete a chat attachment file during channel deletion.', [
+                    'attachment_id' => $attachment->id,
+                    'disk' => $attachment->disk,
+                    'path' => $attachment->path,
+                ]);
+            }
+        }
+
+        $conversationId = (int) $conversation->id;
+
+        DB::transaction(function () use ($conversation, $conversationId, $messageIds, $participantCount, $attachments): void {
+            ChatReaction::query()->whereIn('message_id', $messageIds)->delete();
+            MessageEntityLink::query()->whereIn('message_id', $messageIds)->delete();
+            ChatMessageAttachment::query()->whereIn('message_id', $messageIds)->delete();
+            ChatConversationMessage::query()->whereIn('id', $messageIds)->forceDelete();
+            ChatParticipant::query()->where('conversation_id', $conversationId)->delete();
+            $conversation->delete();
+
+            // Counts and names, never bodies — same rule as deleteMessage.
+            $this->audit('chat.channel_deleted', self::AUDIT_ENTITY_CONVERSATION, $conversationId, [
+                'conversation_type' => ChatConversation::TYPE_CHANNEL,
+                'name' => $conversation->name,
+                'slug' => $conversation->slug,
+                'message_count' => $messageIds->count(),
+                'participant_count' => $participantCount,
+                'attachment_count' => $attachments->count(),
+            ]);
+        });
     }
 
     /**

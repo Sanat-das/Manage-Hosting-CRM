@@ -74,6 +74,7 @@ Route::middleware(['web', 'auth', 'admin', 'throttle:admin'])->prefix('admin')->
         Route::put('chat/channels/{conversation}', [ChatController::class, 'updateChannel'])->name('chat.channels.update');
         Route::post('chat/channels/{conversation}/archive', [ChatController::class, 'archiveChannel'])->name('chat.channels.archive');
         Route::post('chat/channels/{conversation}/unarchive', [ChatController::class, 'unarchiveChannel'])->name('chat.channels.unarchive');
+        Route::delete('chat/channels/{conversation}', [ChatController::class, 'destroyChannel'])->name('chat.channels.destroy');
         Route::post('chat/channels/{conversation}/join', [ChatController::class, 'joinChannel'])->name('chat.channels.join');
         Route::post('chat/channels/{conversation}/leave', [ChatController::class, 'leaveChannel'])->name('chat.channels.leave');
         Route::post('chat/channels/{conversation}/members', [ChatController::class, 'addMember'])->name('chat.channels.members.store');

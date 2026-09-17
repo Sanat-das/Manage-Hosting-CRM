@@ -341,6 +341,19 @@ class ChatController extends Controller
         return response()->json(['channel' => $this->channelPayload($conversation->fresh())]);
     }
 
+    public function destroyChannel(ChatConversation $conversation): JsonResponse
+    {
+        Gate::authorize('delete', $conversation);
+
+        if ($conversation->type !== ChatConversation::TYPE_CHANNEL) {
+            return response()->json(['message' => 'Only channels can be deleted.'], 403);
+        }
+
+        $this->chat->deleteChannel($conversation);
+
+        return response()->json(['ok' => true]);
+    }
+
     /**
      * Refuse a membership change the conversation's shape does not allow.
      *

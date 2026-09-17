@@ -27,7 +27,23 @@
 
         {{-- Everything on this page is off by default on purpose. These controls
              change what a CUSTOMER sees, so an upgrade must not switch any of
-             them on by arriving. --}}
+             them on by arriving. The master switch below is the deliberate
+             exception: it defaults ON, because defaulting it off would take
+             the widget down on every existing install on deploy. --}}
+        <div class="form-check form-switch mb-2">
+            <input class="form-check-input" type="checkbox" role="switch" id="customer_chat_enabled"
+                   name="customer_chat_enabled" value="1"
+                   @checked(old('customer_chat_enabled', $settings->customer_chat_enabled))>
+            <label class="form-check-label" for="customer_chat_enabled">
+                Live chat is available to customers
+            </label>
+            <div class="form-text">
+                The master switch. While this is off the widget is hidden and no new
+                conversations can be started. Conversations that are already open keep
+                working so nobody is stranded mid-chat.
+            </div>
+        </div>
+
         <div class="form-check form-switch mb-2">
             <input class="form-check-input" type="checkbox" role="switch" id="enforce_office_hours"
                    name="enforce_office_hours" value="1"

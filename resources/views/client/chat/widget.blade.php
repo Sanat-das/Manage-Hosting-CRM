@@ -34,10 +34,17 @@
     // throws costs the whole site.
     try {
         $chatStatus = app(\App\Services\ChatOfficeHours::class)->status();
+        $chatEnabled = (bool) \App\Models\ChatSetting::current()->customer_chat_enabled;
     } catch (\Throwable) {
         $chatStatus = ['open' => true, 'message' => '', 'offline_form' => false, 'next_opens_at' => null];
+        $chatEnabled = true;
     }
 @endphp
+{{-- The master switch hides the widget entirely — unless this browser already
+     has a conversation, which stays readable and writable so a customer who is
+     mid-chat when an admin flips the switch is not stranded. New starts are
+     refused server-side in ChatWidgetController::start(). --}}
+@if ($chatEnabled || $chatConversationId)
 <div class="client-chat" id="client-chat"
      data-conversation-id="{{ $chatConversationId }}"
      data-token="{{ $chatGuestToken }}"
@@ -190,3 +197,4 @@
 </div>
 
 @vite(['resources/css/client-chat.css', 'resources/js/client-chat.js'])
+@endif

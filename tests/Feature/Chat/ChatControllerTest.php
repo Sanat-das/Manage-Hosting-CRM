@@ -131,6 +131,37 @@ class ChatControllerTest extends TestCase
             ->assertJsonPath('channel.is_archived', true);
     }
 
+    public function test_only_a_channel_admin_may_delete_it_and_only_channels_go(): void
+    {
+        $owner = $this->chatUser('chat.view', 'chat.create_channel');
+        $channel = $this->chat->createChannel('Ops', $owner);
+        $this->chat->sendMessage($channel, $owner, 'Last words.');
+
+        $member = $this->chatUser('chat.view');
+        $this->chat->addMember($channel, $member);
+
+        $this->actingAs($member)
+            ->deleteJson(route('admin.chat.channels.destroy', $channel))
+            ->assertForbidden();
+
+        $this->assertDatabaseHas('chat_conversations', ['id' => $channel->id]);
+
+        $dm = $this->chat->findOrCreateDirectMessage($owner, $member);
+
+        $this->actingAs($owner)
+            ->deleteJson(route('admin.chat.channels.destroy', $dm))
+            ->assertForbidden();
+
+        $this->assertDatabaseHas('chat_conversations', ['id' => $dm->id]);
+
+        $this->actingAs($owner)
+            ->deleteJson(route('admin.chat.channels.destroy', $channel))
+            ->assertOk();
+
+        $this->assertDatabaseMissing('chat_conversations', ['id' => $channel->id]);
+        $this->assertSame(0, ChatConversationMessage::withTrashed()->where('conversation_id', $channel->id)->count());
+    }
+
     public function test_a_public_channel_can_be_joined_and_left_but_a_private_one_cannot(): void
     {
         $owner = $this->chatUser('chat.view', 'chat.create_channel');

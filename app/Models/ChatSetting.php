@@ -19,6 +19,7 @@ use Illuminate\Database\Eloquent\Model;
 #[Fillable([
     'enforce_office_hours', 'timezone', 'require_available_operator', 'closed_message',
     'offline_form_enabled', 'offline_ticket_department', 'send_transcript_on_close',
+    'customer_chat_enabled',
 ])]
 class ChatSetting extends Model
 {
@@ -32,6 +33,7 @@ class ChatSetting extends Model
             'require_available_operator' => 'boolean',
             'offline_form_enabled' => 'boolean',
             'send_transcript_on_close' => 'boolean',
+            'customer_chat_enabled' => 'boolean',
         ];
     }
 
@@ -53,6 +55,7 @@ class ChatSetting extends Model
             'offline_form_enabled' => true,
             'offline_ticket_department' => null,
             'send_transcript_on_close' => false,
+            'customer_chat_enabled' => true,
         ]);
     }
 

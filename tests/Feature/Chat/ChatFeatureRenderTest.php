@@ -96,6 +96,26 @@ class ChatFeatureRenderTest extends TestCase
         $this->assertStringNotContainsString('@endif', $html);
     }
 
+    public function test_the_widget_is_hidden_while_the_master_switch_is_off(): void
+    {
+        // The launcher, the panel and the bundle tags all live inside the
+        // widget partial, so none of them may reach a guest while disabled.
+        // An operator mid-conversation keeps theirs: the session still names
+        // a conversation, and stranding it would end support, not pause it.
+        ChatSetting::current()->update(['customer_chat_enabled' => false]);
+
+        $html = $this->get(route('login'))->assertOk()->getContent();
+
+        $this->assertStringNotContainsString('id="client-chat-launcher"', $html);
+        $this->assertStringNotContainsString('id="client-chat-panel"', $html);
+        $this->assertStringNotContainsString('@endif', $html);
+
+        $openHtml = $this->withSession(['chat.conversation_id' => 1])
+            ->get(route('login'))->assertOk()->getContent();
+
+        $this->assertStringContainsString('id="client-chat-launcher"', $openHtml);
+    }
+
     public function test_the_widget_renders_the_closed_notice_and_the_offline_form(): void
     {
         $this->travelTo('2026-09-13 03:00:00');   // a Sunday
@@ -173,6 +193,30 @@ class ChatFeatureRenderTest extends TestCase
         $this->assertStringContainsString('id="chat-members-add"', $html);
         $this->assertStringContainsString('id="chat-channel-settings"', $html);
         $this->assertStringContainsString('value="Deploys"', $html);
+    }
+
+    public function test_the_delete_button_is_offered_to_a_channel_admin_but_not_a_member(): void
+    {
+        $owner = $this->chatUser('chat.view', 'chat.create_channel');
+        $member = $this->chatUser('chat.view');
+
+        $chat = app(\App\Services\ChatService::class);
+        $channel = $chat->createChannel('Deploys', $owner);
+        $chat->addMember($channel, $member);
+
+        $adminHtml = $this->actingAs($owner)
+            ->get(route('admin.chat.index', ['c' => $channel->id]))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('id="chat-delete"', $adminHtml);
+
+        $memberHtml = $this->actingAs($member)
+            ->get(route('admin.chat.index', ['c' => $channel->id]))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringNotContainsString('id="chat-delete"', $memberHtml);
     }
 
     public function test_a_plain_member_gets_no_channel_settings_form(): void

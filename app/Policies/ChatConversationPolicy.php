@@ -78,7 +78,8 @@ class ChatConversationPolicy
     }
 
     /**
-     * Rename, re-topic, archive, or change the membership of a conversation.
+     * Rename, re-topic, archive, delete, or change the membership of a
+     * conversation.
      *
      * The creator, a participant holding the conversation's own admin role, or
      * anyone with chat.manage. A plain member cannot rename the room out from
@@ -102,6 +103,20 @@ class ChatConversationPolicy
     }
 
     public function archive(User $user, ChatConversation $conversation): bool
+    {
+        return $this->update($user, $conversation);
+    }
+
+    /**
+     * Permanently delete a conversation and everything in it.
+     *
+     * Same holders as archive. Whether the conversation is the kind that may
+     * be deleted at all (channels, not DMs or customer inboxes) is a
+     * structural question answered by the controller and the service, not
+     * here — mirroring how allowsMembershipChanges() keeps shape out of
+     * the policy.
+     */
+    public function delete(User $user, ChatConversation $conversation): bool
     {
         return $this->update($user, $conversation);
     }

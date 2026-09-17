@@ -98,6 +98,7 @@ class ChatSettingController extends Controller
                 'require_available_operator' => $request->boolean('require_available_operator'),
                 'offline_form_enabled' => $request->boolean('offline_form_enabled'),
                 'send_transcript_on_close' => $request->boolean('send_transcript_on_close'),
+                'customer_chat_enabled' => $request->boolean('customer_chat_enabled'),
                 'timezone' => (string) $request->input('timezone', ''),
                 'closed_message' => $request->input('closed_message'),
                 'offline_ticket_department' => $request->input('offline_ticket_department') ?: null,

@@ -14,6 +14,7 @@ use App\Http\Requests\Chat\StoreOfflineMessageRequest;
 use App\Models\ChatConversation;
 use App\Models\ChatConversationMessage;
 use App\Models\ChatMessageAttachment;
+use App\Models\ChatSetting;
 use App\Models\User;
 use App\Services\ChatOfficeHours;
 use App\Services\ChatService;
@@ -115,6 +116,13 @@ class ChatWidgetController extends Controller
                 'token' => $existing->guest_token,
                 'status' => $existing->status,
             ], 200);
+        }
+
+        // The master switch sits HERE, after the resume branch, for the same
+        // reason office hours do: flipping it off must not strand a customer
+        // who is already mid-conversation. It only stops NEW conversations.
+        if (! ChatSetting::current()->customer_chat_enabled) {
+            return response()->json(['message' => 'Live chat is currently unavailable.'], 403);
         }
 
         // Office hours are checked HERE, after the resume branch above, and
