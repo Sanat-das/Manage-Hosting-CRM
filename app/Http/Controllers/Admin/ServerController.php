@@ -2,50 +2,61 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Contracts\Module\ServerConnectionResult;
 use App\Http\Controllers\Controller;
+use App\Models\Module;
+use App\Models\PanelAccount;
 use App\Models\Server;
+use App\Models\ServerGroup;
+use App\Models\ServerGroupMember;
 use App\Services\Modules\ModuleManager;
 use App\ViewModels\Admin\ServerDetailViewModel;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 
-/**
- * Admin server management (Session 3A.2).
- *
- * Reference note: the task brief lists "name, hostname, ip" — the local
- * servers table has NO hostname column (config_tables migration), so the
- * `name` field is the server's display label. Columns: name, ip_address,
- * panel_type, api_url, api_key, api_username, max_accounts, status.
- *
- * Permission gates: hosting.view (read), hosting.manage (write).
- */
 class ServerController extends Controller
 {
     private const PER_PAGE = 20;
 
-    public function index(Request $request): View
+    public function index(Request $request, ModuleManager $modules): View
     {
         $search = trim((string) $request->query('search'));
         $status = $request->query('status');
+        $serverType = trim((string) $request->query('server_type'));
+        $connectionStatus = trim((string) $request->query('connection_status'));
+
+        $activeSlugs = $this->activeSlugs($modules);
 
         $servers = Server::query()
+            ->with(['module:id,slug,name,manifest'])
             ->withCount('hostingAccounts')
             ->when($search !== '', function ($query) use ($search) {
                 $query->where(function ($q) use ($search) {
                     $q->where('name', 'like', "%{$search}%")
                         ->orWhere('ip_address', 'like', "%{$search}%")
-                        ->orWhere('api_url', 'like', "%{$search}%");
+                        ->orWhere('api_url', 'like', "%{$search}%")
+                        ->orWhere('server_type', 'like', "%{$search}%");
                 });
             })
             ->when(in_array($status, ['active', 'inactive'], true), function ($query) use ($status) {
                 $query->where('status', $status);
             })
+            ->when($serverType !== '' && in_array($serverType, $activeSlugs, true), function ($query) use ($serverType) {
+                $query->where('server_type', $serverType);
+            })
+            ->when(in_array($connectionStatus, ['connected', 'failed', 'untested'], true), function ($query) use ($connectionStatus) {
+                $query->where('connection_status', $connectionStatus);
+            })
             ->gridSort([
                 'name' => 'name',
                 'ip_address' => 'ip_address',
-                'panel' => 'panel_type',
+                'panel' => 'server_type',
+                'server_type' => 'server_type',
+                'connection_status' => 'connection_status',
                 'status' => 'status',
                 'created_at' => 'created_at',
             ])
@@ -53,12 +64,58 @@ class ServerController extends Controller
             ->paginate(self::PER_PAGE)
             ->withQueryString();
 
-        return view('admin.servers.index', compact('servers', 'search', 'status'));
+        $serverTypeOptions = $modules->serverTypeOptions();
+
+        return view('admin.servers.index', [
+            'servers' => $servers,
+            'search' => $search,
+            'status' => $status,
+            'serverType' => $serverType,
+            'serverTypeOptions' => $serverTypeOptions,
+            'typeOptions' => $serverTypeOptions,
+            'connectionStatus' => $connectionStatus,
+        ]);
     }
 
     public function show(Server $server, ModuleManager $modules): View
     {
+        $server->load([
+            'module:id,slug,name,manifest',
+        ]);
+
+        $perPage = 10;
+
+        $hostingAccounts = $server->hostingAccounts()->with(['customer.user:id,email,first_name,last_name', 'product:id,name', 'order:id,order_number,status'])->orderByDesc('id')->paginate($perPage, ['*'], 'hosting_page');
+        $server->setRelation('hostingAccounts', $hostingAccounts);
+
+        // For virtualization servers (hyperv/proxmox/virtualizor) show VMs via PanelAccount/ServiceInstance
+        $panelAccounts = \App\Models\PanelAccount::where('server_id', $server->id)
+            ->with(['serviceInstance.order:id,order_number,status', 'serviceInstance.customer.user:id,email,first_name,last_name'])
+            ->orderByDesc('id')
+            ->paginate($perPage, ['*'], 'vms_page');
+        $serviceInstances = \App\Models\ServiceInstance::where('server_id', $server->id)
+            ->with(['customer.user:id,email,first_name,last_name', 'order:id,order_number,status', 'order.product:id,name'])
+            ->orderByDesc('id')
+            ->paginate($perPage, ['*'], 'services_page');
+
         $groups = $server->groupMembers()->with('group:id,name,status,allowed_server_type')->get();
+
+        // Live Hyper-V host inventory (guarded: hyperv + connected only, 60s cache, never breaks page).
+        $liveVms = null;
+        if (($server->server_type ?? $server->panel_type) === 'hyperv' && ($server->connection_status ?? '') === 'connected') {
+            try {
+                $driver = $modules->resolveForServer($server);
+                if ($driver !== null && method_exists($driver, 'listVms')) {
+                    $liveVms = \Illuminate\Support\Facades\Cache::remember(
+                        "hyperv:server:{$server->id}:vms",
+                        60,
+                        fn () => $driver->listVms($server)
+                    );
+                }
+            } catch (\Throwable) {
+                $liveVms = null;
+            }
+        }
 
         // ── Fresh resolve per GET (todo 7) — bounded, graceful degrade, idempotent persist ──
         $freshFailed = false;
@@ -228,7 +285,11 @@ class ServerController extends Controller
             $vm = new ServerDetailViewModel(...$vmVars);
         }
 
-        return view('admin.servers.show', compact('server', 'groups', 'vm'));
+        // Totals for header badges (paginators only hold one page — counts need separate queries).
+        $panelAccountsTotal = \App\Models\PanelAccount::where('server_id', $server->id)->count();
+        $panelAccountsActive = \App\Models\PanelAccount::where('server_id', $server->id)->where('status', 'active')->count();
+
+        return view('admin.servers.show', compact('server', 'groups', 'hostingAccounts', 'panelAccounts', 'serviceInstances', 'liveVms', 'vm', 'panelAccountsTotal', 'panelAccountsActive'));
     }
 
     /**
@@ -302,49 +363,671 @@ class ServerController extends Controller
         return $out;
     }
 
-    public function create(): View
+    public function create(Request $request, ModuleManager $modules): View
     {
-        return view('admin.servers.create');
+        $type = trim((string) $request->query('type'));
+
+        if ($type === '') {
+            return $this->createType($modules);
+        }
+
+        $activeSlugs = $this->activeSlugs($modules);
+
+        if (! in_array($type, $activeSlugs, true)) {
+            abort(404, "Unknown server type [{$type}].");
+        }
+
+        $module = Module::where('slug', $type)->first();
+        $instance = $module ? $modules->resolve($module) : null;
+
+        $schema = [];
+        if ($instance !== null && method_exists($instance, 'serverConfigSchema')) {
+            $raw = $instance->serverConfigSchema();
+            // Normalize to ['fields' => [...]]
+            if (isset($raw['fields']) && is_array($raw['fields'])) {
+                $schema = $raw;
+            } elseif (is_array($raw) && array_is_list($raw)) {
+                $schema = ['fields' => $raw];
+            } else {
+                $schema = is_array($raw) ? $raw : [];
+            }
+        }
+
+        $groups = ServerGroup::query()
+            ->where(function ($q) use ($type) {
+                $q->whereNull('allowed_server_type')
+                    ->orWhere('allowed_server_type', '')
+                    ->orWhere('allowed_server_type', $type);
+            })
+            ->orderBy('name')
+            ->get(['id', 'name', 'allowed_server_type', 'status']);
+
+        $moduleName = $module?->name ?? $type;
+
+        return view('admin.servers.create', [
+            'serverType' => $type,
+            'moduleName' => $moduleName,
+            'schema' => $schema,
+            'groups' => $groups,
+        ]);
     }
 
-    public function store(Request $request): RedirectResponse
+    public function createType(ModuleManager $modules): View
     {
-        $validated = $request->validate($this->rules());
+        $options = $modules->serverTypeOptions();
 
-        $server = Server::create($validated);
+        // Ensure Proxmox appears as Coming soon even when inactive/disabled
+        $hasProxmox = collect($options)->contains(fn ($o) => ($o['slug'] ?? $o['value'] ?? '') === 'proxmox');
+        if (! $hasProxmox) {
+            $proxmoxModule = \App\Models\Module::where('slug', 'proxmox')->first();
+            if ($proxmoxModule !== null) {
+                $options[] = [
+                    'value' => 'proxmox',
+                    'slug' => 'proxmox',
+                    'label' => $proxmoxModule->name ?? 'Proxmox VE',
+                    'group' => $proxmoxModule->manifest['group'] ?? 'virtualization',
+                    'description' => $proxmoxModule->manifest['description'] ?? 'Proxmox VE stub — coming soon.',
+                    'coming_soon' => true,
+                    'disabled' => true,
+                    'status' => $proxmoxModule->status,
+                ];
+            } else {
+                $options[] = [
+                    'value' => 'proxmox',
+                    'slug' => 'proxmox',
+                    'label' => 'Proxmox VE',
+                    'group' => 'virtualization',
+                    'description' => 'Proxmox VE stub — coming soon. Will manage PVE hosts via ticket auth + qm API.',
+                    'coming_soon' => true,
+                    'disabled' => true,
+                    'status' => 'inactive',
+                ];
+            }
+        } else {
+            // Mark proxmox as coming soon even if active (stub)
+            foreach ($options as &$opt) {
+                if (($opt['slug'] ?? $opt['value'] ?? '') === 'proxmox') {
+                    $opt['coming_soon'] = true;
+                    $opt['disabled'] = true;
+                }
+            }
+            unset($opt);
+        }
+
+        $grouped = collect($options)->groupBy('group')->all();
+
+        // Provide both variable names for view compatibility
+        return view('admin.servers.create-type', [
+            'grouped' => $grouped,
+            'groupedOptions' => $grouped,
+            'options' => $options,
+            'typeOptions' => $options,
+        ]);
+    }
+
+    public function store(Request $request, ModuleManager $modules): RedirectResponse
+    {
+        $validated = $request->validate($this->rules($modules, $request->input('server_type')));
+
+        $serverType = (string) $validated['server_type'];
+
+        // Server group compatibility
+        $groupId = $validated['server_group_id'] ?? null;
+        if ($groupId !== null && $groupId !== '') {
+            $group = ServerGroup::find($groupId);
+            if ($group !== null && $group->allowed_server_type !== null && $group->allowed_server_type !== '' && $group->allowed_server_type !== $serverType) {
+                return back()->withInput()->withErrors([
+                    'server_group_id' => "Group '{$group->name}' is locked to '{$group->allowed_server_type}' and cannot hold a '{$serverType}' server.",
+                ]);
+            }
+        }
+
+        $module = Module::where('slug', $serverType)->first();
+
+        $attributes = $this->mapValidatedToAttributes($validated, $serverType);
+        $attributes['server_type'] = $serverType;
+        $attributes['module_id'] = $module?->id;
+        $attributes['connection_status'] = 'untested';
+
+        // Hyper-V transport prefs live in connection_meta (no columns exist);
+        // seed them so the edit form + show badges reflect saved values pre-test.
+        if ($serverType === 'hyperv') {
+            $transportMeta = $this->hypervConnectionMeta($validated);
+            if ($transportMeta !== null) {
+                $attributes['connection_meta'] = $transportMeta;
+            }
+        }
+
+        // Build api_url for hyperv from host+port+use_ssl if not already set
+        if ($serverType === 'hyperv') {
+            $host = trim((string) ($validated['host'] ?? $validated['ip_address'] ?? $validated['api_url'] ?? ''));
+            // host may still be empty if top ip_address exists fallback
+            if ($host === '' && isset($validated['ip_address']) && trim((string)$validated['ip_address']) !== '') {
+                $host = trim((string) $validated['ip_address']);
+            }
+            $port = $validated['port'] ?? 5985;
+            $useSsl = filter_var($validated['use_ssl'] ?? false, FILTER_VALIDATE_BOOLEAN);
+            if ($host !== '' && ! isset($attributes['api_url'])) {
+                $scheme = $useSsl ? 'https' : 'http';
+                $attributes['api_url'] = sprintf('%s://%s:%d', $scheme, $host, (int) $port);
+            }
+            // ensure api_username comes from username alias if present
+            if (isset($validated['username']) && trim((string)$validated['username']) !== '' && empty($attributes['api_username'] ?? null)) {
+                $attributes['api_username'] = trim((string) $validated['username']);
+            }
+        }
+
+        $server = null;
+
+        DB::transaction(function () use (&$server, $attributes, $groupId) {
+            $server = Server::create($attributes);
+
+            if ($groupId !== null && $groupId !== '') {
+                ServerGroupMember::create([
+                    'server_group_id' => (int) $groupId,
+                    'server_id' => $server->id,
+                    'priority' => 0,
+                ]);
+            }
+        });
 
         return redirect()
             ->route('admin.servers.show', $server)
             ->with('success', "Server {$server->name} created.");
     }
 
-    public function edit(Server $server): View
+    public function edit(Server $server, ModuleManager $modules): View
     {
-        return view('admin.servers.edit', compact('server'));
+        $server->load('module:id,slug,name,manifest');
+
+        $type = (string) $server->server_type;
+
+        $module = $server->module ?: Module::where('slug', $type)->first();
+        $instance = $module ? $modules->resolve($module) : null;
+
+        $schema = [];
+        if ($instance !== null && method_exists($instance, 'serverConfigSchema')) {
+            $raw = $instance->serverConfigSchema();
+            if (isset($raw['fields']) && is_array($raw['fields'])) {
+                $schema = $raw;
+            } elseif (is_array($raw) && array_is_list($raw)) {
+                $schema = ['fields' => $raw];
+            } else {
+                $schema = is_array($raw) ? $raw : [];
+            }
+        }
+
+        $groups = ServerGroup::query()
+            ->where(function ($q) use ($type) {
+                $q->whereNull('allowed_server_type')
+                    ->orWhere('allowed_server_type', '')
+                    ->orWhere('allowed_server_type', $type);
+            })
+            ->orderBy('name')
+            ->get(['id', 'name', 'allowed_server_type', 'status']);
+
+        $selectedGroupId = $server->groupMembers()->first()?->server_group_id;
+
+        return view('admin.servers.edit', [
+            'server' => $server,
+            'serverType' => $type,
+            'moduleName' => $module?->name ?? $type,
+            'schema' => $schema,
+            'groups' => $groups,
+            'selectedGroupId' => $selectedGroupId,
+            'typeLocked' => true,
+        ]);
     }
 
-    public function update(Request $request, Server $server): RedirectResponse
+    public function update(Request $request, Server $server, ModuleManager $modules): RedirectResponse
     {
-        $validated = $request->validate($this->rules());
+        $validated = $request->validate($this->rules($modules, $request->input('server_type'), $server));
 
-        $server->update($validated);
+        $newType = (string) $validated['server_type'];
+        $oldType = (string) $server->server_type;
+
+        if ($newType !== $oldType) {
+            $hasAccounts = $server->hostingAccounts()->exists() || PanelAccount::where('server_id', $server->id)->exists();
+
+            if ($hasAccounts) {
+                return back()->withInput()->withErrors([
+                    'server_type' => 'Server type cannot be changed after provisioning.',
+                ]);
+            }
+
+            // Strict immutable for phase-1: any type change is rejected
+            return back()->withInput()->withErrors([
+                'server_type' => 'Server type is immutable and cannot be changed.',
+            ]);
+        }
+
+        $groupId = $validated['server_group_id'] ?? null;
+        if ($groupId !== null && $groupId !== '') {
+            $group = ServerGroup::find($groupId);
+            if ($group !== null && $group->allowed_server_type !== null && $group->allowed_server_type !== '' && $group->allowed_server_type !== $newType) {
+                return back()->withInput()->withErrors([
+                    'server_group_id' => "Group '{$group->name}' is locked to '{$group->allowed_server_type}' and cannot hold a '{$newType}' server.",
+                ]);
+            }
+        }
+
+        $attributes = $this->mapValidatedToAttributes($validated, $newType);
+        // Never allow changing server_type or module_id via update (immutable)
+        unset($attributes['server_type'], $attributes['module_id'], $attributes['connection_status']);
+
+        // Merge Hyper-V transport prefs into existing connection_meta so the
+        // port/use_ssl/verify_tls toggles actually save (host telemetry under
+        // the nested `meta` key is preserved; only transport keys are replaced).
+        if ($newType === 'hyperv') {
+            $existingMeta = is_array($server->connection_meta) ? $server->connection_meta : [];
+            $transportMeta = $this->hypervConnectionMeta($validated, $existingMeta);
+            if ($transportMeta !== null) {
+                $attributes['connection_meta'] = $transportMeta;
+            }
+        }
+
+        if ($newType === 'hyperv') {
+            $host = trim((string) ($validated['host'] ?? $validated['ip_address'] ?? $server->ip_address));
+            $port = $validated['port'] ?? null;
+            $useSsl = array_key_exists('use_ssl', $validated) ? filter_var($validated['use_ssl'], FILTER_VALIDATE_BOOLEAN) : null;
+            if ($host !== '' && $port !== null) {
+                $scheme = $useSsl ? 'https' : 'http';
+                $attributes['api_url'] = sprintf('%s://%s:%d', $scheme, $host, (int) $port);
+            }
+        }
+
+        DB::transaction(function () use ($server, $attributes, $groupId) {
+            // Only update api_password_encrypted if a non-empty password was supplied; empty means keep existing
+            if (array_key_exists('api_password_encrypted', $attributes) && $attributes['api_password_encrypted'] === null) {
+                unset($attributes['api_password_encrypted']);
+            }
+
+            $server->update($attributes);
+
+            if (array_key_exists('server_group_id', $attributes) || func_num_args() >= 0) {
+                // Sync single group membership if server_group_id was in validated
+                // We treat validated presence as intent; null/'' means detach all
+                $validatedGroups = $groupId;
+                if ($validatedGroups !== null) {
+                    // Use validated value: '' / null = detach, otherwise attach to that single group
+                    if ($validatedGroups === '' || $validatedGroups === null) {
+                        ServerGroupMember::where('server_id', $server->id)->delete();
+                    } else {
+                        ServerGroupMember::where('server_id', $server->id)->delete();
+                        ServerGroupMember::create([
+                            'server_group_id' => (int) $validatedGroups,
+                            'server_id' => $server->id,
+                            'priority' => 0,
+                        ]);
+                    }
+                }
+            }
+        });
 
         return redirect()
             ->route('admin.servers.show', $server)
             ->with('success', "Server {$server->name} updated.");
     }
 
-    private function rules(): array
+    public function testConnection(Request $request, Server $server, ModuleManager $modules): JsonResponse
     {
-        return [
-            'name' => ['required', 'string', 'max:255'],
-            'ip_address' => ['required', 'ip'],
-            'panel_type' => ['required', Rule::in(['cpanel', 'plesk', 'directadmin', 'custom'])],
-            'api_url' => ['nullable', 'url', 'max:255'],
-            'api_key' => ['nullable', 'string', 'max:255'],
+        $driver = $modules->resolveForServer($server);
+
+        if ($driver === null) {
+            return response()->json([
+                'ok' => false,
+                'message' => 'No module driver found for server type [' . $server->server_type . '].',
+            ], 422);
+        }
+
+        $result = $driver->testConnection($server);
+
+        $server->update([
+            'connection_status' => $result->ok ? 'connected' : 'failed',
+            'last_checked_at' => now(),
+            'connection_error' => $result->ok ? null : $result->message,
+            'connection_meta' => $result->meta !== [] ? $result->meta : null,
+        ]);
+
+        return response()->json([
+            'ok' => $result->ok,
+            'message' => $result->message,
+            'latencyMs' => $result->latencyMs,
+            'meta' => $result->meta,
+            'server' => $this->sanitizedServerArray($server->fresh()),
+        ]);
+    }
+
+    public function testConnectionDry(Request $request, ModuleManager $modules): JsonResponse
+    {
+        $serverType = trim((string) $request->input('server_type'));
+
+        if ($serverType === '') {
+            return response()->json(['ok' => false, 'message' => 'server_type is required.'], 422);
+        }
+
+        $activeSlugs = $this->activeSlugs($modules);
+
+        if (! in_array($serverType, $activeSlugs, true)) {
+            return response()->json(['ok' => false, 'message' => "Unknown server type [{$serverType}]."], 422);
+        }
+
+        // Validate dry-run payload generically; per-type required fields are enforced by isConfigured / client
+        $request->validate([
+            'server_type' => ['required', 'string', Rule::in($activeSlugs)],
+            'host' => ['nullable', 'string', 'max:255'],
+            'ip_address' => ['nullable', 'string', 'max:255'],
+            'api_url' => ['nullable', 'string', 'max:2000'],
             'api_username' => ['nullable', 'string', 'max:255'],
+            'username' => ['nullable', 'string', 'max:255'],
+            'api_key' => ['nullable', 'string', 'max:2000'],
+            'password' => ['nullable', 'string', 'max:2000'],
+            'api_password' => ['nullable', 'string', 'max:2000'],
+            'api_password_encrypted' => ['nullable', 'string', 'max:2000'],
+            'port' => ['nullable', 'integer', 'min:1', 'max:65535'],
+            'use_ssl' => ['nullable', 'boolean'],
+            'verify_tls' => ['nullable', 'boolean'],
+        ]);
+
+        $module = Module::where('slug', $serverType)->first();
+        $driver = $module ? $modules->resolve($module) : null;
+
+        if ($driver === null) {
+            return response()->json(['ok' => false, 'message' => 'No module driver found for server type [' . $serverType . '].'], 422);
+        }
+
+        // Build transient Server instance (not persisted) with encrypted cast handling
+        $transient = new Server();
+        $transient->server_type = $serverType;
+        $transient->module_id = $module?->id;
+
+        // Host resolution: prefer host, fallback to ip_address or api_url
+        $host = trim((string) ($request->input('host') ?? $request->input('ip_address') ?? ''));
+        $apiUrl = trim((string) $request->input('api_url'));
+
+        if ($serverType === 'hyperv') {
+            $port = $request->input('port', 5985);
+            $useSsl = filter_var($request->input('use_ssl', false), FILTER_VALIDATE_BOOLEAN);
+            $scheme = $useSsl ? 'https' : 'http';
+
+            if ($host !== '') {
+                $transient->ip_address = $host;
+                $transient->api_url = sprintf('%s://%s:%d', $scheme, $host, (int) $port);
+            } elseif ($apiUrl !== '') {
+                $transient->api_url = $apiUrl;
+                $transient->ip_address = $host !== '' ? $host : '127.0.0.1';
+            } else {
+                $transient->ip_address = '127.0.0.1';
+            }
+
+            $username = trim((string) ($request->input('username') ?? $request->input('api_username') ?? ''));
+            $password = (string) ($request->input('password') ?? $request->input('api_password') ?? $request->input('api_password_encrypted') ?? $request->input('api_key') ?? '');
+
+            $transient->api_username = $username;
+            if ($password !== '') {
+                $transient->api_password_encrypted = $password;
+            }
+        } else {
+            // Panel types: map generic fields
+            $transient->ip_address = $host !== '' ? $host : (trim((string) $request->input('ip_address')) !== '' ? trim((string) $request->input('ip_address')) : '127.0.0.1');
+            $transient->api_url = $apiUrl !== '' ? $apiUrl : null;
+            $transient->api_username = trim((string) ($request->input('api_username') ?? $request->input('username') ?? ''));
+            $apiKey = trim((string) ($request->input('api_key') ?? $request->input('password') ?? $request->input('api_password_encrypted') ?? ''));
+            $transient->api_key = $apiKey !== '' ? $apiKey : null;
+            // Also populate encrypted field if password provided for panels that use it
+            $pwd = trim((string) ($request->input('password') ?? ''));
+            if ($pwd !== '' && $serverType === 'directadmin') {
+                // DirectAdmin test uses api_key but we ensure something is set
+                $transient->api_key = $pwd;
+            }
+        }
+
+        // Verify TLS preference affects connection_meta for HyperVClient::verifyTls()
+        $verifyTls = $request->has('verify_tls') ? filter_var($request->input('verify_tls'), FILTER_VALIDATE_BOOLEAN) : true;
+        $transient->connection_meta = ['verify_tls' => $verifyTls];
+
+        $result = $driver->testConnection($transient);
+
+        return response()->json([
+            'ok' => $result->ok,
+            'message' => $result->message,
+            'latencyMs' => $result->latencyMs,
+            'meta' => $result->meta,
+        ]);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function rules(ModuleManager $modules, ?string $serverType = null, ?Server $existing = null): array
+    {
+        $activeSlugs = $this->activeSlugs($modules);
+
+        $base = [
+            'name' => ['required', 'string', 'max:255'],
+            'server_type' => ['required', 'string', Rule::in($activeSlugs)],
+            'server_group_id' => ['nullable', 'integer', 'exists:server_groups,id'],
             'max_accounts' => ['nullable', 'integer', 'min:0', 'max:4294967295'],
             'status' => ['required', Rule::in(['active', 'inactive'])],
         ];
+
+        // ip_address: required for all; allow hostname for hyperv/virtualization
+        $typeForIp = $serverType ?? $existing?->server_type;
+
+        if ($typeForIp === 'hyperv' || $typeForIp === 'proxmox') {
+            // Hyper-V: allow either ip_address (top common field) or host (schema field) to satisfy hostname/ip
+            $base['ip_address'] = ['nullable', 'string', 'max:255'];
+            $base['host'] = ['nullable', 'string', 'max:255'];
+        } else {
+            $base['ip_address'] = ['required', 'string', 'max:255'];
+            $base['host'] = ['nullable', 'string', 'max:255'];
+        }
+
+        // Common optional panel fields (always allowed so panel forms pass)
+        $base['api_url'] = ['nullable', 'string', 'max:2000'];
+        $base['api_url_url'] = []; // placeholder to avoid url rule breaking hyperv host:port
+        // Re-define api_url with url check only when not hyperv and value looks like url
+        // We keep it nullable url for panels; hyperv api_url is constructed so accept any string
+        if (($typeForIp !== 'hyperv') && ($typeForIp !== 'proxmox')) {
+            $base['api_url'] = ['nullable', 'url', 'max:2000'];
+        }
+
+        $base['api_username'] = ['nullable', 'string', 'max:255'];
+        $base['username'] = ['nullable', 'string', 'max:255'];
+        $base['api_key'] = ['nullable', 'string', 'max:2000'];
+        $base['password'] = ['nullable', 'string', 'max:2000'];
+        $base['api_password'] = ['nullable', 'string', 'max:2000'];
+        $base['api_password_encrypted'] = ['nullable', 'string', 'max:2000'];
+
+        // Type-specific refinements
+        if ($serverType === 'hyperv') {
+            $base['port'] = ['required', 'integer', 'min:1', 'max:65535'];
+            $base['use_ssl'] = ['nullable', 'boolean'];
+            $base['verify_tls'] = ['nullable', 'boolean'];
+            // HyperV schema uses `username`/`password` keys — validate those, keep api_username as nullable alias
+            $base['username'] = ['required', 'string', 'max:255'];
+            $base['password'] = ['required', 'string', 'max:2000'];
+            $base['api_username'] = ['nullable', 'string', 'max:255'];
+        } elseif ($serverType !== null && $serverType !== '') {
+            // For panel types, try to infer required keys from schema
+            try {
+                $module = Module::where('slug', $serverType)->first();
+                $instance = $module ? $modules->resolve($module) : null;
+                if ($instance !== null && method_exists($instance, 'serverConfigSchema')) {
+                    $raw = $instance->serverConfigSchema();
+                    $fields = $raw['fields'] ?? (is_array($raw) && array_is_list($raw) ? $raw : []);
+                    foreach ($fields as $field) {
+                        $key = $field['key'] ?? null;
+                        if (! is_string($key) || $key === '') {
+                            continue;
+                        }
+                        $required = (bool) ($field['required'] ?? false);
+                        // Map schema keys to request keys; skip host/port already handled
+                        if (in_array($key, ['api_url'], true)) {
+                            $base[$key] = $required ? ['required', 'url', 'max:2000'] : ['nullable', 'url', 'max:2000'];
+                        } elseif (in_array($key, ['api_username', 'username'], true)) {
+                            $k = $key === 'username' ? 'username' : 'api_username';
+                            $base[$k] = $required ? ['required', 'string', 'max:255'] : ['nullable', 'string', 'max:255'];
+                        } elseif (in_array($key, ['api_key', 'password', 'api_password'], true)) {
+                            $k = $key;
+                            $base[$k] = $required ? ['required', 'string', 'max:2000'] : ['nullable', 'string', 'max:2000'];
+                        } elseif ($key === 'verify_tls' || $key === 'use_ssl') {
+                            $base[$key] = ['nullable', 'boolean'];
+                        }
+                    }
+                }
+            } catch (\Throwable) {
+                // Keep base rules on schema failure
+            }
+        }
+
+        return $base;
+    }
+
+    /**
+     * Map validated request data to Server model attributes (column names).
+     *
+     * @param  array<string, mixed>  $validated
+     * @return array<string, mixed>
+     */
+    private function mapValidatedToAttributes(array $validated, string $serverType): array
+    {
+        $out = [];
+
+        if (array_key_exists('name', $validated)) {
+            $out['name'] = $validated['name'];
+        }
+        if (array_key_exists('status', $validated)) {
+            $out['status'] = $validated['status'];
+        }
+        if (array_key_exists('max_accounts', $validated)) {
+            $out['max_accounts'] = $validated['max_accounts'];
+        }
+        if (array_key_exists('server_group_id', $validated)) {
+            // Not a column; handled separately
+        }
+
+        // ip_address / host
+        if ($serverType === 'hyperv') {
+            $host = trim((string) ($validated['host'] ?? $validated['ip_address'] ?? ''));
+            if ($host !== '') {
+                $out['ip_address'] = $host;
+            } elseif (isset($validated['ip_address'])) {
+                $out['ip_address'] = $validated['ip_address'];
+            }
+        } else {
+            if (array_key_exists('ip_address', $validated)) {
+                $out['ip_address'] = $validated['ip_address'];
+            } elseif (array_key_exists('host', $validated) && trim((string) $validated['host']) !== '') {
+                $out['ip_address'] = trim((string) $validated['host']);
+            }
+        }
+
+        if (array_key_exists('api_url', $validated)) {
+            $out['api_url'] = $validated['api_url'] !== '' ? $validated['api_url'] : null;
+        }
+
+        // username
+        if (array_key_exists('api_username', $validated) && trim((string) $validated['api_username']) !== '') {
+            $out['api_username'] = trim((string) $validated['api_username']);
+        } elseif (array_key_exists('username', $validated) && trim((string) $validated['username']) !== '') {
+            $out['api_username'] = trim((string) $validated['username']);
+        }
+
+        // api_key vs encrypted password
+        if ($serverType === 'hyperv') {
+            $pwd = $validated['password'] ?? $validated['api_password'] ?? $validated['api_password_encrypted'] ?? null;
+            if (is_string($pwd) && trim($pwd) !== '') {
+                $out['api_password_encrypted'] = $pwd;
+            } elseif (array_key_exists('password', $validated) && $validated['password'] === '') {
+                // Explicitly empty on update means do not overwrite; handled in update()
+                $out['api_password_encrypted'] = null;
+            }
+            // HyperV also stores api_key as null to avoid leaking
+            if (array_key_exists('api_key', $validated) && $validated['api_key'] !== null && trim((string) $validated['api_key']) !== '') {
+                $out['api_key'] = trim((string) $validated['api_key']);
+            }
+        } else {
+            if (array_key_exists('api_key', $validated)) {
+                $v = $validated['api_key'];
+                $out['api_key'] = $v !== '' ? (string) $v : null;
+            }
+            // Panels that send password (directadmin encrypted etc.) may map to api_key or encrypted
+            if (array_key_exists('password', $validated) && trim((string) $validated['password']) !== '') {
+                // If server is directadmin/plesk/cpanel, password field is actually api_key
+                // but if no api_key was provided, use it
+                if (! isset($out['api_key']) || $out['api_key'] === null) {
+                    $out['api_key'] = trim((string) $validated['password']);
+                }
+            }
+            if (array_key_exists('api_password_encrypted', $validated) && trim((string) $validated['api_password_encrypted']) !== '') {
+                $out['api_password_encrypted'] = trim((string) $validated['api_password_encrypted']);
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * Transport prefs for Hyper-V (port/use_ssl/verify_tls) have no columns —
+     * they persist inside connection_meta. Returns the merged meta, or null
+     * when the request carries none of the three keys.
+     *
+     * @param  array<string, mixed>  $validated
+     * @param  array<string, mixed>|null  $existing  existing meta to merge into (update); null seeds fresh (store)
+     * @return array<string, mixed>|null
+     */
+    private function hypervConnectionMeta(array $validated, ?array $existing = null): ?array
+    {
+        $transport = [];
+
+        if (array_key_exists('port', $validated) && $validated['port'] !== null && $validated['port'] !== '') {
+            $transport['port'] = (int) $validated['port'];
+        }
+        if (array_key_exists('use_ssl', $validated) && $validated['use_ssl'] !== null && $validated['use_ssl'] !== '') {
+            $transport['use_ssl'] = filter_var($validated['use_ssl'], FILTER_VALIDATE_BOOLEAN);
+        }
+        if (array_key_exists('verify_tls', $validated) && $validated['verify_tls'] !== null && $validated['verify_tls'] !== '') {
+            $transport['verify_tls'] = filter_var($validated['verify_tls'], FILTER_VALIDATE_BOOLEAN);
+        }
+
+        if ($transport === []) {
+            return null;
+        }
+
+        return $existing !== null ? array_merge($existing, $transport) : $transport;
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function activeSlugs(ModuleManager $modules): array
+    {
+        try {
+            return array_column($modules->serverTypeOptions(), 'value');
+        } catch (\Throwable) {
+            return [];
+        }
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function sanitizedServerArray(?Server $server): ?array
+    {
+        if ($server === null) {
+            return null;
+        }
+
+        $arr = $server->toArray();
+
+        unset($arr['api_key'], $arr['api_password_encrypted'], $arr['api_password']);
+
+        // Also strip from connection_meta if it accidentally contains credentials
+        if (isset($arr['connection_meta']) && is_array($arr['connection_meta'])) {
+            unset($arr['connection_meta']['password'], $arr['connection_meta']['api_key']);
+        }
+
+        return $arr;
     }
 }
