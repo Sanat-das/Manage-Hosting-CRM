@@ -292,7 +292,19 @@ class ServerController extends Controller
         $panelAccountsTotal = \App\Models\PanelAccount::where('server_id', $server->id)->count();
         $panelAccountsActive = \App\Models\PanelAccount::where('server_id', $server->id)->where('status', 'active')->count();
 
-        return view('admin.servers.show', compact('server', 'groups', 'hostingAccounts', 'panelAccounts', 'serviceInstances', 'liveVms', 'vm', 'panelAccountsTotal', 'panelAccountsActive'));
+        // Census counts (todo 11): explicit meanings for the drift card.
+        // Provisioned VMs = panelAccounts + service_instances rows on this server.
+        // Scheduler load mirrors ServerAllocator::load(): hosting_accounts rows +
+        // live service_instances (pending/provisioning/active/suspended).
+        // Cap renders from $server->max_accounts directly (0 = Unlimited).
+        $serviceInstancesTotal = \App\Models\ServiceInstance::where('server_id', $server->id)->count();
+        $hostingAccountsTotal = $server->hostingAccounts()->count();
+        $provisionedTotal = $panelAccountsTotal + $serviceInstancesTotal;
+        $schedulerLoad = $hostingAccountsTotal + \App\Models\ServiceInstance::where('server_id', $server->id)
+            ->whereIn('status', ['pending', 'provisioning', 'active', 'suspended'])
+            ->count();
+
+        return view('admin.servers.show', compact('server', 'groups', 'hostingAccounts', 'panelAccounts', 'serviceInstances', 'liveVms', 'vm', 'panelAccountsTotal', 'panelAccountsActive', 'serviceInstancesTotal', 'hostingAccountsTotal', 'provisionedTotal', 'schedulerLoad'));
     }
 
     /**

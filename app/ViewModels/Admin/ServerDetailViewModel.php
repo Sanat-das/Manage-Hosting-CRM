@@ -91,6 +91,8 @@ final readonly class ServerDetailViewModel
         public mixed $snmpCpu = null,
         public mixed $snmpMem = null,
         public mixed $snmpDisks = null,
+        // Census provenance for the drift badge (todo 11): raw checked_at string or null.
+        public mixed $censusCheckedAt = null,
     ) {}
 
     public static function fromServer(Server $server): self
@@ -223,11 +225,16 @@ final readonly class ServerDetailViewModel
             $isStale = $ts ? $ts->diffInMinutes(now()) > 15 : false;
         }
 
-        // Census: remote vs local vs provisioned separation — never silent fallback to zero
+        // Census (todo 11): explicit meanings, never silent substitution.
+        // Remote = connection_meta.totalAccounts (Hyper-V: meta.meta.vmCounts.total wins).
+        // Local ledger = hosting_accounts.count. Provisioned VMs / scheduler load / cap
+        // are controller counts in show() — the ViewModel owns remote/local/hasDrift only.
         $localTotal = 0;
         try {
             if ($server->relationLoaded('hostingAccounts')) {
-                $localTotal = $server->hostingAccounts->count();
+                $rel = $server->getRelation('hostingAccounts');
+                // show() overwrites the relation with a paginator (one page) — total() is the ledger count.
+                $localTotal = $rel instanceof \Illuminate\Contracts\Pagination\Paginator ? $rel->total() : $rel->count();
             } else {
                 // Fallback when relation not loaded: try count() without extra query if possible
                 $localTotal = $server->hostingAccounts()->count();
@@ -257,11 +264,25 @@ final readonly class ServerDetailViewModel
             $remoteTotal = null;
         }
 
+        // Plesk stub honesty: Plesk::getServerInfo() hardcodes totalAccounts 0 (it never
+        // counts subscriptions), so a 0 from plesk is "no remote data", never "0 servers".
+        if (($server->server_type ?? null) === 'plesk' && $remoteTotal === 0) {
+            $remoteTotal = null;
+        }
+
         $hasDrift = $remoteTotal !== null && $localTotal !== null && (int) $remoteTotal !== (int) $localTotal;
 
-        // totalAccounts preserves legacy behavior: remote when present else local (cast int)
+        // totalAccounts is the last known REMOTE reading only — never substituted with the
+        // local ledger (todo 11 removed the silent fallback: missing remote renders —).
         $totalAccountsLegacy = self::hvGetAny($hv, $meta, ['totalAccounts','total_accounts']);
-        $totalAccounts = (int) ($totalAccountsLegacy ?? $localTotal);
+        $totalAccounts = $totalAccountsLegacy !== null && is_numeric($totalAccountsLegacy) ? (int) $totalAccountsLegacy : 0;
+
+        // Provenance for the drift badge: "Remote differs from ledger — last poll {checked_at}".
+        $provenance = is_array($meta['provenance'] ?? null) ? $meta['provenance'] : [];
+        $censusCheckedAt = $provenance['checked_at'] ?? $meta['checked_at'] ?? null;
+        if (! is_string($censusCheckedAt) || trim($censusCheckedAt) === '') {
+            $censusCheckedAt = null;
+        }
 
         // Hyper-V transport / RAM / storage / switches.
         $transportHost = $metaHost ?? $server->ip_address;
@@ -342,6 +363,7 @@ final readonly class ServerDetailViewModel
             snmpCpu: $snmpCpu,
             snmpMem: $snmpMem,
             snmpDisks: $snmpDisks,
+            censusCheckedAt: $censusCheckedAt,
         );
     }
 
