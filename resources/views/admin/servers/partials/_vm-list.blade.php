@@ -76,6 +76,8 @@
                     $rowExternalIdShort = $r['externalIdShort'] ?? ($rowExternalId ? mb_substr((string) $rowExternalId, 0, 8) : null);
                     if ($rowExternalIdShort === '—') $rowExternalIdShort = null;
                     $rowHostMatch = (bool) ($r['hostMatch'] ?? false);
+                    $rowHostPresence = $r['hostPresence'] ?? ($rowHostMatch ? 'matched' : 'missing');
+                    $rowAbsentLabel = $r['absentLabel'] ?? 'not on host';
                     $rowTheme = strtolower((string) ($r['liveStateTheme'] ?? ''));
                     $rowTheme = in_array($rowTheme, $liveThemes, true) ? $rowTheme : 'info';
                     $rowCpu = $r['liveCpu'] ?? null;
@@ -116,6 +118,8 @@
                     <td>
                         @if($rowHostMatch)
                             <span class="badge text-bg-{{ $rowTheme }}" style="font-size:var(--text-xs);">{{ $r['liveState'] ?? '—' }}</span>
+                        @elseif($rowHostPresence === 'absent')
+                            <span class="badge text-bg-light border text-muted fw-normal">{{ $rowAbsentLabel }}</span>
                         @else
                             <span class="badge text-bg-warning" style="font-size:var(--text-xs);"><i class="bi bi-exclamation-triangle me-1"></i>not found on host</span>
                         @endif

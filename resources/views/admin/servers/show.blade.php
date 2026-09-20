@@ -97,7 +97,7 @@
                 <p class="small text-muted mb-0">Use <strong>Re-test Connection</strong> above to refresh. Saving is allowed even when the test fails.</p>
             </div>
         @else
-            @include('admin.servers.partials._essential-panels', ['server' => $server, 'vm' => ($vm ?? null)])
+            @include('admin.servers.partials._essential-panels', ['server' => $server, 'vm' => ($vm ?? null), 'freshError' => ($freshError ?? null)])
 
             @if ($isHyperv)
                 @include('admin.servers.partials._essential-hyperv', ['server' => $server, 'vm' => ($vm ?? null)])
@@ -105,9 +105,8 @@
         @endif
     </x-adminlte-card>
 
-    @if(($server->server_type ?? $server->panel_type) === 'hyperv')
-        @include('admin.servers.partials._winrm-guide', ['serverType' => 'hyperv', 'server' => $server, 'typeSlug' => 'hyperv'])
-    @endif
+    {{-- WinRM setup guide moved to the bottom of the page (after Details / Server Groups)
+         so runtime data keeps the prime slot. --}}
 
     {{-- Removed metric-cards row: all four numbers duplicate sections below
          (Hosting/Active counts → Hosting Accounts table + Accounts/VMs card,
@@ -118,15 +117,28 @@
     @endphp
 
     @if($isVirtualization)
-    {{-- Virtualization: show VMs built on this hypervisor (PanelAccounts / ServiceInstances) --}}
+    {{-- Virtualization: one merged provisioned + live inventory table (see _vm-list partial). --}}
+    @php
+        $vmInvHeader = (isset($vmInventory) && is_array($vmInventory)) ? $vmInventory : null;
+        $vmInvHeaderRows = (is_array($vmInvHeader['rows'] ?? null)) ? $vmInvHeader['rows'] : null;
+        $vmBuiltCount = $vmInvHeaderRows !== null
+            ? count($vmInvHeaderRows)
+            : ($panelAccountsTotal ?? ($panelAccounts ?? collect())->count());
+        $vmLiveTotal = ! (bool)($vmInvHeader['liveUnavailable'] ?? true) ? ($vmInvHeader['liveTotal'] ?? null) : null;
+        $vmMissingUnexpected = (int)($vmInvHeader['missingUnexpectedCount'] ?? 0);
+    @endphp
     <x-adminlte-card icon="bi bi-cpu" title="Virtual Machines — built on {{ $server->name }}">
-        <div class="d-flex align-items-center gap-2 mb-3">
-            <span class="badge text-bg-success">{{ $panelAccountsActive ?? ($panelAccounts ?? collect())->where('status','active')->count() }} active</span>
-            <span class="badge text-bg-secondary">{{ $panelAccountsTotal ?? ($panelAccounts ?? collect())->count() }} total built</span>
-            <span class="text-muted small">Each VM is a <code>PanelAccount</code> linked to an <code>Order → ServiceInstance</code> provisioned via <code>{{ $server->server_type }}</code></span>
+        <div class="d-flex align-items-center flex-wrap gap-2 mb-3">
+            @if($vmLiveTotal !== null)
+                <span class="badge text-bg-secondary">{{ $vmLiveTotal }} on host</span>
+            @endif
+            <span class="badge {{ $vmBuiltCount > 0 ? 'text-bg-secondary' : 'text-bg-light border text-muted' }}">{{ $vmBuiltCount }} built</span>
+            @if($vmMissingUnexpected > 0)
+                <span class="badge text-bg-warning"><i class="bi bi-exclamation-triangle me-1"></i>{{ $vmMissingUnexpected }} missing on host</span>
+            @endif
+            <span class="text-muted small">Each VM is provisioned from an order and runs on this host.</span>
         </div>
-        @include('admin.servers.partials._vm-list', ['server' => $server, 'vm' => ($vm ?? null), 'panelAccounts' => ($panelAccounts ?? collect()), 'serviceInstances' => ($serviceInstances ?? collect())])
-        @include('admin.servers.partials._live-inventory', ['server' => $server, 'vm' => ($vm ?? null), 'liveVms' => ($liveVms ?? null)])
+        @include('admin.servers.partials._vm-list', ['server' => $server, 'vm' => ($vm ?? null), 'vmInventory' => ($vmInventory ?? null), 'panelAccounts' => ($panelAccounts ?? collect())])
         {{-- Removed WinRM footer hint: host:port + username already in Transport strip above. --}}
     </x-adminlte-card>
     @endif
@@ -196,6 +208,10 @@
             </x-adminlte-card>
         </div>
     </div>
+
+    @if(($server->server_type ?? $server->panel_type) === 'hyperv')
+        @include('admin.servers.partials._winrm-guide', ['serverType' => 'hyperv', 'server' => $server, 'typeSlug' => 'hyperv'])
+    @endif
 
 @push('js')
 <script>
@@ -282,6 +298,33 @@ document.addEventListener('DOMContentLoaded', function () {
             if (sk) sk.classList.add('d-none');
         }
     });
+});
+</script>
+<script>
+// VMId copy buttons in the merged VM table — same .copy-btn[data-copy] pattern
+// as admin/system/index, but a single delegated listener (rows render via partial).
+document.addEventListener('click', function (event) {
+    var btn = event.target && event.target.closest ? event.target.closest('.copy-btn[data-copy]') : null;
+    if (!btn) return;
+    var text = btn.getAttribute('data-copy') || '';
+    if (!text) return;
+    var original = btn.innerHTML;
+    var done = function () {
+        btn.innerHTML = '<i class="bi bi-check-lg"></i>';
+        setTimeout(function () { btn.innerHTML = original; }, 1200);
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(done, done);
+    } else {
+        var ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.cssText = 'position:fixed;opacity:0';
+        document.body.appendChild(ta);
+        ta.select();
+        try { document.execCommand('copy'); } catch (err) {}
+        document.body.removeChild(ta);
+        done();
+    }
 });
 </script>
 @endpush

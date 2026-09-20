@@ -57,6 +57,7 @@
     $vmCounts = $vm?->vmCounts ?? ($vmCounts ?? null);
     $isStale = $vm?->isStale ?? false;
     $hasVmCounts = $vm?->hasVmCounts ?? false;
+    $freshError = $freshError ?? null;
     // Aggregates (todo 10): pools-minus-allocations + usage/quotas, read-only rows.
     $poolAvailability = $poolAvailability ?? [];
     $consumptionRows = $consumptionRows ?? [];
@@ -134,7 +135,16 @@
             <div class="text-muted small mb-1" style="font-size:var(--text-xs); letter-spacing:0.02em; text-transform:uppercase;">Available</div>
             @if ($isStale)
                 <div class="alert alert-warning py-1 px-2 mb-2 small" data-available="stale-badge">
-                    <i class="bi bi-clock-history me-1"></i>@if ($server->last_checked_at)Live data may be stale — last checked {{ $server->last_checked_at->diffForHumans() }}.@elseLive data may be stale — never checked.@endif Re-test to refresh.
+                    <i class="bi bi-clock-history me-1"></i>
+                    @if ($server->last_checked_at)
+                        Live data may be stale — last checked {{ $server->last_checked_at->diffForHumans() }}.
+                    @else
+                        Live data may be stale — never checked.
+                    @endif
+                    @if (! empty($freshError))
+                        <br>Last refresh failed: {{ $freshError }}
+                    @endif
+                    Re-test to refresh.
                     <button type="button" class="btn btn-sm btn-outline-warning ms-2" onclick="document.getElementById('retestBtn')?.click()">Re-test now</button>
                 </div>
             @elseif ($isHyperv && ! $hasVmCounts)

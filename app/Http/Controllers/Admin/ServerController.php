@@ -93,10 +93,6 @@ class ServerController extends Controller
             ->with(['serviceInstance.order:id,order_number,status', 'serviceInstance.customer.user:id,email,first_name,last_name'])
             ->orderByDesc('id')
             ->paginate($perPage, ['*'], 'vms_page');
-        $serviceInstances = \App\Models\ServiceInstance::where('server_id', $server->id)
-            ->with(['customer.user:id,email,first_name,last_name', 'order:id,order_number,status', 'order.product:id,name'])
-            ->orderByDesc('id')
-            ->paginate($perPage, ['*'], 'services_page');
 
         $groups = $server->groupMembers()->with('group:id,name,status,allowed_server_type')->get();
 
@@ -117,9 +113,14 @@ class ServerController extends Controller
             }
         }
 
+        // Correlate provisioned PanelAccount rows with the live host inventory
+        // for the merged VM table (pure presenter — no Blade owned here).
+        $vmInventory = \App\ViewModels\Admin\ServerVmInventoryPresenter::build($panelAccounts->items(), $liveVms);
+
         // ── Fresh resolve per GET (todo 7) — bounded, graceful degrade, idempotent persist ──
         $freshFailed = false;
         $freshDto = null;
+        $freshError = null;
         $serverType = (string) ($server->server_type ?? $server->panel_type ?? '');
         $isProxmox = $serverType === 'proxmox';
 
@@ -140,11 +141,15 @@ class ServerController extends Controller
                     $hasError = is_array($dto->meta) && isset($dto->meta['error']) && trim((string) $dto->meta['error']) !== '';
                     if ($hasError) {
                         $freshFailed = true;
+                        $errorMsg = trim((string) $dto->meta['error']);
+                        $freshError = $errorMsg !== '' ? \Illuminate\Support\Str::limit($errorMsg, 200) : 'Live fetch failed.';
                     } else {
                         $freshDto = $dto;
                     }
-                } catch (\Throwable) {
+                } catch (\Throwable $e) {
                     $freshFailed = true;
+                    $errorMsg = trim((string) $e->getMessage());
+                    $freshError = $errorMsg !== '' ? \Illuminate\Support\Str::limit($errorMsg, 200) : 'Live fetch failed.';
                 }
             } elseif (in_array($serverType, ['cpanel', 'plesk', 'directadmin', 'virtualizor'], true)) {
                 // Panels via getServerInfo bounded at 5s for HTTP drivers, degrade to persisted on failure/timeout
@@ -160,12 +165,16 @@ class ServerController extends Controller
                         $hasError = is_array($dto->meta) && isset($dto->meta['error']) && trim((string) $dto->meta['error']) !== '';
                         if ($hasError) {
                             $freshFailed = true;
+                            $errorMsg = trim((string) $dto->meta['error']);
+                            $freshError = $errorMsg !== '' ? \Illuminate\Support\Str::limit($errorMsg, 200) : 'Live fetch failed.';
                         } else {
                             $freshDto = $dto;
                         }
                     }
-                } catch (\Throwable) {
+                } catch (\Throwable $e) {
                     $freshFailed = true;
+                    $errorMsg = trim((string) $e->getMessage());
+                    $freshError = $errorMsg !== '' ? \Illuminate\Support\Str::limit($errorMsg, 200) : 'Live fetch failed.';
                 }
             }
         } else {
@@ -317,7 +326,7 @@ class ServerController extends Controller
             $consumptionRows = [];
         }
 
-        return view('admin.servers.show', compact('server', 'groups', 'hostingAccounts', 'panelAccounts', 'liveVms', 'vm', 'vmInventory', 'panelAccountsTotal', 'panelAccountsActive', 'serviceInstancesTotal', 'hostingAccountsTotal', 'provisionedTotal', 'schedulerLoad', 'poolAvailability', 'consumptionRows'));
+        return view('admin.servers.show', compact('server', 'groups', 'hostingAccounts', 'panelAccounts', 'liveVms', 'vm', 'vmInventory', 'panelAccountsTotal', 'panelAccountsActive', 'serviceInstancesTotal', 'hostingAccountsTotal', 'provisionedTotal', 'schedulerLoad', 'poolAvailability', 'consumptionRows', 'freshError'));
     }
 
     /**
@@ -1080,11 +1089,25 @@ class ServerController extends Controller
 
         $result = $driver->testConnection($server);
 
+        // Deep-merge incoming meta over persisted telemetry: keys where BOTH
+        // sides are arrays merge recursively, otherwise the incoming value
+        // replaces. A partial-success Re-test (transport only) must never
+        // wipe persisted telemetry (version/vmCounts/totalAccounts).
+        $existingMeta = is_array($server->connection_meta) ? $server->connection_meta : [];
+        $merged = $existingMeta;
+        foreach ($result->meta as $key => $value) {
+            if (is_array($value) && isset($merged[$key]) && is_array($merged[$key])) {
+                $merged[$key] = array_replace_recursive($merged[$key], $value);
+            } else {
+                $merged[$key] = $value;
+            }
+        }
+
         $server->update([
             'connection_status' => $result->ok ? 'connected' : 'failed',
             'last_checked_at' => now(),
             'connection_error' => $result->ok ? null : $result->message,
-            'connection_meta' => $result->meta !== [] ? $result->meta : null,
+            'connection_meta' => $merged !== [] ? $merged : null,
         ]);
 
         return response()->json([

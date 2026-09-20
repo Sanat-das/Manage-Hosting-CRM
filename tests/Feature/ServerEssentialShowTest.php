@@ -206,4 +206,62 @@ final class ServerEssentialShowTest extends TestCase
 
         fwrite(STDERR, "\n[EVIDENCE supplement-empty] panel server renders no Hyper-V supplement\n");
     }
+
+    public function test_stale_banner_never_checked_without_else_leak(): void
+    {
+        $server = $this->makeServer(['last_checked_at' => null]);
+
+        $vm = ServerDetailViewModel::fromServer($server->refresh());
+        $vars = get_object_vars($vm);
+        $vars['isStale'] = true;
+        $vm = new ServerDetailViewModel(...$vars);
+
+        $html = view('admin.servers.partials._essential-panels', [
+            'server' => $server->refresh(), 'vm' => $vm, 'freshError' => null,
+        ])->render();
+
+        $this->assertStringContainsString('Live data may be stale — never checked.', $html);
+        $this->assertStringNotContainsString('@else', $html);
+        $this->assertStringNotContainsString('last checked', $html);
+
+        fwrite(STDERR, "\n[EVIDENCE stale-never-checked] banner shows never-checked copy, no @else leak\n");
+    }
+
+    public function test_stale_banner_last_checked_without_else_leak(): void
+    {
+        $server = $this->makeServer(['last_checked_at' => now()->subMinutes(10)]);
+
+        $vm = ServerDetailViewModel::fromServer($server->refresh());
+        $vars = get_object_vars($vm);
+        $vars['isStale'] = true;
+        $vm = new ServerDetailViewModel(...$vars);
+
+        $html = view('admin.servers.partials._essential-panels', [
+            'server' => $server->refresh(), 'vm' => $vm, 'freshError' => null,
+        ])->render();
+
+        $this->assertStringContainsString('Live data may be stale — last checked', $html);
+        $this->assertStringNotContainsString('@else', $html);
+        $this->assertStringNotContainsString('never checked', $html);
+
+        fwrite(STDERR, "\n[EVIDENCE stale-last-checked] banner shows last-checked copy, no @else leak\n");
+    }
+
+    public function test_stale_banner_renders_fresh_error_reason(): void
+    {
+        $server = $this->makeServer(['last_checked_at' => now()->subMinutes(10)]);
+
+        $vm = ServerDetailViewModel::fromServer($server->refresh());
+        $vars = get_object_vars($vm);
+        $vars['isStale'] = true;
+        $vm = new ServerDetailViewModel(...$vars);
+
+        $html = view('admin.servers.partials._essential-panels', [
+            'server' => $server->refresh(), 'vm' => $vm, 'freshError' => 'WinRM timed out after 8s',
+        ])->render();
+
+        $this->assertStringContainsString('Last refresh failed: WinRM timed out after 8s', $html);
+
+        fwrite(STDERR, "\n[EVIDENCE stale-fresh-error] banner shows last refresh failure reason\n");
+    }
 }
