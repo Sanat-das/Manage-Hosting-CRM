@@ -7,6 +7,9 @@ namespace Modules\Virtualizor;
 use App\Contracts\Module\AbstractPanelModule;
 use App\Contracts\Module\PanelException;
 use App\Contracts\Module\PanelProvisionRequest;
+use App\Contracts\Module\ServerConnectionResult;
+use App\Contracts\Module\ServerInfoDTO;
+use App\Contracts\Module\TestableServerModule;
 use App\Models\PanelAccount;
 use App\Models\Server;
 use Modules\Virtualizor\Services\VirtualizorClient;
@@ -26,7 +29,7 @@ use Modules\Virtualizor\Services\VirtualizorClient;
  * The plan (`plid`) and OS template (`osid`) are per-product config: they are
  * Virtualizor's own numeric ids, which vary per installation.
  */
-final class Virtualizor extends AbstractPanelModule
+final class Virtualizor extends AbstractPanelModule implements TestableServerModule
 {
     public function configSchema(): array
     {
@@ -37,10 +40,95 @@ final class Virtualizor extends AbstractPanelModule
                 ['key' => 'virt', 'label' => 'Virtualization type', 'type' => 'select', 'default' => 'kvm', 'options' => [
                     'kvm' => 'KVM', 'openvz' => 'OpenVZ', 'lxc' => 'LXC', 'proxk' => 'Proxmox KVM', 'proxl' => 'Proxmox LXC',
                 ]],
+                ['key' => 'cpu', 'label' => 'vCPUs', 'type' => 'number', 'required' => false, 'default' => 2],
+                ['key' => 'ram', 'label' => 'RAM (MB)', 'type' => 'number', 'required' => false, 'default' => 2048],
+                ['key' => 'disk', 'label' => 'Disk (GB)', 'type' => 'number', 'required' => false, 'default' => 50],
                 ['key' => 'contact_email', 'label' => 'Contact email override', 'type' => 'text', 'required' => false, 'default' => ''],
                 ['key' => 'verify_tls', 'label' => 'Verify the Virtualizor TLS certificate', 'type' => 'checkbox', 'default' => true],
             ],
         ];
+    }
+
+    public function serverConfigSchema(): array
+    {
+        return [
+            'fields' => [
+                ['key' => 'api_url', 'label' => 'Virtualizor URL (e.g. https://vps.example.net:4085)', 'type' => 'text', 'required' => false, 'default' => ''],
+                ['key' => 'api_username', 'label' => 'Virtualizor API key', 'type' => 'text', 'required' => true],
+                ['key' => 'api_key', 'label' => 'Virtualizor API pass', 'type' => 'password', 'required' => true, 'encrypted' => true],
+                ['key' => 'verify_tls', 'label' => 'Verify Virtualizor TLS certificate', 'type' => 'checkbox', 'default' => true],
+            ],
+        ];
+    }
+
+    public function testConnection(Server $server): ServerConnectionResult
+    {
+        $start = (int) (microtime(true) * 1000);
+
+        try {
+            $data = $this->serverClient($server)->call('listvs');
+            $latency = (int) (microtime(true) * 1000) - $start;
+
+            // Todo 13: error-only raw — the VS list never persists on
+            // success; provenance does.
+            return ServerConnectionResult::ok(
+                message: 'Connected to Virtualizor',
+                latencyMs: $latency,
+                meta: static::capMeta(static::successProvenance('listvs')),
+            );
+        } catch (PanelException $e) {
+            $latency = (int) (microtime(true) * 1000) - $start;
+
+            return ServerConnectionResult::fail($e->getMessage(), $latency, static::errorMeta($e->getMessage()));
+        }
+    }
+
+    public function getServerInfo(Server $server): ServerInfoDTO
+    {
+        $start = (int) (microtime(true) * 1000);
+
+        try {
+            $data = $this->serverClient($server)->call('listvs');
+            $latency = (int) (microtime(true) * 1000) - $start;
+
+            // listvs returns vs array or vs=>[...]; count them.
+            $vs = $data['vs'] ?? $data['data']['vs'] ?? $data;
+            $totalAccounts = is_array($vs) ? count(array_filter($vs, fn ($v) => is_array($v) || is_numeric($v))) : 0;
+            // Fallback: if vs not found, count top-level numeric keys
+            if ($totalAccounts === 0 && is_array($data)) {
+                // Virtualizor sometimes returns {vs: {1: {...}, 2: {...}}}
+                $maybe = $data['vs'] ?? null;
+                if (is_array($maybe)) {
+                    $totalAccounts = count($maybe);
+                }
+            }
+
+            return new ServerInfoDTO(
+                hostname: (string) ($server->api_url ?: $server->ip_address),
+                version: (string) ($data['version'] ?? ''),
+                ipAddress: (string) $server->ip_address,
+                totalAccounts: $totalAccounts,
+                latencyMs: $latency,
+                // Todo 13: error-only raw — totals ride the DTO top level;
+                // the VS list never persists on success.
+                meta: static::successProvenance(
+                    'listvs',
+                    isset($data['version']) && is_scalar($data['version']) && trim((string) $data['version']) !== '' ? (string) $data['version'] : null,
+                    trim((string) ($server->api_url ?: $server->ip_address)) !== '' ? trim((string) ($server->api_url ?: $server->ip_address)) : null,
+                ),
+            );
+        } catch (PanelException $e) {
+            $latency = (int) (microtime(true) * 1000) - $start;
+
+            return new ServerInfoDTO(
+                hostname: (string) ($server->api_url ?: $server->ip_address),
+                version: '',
+                ipAddress: (string) $server->ip_address,
+                totalAccounts: 0,
+                latencyMs: $latency,
+                meta: static::errorMeta($e->getMessage()),
+            );
+        }
     }
 
     protected function panel(): string
@@ -76,6 +164,16 @@ final class Virtualizor extends AbstractPanelModule
             throw new PanelException('Virtualizor needs an OS template ID (osid) - set one on the product\'s module config.');
         }
 
+        // Canonical cpu/ram/disk from merged provisioning config (snapshot cpu/ram/disk
+        // merged under module config by ProvisioningDispatcher). Keep legacy fallbacks
+        // mirroring Hyper-V (vcpus / memory / disk_gb) and defaults 2/2048/50.
+        $cpuRaw = $request->config('cpu') !== '' ? $request->config('cpu') : $request->config('vcpus', '2');
+        $ramRaw = $request->config('ram') !== '' ? $request->config('ram') : $request->config('memory', '2048');
+        $diskRaw = $request->config('disk') !== '' ? $request->config('disk') : $request->config('disk_gb', '50');
+        $cpu = max(1, (int) $cpuRaw);
+        $ramMb = max(128, (int) $ramRaw);
+        $diskGb = max(1, (int) $diskRaw);
+
         $result = $this->client($request->server, $request->config)->call('addvs', [], [
             'virt' => $request->config('virt', 'kvm'),
             'user_email' => $request->contactEmail,
@@ -86,6 +184,13 @@ final class Virtualizor extends AbstractPanelModule
             'osid' => $osid,
             'serid' => 0,
             'addvps' => 1,
+            // Provisioning overrides (plan still required — these tune the VPS when the provider honours them).
+            'cpu' => $cpu,
+            'ram' => $ramMb,
+            'disk' => $diskGb,
+            // Virtualizor-idiomatic aliases for the same values.
+            'cores' => $cpu,
+            'space' => $diskGb,
         ]);
 
         $vpsId = $result['vpsid'] ?? ($result['done']['vpsid'] ?? null);
@@ -99,6 +204,11 @@ final class Virtualizor extends AbstractPanelModule
         return array_filter([
             'external_id' => (string) $vpsId,
             'ip' => $result['ips'][0] ?? ($result['done']['ips'][0] ?? null),
+            'cpu' => $cpu,
+            'ram' => $ramMb,
+            'ramMb' => $ramMb,
+            'disk' => $diskGb,
+            'diskGb' => $diskGb,
         ], static fn ($v) => $v !== null);
     }
 
@@ -140,5 +250,10 @@ final class Virtualizor extends AbstractPanelModule
             $server,
             verifyTls: filter_var($config['verify_tls'] ?? true, FILTER_VALIDATE_BOOL),
         );
+    }
+
+    private function serverClient(Server $server): VirtualizorClient
+    {
+        return new VirtualizorClient($server, verifyTls: true);
     }
 }

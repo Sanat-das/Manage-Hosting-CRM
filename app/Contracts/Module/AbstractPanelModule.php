@@ -71,6 +71,169 @@ abstract class AbstractPanelModule extends AbstractModule implements Provisionin
         return 'set api_username and api_key on the server';
     }
 
+    // ────────────── connection-meta hygiene (todo 13: error-only raw) ──────────────
+    //
+    // Success payloads persist extracted totals (DTO top level: version,
+    // totalAccounts) plus a ≤3-key provenance allow-list (source endpoint +
+    // version/hostname origin). Full panel raws (account lists, package/IP
+    // arrays) never persist on success — they are unbounded debug payloads,
+    // not billing records. Failure keeps a compact error plus a capped,
+    // secret-scrubbed raw excerpt so a failed poll stays actionable.
+    // testConnection() persists driver meta verbatim to
+    // servers.connection_meta, so every driver builds its meta through these
+    // helpers; capMeta() is the final assert (scrub + byte ceiling).
+
+    /** Persisted connection_meta ceiling (bytes of its JSON encoding). */
+    public const CONNECTION_META_MAX_BYTES = 16384;
+
+    /** Failure-path raw excerpt ceiling (bytes). */
+    public const META_RAW_EXCERPT_MAX_BYTES = 2048;
+
+    /** Failure-message ceiling (characters). */
+    public const META_ERROR_MAX_CHARS = 1000;
+
+    /** Keys never persisted inside connection_meta (case-insensitive). */
+    protected const META_SECRET_KEYS = [
+        'password', 'passwd', 'passwd2', 'pass', 'pwd',
+        'api_key', 'apikey', 'api-key', 'api_secret', 'api_pass',
+        'secret', 'client_secret', 'token', 'access_token', 'refresh_token',
+        'auth_token', 'authorization', 'auth', 'session', 'session_id',
+        'cookie', 'cookies', 'private_key', 'credentials',
+    ];
+
+    /**
+     * Success meta: provenance allow-list only (≤3 keys by construction).
+     *
+     * @return array{provenance: array<string, string>}
+     */
+    public static function successProvenance(string $source, ?string $version = null, ?string $hostname = null): array
+    {
+        $provenance = array_filter(
+            ['source' => $source, 'version' => $version, 'hostname' => $hostname],
+            static fn ($v) => is_string($v) && trim($v) !== ''
+        );
+
+        return ['provenance' => $provenance];
+    }
+
+    /**
+     * Failure meta: compact error plus an optional capped, secret-scrubbed
+     * raw excerpt. The excerpt exists so a failed poll retains something
+     * actionable; it is never the full payload.
+     *
+     * @return array{error: string, raw_excerpt?: string}
+     */
+    public static function errorMeta(string $message, mixed $raw = null): array
+    {
+        $message = trim($message);
+
+        $meta = ['error' => mb_substr($message !== '' ? $message : 'Panel request failed.', 0, static::META_ERROR_MAX_CHARS)];
+
+        if ($raw !== null) {
+            $meta['raw_excerpt'] = static::rawExcerpt($raw);
+        }
+
+        return static::capMeta($meta);
+    }
+
+    /**
+     * Final assert for anything persisted to servers.connection_meta:
+     * secret-scrubbed and within the byte ceiling. Shedding order keeps the
+     * actionable parts (error + provenance) and drops bulk first.
+     *
+     * @param  array<string, mixed>  $meta
+     * @return array<string, mixed>
+     */
+    public static function capMeta(array $meta): array
+    {
+        $meta = static::scrubMetaSecrets($meta);
+
+        if (static::metaBytes($meta) <= static::CONNECTION_META_MAX_BYTES) {
+            return $meta;
+        }
+
+        unset($meta['raw_excerpt']);
+
+        if (static::metaBytes($meta) <= static::CONNECTION_META_MAX_BYTES) {
+            return $meta;
+        }
+
+        if (isset($meta['error']) && is_string($meta['error'])) {
+            $meta['error'] = mb_substr($meta['error'], 0, 200);
+        }
+
+        if (static::metaBytes($meta) <= static::CONNECTION_META_MAX_BYTES) {
+            return $meta;
+        }
+
+        // Pathological shape (e.g. a giant nested structure smuggled past the
+        // allow-list): keep only the actionable core.
+        $core = [];
+
+        if (isset($meta['error']) && is_string($meta['error']) && $meta['error'] !== '') {
+            $core['error'] = mb_substr($meta['error'], 0, 200);
+        }
+
+        if (isset($meta['provenance']) && is_array($meta['provenance'])) {
+            $core['provenance'] = $meta['provenance'];
+        }
+
+        return $core === [] ? ['error' => 'Panel request failed.'] : $core;
+    }
+
+    /**
+     * Recursively replace secret-keyed values with '***'.
+     *
+     * @param  array<string, mixed>  $data
+     * @return array<string, mixed>
+     */
+    public static function scrubMetaSecrets(array $data): array
+    {
+        $out = [];
+
+        foreach ($data as $k => $v) {
+            if (is_string($k) && in_array(strtolower($k), static::META_SECRET_KEYS, true)) {
+                $out[$k] = '***';
+                continue;
+            }
+
+            $out[$k] = is_array($v) ? static::scrubMetaSecrets($v) : $v;
+        }
+
+        return $out;
+    }
+
+    /** Byte-safe capped excerpt of a raw panel payload. */
+    public static function rawExcerpt(mixed $raw): string
+    {
+        if (is_string($raw)) {
+            $text = $raw;
+        } else {
+            if (is_array($raw)) {
+                $raw = static::scrubMetaSecrets($raw);
+            }
+
+            $json = json_encode($raw, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+            $text = is_string($json) ? $json : gettype($raw);
+        }
+
+        $text = \App\Support\SecretRedactor::redact($text);
+
+        if (function_exists('mb_strcut')) {
+            return mb_strcut($text, 0, static::META_RAW_EXCERPT_MAX_BYTES, 'UTF-8');
+        }
+
+        return substr($text, 0, static::META_RAW_EXCERPT_MAX_BYTES);
+    }
+
+    /**
+     * @param  array<string, mixed>  $meta
+     */
+    public static function metaBytes(array $meta): int
+    {
+        return strlen((string) json_encode($meta, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
+    }
+
     // ─────────────────────────── ProvisioningModule ───────────────────────────
 
     public function provision(ServiceInstance $service, array $config): ProvisioningResult
