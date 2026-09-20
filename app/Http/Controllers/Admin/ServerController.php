@@ -304,7 +304,20 @@ class ServerController extends Controller
             ->whereIn('status', ['pending', 'provisioning', 'active', 'suspended'])
             ->count();
 
-        return view('admin.servers.show', compact('server', 'groups', 'hostingAccounts', 'panelAccounts', 'serviceInstances', 'liveVms', 'vm', 'panelAccountsTotal', 'panelAccountsActive', 'serviceInstancesTotal', 'hostingAccountsTotal', 'provisionedTotal', 'schedulerLoad'));
+        // ΓöÇΓöÇ Aggregates (todo 10): pools-minus-allocations + usage/quotas, read-only ΓöÇΓöÇ
+        // Entitlement vs metered sources stay labeled, never merged; any failure
+        // degrades to empty rows so the page (and todos 7/9/11) never breaks.
+        $poolAvailability = [];
+        $consumptionRows = [];
+        try {
+            $poolAvailability = $this->poolAvailabilityForServer((int) $server->id);
+            $consumptionRows = $this->consumptionForServer($server);
+        } catch (\Throwable) {
+            $poolAvailability = [];
+            $consumptionRows = [];
+        }
+
+        return view('admin.servers.show', compact('server', 'groups', 'hostingAccounts', 'panelAccounts', 'liveVms', 'vm', 'vmInventory', 'panelAccountsTotal', 'panelAccountsActive', 'serviceInstancesTotal', 'hostingAccountsTotal', 'provisionedTotal', 'schedulerLoad', 'poolAvailability', 'consumptionRows'));
     }
 
     /**
@@ -503,6 +516,249 @@ class ServerController extends Controller
         }
 
         return $total > 0 ? round($used / $total * 100, 2) : null;
+    }
+
+    /**
+     * Todo 10 aggregates ΓÇö entitlement Available, read-only.
+     *
+     * Available = SUM(resource_pools by server_id) minus SUM(resource_allocations
+     * with status IN [allocated, active] only), grouped by pool_type+unit so
+     * values in different units are never added together.
+     *
+     * @return list<array{pool_type:string,unit:string,total:float,allocated:float,available:float,display:string}>
+     */
+    private function poolAvailabilityForServer(int $serverId): array
+    {
+        $pools = DB::table('resource_pools')
+            ->where('server_id', $serverId)
+            ->get(['id', 'pool_type', 'total_capacity', 'unit'])
+            ->map(fn ($row) => [
+                'id' => (int) $row->id,
+                'pool_type' => (string) ($row->pool_type ?? ''),
+                'unit' => (string) ($row->unit ?? ''),
+                'total_capacity' => $row->total_capacity,
+            ])
+            ->all();
+
+        $poolIds = array_column($pools, 'id');
+
+        $allocs = $poolIds === []
+            ? []
+            : DB::table('resource_allocations')
+                ->whereIn('pool_id', $poolIds)
+                ->whereIn('status', ['allocated', 'active'])
+                ->get(['pool_id', 'quantity_allocated', 'status'])
+                ->map(fn ($row) => [
+                    'pool_id' => (int) $row->pool_id,
+                    'quantity_allocated' => $row->quantity_allocated,
+                    'status' => (string) ($row->status ?? ''),
+                ])
+                ->all();
+
+        return self::summarizePoolAvailability($pools, $allocs);
+    }
+
+    /**
+     * Todo 10 aggregates ΓÇö Consumption rows, read-only.
+     *
+     * Metered usage_records (via server ΓåÆ service_instances ΓåÆ usage_records,
+     * recent-50 per metric within the current calendar month and open billing
+     * window) plus legacy hosting quota sums, each as a separately labeled row.
+     *
+     * @return list<array{source:string,label:string,metric:string,value:float,unit:string,display:string}>
+     */
+    private function consumptionForServer(Server $server): array
+    {
+        $rows = [];
+
+        $serviceIds = DB::table('service_instances')
+            ->where('server_id', $server->id)
+            ->whereNull('deleted_at')
+            ->pluck('id')
+            ->all();
+
+        if ($serviceIds !== []) {
+            $today = today()->toDateString();
+            $monthStart = now()->startOfMonth()->toDateTimeString();
+            $metrics = DB::table('usage_records')
+                ->whereIn('service_id', $serviceIds)
+                ->distinct()
+                ->pluck('metric')
+                ->all();
+
+            $records = [];
+            foreach ($metrics as $metric) {
+                $recent = DB::table('usage_records')
+                    ->whereIn('service_id', $serviceIds)
+                    ->where('metric', $metric)
+                    ->where('recorded_at', '>=', $monthStart)
+                    ->where(function ($query) use ($today) {
+                        $query->whereNull('billing_period_end')
+                            ->orWhere('billing_period_end', '>=', $today);
+                    })
+                    ->orderByDesc('recorded_at')
+                    ->limit(50)
+                    ->get(['metric', 'value', 'unit'])
+                    ->map(fn ($row) => [
+                        'metric' => (string) ($row->metric ?? ''),
+                        'value' => $row->value,
+                        'unit' => (string) ($row->unit ?? ''),
+                    ])
+                    ->all();
+                array_push($records, ...$recent);
+            }
+            array_push($rows, ...self::summarizeUsageByMetric($records));
+        }
+
+        // Legacy caps: hosting quota sums (quotas are stored in MB ΓÇö see
+        // admin.hosting.show) as separate labeled rows, never merged metered.
+        $quota = DB::table('hosting_accounts')
+            ->where('server_id', $server->id)
+            ->selectRaw('COALESCE(SUM(disk_quota),0) as disk_quota, COALESCE(SUM(disk_used),0) as disk_used, COALESCE(SUM(bandwidth_quota),0) as bandwidth_quota, COALESCE(SUM(bandwidth_used),0) as bandwidth_used')
+            ->first();
+
+        foreach ([
+            'quota:disk_quota' => [(float) ($quota->disk_quota ?? 0), 'MB'],
+            'quota:disk_used' => [(float) ($quota->disk_used ?? 0), 'MB'],
+            'quota:bandwidth_quota' => [(float) ($quota->bandwidth_quota ?? 0), 'MB'],
+            'quota:bandwidth_used' => [(float) ($quota->bandwidth_used ?? 0), 'MB'],
+        ] as $label => [$value, $unit]) {
+            $rows[] = [
+                'source' => 'legacy',
+                'label' => $label,
+                'metric' => $label,
+                'value' => $value,
+                'unit' => $unit,
+                'display' => self::formatAggregateValue($value, $unit),
+            ];
+        }
+
+        return $rows;
+    }
+
+    /**
+     * Pure pool math behind poolAvailabilityForServer (DB-free for QA).
+     * Allocations with status outside [allocated, active] are ignored, as are
+     * rows pointing at pools that do not belong to this server.
+     *
+     * @param  list<array{id:int,pool_type:string,unit:mixed,total_capacity:mixed}>  $pools
+     * @param  list<array{pool_id:int,quantity_allocated:mixed,status:string}>  $allocs
+     * @return list<array{pool_type:string,unit:string,total:float,allocated:float,available:float,display:string}>
+     */
+    public static function summarizePoolAvailability(array $pools, array $allocs): array
+    {
+        $groups = [];
+        $poolKeyById = [];
+
+        foreach ($pools as $pool) {
+            $poolType = (string) ($pool['pool_type'] ?? '');
+            $unit = (string) ($pool['unit'] ?? '');
+            $key = strtolower(trim($poolType))."\0".strtolower(trim($unit));
+            $poolKeyById[(int) ($pool['id'] ?? 0)] = $key;
+            if (! isset($groups[$key])) {
+                $groups[$key] = ['pool_type' => $poolType, 'unit' => $unit, 'total' => 0.0, 'allocated' => 0.0];
+            }
+            $groups[$key]['total'] += is_numeric($pool['total_capacity'] ?? null) ? (float) $pool['total_capacity'] : 0.0;
+        }
+
+        foreach ($allocs as $alloc) {
+            if (! in_array(strtolower(trim((string) ($alloc['status'] ?? ''))), ['allocated', 'active'], true)) {
+                continue;
+            }
+            $key = $poolKeyById[(int) ($alloc['pool_id'] ?? 0)] ?? null;
+            if ($key === null || ! isset($groups[$key])) {
+                continue;
+            }
+            $groups[$key]['allocated'] += is_numeric($alloc['quantity_allocated'] ?? null) ? (float) $alloc['quantity_allocated'] : 0.0;
+        }
+
+        $rows = [];
+        foreach ($groups as $group) {
+            $available = $group['total'] - $group['allocated'];
+            $rows[] = [
+                'pool_type' => $group['pool_type'],
+                'unit' => $group['unit'],
+                'total' => $group['total'],
+                'allocated' => $group['allocated'],
+                'available' => $available,
+                'display' => self::formatAggregateValue($available, $group['unit']),
+            ];
+        }
+
+        usort($rows, fn ($a, $b) => [$a['pool_type'], $a['unit']] <=> [$b['pool_type'], $b['unit']]);
+
+        return $rows;
+    }
+
+    /**
+     * Pure usage math behind consumptionForServer (DB-free for QA).
+     * Sums are grouped by metric+unit ΓÇö never across units.
+     *
+     * @param  list<array{metric:string,value:mixed,unit:mixed}>  $records
+     * @return list<array{source:string,label:string,metric:string,value:float,unit:string,display:string}>
+     */
+    public static function summarizeUsageByMetric(array $records): array
+    {
+        $groups = [];
+
+        foreach ($records as $record) {
+            $metric = (string) ($record['metric'] ?? '');
+            $unit = (string) ($record['unit'] ?? '');
+            $key = $metric."\0".strtolower(trim($unit));
+            if (! isset($groups[$key])) {
+                $groups[$key] = ['metric' => $metric, 'unit' => $unit, 'value' => 0.0];
+            }
+            $groups[$key]['value'] += is_numeric($record['value'] ?? null) ? (float) $record['value'] : 0.0;
+        }
+
+        $rows = [];
+        foreach ($groups as $group) {
+            $rows[] = [
+                'source' => 'metered',
+                'label' => 'usage:'.$group['metric'],
+                'metric' => $group['metric'],
+                'value' => $group['value'],
+                'unit' => $group['unit'],
+                'display' => self::formatAggregateValue($group['value'], $group['unit']),
+            ];
+        }
+
+        usort($rows, fn ($a, $b) => [$a['metric'], $a['unit']] <=> [$b['metric'], $b['unit']]);
+
+        return $rows;
+    }
+
+    /**
+     * Display one aggregate value. fmtBytes converts ONLY within the
+     * byte-dimension (B/KB/MB/GB/TB/PB); every other unit ΓÇö including unknown
+     * ones ΓÇö renders verbatim as "value unit" and never throws.
+     */
+    public static function formatAggregateValue(mixed $value, mixed $unit): string
+    {
+        if (! is_numeric($value)) {
+            return is_scalar($value) ? (string) $value : 'ΓÇö';
+        }
+
+        $numeric = (float) $value;
+        $label = trim((string) ($unit ?? ''));
+
+        $byteFactor = [
+            'b' => 1, 'byte' => 1, 'bytes' => 1,
+            'kb' => 1024, 'mb' => 1048576, 'gb' => 1073741824,
+            'tb' => 1099511627776, 'pb' => 1125899906842624,
+        ];
+        $factor = $byteFactor[strtolower($label)] ?? null;
+        if ($factor !== null) {
+            try {
+                return \App\ViewModels\Admin\ServerDetailViewModel::fmtBytes($numeric * $factor);
+            } catch (\Throwable) {
+                // Fall through to verbatim below ΓÇö display must never throw.
+            }
+        }
+
+        $number = floor($numeric) == $numeric ? (string) (int) $numeric : (string) round($numeric, 2);
+
+        return $label !== '' ? $number.' '.$label : $number;
     }
 
     public function create(Request $request, ModuleManager $modules): View
