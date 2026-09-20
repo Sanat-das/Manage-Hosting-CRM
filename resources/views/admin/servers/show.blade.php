@@ -18,6 +18,16 @@
         <x-adminlte-alert theme="danger" dismissible>{{ session('error') }}</x-adminlte-alert>
     @endif
 
+    @php
+        $displayType = $vm->displayType;
+        $connStatus = $vm->connStatus;
+        $connBadgeTheme = $vm->connBadgeTheme;
+        $connDot = $vm->connDot;
+        $isConnected = $vm->isConnected;
+        $isPanel = $vm->isPanel;
+        $isHyperv = $vm->isHyperv;
+    @endphp
+
     {{-- Server header --}}
     <x-adminlte-card>
         <div class="d-flex flex-wrap align-items-center gap-3">
@@ -29,37 +39,107 @@
                 <div class="d-flex align-items-center flex-wrap gap-2">
                     <h4 class="mb-0">{{ $server->name }}</h4>
                     <x-adminlte.partials.status-badge :status="$server->status" />
-                    <span class="badge text-bg-info">{{ ucfirst($server->panel_type) }}</span>
-                </div>
-                <div class="text-muted mt-1">
-                    <i class="bi bi-hdd-network me-1"></i>{{ $server->ip_address }}
-                    @if ($server->api_url)
-                        <span class="mx-2">|</span><i class="bi bi-link-45deg me-1"></i>{{ $server->api_url }}
+                    <span class="badge text-bg-info rounded-pill" style="font-size:var(--text-xs); font-weight:500;">{{ $displayType }}</span>
+                    <span class="badge rounded-pill text-bg-{{ $connBadgeTheme }}" id="connectionStatusBadge" style="font-size:var(--text-xs); font-weight:500;">
+                        <span class="d-inline-block rounded-circle me-1 align-middle {{ $connDot }}" style="width:8px;height:8px;"></span>
+                        {{ ucfirst($connStatus) }}
+                    </span>
+                    @if ($server->last_checked_at)
+                        <span class="text-muted small" id="lastCheckedAt">Last checked {{ $server->last_checked_at->diffForHumans() }}</span>
+                    @else
+                        <span class="text-muted small" id="lastCheckedAt">Never checked</span>
                     @endif
                 </div>
+                <div class="text-muted mt-1 small d-flex flex-wrap gap-2 align-items-center">
+                    <span><i class="bi bi-hdd-network me-1"></i>{{ $server->ip_address }}</span>
+                    {{-- API URL / username live in Details below — kept out of header to avoid duplication --}}
+                </div>
+                @if ($connStatus === 'failed' && $server->connection_error)
+                    <div class="alert alert-danger py-2 px-3 mt-2 mb-0 small" id="connectionErrorAlert">
+                        <i class="bi bi-exclamation-triangle me-1"></i> {{ $server->connection_error }}
+                    </div>
+                @endif
             </div>
-            <div class="d-flex gap-2">
+            <div class="d-flex gap-2 flex-wrap">
                 @can('hosting.manage')
                     <a href="{{ route('admin.servers.edit', $server) }}" class="btn btn-sm btn-outline-primary">
                         <i class="bi bi-pencil me-1"></i> Edit
                     </a>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="retestBtn">
+                        <span class="btn-label"><i class="bi bi-arrow-clockwise me-1"></i> Re-test Connection</span>
+                        <span class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
+                    </button>
                 @endcan
             </div>
         </div>
+        <div id="retestAlert" class="d-none mt-3">
+            <div class="alert mb-0" id="retestAlertBox"></div>
+        </div>
     </x-adminlte-card>
 
-    {{-- Metric row --}}
-    <x-adminlte.partials.metric-cards :items="[
-        ['title' => $server->hostingAccounts->count(), 'text' => 'Hosting Accounts', 'icon' => 'bi bi-hdd-stack', 'theme' => 'primary'],
-        ['title' => $server->max_accounts > 0 ? $server->max_accounts : '∞', 'text' => 'Max Accounts', 'icon' => 'bi bi-box', 'theme' => 'warning'],
-        ['title' => $groups->count(), 'text' => 'Server Groups', 'icon' => 'bi bi-collection', 'theme' => 'success'],
-        ['title' => $server->hostingAccounts->where('status', 'active')->count(), 'text' => 'Active Accounts', 'icon' => 'bi bi-check-circle', 'theme' => 'info'],
-    ]" />
+    {{-- Essential Information --}}
+    <x-adminlte-card icon="bi bi-activity" title="Essential Information" class="mb-3">
+        @if (! $isConnected)
+            <div class="text-center py-4">
+                <div class="d-inline-flex align-items-center justify-content-center rounded-circle bg-body-secondary mb-3" style="width:48px;height:48px;">
+                    <i class="bi bi-wifi-off text-muted" style="font-size:1.25rem;"></i>
+                </div>
+                <p class="text-muted small mb-2">
+                    @if ($connStatus === 'failed')
+                        Connection failed — fix the credentials and re-test to load live data.
+                    @elseif ($connStatus === 'untested')
+                        No live data yet — test the connection to load version, capacity and VM counts.
+                    @else
+                        Not connected.
+                    @endif
+                </p>
+                {{-- connection_error already shown in header alert — not repeated here --}}
+                <p class="small text-muted mb-0">Use <strong>Re-test Connection</strong> above to refresh. Saving is allowed even when the test fails.</p>
+            </div>
+        @else
+            @include('admin.servers.partials._essential-panels', ['server' => $server, 'vm' => ($vm ?? null)])
+
+            @if ($isHyperv)
+                @include('admin.servers.partials._essential-hyperv', ['server' => $server, 'vm' => ($vm ?? null)])
+            @endif
+        @endif
+    </x-adminlte-card>
+
+    @if(($server->server_type ?? $server->panel_type) === 'hyperv')
+        @include('admin.servers.partials._winrm-guide', ['serverType' => 'hyperv', 'server' => $server, 'typeSlug' => 'hyperv'])
+    @endif
+
+    {{-- Removed metric-cards row: all four numbers duplicate sections below
+         (Hosting/Active counts → Hosting Accounts table + Accounts/VMs card,
+          Max → Details, Groups → Server Groups card). --}}
+
+    @php
+        $isVirtualization = in_array($server->server_type ?? $server->panel_type, ['hyperv','proxmox','virtualizor'], true);
+    @endphp
+
+    @if($isVirtualization)
+    {{-- Virtualization: show VMs built on this hypervisor (PanelAccounts / ServiceInstances) --}}
+    <x-adminlte-card icon="bi bi-cpu" title="Virtual Machines — built on {{ $server->name }}">
+        <div class="d-flex align-items-center gap-2 mb-3">
+            <span class="badge text-bg-success">{{ $panelAccountsActive ?? ($panelAccounts ?? collect())->where('status','active')->count() }} active</span>
+            <span class="badge text-bg-secondary">{{ $panelAccountsTotal ?? ($panelAccounts ?? collect())->count() }} total built</span>
+            <span class="text-muted small">Each VM is a <code>PanelAccount</code> linked to an <code>Order → ServiceInstance</code> provisioned via <code>{{ $server->server_type }}</code></span>
+        </div>
+        @include('admin.servers.partials._vm-list', ['server' => $server, 'vm' => ($vm ?? null), 'panelAccounts' => ($panelAccounts ?? collect()), 'serviceInstances' => ($serviceInstances ?? collect())])
+        @include('admin.servers.partials._live-inventory', ['server' => $server, 'vm' => ($vm ?? null), 'liveVms' => ($liveVms ?? null)])
+        {{-- Removed WinRM footer hint: host:port + username already in Transport strip above. --}}
+    </x-adminlte-card>
+    @endif
 
     <div class="row">
-        {{-- Accounts on this server --}}
+        {{-- Accounts on this server — hidden on virtualization servers with zero hosting rows (VMs card covers them) --}}
+        @if(!$isVirtualization || ($hostingAccounts ?? $server->hostingAccounts)->count() > 0)
         <div class="col-md-8">
             <x-adminlte-card icon="bi bi-hdd-stack" title="Hosting Accounts">
+                @php
+                    $hostingSource = $hostingAccounts ?? $server->hostingAccounts;
+                    $hostingList = $hostingSource instanceof \Illuminate\Contracts\Pagination\Paginator ? collect($hostingSource->items()) : $hostingSource;
+                @endphp
                 <div class="table-responsive">
                     <table class="table table-sm align-middle mb-0">
                         <thead>
@@ -68,10 +148,10 @@
                             </tr>
                         </thead>
                         <tbody>
-                            @forelse ($server->hostingAccounts as $account)
+                            @forelse ($hostingList as $account)
                                 <tr>
                                     <td>
-                                        <a href="{{ route('admin.hosting.show', $account) }}"><strong>{{ $account->username }}</strong></a>
+                                        <a href="{{ route('admin.hosting.show', $account) }}"><strong>{{ $account->username ?: $account->host_name }}</strong></a>
                                         @if ($account->domain)
                                             <div class="text-muted small">{{ $account->domain }}</div>
                                         @endif
@@ -86,18 +166,21 @@
                         </tbody>
                     </table>
                 </div>
+                @if(isset($hostingAccounts) && $hostingAccounts instanceof \Illuminate\Contracts\Pagination\Paginator)
+                    <div class="mt-3">{{ $hostingAccounts->appends(request()->query())->links() }}</div>
+                @endif
             </x-adminlte-card>
         </div>
+        @endif
 
         {{-- Server details + group membership --}}
         <div class="col-md-4">
             <x-adminlte-card icon="bi bi-info-circle" title="Details">
+                {{-- Single source for connection config. Name / IP / Type / Status / Connection / Last-checked
+                     live in the header above; Port / SSL / Verify TLS live in the Transport strip (Hyper-V). --}}
                 <table class="table table-sm table-borderless mb-0">
                     <tbody>
-                        <tr><th class="text-muted w-25">Name</th><td>{{ $server->name }}</td></tr>
-                        <tr><th class="text-muted">IP address</th><td>{{ $server->ip_address }}</td></tr>
-                        <tr><th class="text-muted">Panel type</th><td>{{ ucfirst($server->panel_type) }}</td></tr>
-                        <tr><th class="text-muted">API URL</th><td>{{ $server->api_url ?? '—' }}</td></tr>
+                        <tr><th class="text-muted w-25">API URL</th><td class="text-break">{{ $server->api_url ?? '—' }}</td></tr>
                         <tr><th class="text-muted">API username</th><td>{{ $server->api_username ?? '—' }}</td></tr>
                         <tr><th class="text-muted">Max accounts</th><td>{{ $server->max_accounts > 0 ? $server->max_accounts : 'Unlimited' }}</td></tr>
                     </tbody>
@@ -113,4 +196,93 @@
             </x-adminlte-card>
         </div>
     </div>
+
+@push('js')
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const btn = document.getElementById('retestBtn');
+    const badge = document.getElementById('connectionStatusBadge');
+    const lastChecked = document.getElementById('lastCheckedAt');
+    const alertWrap = document.getElementById('retestAlert');
+    const alertBox = document.getElementById('retestAlertBox');
+    const errorAlert = document.getElementById('connectionErrorAlert');
+    if (!btn) return;
+    const url = @json(route('admin.servers.test-connection', $server));
+    const csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || @json(csrf_token());
+
+    btn.addEventListener('click', async function () {
+        const spinner = btn.querySelector('.spinner-border');
+        const label = btn.querySelector('.btn-label');
+        btn.disabled = true;
+        if (spinner) spinner.classList.remove('d-none');
+        if (label) label.classList.add('opacity-50');
+        if (alertWrap) alertWrap.classList.add('d-none');
+        const skeleton = document.querySelector('.retest-skeleton');
+        if (skeleton) skeleton.classList.remove('d-none');
+
+        try {
+            const res = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': csrf, 'X-Requested-With': 'XMLHttpRequest' },
+                credentials: 'same-origin',
+                body: JSON.stringify({}),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                if (alertWrap && alertBox) {
+                    alertWrap.classList.remove('d-none');
+                    alertBox.className = 'alert alert-danger mb-0';
+                    alertBox.textContent = data.message || data.error || 'Re-test failed (' + res.status + ').';
+                }
+                return;
+            }
+            const ok = !!data.ok;
+            const message = data.message || data.error || (ok ? 'Connected.' : 'Failed.');
+            const latency = data.latencyMs ?? data.latency_ms ?? data.latency;
+            if (alertWrap && alertBox) {
+                alertWrap.classList.remove('d-none');
+                alertBox.className = 'alert mb-0 ' + (ok ? 'alert-success' : 'alert-danger');
+                // message carries host-derived text — render as text, never HTML.
+                alertBox.textContent = '';
+                const icon = document.createElement('i');
+                icon.className = 'bi ' + (ok ? 'bi-check-circle' : 'bi-exclamation-triangle') + ' me-1';
+                alertBox.appendChild(icon);
+                alertBox.appendChild(document.createTextNode(message + (latency ? ' · ' + latency + ' ms' : '')));
+            }
+            if (badge) {
+                const theme = ok ? 'success' : 'danger';
+                const dot = ok ? 'bg-success' : 'bg-danger';
+                badge.className = 'badge rounded-pill text-bg-' + theme;
+                badge.innerHTML = '<span class="d-inline-block rounded-circle me-1 align-middle ' + dot + '" style="width:8px;height:8px;"></span>' + (ok ? 'Connected' : 'Failed');
+            }
+            if (lastChecked) {
+                lastChecked.textContent = 'Last checked just now' + (latency ? ' · ' + latency + ' ms' : '');
+            }
+            if (ok && errorAlert) { errorAlert.remove(); }
+            if (!ok && data.error && !errorAlert) {
+                // append error under header
+            }
+            if (window.toastr) {
+                if (ok) toastr.success(message);
+                else toastr.error(message);
+            }
+            // Reload after short delay to refresh Essential Information metrics without manual reload
+            setTimeout(() => window.location.reload(), 1200);
+        } catch (e) {
+            if (alertWrap && alertBox) {
+                alertWrap.classList.remove('d-none');
+                alertBox.className = 'alert alert-danger mb-0';
+                alertBox.textContent = (e && e.message) ? e.message : 'Network error during re-test.';
+            }
+        } finally {
+            btn.disabled = false;
+            if (spinner) spinner.classList.add('d-none');
+            if (label) label.classList.remove('opacity-50');
+            const sk = document.querySelector('.retest-skeleton');
+            if (sk) sk.classList.add('d-none');
+        }
+    });
+});
+</script>
+@endpush
 @stop
