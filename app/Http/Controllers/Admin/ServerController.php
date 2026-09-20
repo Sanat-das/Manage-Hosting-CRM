@@ -285,6 +285,9 @@ class ServerController extends Controller
             $vm = new ServerDetailViewModel(...$vmVars);
         }
 
+        // ── SNMP-latest read-only bridge (todo 9) — cached reads only, never live dial ──
+        $vm = $this->applySnmpLatestBridge($server, $vm);
+
         // Totals for header badges (paginators only hold one page — counts need separate queries).
         $panelAccountsTotal = \App\Models\PanelAccount::where('server_id', $server->id)->count();
         $panelAccountsActive = \App\Models\PanelAccount::where('server_id', $server->id)->where('status', 'active')->count();
@@ -361,6 +364,133 @@ class ServerController extends Controller
         }
 
         return $out;
+    }
+
+    /**
+     * SNMP-latest read-only bridge (todo 9, LIGHT tier).
+     *
+     * Resolves the SNMP target as the server's hostingAccount whose cached
+     * snmp_latest row carries the latest non-null collected_at (tie-break:
+     * lowest snmp_targets.id), then fills ONLY the todo-1 $vm->snmp* props
+     * from that payload plus derived gauges. Pure cached DB reads — one
+     * targets query, one snmp_latest IN query, one gauges query — never a
+     * live SNMP dial from the web request. Any failure (no targets, no
+     * rows, missing monitoring connection) leaves the props null so the
+     * cards render the frozen empty state.
+     */
+    private function applySnmpLatestBridge(Server $server, ServerDetailViewModel $vm): ServerDetailViewModel
+    {
+        try {
+            $targets = DB::table('snmp_targets as t')
+                ->join('hosting_accounts as ha', 'ha.id', '=', 't.hosting_account_id')
+                ->where('ha.server_id', $server->id)
+                ->get(['t.id', 't.hosting_account_id']);
+
+            if ($targets->isEmpty()) {
+                return $vm;
+            }
+
+            $accountByTarget = [];
+            foreach ($targets as $target) {
+                $accountByTarget[(int) $target->id] = (int) $target->hosting_account_id;
+            }
+
+            $rows = DB::connection('monitoring')->table('snmp_latest')
+                ->whereIn('host_id', array_keys($accountByTarget))
+                ->get(['host_id', 'collected_at', 'payload', 'status']);
+
+            // Latest non-null collected_at wins; exact tie breaks to lowest id.
+            $winner = null;
+            foreach ($rows as $row) {
+                $collectedAt = $row->collected_at ?? null;
+                if ($collectedAt === null || trim((string) $collectedAt) === '') {
+                    continue;
+                }
+                $hostId = (int) $row->host_id;
+                if ($winner === null
+                    || strcmp((string) $collectedAt, (string) $winner->collected_at) > 0
+                    || (strcmp((string) $collectedAt, (string) $winner->collected_at) === 0 && $hostId < (int) $winner->host_id)
+                ) {
+                    $winner = $row;
+                }
+            }
+
+            if ($winner === null) {
+                return $vm;
+            }
+
+            $targetId = (int) $winner->host_id;
+            $decoded = json_decode((string) ($winner->payload ?? ''), true);
+            $payload = is_array($decoded) ? $decoded : [];
+
+            // Derived gauges (computed pct) win; raw payload fields fall back.
+            $gauges = [];
+            try {
+                $gauges = app(\Modules\SnmpMonitor\Services\SnmpMetricRepository::class)->latestSampleMetrics([$targetId]);
+            } catch (\Throwable) {
+                $gauges = [];
+            }
+            $gauge = $gauges[$targetId] ?? [];
+
+            $uptime = $payload['uptime_human'] ?? null;
+            if (! is_string($uptime) || trim($uptime) === '') {
+                $uptime = null;
+            }
+
+            $cpu = $gauge['cpu_pct'] ?? null;
+            if ($cpu === null && isset($payload['cpu_load']) && is_numeric($payload['cpu_load'])) {
+                $cpu = (float) $payload['cpu_load'];
+            }
+
+            $mem = $gauge['mem_pct'] ?? null;
+            if ($mem === null
+                && isset($payload['memory_used_mb'], $payload['memory_total_mb'])
+                && is_numeric($payload['memory_total_mb']) && (float) $payload['memory_total_mb'] > 0
+                && is_numeric($payload['memory_used_mb'])
+            ) {
+                $mem = round((float) $payload['memory_used_mb'] / (float) $payload['memory_total_mb'] * 100, 1);
+            }
+
+            $disk = $gauge['disk_pct'] ?? null;
+            if ($disk === null && isset($payload['disks']) && is_array($payload['disks'])) {
+                $disk = $this->snmpDisksPct($payload['disks']);
+            }
+
+            $vars = get_object_vars($vm);
+            $vars['snmpSource'] = 'snmp:account-'.$accountByTarget[$targetId];
+            $vars['snmpCollectedAt'] = (string) $winner->collected_at;
+            $vars['snmpUptime'] = $uptime;
+            $vars['snmpCpu'] = $cpu;
+            $vars['snmpMem'] = $mem;
+            $vars['snmpDisks'] = $disk;
+
+            return new ServerDetailViewModel(...$vars);
+        } catch (\Throwable) {
+            // Read-only bridge must never break the page — degrade to empty SNMP slots.
+            return $vm;
+        }
+    }
+
+    /**
+     * Aggregate disk usage % from an snmp_latest disks[] payload, mirroring
+     * PollHostBatch::storagePct(). NULL when no capacity is known.
+     *
+     * @param  list<array<string, mixed>>  $disks
+     */
+    private function snmpDisksPct(array $disks): ?float
+    {
+        $total = 0.0;
+        $used = 0.0;
+
+        foreach ($disks as $disk) {
+            if (! is_array($disk)) {
+                continue;
+            }
+            $total += isset($disk['total_gb']) && is_numeric($disk['total_gb']) ? (float) $disk['total_gb'] : 0.0;
+            $used += isset($disk['used_gb']) && is_numeric($disk['used_gb']) ? (float) $disk['used_gb'] : 0.0;
+        }
+
+        return $total > 0 ? round($used / $total * 100, 2) : null;
     }
 
     public function create(Request $request, ModuleManager $modules): View
