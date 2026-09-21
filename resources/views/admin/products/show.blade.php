@@ -260,32 +260,67 @@
                 </div>
             </div>
 
-            {{-- Modules — read-only: name + basics only --}}
+            {{-- Modules — per-product enable + per-link Auto/Manual provisioning mode --}}
             <div class="tab-pane fade {{ $activeTab === 'modules' ? 'show active' : '' }}" id="modules" role="tabpanel" aria-labelledby="modules-tab">
-                @php
-                    $enabledLinks = $product->moduleLinks->where('enabled', true);
-                    $activeModules = $modules->filter(fn ($m) => $enabledLinks->firstWhere('module_id', $m->id) !== null)->values();
-                @endphp
-                @if ($modules->isEmpty())
+                @php $linkableModules = $linkableModules ?? []; @endphp
+                @if (empty($linkableModules))
                     <p class="text-muted mb-0">No modules available. Activate modules in System → Modules first.</p>
-                @elseif ($activeModules->isEmpty())
-                    <p class="text-muted mb-0">No active modules on this product.</p>
                 @else
                     <div class="table-responsive">
                         <table class="table table-sm align-middle mb-0">
                             <thead>
                                 <tr>
                                     <th>Module</th>
-                                    <th>Version</th>
+                                    <th>Group</th>
                                     <th>Status</th>
+                                    <th>Provisioning</th>
+                                    <th class="text-end">Actions</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                @foreach ($activeModules as $module)
+                                @foreach ($linkableModules as $mod)
+                                    @php
+                                        $slug = $mod['slug'];
+                                        $link = $product->moduleLinks->firstWhere('module_slug', $slug);
+                                        $isEnabled = $link !== null && (bool) $link->enabled;
+                                        $mode = $link?->provisioning_mode ?? 'auto';
+                                        $isBuiltin = (bool) ($mod['builtin'] ?? false);
+                                    @endphp
                                     <tr>
-                                        <td><strong>{{ $module->name }}</strong> <span class="text-muted small ms-1">{{ $module->slug }}</span></td>
-                                        <td>@if ($module->version) <span class="badge text-bg-info">v{{ $module->version }}</span> @else <span class="text-muted">—</span> @endif</td>
-                                        <td><span class="badge text-bg-success">Enabled</span></td>
+                                        <td><strong>{{ $mod['name'] }}</strong> <span class="text-muted small ms-1">{{ $slug }}</span> @if($isBuiltin)<span class="badge text-bg-light border ms-1">builtin</span>@endif</td>
+                                        <td><span class="badge text-bg-secondary">{{ $mod['group'] }}</span></td>
+                                        <td>
+                                            @if ($isEnabled)
+                                                <span class="badge text-bg-success">Enabled</span>
+                                            @else
+                                                <span class="badge text-bg-secondary">Disabled</span>
+                                            @endif
+                                        </td>
+                                        <td>
+                                            @if ($isEnabled)
+                                                <form method="POST" action="{{ route('admin.products.modules.mode', [$product, $slug]) }}" class="d-inline-flex align-items-center gap-2">
+                                                    @csrf
+                                                    @method('PUT')
+                                                    <select name="provisioning_mode" class="form-select form-select-sm" style="width: auto;" onchange="this.form.submit()" @cannot('products.edit') disabled @endcannot>
+                                                        <option value="auto" {{ $mode === 'auto' ? 'selected' : '' }}>Auto</option>
+                                                        <option value="manual" {{ $mode === 'manual' ? 'selected' : '' }}>Manual</option>
+                                                    </select>
+                                                </form>
+                                                <div class="text-muted small mt-1">{{ $mode === 'auto' ? 'Provisions without operator action.' : 'Operator creates via hosting actions.' }}</div>
+                                            @else
+                                                <span class="text-muted">—</span>
+                                            @endif
+                                        </td>
+                                        <td class="text-end">
+                                            @can('products.edit')
+                                                <form method="POST" action="{{ route('admin.products.modules.toggle', [$product, $slug]) }}" class="d-inline">
+                                                    @csrf
+                                                    <button type="submit" class="btn btn-sm {{ $isEnabled ? 'btn-outline-danger' : 'btn-outline-success' }}">
+                                                        {{ $isEnabled ? 'Disable' : 'Enable' }}
+                                                    </button>
+                                                </form>
+                                            @endcan
+                                        </td>
                                     </tr>
                                 @endforeach
                             </tbody>

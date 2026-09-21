@@ -818,7 +818,7 @@ final class SnmpDashboardTest extends TestCase
         if (! $enabled) {
             ProductModule::query()
                 ->where('product_id', $product->id)
-                ->where('module_id', $module->id)
+                ->where('module_slug', $module->slug)
                 ->update(['enabled' => false]);
         }
 

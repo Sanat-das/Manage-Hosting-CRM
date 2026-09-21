@@ -5,6 +5,7 @@ namespace App\Http\Requests;
 use App\Models\Product;
 use App\Models\ProductOptionGroup;
 use App\Models\ProductOptionGroupProduct;
+use App\Models\ServerGroup;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
@@ -44,7 +45,7 @@ class ProductRequest extends FormRequest
             'early_renewal_mode' => ['nullable', Rule::in(['default', 'custom'])],
             'early_renewal_days' => ['nullable', 'array'],
             'early_renewal_days.*' => ['nullable', 'integer', 'between:0,365'],
-            'provisioning_module' => ['required', Rule::in(array_keys(Product::PROVISIONING_MODULES))],
+            'provisioning_module' => ['required', Rule::in(array_merge(app(\App\Services\Integrations\IntegrationRegistry::class)->slugs(), ['manual', 'custom']))],
             'server_group_id' => ['nullable', 'integer', 'exists:server_groups,id'],
             'welcome_email_template_id' => ['nullable', 'integer', 'exists:email_templates,id'],
             'require_domain' => ['sometimes', 'boolean'],
@@ -121,7 +122,51 @@ class ProductRequest extends FormRequest
             $this->validateOptionLinkPayloads($validator);
             $this->validateBillingConfiguration($validator);
             $this->validateDefaultCyclePricing($validator);
+            $this->validateServerGroupCoherence($validator);
         });
+    }
+
+    /**
+     * Product <-> Server Group type coherence: if the chosen server group is
+     * locked to a single server_type, the product's provisioning_module must
+     * match it. 'manual' is exempt (no server needed) and a group with
+     * allowed_server_type == null (Any) accepts any product.
+     */
+    private function validateServerGroupCoherence(Validator $validator): void
+    {
+        $groupId = $this->input('server_group_id');
+        if ($groupId === null || $groupId === '') {
+            return;
+        }
+
+        $group = ServerGroup::query()->find($groupId);
+        if ($group === null) {
+            return;
+        }
+
+        $allowed = $group->allowed_server_type;
+        if ($allowed === null || $allowed === '') {
+            return;
+        }
+
+        $module = trim((string) $this->input('provisioning_module'));
+
+        // manual/custom products have no server type — allow Any group only;
+        // typed group with manual product is blocked.
+        if ($module === '' || $module === 'manual') {
+            $validator->errors()->add(
+                'server_group_id',
+                "This server group is locked to '{$allowed}' servers, but the product's provisioning module is '{$module}'. Choose a {$allowed} product or a different group (or set the group to Any)."
+            );
+            return;
+        }
+
+        if ($module !== $allowed) {
+            $validator->errors()->add(
+                'server_group_id',
+                "Server group '{$group->name}' is locked to '{$allowed}' servers, but this product provisions via '{$module}'. The group type and product provisioning module must match."
+            );
+        }
     }
 
     /**

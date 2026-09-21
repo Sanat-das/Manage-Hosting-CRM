@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace Tests\Fixtures\Modules\OkModule;
 
 use App\Contracts\Module\AbstractModule;
-use App\Contracts\Module\Capabilities\ProvisioningModule;
-use App\Contracts\Module\ProvisioningResult;
+use App\Contracts\Integrations\Capabilities\ProvisioningModule;
+use App\Contracts\Integrations\ProvisioningResult;
 use App\Models\ServiceInstance;
 
 /**

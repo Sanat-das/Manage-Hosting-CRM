@@ -4,12 +4,14 @@ declare(strict_types=1);
 
 namespace App\Services\Modules;
 
-use App\Contracts\Module\Capabilities\ProvisioningModule;
+use App\Contracts\Integrations\Capabilities\ProvisioningModule;
 use App\Contracts\Module\ModuleContract;
 use App\Contracts\Module\ModuleContext;
+use App\Contracts\Integrations\TestableServerModule;
 use App\Jobs\RunModuleCapability;
 use App\Models\Module;
 use App\Models\ModuleLog;
+use App\Models\Server;
 use App\Models\ServiceInstance;
 use App\Support\Modules\ModuleManifest;
 use App\Support\Modules\ModuleManifestException;
@@ -688,6 +690,101 @@ class ModuleManager
                 require $file;
             }
         });
+    }
+
+    /**
+     * Active modules that can act as server types.
+     *
+     * Filtered to those whose provider implements TestableServerModule. Used
+     * to build the type-locked create grid and to validate server_type.
+     */
+    public function activeServerModules(): Collection
+    {
+        try {
+            return $this->active()->filter(function (Module $module): bool {
+                $instance = $this->resolve($module);
+
+                return $instance instanceof TestableServerModule;
+            })->values();
+        } catch (Throwable) {
+            return collect();
+        }
+    }
+
+    /**
+     * Resolve a plugin module driver for an existing server row.
+     *
+     * Built-in integrations are resolved by IntegrationRegistry before this
+     * fallback is ever consulted; this path only serves plugin modules that
+     * declare the `server` capability. `server_type` is the discriminator
+     * (the legacy `servers.module_id` FK was dropped when the provisioning
+     * modules were folded into the app).
+     */
+    public function resolveForServer(Server $server): ?TestableServerModule
+    {
+        try {
+            $slug = null;
+            try {
+                $slug = $server->getAttribute('server_type');
+            } catch (Throwable) {
+                $slug = null;
+            }
+
+            if ($slug === null || trim((string) $slug) === '') {
+                try {
+                    $slug = $server->getAttribute('panel_type');
+                } catch (Throwable) {
+                    $slug = null;
+                }
+            }
+
+            $slug = trim((string) ($slug ?? ''));
+
+            if ($slug === '') {
+                return null;
+            }
+
+            $module = $this->find($slug);
+
+            if ($module === null) {
+                return null;
+            }
+
+            $instance = $this->resolve($module);
+
+            return $instance instanceof TestableServerModule ? $instance : null;
+        } catch (Throwable) {
+            return null;
+        }
+    }
+
+    /**
+     * Options for the server type selector / card grid.
+     *
+     * @return array<int, array{value: string, label: string, group: string, description: string, slug: string}>
+     */
+    public function serverTypeOptions(): array
+    {
+        try {
+            return $this->activeServerModules()->map(function (Module $module): array {
+                $manifest = $module->manifest ?? [];
+                $group = (string) ($manifest['group'] ?? 'panel');
+
+                if (! in_array($group, ['panel', 'virtualization', 'compute'], true)) {
+                    $group = 'panel';
+                }
+
+                return [
+                    'value' => $module->slug,
+                    'label' => $module->name,
+                    'group' => $group,
+                    'description' => (string) ($manifest['description'] ?? ''),
+                    'slug' => $module->slug,
+                ];
+            })->values()->all();
+        } catch (Throwable) {
+            return [];
+        }
     }
 
     private function log(?Module $module, string $event, string $status, ?string $error = null, ?int $serviceInstanceId = null): void

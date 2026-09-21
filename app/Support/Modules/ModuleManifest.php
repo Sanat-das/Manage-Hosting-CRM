@@ -67,7 +67,7 @@ class ModuleManifest
      */
     public static function capabilitiesWhitelist(): array
     {
-        return ['provisioning', 'hosting-account-info'];
+        return ['provisioning', 'hosting-account-info', 'server'];
     }
 
     public function slug(): string

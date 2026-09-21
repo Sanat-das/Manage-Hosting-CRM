@@ -108,12 +108,14 @@ class InfrastructureSeeder extends Seeder
             'description' => 'Main cPanel/WHM server cluster',
             'load_balancing' => 'round_robin',
             'status' => 'active',
+            'allowed_server_type' => 'cpanel',
         ],
         [
             'name' => 'VPS Nodes',
             'description' => 'Virtualizor VPS host nodes',
             'load_balancing' => 'least_loaded',
             'status' => 'active',
+            'allowed_server_type' => 'virtualizor',
         ],
     ];
 
@@ -125,7 +127,7 @@ class InfrastructureSeeder extends Seeder
         [
             'name' => 'web01.demo.example',
             'ip_address' => '192.0.2.11',
-            'panel_type' => 'cpanel',
+            'server_type' => 'cpanel',
             'api_url' => 'https://192.0.2.11:2087',
             'api_username' => 'root',
             'max_accounts' => 250,
@@ -136,7 +138,7 @@ class InfrastructureSeeder extends Seeder
         [
             'name' => 'web02.demo.example',
             'ip_address' => '192.0.2.12',
-            'panel_type' => 'cpanel',
+            'server_type' => 'cpanel',
             'api_url' => 'https://192.0.2.12:2087',
             'api_username' => 'root',
             'max_accounts' => 250,
@@ -147,7 +149,7 @@ class InfrastructureSeeder extends Seeder
         [
             'name' => 'vps01.demo.example',
             'ip_address' => '198.51.100.21',
-            'panel_type' => 'custom',
+            'server_type' => 'virtualizor',
             'api_url' => 'https://198.51.100.21:4085',
             'api_username' => 'apiuser',
             'max_accounts' => 60,
@@ -158,13 +160,24 @@ class InfrastructureSeeder extends Seeder
         [
             'name' => 'vps02.demo.example',
             'ip_address' => '203.0.113.22',
-            'panel_type' => 'custom',
+            'server_type' => 'virtualizor',
             'api_url' => 'https://203.0.113.22:4085',
             'api_username' => 'apiuser',
             'max_accounts' => 60,
             'status' => 'inactive',
             'group' => 'VPS Nodes',
             'priority' => 20,
+        ],
+        [
+            'name' => 'hv01.demo.example',
+            'ip_address' => '203.0.113.50',
+            'server_type' => 'hyperv',
+            'api_url' => 'https://203.0.113.50:5986',
+            'api_username' => null,
+            'max_accounts' => 0,
+            'status' => 'inactive',
+            'group' => null,
+            'priority' => 0,
         ],
     ];
 

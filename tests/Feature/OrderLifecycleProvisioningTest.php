@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
-use App\Contracts\Module\ProvisioningResult;
+use App\Contracts\Integrations\ProvisioningResult;
 use App\Models\Customer;
 use App\Models\HostingAccount;
 use App\Models\Module;
@@ -199,11 +199,17 @@ class OrderLifecycleProvisioningTest extends TestCase
 
     public function test_an_order_with_a_service_but_no_module_records_the_gap(): void
     {
-        // The service exists (it was provisioned when a module was installed,
-        // or by hand) but no module can be resolved now: local state says
-        // suspended while the panel was never told, which an operator must see.
+        // The service exists (it was provisioned when a plugin module was
+        // installed) but no module can be resolved now: local state says
+        // suspended while the panel was never told. Use a plugin-only
+        // provisioning_module so disabling the plugin truly leaves no driver
+        // (builtins like cpanel are always-available and would otherwise mask
+        // the gap).
         $order = $this->activeProvisionedOrder();
         ProductModule::where('product_id', $order->product_id)->update(['enabled' => false]);
+        // Clear builtin fallback so no driver remains — 'custom' has no builtin and
+        // the plugin is disabled below.
+        $order->product->update(['provisioning_module' => 'custom']);
         Module::query()->update(['status' => Module::STATUS_DISABLED]);
 
         $this->orders->suspend($order, 'Non-payment');
@@ -222,9 +228,9 @@ class OrderLifecycleProvisioningTest extends TestCase
      * An active order with a provisioned service instance, a live local hosting
      * account, and a module wired up that records every verb it is asked for.
      */
-    private function activeProvisionedOrder(): Order
+    private function activeProvisionedOrder(string $provisioningModule = 'cpanel'): Order
     {
-        $order = $this->makeOrder('cpanel');
+        $order = $this->makeOrder($provisioningModule);
 
         $this->linkRecordingModule($order->product);
 
@@ -279,7 +285,7 @@ class OrderLifecycleProvisioningTest extends TestCase
 
         ProductModule::create([
             'product_id' => $product->id,
-            'module_id' => $module->id,
+            'module_slug' => $module->slug,
             'enabled' => true,
             'config' => ['greeting' => 'hi'],
         ]);

@@ -4,13 +4,14 @@ declare(strict_types=1);
 
 namespace App\Services\Provisioning;
 
-use App\Contracts\Module\ProvisioningResult;
-use App\Models\Module;
+use App\Contracts\Integrations\Capabilities\ProvisioningModule as ProvisioningModuleContract;
+use App\Contracts\Integrations\ProvisioningResult;
 use App\Models\Order;
 use App\Models\Product;
 use App\Models\ProvisioningEvent;
 use App\Models\ServiceInstance;
 use App\Services\HostingService;
+use App\Services\Integrations\IntegrationRegistry;
 use App\Services\Modules\ModuleManager;
 use Illuminate\Support\Facades\Log;
 use Throwable;
@@ -23,7 +24,8 @@ use Throwable;
  * by doing nothing but flipping the order status to active: no module was ever
  * consulted, so a paid cPanel order produced local billing/hosting rows and no
  * remote account. This class closes that: it resolves the product's
- * provisioning module through ModuleManager, calls provision(), and reports
+ * provisioning module through IntegrationRegistry (builtins) with a
+ * ModuleManager fallback for plugin modules, calls provision(), and reports
  * the outcome so the state machine can activate or fail the order truthfully.
  *
  * The call is deliberately SYNCHRONOUS, unlike ModuleManager::dispatchCapability()
@@ -47,8 +49,18 @@ class ProvisioningDispatcher
      */
     private const SECRET_KEYS = ['password', 'secret', 'token', 'api_key', 'apikey', 'private_key'];
 
+    /**
+     * Canonical provisioning scalars that are audited into
+     * `service_instances.provisioning_config`. Only these keys are ever written
+     * by the dispatcher so unrelated seeder keys (e.g. package/shell) survive.
+     *
+     * @var list<string>
+     */
+    private const CANONICAL_KEYS = ['cpu', 'ram', 'disk', 'bandwidth', 'plan'];
+
     public function __construct(
         private readonly ModuleManager $modules,
+        private readonly IntegrationRegistry $registry,
         private readonly HostingService $hosting,
         private readonly ServerAllocator $servers,
         private readonly WelcomeMailer $welcome,
@@ -63,9 +75,9 @@ class ProvisioningDispatcher
     public function run(Order $order): ProvisioningAttempt
     {
         $product = $order->product;
-        $module = $this->moduleFor($product);
+        $slug = $this->moduleFor($product);
 
-        if ($module === null) {
+        if ($slug === null) {
             return ProvisioningAttempt::noModule($this->recordEvent(
                 $order,
                 null,
@@ -78,18 +90,83 @@ class ProvisioningDispatcher
             ));
         }
 
+        // Per-link Manual never auto-provisions: the operator creates the
+        // resource from the hosting page (HostingController::moduleAction).
+        // No ServiceInstance is created here so the manual queue
+        // (provisioning_events pending) stays the single source of truth.
+        if ($this->isManualLink($product, $slug)) {
+            return ProvisioningAttempt::noModule($this->recordEvent(
+                $order,
+                null,
+                'pending',
+                [
+                    'reason' => 'manual_link',
+                    'module' => $slug,
+                    'provisioning_module' => $product?->provisioning_module,
+                ],
+                null,
+            ));
+        }
+
         $service = $this->serviceInstanceFor($order);
-        $config = $this->configFor($module, $product);
+        $mergedBeforeDecrypt = $this->mergedConfig($slug, $product, $order);
+
+        // Name compute resources after the product's hostname when the
+        // hosting row already exists (re-provision/retry). In the first auto
+        // pass the row does not exist yet and modules fall back to the
+        // service username — never blank either way.
+        try {
+            $hostName = $order->hostingAccount?->host_name;
+
+            if (is_string($hostName) && trim($hostName) !== '') {
+                $mergedBeforeDecrypt['host_name'] = trim($hostName);
+            }
+        } catch (Throwable) {
+            // Hostname is cosmetic — never block provisioning on it.
+        }
+
+        $config = $this->registry->decryptConfigFor($slug, $mergedBeforeDecrypt);
+
+        $this->persistProvisioningSnapshot($service, $mergedBeforeDecrypt);
+
+        $missing = ModuleRequiredOptions::missingConfigKeys($config, $slug);
+
+        if ($missing !== []) {
+            $message = 'Missing required provisioning options for '.$slug.': '.implode(', ', $missing).' - set them via product options or module config.';
+
+            $service->update(['status' => 'pending']);
+
+            return ProvisioningAttempt::failed($message, $this->recordEvent(
+                $order,
+                $service,
+                'failed',
+                ['module' => $slug, 'missing_keys' => $missing],
+                ['error' => $message],
+            ));
+        }
+
+        $driver = $this->resolveDriver($slug);
+
+        if ($driver === null) {
+            $message = 'No provisioning driver found for '.$slug.'.';
+            $service->update(['status' => 'pending']);
+
+            return ProvisioningAttempt::failed($message, $this->recordEvent(
+                $order,
+                $service,
+                'failed',
+                ['module' => $slug],
+                ['error' => $message],
+            ));
+        }
 
         try {
             /** @var ProvisioningResult $result */
-            $result = $this->modules
-                ->capabilityInstance($module, self::CAPABILITY)
-                ->provision($service, $config);
+            $result = $driver->provision($service, $config);
         } catch (Throwable $e) {
             Log::error('Provisioning module threw', [
                 'order_id' => $order->id,
-                'module' => $module->slug,
+                'module' => $slug,
                 'error' => $e->getMessage(),
             ]);
 
@@ -99,7 +176,7 @@ class ProvisioningDispatcher
                 $order,
                 $service,
                 'failed',
-                ['module' => $module->slug],
+                ['module' => $slug],
                 ['error' => $e->getMessage()],
             ));
         }
@@ -109,7 +186,7 @@ class ProvisioningDispatcher
 
             return ProvisioningAttempt::failed(
                 $result->message ?? 'Provisioning failed',
-                $this->recordEvent($order, $service, 'failed', ['module' => $module->slug], [
+                $this->recordEvent($order, $service, 'failed', ['module' => $slug], [
                     'error' => $result->message,
                 ]),
             );
@@ -128,7 +205,7 @@ class ProvisioningDispatcher
             $order,
             $service,
             'completed',
-            ['module' => $module->slug],
+            ['module' => $slug],
             ['message' => $result->message] + $this->redact($result->data),
         );
 
@@ -192,9 +269,9 @@ class ProvisioningDispatcher
         }
 
         $product = $order->product;
-        $module = $this->moduleFor($product);
+        $slug = $this->moduleFor($product);
 
-        if ($module === null) {
+        if ($slug === null) {
             return ProvisioningAttempt::noModule($this->recordEvent(
                 $order,
                 $service,
@@ -209,17 +286,27 @@ class ProvisioningDispatcher
             ));
         }
 
-        $config = $this->configFor($module, $product);
+        $config = $this->configFor($slug, $product, $order);
+        $driver = $this->resolveDriver($slug);
+
+        if ($driver === null) {
+            return ProvisioningAttempt::failed('No provisioning driver found for '.$slug.'.', $this->recordEvent(
+                $order,
+                $service,
+                'failed',
+                ['module' => $slug, 'note' => $reason],
+                ['error' => 'No provisioning driver found for '.$slug.'.'],
+                $verb,
+            ));
+        }
 
         try {
             /** @var ProvisioningResult $result */
-            $result = $this->modules
-                ->capabilityInstance($module, self::CAPABILITY)
-                ->{$verb}($service, $config);
+            $result = $driver->{$verb}($service, $config);
         } catch (Throwable $e) {
             Log::error('Provisioning module threw on '.$verb, [
                 'order_id' => $order->id,
-                'module' => $module->slug,
+                'module' => $slug,
                 'error' => $e->getMessage(),
             ]);
 
@@ -227,7 +314,7 @@ class ProvisioningDispatcher
                 $order,
                 $service,
                 'failed',
-                ['module' => $module->slug, 'note' => $reason],
+                ['module' => $slug, 'note' => $reason],
                 ['error' => $e->getMessage()],
                 $verb,
             ));
@@ -236,7 +323,7 @@ class ProvisioningDispatcher
         if (! $result->success) {
             return ProvisioningAttempt::failed(
                 $result->message ?? ucfirst($verb).' failed',
-                $this->recordEvent($order, $service, 'failed', ['module' => $module->slug, 'note' => $reason], [
+                $this->recordEvent($order, $service, 'failed', ['module' => $slug, 'note' => $reason], [
                     'error' => $result->message,
                 ], $verb),
             );
@@ -248,14 +335,14 @@ class ProvisioningDispatcher
             $order,
             $service,
             'completed',
-            ['module' => $module->slug, 'note' => $reason],
+            ['module' => $slug, 'note' => $reason],
             ['message' => $result->message] + $this->redact($result->data),
             $verb,
         ));
     }
 
     /**
-     * The active module that will provision this product, or null.
+     * The active module slug that will provision this product, or null.
      *
      * `provisioning_module = 'manual'` is an explicit operator opt-out and is
      * checked FIRST: a manual product must stay manual even when it also has a
@@ -265,15 +352,16 @@ class ProvisioningDispatcher
      *
      * Otherwise, two sources in priority order:
      *  1. a module explicitly linked to the product and enabled on that link
-     *     (`product_module`) — the per-product wiring the admin UI manages;
-     *  2. failing that, an installed module whose slug matches the product's
-     *     `provisioning_module` string ('cpanel', 'plesk', …).
+     *     (`product_module` by module_slug) — the per-product wiring the admin UI manages;
+     *  2. failing that, the product's `provisioning_module` string ('cpanel', 'plesk', …)
+     *     when it resolves to a provisioning driver via registry or plugin fallback.
      *
-     * In both cases the module must be active AND actually implement the
-     * provisioning capability — `capabilityInstance()` returns null otherwise,
-     * and never throws.
+     * In both cases the resolved slug must actually implement the
+     * provisioning capability — resolveDriver() returns null otherwise.
+     *
+     * @return string|null  builtin or plugin slug
      */
-    public function moduleFor(?Product $product): ?Module
+    public function moduleFor(?Product $product): ?string
     {
         if ($product === null) {
             return null;
@@ -285,37 +373,304 @@ class ProvisioningDispatcher
             return null;
         }
 
-        foreach ($product->moduleLinks()->where('enabled', true)->with('module')->get() as $link) {
-            if ($this->isProvisioner($link->module)) {
-                return $link->module;
+        foreach ($product->moduleLinks()->where('enabled', true)->get() as $link) {
+            $linkSlug = trim((string) ($link->module_slug ?? ''));
+
+            if ($linkSlug === '') {
+                continue;
+            }
+
+            if ($this->isProvisionerSlug($linkSlug)) {
+                return $linkSlug;
             }
         }
 
-        $module = $this->modules->find($slug);
-
-        return $this->isProvisioner($module) ? $module : null;
+        return $this->isProvisionerSlug($slug) ? $slug : null;
     }
 
-    private function isProvisioner(?Module $module): bool
+    private function isProvisionerSlug(string $slug): bool
     {
-        return $module !== null
-            && $module->status === Module::STATUS_ACTIVE
-            && $this->modules->capabilityInstance($module, self::CAPABILITY) !== null;
+        return $this->resolveDriver($slug) !== null;
     }
 
     /**
-     * The decrypted config handed to the module: the product's own link config
-     * when one exists, otherwise the module's global config. Modules always
-     * receive decrypted values (see ModuleContext).
+     * Resolve a slug to a provisioning driver instance.
+     *
+     * Builtins are checked first via IntegrationRegistry (must be instanceof
+     * ProvisioningModule); plugin modules fall back to ModuleManager.
+     */
+    private function resolveDriver(string $slug): ?ProvisioningModuleContract
+    {
+        $slug = trim($slug);
+
+        if ($slug === '') {
+            return null;
+        }
+
+        // Builtin path
+        if ($this->registry->has($slug)) {
+            $instance = $this->registry->instanceFor($slug);
+
+            if ($instance instanceof ProvisioningModuleContract) {
+                return $instance;
+            }
+        }
+
+        // Plugin fallback via ModuleManager
+        $module = $this->modules->find($slug);
+
+        if ($module === null || $module->status !== \App\Models\Module::STATUS_ACTIVE) {
+            return null;
+        }
+
+        $instance = $this->modules->capabilityInstance($module, self::CAPABILITY);
+
+        return $instance instanceof ProvisioningModuleContract ? $instance : null;
+    }
+
+    /**
+     * Whether the product's link for this slug is set to Manual.
+     *
+     * Manual is strictly an auto-provisioning opt-out: run() will not touch
+     * the module, but suspend/unsuspend/terminate (lifecycle) still route to
+     * it so an operator-managed resource still follows the order. Direct
+     * operator action always goes through HostingController::moduleAction.
+     */
+    public function isManualLink(?Product $product, ?string $slug): bool
+    {
+        if ($product === null || $slug === null || trim($slug) === '') {
+            return false;
+        }
+
+        $link = $product->moduleLinks()->where('module_slug', trim($slug))->first();
+
+        return $link !== null && ($link->provisioning_mode ?? 'auto') === 'manual';
+    }
+
+    /**
+     * Whether the product is parked for manual provisioning: either the
+     * legacy `provisioning_module = 'manual'` opt-out or the resolved
+     * module's link set to Manual.
+     */
+    public function isManual(?Product $product): bool
+    {
+        if ($product === null) {
+            return true;
+        }
+
+        if (trim((string) ($product->provisioning_module ?? '')) === '' || trim((string) ($product->provisioning_module ?? '')) === 'manual') {
+            return true;
+        }
+
+        return $this->isManualLink($product, $this->moduleFor($product));
+    }
+
+    /**
+     * Whether the order's service is already live on the remote side: an
+     * active ServiceInstance with an active PanelAccount behind it.
+     *
+     * Used as the double-run guard so the activation hook (OrderService
+     * pending/failed -> active) never re-provisions — and never re-sends the
+     * welcome mail — after advanceAfterPayment already provisioned the order.
+     */
+    public function alreadyProvisioned(Order $order): bool
+    {
+        $service = ServiceInstance::where('order_id', $order->id)->where('status', 'active')->first();
+
+        if ($service === null) {
+            return false;
+        }
+
+        return \App\Models\PanelAccount::where('service_instance_id', $service->id)
+            ->where('status', \App\Models\PanelAccount::STATUS_ACTIVE)
+            ->exists();
+    }
+
+    /**
+     * The decrypted config handed to the module: the snapshot-derived values
+     * (order_items.config_options options keyed by `key` -> selected scalar)
+     * UNDER the product's own link config. Module/link
+     * config wins on collision. Modules always receive decrypted values.
      *
      * @return array<string, mixed>
      */
-    private function configFor(Module $module, ?Product $product): array
+    private function configFor(string $slug, ?Product $product, ?Order $order = null): array
     {
-        $link = $product?->moduleLinks()->where('module_id', $module->id)->first();
-        $config = $link?->config ?? $module->config ?? [];
+        return $this->registry->decryptConfigFor($slug, $this->mergedConfig($slug, $product, $order));
+    }
 
-        return $this->modules->decryptConfig($module, $config);
+    /**
+     * Merged config BEFORE decrypt: snapshot UNDER module/link config so
+     * module config wins on collision. Canonical keys are lower-cased.
+     *
+     * @return array<string, mixed>
+     */
+    private function mergedConfig(string $slug, ?Product $product, ?Order $order = null): array
+    {
+        /** @var array<string, mixed> $snapshotConfig */
+        $snapshotConfig = [];
+
+        if ($order !== null) {
+            $items = $order->relationLoaded('items') ? $order->items : $order->items()->get();
+
+            foreach ($items as $item) {
+                /** @var mixed $raw */
+                $raw = $item->config_options ?? null;
+
+                if (! is_array($raw)) {
+                    continue;
+                }
+
+                $options = $raw['options'] ?? null;
+
+                if (! is_array($options)) {
+                    continue;
+                }
+
+                foreach ($options as $option) {
+                    if (! is_array($option)) {
+                        continue;
+                    }
+
+                    $rawKey = $option['key'] ?? null;
+
+                    if (! is_string($rawKey) && ! is_int($rawKey)) {
+                        continue;
+                    }
+
+                    $canonical = strtolower(trim((string) $rawKey));
+
+                    if ($canonical === '') {
+                        continue;
+                    }
+
+                    $selected = $option['selected'] ?? null;
+
+                    if ($selected === null) {
+                        continue;
+                    }
+
+                    if (is_array($selected)) {
+                        continue;
+                    }
+
+                    // Keep first value for this key; module config will override anyway.
+                    if (! array_key_exists($canonical, $snapshotConfig)) {
+                        $snapshotConfig[$canonical] = $selected;
+                    }
+                }
+            }
+        }
+
+        $link = $product?->moduleLinks()->where('module_slug', $slug)->first();
+        $rawConfig = $link?->config ?? null;
+
+        // Plugin fallback: when link has no config but a plugin Module row exists, use its global config.
+        if (($rawConfig === null || $rawConfig === []) && ! $this->registry->has($slug)) {
+            try {
+                $module = $this->modules->find($slug);
+                if ($module !== null) {
+                    $rawConfig = $module->config ?? [];
+                }
+            } catch (Throwable) {
+                $rawConfig = [];
+            }
+        }
+
+        if (! is_array($rawConfig)) {
+            $rawConfig = [];
+        }
+
+        /** @var array<string, mixed> $normalizedModuleConfig */
+        $normalizedModuleConfig = [];
+        foreach ($rawConfig as $k => $v) {
+            $ck = strtolower(trim((string) $k));
+            if ($ck === '') {
+                continue;
+            }
+            $normalizedModuleConfig[$ck] = $v;
+        }
+
+        // Snapshot UNDER module config: module config wins on collision.
+        return array_merge($snapshotConfig, $normalizedModuleConfig);
+    }
+
+    /**
+     * Canonical audit snapshot: only cpu/ram/disk/bandwidth/plan scalars from
+     * the merged config before decrypt, with secrets stripped.
+     *
+     * @param  array<string, mixed>  $mergedBeforeDecrypt
+     * @return array<string, mixed>
+     */
+    private function canonicalSnapshot(array $mergedBeforeDecrypt): array
+    {
+        /** @var array<string, mixed> $snapshot */
+        $snapshot = [];
+
+        foreach ($mergedBeforeDecrypt as $rawKey => $value) {
+            $key = strtolower(trim((string) $rawKey));
+
+            if (! in_array($key, self::CANONICAL_KEYS, true)) {
+                continue;
+            }
+
+            if ($value === null || is_array($value)) {
+                continue;
+            }
+
+            if (! is_scalar($value)) {
+                continue;
+            }
+
+            $isSecret = false;
+            foreach (self::SECRET_KEYS as $needle) {
+                if (stripos($key, $needle) !== false) {
+                    $isSecret = true;
+                    break;
+                }
+            }
+
+            if ($isSecret) {
+                continue;
+            }
+
+            $snapshot[$key] = $value;
+        }
+
+        return $snapshot;
+    }
+
+    /**
+     * Persist the canonical snapshot into service_instances.provisioning_config
+     * without overwriting unrelated keys (e.g. seeder package/shell).
+     *
+     * @param  array<string, mixed>  $mergedBeforeDecrypt
+     */
+    private function persistProvisioningSnapshot(ServiceInstance $service, array $mergedBeforeDecrypt): void
+    {
+        $snapshot = $this->canonicalSnapshot($mergedBeforeDecrypt);
+
+        if ($snapshot === []) {
+            return;
+        }
+
+        try {
+            $existing = $service->provisioning_config;
+
+            if (! is_array($existing)) {
+                $existing = [];
+            }
+
+            /** @var array<string, mixed> $updated */
+            $updated = array_merge($existing, $snapshot);
+
+            $service->update(['provisioning_config' => $updated]);
+        } catch (Throwable $e) {
+            Log::warning('Could not persist provisioning snapshot', [
+                'service_instance_id' => $service->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 
     /**
@@ -323,7 +678,9 @@ class ProvisioningDispatcher
      *
      * `catalog_product_id` stays null — order-born instances belong to the
      * storefront `products` table, not the enterprise catalog (see the
-     * 2026_09_06_120000 migration).
+     * 2026_09_06_120000 migration). provisioning_config audit is handled by
+     * persistProvisioningSnapshot() in run() so this method only ensures the
+     * status flip does not wipe unrelated config keys.
      */
     private function serviceInstanceFor(Order $order): ServiceInstance
     {

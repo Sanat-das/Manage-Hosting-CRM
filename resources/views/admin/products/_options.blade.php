@@ -2,6 +2,7 @@
     $cycles = $cycles ?? \App\Models\Product::BILLING_CYCLES;
     $links = $product->optionLinks ?? collect();
     $continuousTypes = \App\Models\ProductOptionGroup::CONTINUOUS_TYPES;
+    $missingRequiredOptionKeys = $missingRequiredOptionKeys ?? [];
     // Option pricing mirrors the product's ENABLED billing cycles (its pricing
     // ladder): one unit-price field / pricing column per enabled cycle.
     // One-time products price options as a one-time modifier; free products
@@ -31,6 +32,16 @@
      with the single "Save Changes" button, keyed by link id. The attach
      picker, the per-link "Sync values from group" forms and the detach
      confirm modals live outside the form (see edit.blade.php). --}}
+@if (! empty($missingRequiredOptionKeys))
+    <div class="alert alert-warning d-flex align-items-start gap-2 py-2" role="alert">
+        <i class="bi bi-exclamation-triangle-fill mt-1" aria-hidden="true"></i>
+        <div>
+            <strong>Missing required option groups for {{ $product->provisioning_module }}:</strong>
+            {{ implode(', ', $missingRequiredOptionKeys) }}.
+            <span class="small text-muted">Attach groups with these keys to satisfy the provisioning module. Warning only — checkout enforces via OptionSelectionRules.</span>
+        </div>
+    </div>
+@endif
 <div id="option-links-sortable" data-sortable
      data-sortable-options='{"handle": ".option-link-drag-handle"}'>
 @forelse ($links as $link)

@@ -48,7 +48,7 @@ class ProductHostedOnReportTest extends TestCase
         $this->actingAsAdmin();
 
         $product = Product::create(['name' => 'Starter Web Hosting']);
-        $server = Server::create(['name' => 'web-01', 'ip_address' => '192.168.10.1']);
+        $server = Server::create(['name' => 'web-01', 'ip_address' => '192.168.10.1', 'server_type' => 'cpanel']);
         $parentProduct = Product::create(['name' => 'cPanel Reseller Bundle']);
 
         $this->createHostedOnRelationship($product, [
@@ -71,7 +71,7 @@ class ProductHostedOnReportTest extends TestCase
         $this->actingAsAdmin();
 
         $product = Product::create(['name' => 'Starter Web Hosting']);
-        $server = Server::create(['name' => 'web-01', 'ip_address' => '192.168.10.1']);
+        $server = Server::create(['name' => 'web-01', 'ip_address' => '192.168.10.1', 'server_type' => 'cpanel']);
 
         $this->createHostedOnRelationship($product, [
             'kind' => 'server', 'id' => $server->id, 'notes' => 'Primary node',

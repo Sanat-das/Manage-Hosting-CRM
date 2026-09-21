@@ -40,8 +40,8 @@ class InitialDataSeeder extends Seeder
         }
 
         $serverGroups = [
-            ['name' => 'Primary cPanel Servers', 'description' => 'Main cPanel/WHM server cluster', 'load_balancing' => 'round_robin', 'status' => 'active', 'created_at' => now()],
-            ['name' => 'VPS Nodes', 'description' => 'Virtualizor VPS host nodes', 'load_balancing' => 'least_loaded', 'status' => 'active', 'created_at' => now()],
+            ['name' => 'Primary cPanel Servers', 'description' => 'Main cPanel/WHM server cluster', 'load_balancing' => 'round_robin', 'status' => 'active', 'allowed_server_type' => 'cpanel', 'created_at' => now()],
+            ['name' => 'VPS Nodes', 'description' => 'Virtualizor VPS host nodes', 'load_balancing' => 'least_loaded', 'status' => 'active', 'allowed_server_type' => 'virtualizor', 'created_at' => now()],
         ];
 
         foreach ($serverGroups as $row) {
@@ -68,6 +68,8 @@ class InitialDataSeeder extends Seeder
             'created_at' => now(),
             'updated_at' => now(),
         ]);
+
+        $this->call(EssentialOptionsSeeder::class);
 
         // Permissions and roles have exactly one authority: AdminLteRbacSeeder.
         // This seeder used to carry a second copy of the inventory and sync() it

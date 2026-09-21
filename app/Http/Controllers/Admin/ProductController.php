@@ -113,22 +113,27 @@ class ProductController extends Controller
             'moduleLinks',
         ]);
 
-        $modules = app(\App\Services\Modules\ModuleManager::class)->active();
+        $registry = app(\App\Services\Integrations\IntegrationRegistry::class);
+        $linkableModules = $registry->linkableModules();
 
-        return view('admin.products.show', compact('product', 'modules'));
+        return view('admin.products.show', compact('product', 'linkableModules', 'registry'));
     }
 
     public function edit(Product $product): View
     {
-        $product->load(['group', 'pricing', 'optionLinks.linkValues.pricing', 'optionLinks.unitPricing', 'options', 'moduleLinks']);
+        $product->load(['group', 'pricing', 'optionLinks.linkValues.pricing', 'optionLinks.unitPricing', 'options', 'moduleLinks', 'optionLinks.group']);
 
         $availableGroups = ProductOptionGroup::query()->orderBy('name')->get();
-        $modules = app(\App\Services\Modules\ModuleManager::class)->active();
+        $registry = app(\App\Services\Integrations\IntegrationRegistry::class);
+        $linkableModules = $registry->linkableModules();
+        $missingRequiredOptionKeys = $this->missingRequiredOptionKeys($product);
 
         return view('admin.products.edit', array_merge([
             'product' => $product,
             'availableGroups' => $availableGroups,
-            'modules' => $modules,
+            'linkableModules' => $linkableModules,
+            'registry' => $registry,
+            'missingRequiredOptionKeys' => $missingRequiredOptionKeys,
         ], $this->formData()));
     }
 
@@ -180,10 +185,19 @@ class ProductController extends Controller
      */
     private function formData(): array
     {
+        $registry = app(\App\Services\Integrations\IntegrationRegistry::class);
+        $provisioningModules = [];
+
+        foreach ($registry->slugs() as $slug) {
+            $provisioningModules[$slug] = $registry->nameFor($slug);
+        }
+        $provisioningModules['manual'] = 'Manual';
+        $provisioningModules['custom'] = 'Custom';
+
         return [
             'cycles' => Product::BILLING_CYCLES,
             'defaultCycles' => Product::DEFAULT_CYCLES,
-            'provisioningModules' => Product::PROVISIONING_MODULES,
+            'provisioningModules' => $provisioningModules,
             'gstTypes' => Product::GST_TYPES,
             'currency' => app(\App\Settings\BillingSettings::class)->currency,
             'groups' => ProductGroup::query()->orderBy('sort_order')->orderBy('name')->get(),
@@ -344,5 +358,59 @@ class ProductController extends Controller
 
             $this->optionLinks->updateLink($link, array_merge($payload, ['values' => $values]));
         }
+    }
+
+    /**
+     * Missing required option group keys for the product's effective provisioning module.
+     *
+     * Warning only — matches OptionSelectionRules checkout enforcement (no blocking).
+     * Single source of truth is ModuleRequiredOptions::missingKeysFor().
+     *
+     * @return list<string>
+     */
+    private function missingRequiredOptionKeys(Product $product): array
+    {
+        $attachedKeys = $product->optionLinks
+            ->map(fn ($link) => strtolower(trim((string) ($link->group?->key ?? ''))))
+            ->filter()
+            ->values()
+            ->all();
+
+        // Prefer the canonical map; fall back to missingKeys(Product) union
+        // (provisioning_module + enabled moduleLinks) when available.
+        if (class_exists(\App\Services\Provisioning\ModuleRequiredOptions::class)) {
+            if (method_exists(\App\Services\Provisioning\ModuleRequiredOptions::class, 'missingKeysFor')) {
+                return \App\Services\Provisioning\ModuleRequiredOptions::missingKeysFor(
+                    (string) ($product->provisioning_module ?? ''),
+                    $attachedKeys
+                );
+            }
+
+            if (method_exists(\App\Services\Provisioning\ModuleRequiredOptions::class, 'missingKeys')) {
+                return \App\Services\Provisioning\ModuleRequiredOptions::missingKeys($product);
+            }
+        }
+
+        $module = strtolower(trim((string) ($product->provisioning_module ?? '')));
+
+        // Inline map — keep in sync with ModuleRequiredOptions if that class is introduced.
+        $requiredByModule = [
+            'hyperv' => ['cpu', 'ram', 'disk'],
+            'virtualizor' => ['cpu', 'ram', 'disk'],
+            'proxmox' => ['cpu', 'ram', 'disk'],
+            'cpanel' => ['plan'],
+            'plesk' => ['plan'],
+            'directadmin' => ['plan'],
+        ];
+
+        $required = $requiredByModule[$module] ?? [];
+
+        if ($required === []) {
+            return [];
+        }
+
+        $attachedSet = array_flip($attachedKeys);
+
+        return array_values(array_filter($required, fn (string $key) => ! isset($attachedSet[$key])));
     }
 }

@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Modules\SnmpMonitor;
 
 use App\Contracts\Module\AbstractModule;
-use App\Contracts\Module\Capabilities\HostingAccountInfoProvider;
+use App\Contracts\Integrations\Capabilities\HostingAccountInfoProvider;
 use App\Contracts\Module\ModuleContext;
 use App\Models\HostingAccount;
 use App\Services\Modules\ModuleManager;
@@ -253,7 +253,7 @@ final class SnmpMonitor extends AbstractModule implements HostingAccountInfoProv
             return null;
         }
 
-        if (! $account->product->moduleLinks->firstWhere('module_id', $module->id)?->enabled) {
+        if (! $account->product->moduleLinks->firstWhere('module_slug', $module->slug)?->enabled) {
             return null;
         }
 

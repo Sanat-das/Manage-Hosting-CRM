@@ -157,17 +157,17 @@ class AdminModuleUiTest extends TestCase
         $product = $this->makeProduct();
 
         $this->actingAs($this->staffUser())
-            ->post(route('admin.products.modules.toggle', [$product, $module]))
+            ->post(route('admin.products.modules.toggle', [$product, $module->slug]))
             ->assertForbidden();
 
         $this->actingAsAdminWith(['products.edit'])
-            ->post(route('admin.products.modules.toggle', [$product, $module]))
+            ->post(route('admin.products.modules.toggle', [$product, $module->slug]))
             ->assertRedirect(route('admin.products.show', [$product, 'tab' => 'modules']))
             ->assertSessionHas('success');
 
         $this->assertDatabaseHas('product_module', [
             'product_id' => $product->id,
-            'module_id' => $module->id,
+            'module_slug' => $module->slug,
             'enabled' => 1,
         ]);
     }
@@ -178,18 +178,18 @@ class AdminModuleUiTest extends TestCase
         $product = $this->makeProduct();
 
         $this->actingAsAdminWith(['products.edit'])
-            ->post(route('admin.products.modules.toggle', [$product, $module]));
+            ->post(route('admin.products.modules.toggle', [$product, $module->slug]));
 
         $this->actingAsAdminWith(['products.edit'])
             ->from(route('admin.products.show', [$product, 'tab' => 'modules']))
-            ->put(route('admin.products.modules.config', [$product, $module]), [
+            ->put(route('admin.products.modules.config', [$product, $module->slug]), [
                 'config' => ['secret' => 's3cret', 'greeting' => 'hi'],
             ])
             ->assertRedirect(route('admin.products.show', [$product, 'tab' => 'modules']))
             ->assertSessionHas('success');
 
         $pivot = ProductModule::where('product_id', $product->id)
-            ->where('module_id', $module->id)
+            ->where('module_slug', $module->slug)
             ->firstOrFail();
 
         $this->assertSame('hi', $pivot->config['greeting']);
@@ -215,7 +215,7 @@ class AdminModuleUiTest extends TestCase
 
         // Attach it, then the edit page shows the config fields + save button.
         $this->actingAsAdminWith(['products.edit'])
-            ->post(route('admin.products.modules.toggle', [$product, $module]));
+            ->post(route('admin.products.modules.toggle', [$product, $module->slug]));
 
         $this->actingAsAdminWith(['products.edit'])
             ->get(route('admin.products.edit', $product))
@@ -255,11 +255,11 @@ class AdminModuleUiTest extends TestCase
         // flash), and neither the decrypted values nor their field labels
         // may leak onto the page.
         $this->actingAsAdminWith(['products.edit'])
-            ->post(route('admin.products.modules.toggle', [$product, $module]))
+            ->post(route('admin.products.modules.toggle', [$product, $module->slug]))
             ->assertRedirect();
 
         $this->actingAsAdminWith(['products.edit'])
-            ->put(route('admin.products.modules.config', [$product, $module]), [
+            ->put(route('admin.products.modules.config', [$product, $module->slug]), [
                 'config' => ['greeting' => 'hello there', 'secret' => 's3cret'],
             ])
             ->assertRedirect();
@@ -328,7 +328,7 @@ class AdminModuleUiTest extends TestCase
         foreach ($modules as $module) {
             ProductModule::create([
                 'product_id' => $product->id,
-                'module_id' => $module->id,
+                'module_slug' => $module->slug,
                 'enabled' => true,
                 'config' => [],
             ]);
@@ -399,7 +399,7 @@ class AdminModuleUiTest extends TestCase
 
         ProductModule::create([
             'product_id' => $product->id,
-            'module_id' => $module->id,
+            'module_slug' => $module->slug,
             'enabled' => true,
             'config' => [],
         ]);

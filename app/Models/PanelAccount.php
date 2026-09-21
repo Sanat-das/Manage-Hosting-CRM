@@ -12,7 +12,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 /**
  * A control-panel account a provisioning module created on a remote server.
  *
- * Shared by every panel module (see App\Contracts\Module\AbstractPanelModule);
+ * Shared by every panel module (see App\Contracts\Integrations\AbstractPanelModule);
  * `panel` says which one owns the row.
  *
  * `password_encrypted` uses the `encrypted` cast, so rows must only ever be

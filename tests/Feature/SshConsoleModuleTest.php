@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
-use App\Contracts\Module\Capabilities\HostingAccountInfoProvider;
+use App\Contracts\Integrations\Capabilities\HostingAccountInfoProvider;
 use App\Models\Module;
 use App\Services\Modules\ModuleManager;
 use Illuminate\Foundation\Testing\RefreshDatabase;

@@ -2,8 +2,8 @@
 
 namespace App\Http\Controllers\Admin;
 
-use App\Contracts\Module\Capabilities\HostingAccountInfoProvider;
-use App\Contracts\Module\Capabilities\HostingAccountToolsProvider;
+use App\Contracts\Integrations\Capabilities\HostingAccountInfoProvider;
+use App\Contracts\Integrations\Capabilities\HostingAccountToolsProvider;
 use App\Exceptions\NoAvailableIpException;
 use App\Http\Controllers\Controller;
 use App\Models\AssetRelationship;
@@ -23,6 +23,7 @@ use App\Models\Server;
 use App\Models\SslCertificate;
 use App\Models\Vlan;
 use App\Services\HostingService;
+use App\Services\Integrations\IntegrationRegistry;
 use App\Services\IpAssignmentService;
 use App\Services\Modules\ModuleManager;
 use Illuminate\Database\Eloquent\Builder;
@@ -176,7 +177,7 @@ class HostingController extends Controller
     public function show(HostingAccount $hostingAccount): View
     {
         $hostingAccount->load([
-            'customer.user', 'product', 'product.moduleLinks.module', 'server', 'order', 'order.domain', 'order.invoices', 'order.items',
+            'customer.user', 'product', 'product.moduleLinks', 'server', 'order', 'order.domain', 'order.invoices', 'order.items',
         ]);
 
         $audit = AuditLog::query()
@@ -263,6 +264,7 @@ class HostingController extends Controller
         $modulePanels = [];
         $moduleTools = [];
         $manager = app(ModuleManager::class);
+        $registry = app(IntegrationRegistry::class);
 
         foreach ($modules as $module) {
             $instance = $manager->resolve($module);
@@ -272,7 +274,7 @@ class HostingController extends Controller
                 continue;
             }
 
-            $link = $hostingAccount->product?->moduleLinks->firstWhere('module_id', $module->id);
+            $link = $hostingAccount->product?->moduleLinks->firstWhere('module_slug', $module->slug);
 
             if ($link === null || ! $link->enabled) {
                 continue;
@@ -305,11 +307,55 @@ class HostingController extends Controller
             ->orderByDesc('created_at')
             ->get();
 
+        // Direct module actions for this account's product: every enabled
+        // module link that implements provisioning contributes buttons. For
+        // builtins the driver is resolved via IntegrationRegistry, for plugins
+        // via ModuleManager fallback.
+        $provisioningModules = [];
+        $productLinks = $hostingAccount->product?->moduleLinks()->where('enabled', true)->get() ?? collect();
+        foreach ($productLinks as $link) {
+            $slug = trim((string) ($link->module_slug ?? ''));
+            if ($slug === '') {
+                continue;
+            }
+
+            $driver = null;
+            $name = $registry->nameFor($slug);
+
+            if ($registry->has($slug)) {
+                $candidate = $registry->instanceFor($slug);
+                if ($candidate !== null && method_exists($candidate, 'provision')) {
+                    $driver = $candidate;
+                }
+            } else {
+                $mod = $manager->find($slug);
+                if ($mod !== null && $mod->status === \App\Models\Module::STATUS_ACTIVE) {
+                    $driver = $manager->capabilityInstance($mod, 'provisioning');
+                    $name = $mod->name ?? $name;
+                }
+            }
+
+            if ($driver === null) {
+                continue;
+            }
+
+            // Provide a pseudo-module object so the view's $mod->slug / $mod->name keep working
+            $pseudoModule = (object) ['slug' => $slug, 'name' => $name, 'id' => null];
+
+            $provisioningModules[] = [
+                'module' => $pseudoModule,
+                'slug' => $slug,
+                'name' => $name,
+                'mode' => $link->provisioning_mode ?? 'auto',
+            ];
+        }
+
         return view('admin.hosting.show', [
             'hostingAccount' => $hostingAccount,
             'modules' => $modules,
             'modulePanels' => $modulePanels,
             'moduleTools' => $moduleTools,
+            'provisioningModules' => $provisioningModules,
             'audit' => $audit,
             'packages' => $packages,
             'assignedIps' => $assignedIps,
@@ -478,9 +524,95 @@ class HostingController extends Controller
             return back()->with('error', $e->getMessage());
         }
 
+        if ($moduleError = $this->syncModuleOnHostingChange($hostingAccount, 'terminate')) {
+            return redirect()
+                ->route('admin.hosting.index')
+                ->with('success', "Product/Service #{$hostingAccount->id} terminated locally.")
+                ->with('error', $moduleError);
+        }
+
         return redirect()
             ->route('admin.hosting.index')
-            ->with('success', "Product/Service #{$hostingAccount->id} terminated.");
+            ->with('success', "Product/Service #{$hostingAccount->id} terminated (module synced).");
+    }
+
+    /**
+     * Best-effort remote sync for the local hosting lifecycle: calls every
+     * enabled provisioning module on the account's mirrored service instance.
+     * Returns null when everything synced (or no module applies), otherwise a
+     * human-readable error for the flash message. Never throws.
+     */
+    private function syncModuleOnHostingChange(HostingAccount $hostingAccount, string $verb): ?string
+    {
+        try {
+            $registry = app(IntegrationRegistry::class);
+            $manager = app(ModuleManager::class);
+            $links = $hostingAccount->product?->moduleLinks()->where('enabled', true)->get() ?? collect();
+            $errors = [];
+
+            foreach ($links as $link) {
+                $slug = trim((string) ($link->module_slug ?? ''));
+                if ($slug === '') {
+                    continue;
+                }
+
+                $driver = null;
+                $name = $registry->nameFor($slug);
+
+                if ($registry->has($slug)) {
+                    $candidate = $registry->instanceFor($slug);
+                    if ($candidate !== null && method_exists($candidate, $verb)) {
+                        $driver = $candidate;
+                    }
+                } else {
+                    $module = $manager->find($slug);
+                    if ($module === null || $module->status !== \App\Models\Module::STATUS_ACTIVE) {
+                        continue;
+                    }
+                    $driver = $manager->capabilityInstance($module, 'provisioning');
+                    $name = $module->name ?? $name;
+                }
+
+                if ($driver === null) {
+                    continue;
+                }
+
+                $config = $registry->decryptConfigFor($slug, is_array($link->config ?? null) ? $link->config : []);
+                $service = $this->serviceForHosting($hostingAccount, $slug);
+
+                try {
+                    $result = $driver->{$verb}($service, $config);
+
+                    if ($result->success) {
+                        // ok
+                    } else {
+                        $errors[] = "{$name}: ".($result->message ?? "{$verb} failed");
+                    }
+                } catch (\Throwable $e) {
+                    \Illuminate\Support\Facades\Log::error('Hosting lifecycle module sync threw', [
+                        'hosting_account_id' => $hostingAccount->id,
+                        'module' => $slug,
+                        'action' => $verb,
+                        'error' => $e->getMessage(),
+                    ]);
+                    $errors[] = "{$name}: {$e->getMessage()}";
+                }
+            }
+
+            if ($errors !== []) {
+                return 'Remote sync incomplete — '.implode('; ', $errors);
+            }
+
+            return null;
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::error('Hosting lifecycle module sync failed', [
+                'hosting_account_id' => $hostingAccount->id,
+                'action' => $verb,
+                'error' => $e->getMessage(),
+            ]);
+
+            return "Remote sync could not run: {$e->getMessage()}";
+        }
     }
 
     public function suspend(Request $request, HostingAccount $hostingAccount): RedirectResponse
@@ -493,7 +625,16 @@ class HostingController extends Controller
             return back()->withInput()->with('error', $e->getMessage());
         }
 
-        return back()->with('success', "Product/Service #{$hostingAccount->id} suspended.");
+        // Best-effort remote sync: the local suspend is committed; a module
+        // refusal is surfaced, not rolled back (same contract as
+        // OrderService::applyLifecycleEffects).
+        if ($moduleError = $this->syncModuleOnHostingChange($hostingAccount, 'suspend')) {
+            return back()
+                ->with('success', "Product/Service #{$hostingAccount->id} suspended locally.")
+                ->with('error', $moduleError);
+        }
+
+        return back()->with('success', "Product/Service #{$hostingAccount->id} suspended (module synced).");
     }
 
     public function unsuspend(HostingAccount $hostingAccount): RedirectResponse
@@ -504,7 +645,196 @@ class HostingController extends Controller
             return back()->with('error', $e->getMessage());
         }
 
-        return back()->with('success', "Product/Service #{$hostingAccount->id} reactivated.");
+        if ($moduleError = $this->syncModuleOnHostingChange($hostingAccount, 'unsuspend')) {
+            return back()
+                ->with('success', "Product/Service #{$hostingAccount->id} reactivated locally.")
+                ->with('error', $moduleError);
+        }
+
+        return back()->with('success', "Product/Service #{$hostingAccount->id} reactivated (module synced).");
+    }
+
+    /**
+     * Direct module action on a hosting account (Hyper-V: Create / Start /
+     * Stop / Restart / Delete; other modules: legacy Create / Suspend /
+     * Unsuspend / Terminate / Delete).
+     *
+     * Direct means the enabled module instance is called straight from the
+     * hosting account — NOT via the order ProvisioningDispatcher. The target
+     * ServiceInstance is the hosting account's order service when one exists,
+     * otherwise a minimal instance mirrored from the hosting row (same
+     * server/domain/identity) so compute modules have a server to talk to.
+     * Local hosting status follows only when the module reports success, and
+     * every outcome is audited.
+     *
+     * Production guards: Restart and Delete require typing the account's
+     * host_name (typed confirmation, not a single click); Delete refuses a
+     * Running VM (stop first — never stop-and-delete in one click); the
+     * power actions are state-checked on the host (no blind -Force).
+     */
+    public function moduleAction(Request $request, HostingAccount $hostingAccount): RedirectResponse
+    {
+        $validated = $request->validate([
+            'module_slug' => ['required', 'string', 'max:100'],
+            'action' => ['required', 'string', 'in:create,start,stop,restart,delete,suspend,unsuspend,terminate'],
+            'confirm' => ['nullable', 'string', 'max:255'],
+            'delete_vhd' => ['nullable', 'boolean'],
+        ]);
+
+        $slug = trim((string) $validated['module_slug']);
+        $registry = app(IntegrationRegistry::class);
+        $manager = app(ModuleManager::class);
+
+        $driver = null;
+        $displayName = $registry->nameFor($slug);
+        $link = $hostingAccount->product?->moduleLinks()->where('module_slug', $slug)->first();
+
+        if ($link === null || ! (bool) $link->enabled) {
+            return back()->with('error', "Module {$displayName} is not enabled on this product.");
+        }
+
+        if ($registry->has($slug)) {
+            $driver = $registry->instanceFor($slug);
+            if ($driver === null || ! method_exists($driver, 'provision')) {
+                return back()->with('error', "Module {$displayName} cannot provision.");
+            }
+        } else {
+            $module = $manager->find($slug);
+            if ($module === null || $module->status !== \App\Models\Module::STATUS_ACTIVE) {
+                return back()->with('error', 'Module is not active.');
+            }
+            $displayName = $module->name ?? $displayName;
+            $driver = $manager->capabilityInstance($module, 'provisioning');
+            if ($driver === null) {
+                return back()->with('error', "Module {$displayName} cannot provision.");
+            }
+        }
+
+        $config = $registry->decryptConfigFor($slug, is_array($link->config ?? null) ? $link->config : []);
+        $service = $this->serviceForHosting($hostingAccount, $slug);
+
+        // The VM is named after the product's hostname so host and record
+        // agree (HyperV::createRemote reads host_name first).
+        if ($validated['action'] === 'create') {
+            $config['host_name'] = (string) $hostingAccount->host_name;
+        }
+
+        // Hyper-V power verbs + legacy billing verbs (kept for other modules
+        // and old clients). delete stays aliased to terminate.
+        $verbMap = [
+            'create' => 'provision',
+            'start' => 'unsuspend',
+            'stop' => 'suspend',
+            'restart' => 'restart',
+            'delete' => 'terminate',
+            'suspend' => 'suspend',
+            'unsuspend' => 'unsuspend',
+            'terminate' => 'terminate',
+        ];
+        $verb = $verbMap[$validated['action']] ?? $validated['action'];
+
+        // Power actions on a terminated service would hand out free compute
+        // (and Start would even re-activate local billing status below).
+        // Create (re-provision) and Delete (cleanup) stay allowed.
+        if ($hostingAccount->status === HostingService::STATUS_TERMINATED
+            && in_array($validated['action'], ['start', 'stop', 'restart'], true)) {
+            return back()->with('error', "Service is terminated — {$validated['action']} is refused. Create re-provisions, Delete cleans up.");
+        }
+
+        // Typed confirmation for disruptive actions: the operator must type
+        // the visible host_name, not just click through a dialog.
+        if (in_array($validated['action'], ['restart', 'delete'], true)) {
+            $expected = (string) $hostingAccount->host_name;
+            if (trim((string) ($validated['confirm'] ?? '')) !== $expected) {
+                return back()->with('error', "Type '{$expected}' to confirm {$validated['action']}. Action cancelled — nothing was touched.");
+            }
+        }
+
+        // Per-action VHD choice for Hyper-V delete. The form always submits
+        // delete_vhd (hidden 0 + checkbox), so an unchecked box genuinely
+        // orphans the disk; callers without the key fall back to config.
+        if ($validated['action'] === 'delete' && array_key_exists('delete_vhd', $validated)) {
+            $config['delete_vhd_on_terminate'] = (bool) $request->boolean('delete_vhd');
+        }
+
+        if ($verb === 'restart' && ! method_exists($driver, 'restart')) {
+            return back()->with('error', "Module {$displayName} does not support restart.");
+        }
+
+        try {
+            /** @var \App\Contracts\Integrations\ProvisioningResult $result */
+            $result = $driver->{$verb}($service, $config);
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::error('Hosting module action threw', [
+                'hosting_account_id' => $hostingAccount->id,
+                'module' => $slug,
+                'action' => $verb,
+                'error' => $e->getMessage(),
+            ]);
+
+            return back()->with('error', "Module action failed: {$e->getMessage()}");
+        }
+
+        if (! $result->success) {
+            return back()->with('error', $result->message ?? 'Module action failed.');
+        }
+
+        try {
+            $hostingAccount->refresh();
+
+            if (in_array($verb, ['provision', 'unsuspend'], true) && $hostingAccount->status !== HostingService::STATUS_ACTIVE) {
+                $this->hostingService->unsuspend($hostingAccount);
+            } elseif ($verb === 'suspend' && $hostingAccount->status === HostingService::STATUS_ACTIVE) {
+                $this->hostingService->suspend($hostingAccount, 'Module action: '.$slug);
+            } elseif ($verb === 'terminate' && $hostingAccount->status !== HostingService::STATUS_TERMINATED) {
+                $this->hostingService->terminate($hostingAccount, 'Module action: '.$slug);
+            }
+            // restart: host power-cycled, local billing status untouched.
+        } catch (RuntimeException $e) {
+            // Module already succeeded — the local guard (e.g. already in the
+            // target status) must not mask that.
+            $this->hostingService->audit($hostingAccount, 'hosting.module_action', "Module {$slug} {$verb} succeeded; local status already {$hostingAccount->status}", ['module' => $slug, 'action' => $verb]);
+        }
+
+        $this->hostingService->audit($hostingAccount, 'hosting.module_action', "Module {$slug} {$verb}: ".($result->message ?? 'ok'), ['module' => $slug, 'action' => $verb]);
+
+        if ($verb === 'terminate') {
+            return redirect()->route('admin.hosting.index')->with('success', "Module {$displayName} {$validated['action']}: ".($result->message ?? 'done.'));
+        }
+
+        return back()->with('success', "Module {$displayName} {$validated['action']}: ".($result->message ?? 'done.'));
+    }
+
+    /**
+     * ServiceInstance the module operates on: the hosting account's order
+     * service when one exists, otherwise a minimal mirror of the hosting row
+     * (same customer/server/domain/identity) so the module has a server.
+     */
+    private function serviceForHosting(HostingAccount $hostingAccount, string $slug): \App\Models\ServiceInstance
+    {
+        if ($hostingAccount->order_id !== null) {
+            $existing = \App\Models\ServiceInstance::where('order_id', $hostingAccount->order_id)->first();
+
+            if ($existing !== null) {
+                return $existing;
+            }
+        }
+
+        return \App\Models\ServiceInstance::firstOrCreate(
+            [
+                'customer_id' => $hostingAccount->customer_id,
+                'order_id' => $hostingAccount->order_id,
+                'server_id' => $hostingAccount->server_id,
+                'domain' => $hostingAccount->domain,
+            ],
+            [
+                'catalog_product_id' => null,
+                'service_tag' => 'HOST-'.$hostingAccount->id,
+                'username' => $hostingAccount->username ?: 'host'.$hostingAccount->id,
+                'provisioning_method' => $slug,
+                'status' => 'pending',
+            ],
+        );
     }
 
     /**
@@ -857,7 +1187,7 @@ class HostingController extends Controller
             'servers' => Server::query()
                 ->where('status', 'active')
                 ->orderBy('name')
-                ->get(['id', 'name', 'ip_address', 'panel_type']),
+                ->get(['id', 'name', 'ip_address', 'server_type']),
         ];
     }
 

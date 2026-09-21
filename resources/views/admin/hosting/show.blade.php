@@ -92,6 +92,121 @@
         </div>
     </x-adminlte-card>
 
+    {{-- Module actions — buttons contributed by the product's ENABLED provisioning modules (direct call) --}}
+    @if (! empty($provisioningModules ?? []))
+        <x-adminlte-card title="Module actions" icon="fas fa-puzzle-piece">
+            @foreach ($provisioningModules as $entry)
+                @php
+                    $mod = $entry['module'];
+                    $mode = $entry['mode'] ?? 'auto';
+                    $isHyperV = ($mod->slug ?? '') === 'hyperv';
+                @endphp
+                @if ($isHyperV)
+                    {{-- Hyper-V production power actions: Create / Start / Stop / Restart / Delete.
+                         Every action is state-checked on the host (Get-VM first, graceful only,
+                         no blind -Force). Restart + Delete additionally require typing the
+                         host_name — enforced server-side in HostingController::moduleAction. --}}
+                    <div class="d-flex flex-wrap align-items-center gap-2 py-2 {{ ! $loop->last ? 'border-bottom' : '' }}">
+                        <strong>{{ $mod->name }}</strong>
+                        <span class="text-muted small">{{ $mod->slug }}</span>
+                        <span class="badge {{ $mode === 'manual' ? 'text-bg-warning' : 'text-bg-success' }}">{{ ucfirst($mode) }}</span>
+                        <span class="ms-auto d-flex flex-wrap gap-2">
+                            @can('hosting.edit')
+                                <button type="button" class="btn btn-sm btn-outline-success" data-bs-toggle="modal" data-bs-target="#hv-create-{{ $mod->slug }}">Create</button>
+                                <button type="button" class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#hv-start-{{ $mod->slug }}">Start</button>
+                                <button type="button" class="btn btn-sm btn-outline-warning" data-bs-toggle="modal" data-bs-target="#hv-stop-{{ $mod->slug }}">Stop</button>
+                                <button type="button" class="btn btn-sm btn-outline-warning" data-bs-toggle="modal" data-bs-target="#hv-restart-{{ $mod->slug }}">Restart</button>
+                                <button type="button" class="btn btn-sm btn-outline-danger" data-bs-toggle="modal" data-bs-target="#hv-delete-{{ $mod->slug }}">Delete</button>
+                            @endcan
+                        </span>
+                    </div>
+                    @can('hosting.edit')
+                        <x-adminlte.partials.confirm-modal id="hv-create-{{ $mod->slug }}" title="Create Hyper-V VM"
+                            :message="'Provision a new VM on the Hyper-V host with this product CPU / RAM / disk? The host is called for real — a refusal fails loudly, nothing is faked.'"
+                            :action="route('admin.hosting.module-action', $hostingAccount)" method="POST"
+                            confirm-label="Create VM" confirm-theme="success">
+                            <x-slot name="fields">
+                                <input type="hidden" name="module_slug" value="{{ $mod->slug }}">
+                                <input type="hidden" name="action" value="create">
+                            </x-slot>
+                        </x-adminlte.partials.confirm-modal>
+                        <x-adminlte.partials.confirm-modal id="hv-start-{{ $mod->slug }}" title="Start VM"
+                            :message="'Power on this VM? Safe when Off or Saved — already-Running is a no-op.'"
+                            :action="route('admin.hosting.module-action', $hostingAccount)" method="POST"
+                            confirm-label="Start VM" confirm-theme="primary">
+                            <x-slot name="fields">
+                                <input type="hidden" name="module_slug" value="{{ $mod->slug }}">
+                                <input type="hidden" name="action" value="start">
+                            </x-slot>
+                        </x-adminlte.partials.confirm-modal>
+                        <x-adminlte.partials.confirm-modal id="hv-stop-{{ $mod->slug }}" title="Stop VM (graceful shutdown)"
+                            :message="'Ask the guest OS to shut down via integration services? No force is ever sent — an unresponsive guest must be handled on the host itself.'"
+                            :action="route('admin.hosting.module-action', $hostingAccount)" method="POST"
+                            confirm-label="Shut down" confirm-theme="warning">
+                            <x-slot name="fields">
+                                <input type="hidden" name="module_slug" value="{{ $mod->slug }}">
+                                <input type="hidden" name="action" value="stop">
+                            </x-slot>
+                        </x-adminlte.partials.confirm-modal>
+                        <x-adminlte.partials.confirm-modal id="hv-restart-{{ $mod->slug }}" title="Restart VM"
+                            :message="'Reboot this VM? Only a RUNNING VM is rebooted — a stopped VM is refused, never surprise-started. Type ' . $hostingAccount->host_name . ' to confirm.'"
+                            :action="route('admin.hosting.module-action', $hostingAccount)" method="POST"
+                            confirm-label="Restart" confirm-theme="warning">
+                            <x-slot name="fields">
+                                <input type="hidden" name="module_slug" value="{{ $mod->slug }}">
+                                <input type="hidden" name="action" value="restart">
+                                <div class="mt-2">
+                                    <label class="form-label small mb-1" for="hv-restart-confirm-{{ $mod->slug }}">Type <code>{{ $hostingAccount->host_name }}</code> to confirm</label>
+                                    <input id="hv-restart-confirm-{{ $mod->slug }}" name="confirm" aria-label="Type {{ $hostingAccount->host_name }} to confirm restart" class="form-control form-control-sm" autocomplete="off" required placeholder="{{ $hostingAccount->host_name }}">
+                                </div>
+                            </x-slot>
+                        </x-adminlte.partials.confirm-modal>
+                        <x-adminlte.partials.confirm-modal id="hv-delete-{{ $mod->slug }}" title="Delete VM (permanent)"
+                            :message="'PERMANENTLY delete this VM? A RUNNING VM is refused — Stop it first, then Delete. Type ' . $hostingAccount->host_name . ' to confirm.'"
+                            :action="route('admin.hosting.module-action', $hostingAccount)" method="POST"
+                            confirm-label="Delete VM" confirm-theme="danger">
+                            <x-slot name="fields">
+                                <input type="hidden" name="module_slug" value="{{ $mod->slug }}">
+                                <input type="hidden" name="action" value="delete">
+                                <div class="mt-2">
+                                    <label class="form-label small mb-1" for="hv-delete-confirm-{{ $mod->slug }}">Type <code>{{ $hostingAccount->host_name }}</code> to confirm</label>
+                                    <input id="hv-delete-confirm-{{ $mod->slug }}" name="confirm" aria-label="Type {{ $hostingAccount->host_name }} to confirm delete" class="form-control form-control-sm" autocomplete="off" required placeholder="{{ $hostingAccount->host_name }}">
+                                </div>
+                                {{-- Hidden 0 so an UNCHECKED box genuinely orphans the disk:
+                                     unchecked checkboxes submit nothing, which would otherwise
+                                     fall back to the product default (delete). --}}
+                                <input type="hidden" name="delete_vhd" value="0">
+                                <div class="form-check mt-2">
+                                    <input class="form-check-input" type="checkbox" name="delete_vhd" value="1" id="hv-delete-vhd-{{ $mod->slug }}" checked>
+                                    <label class="form-check-label small" for="hv-delete-vhd-{{ $mod->slug }}">Also delete the recorded VHD (uncheck to orphan the disk)</label>
+                                </div>
+                            </x-slot>
+                        </x-adminlte.partials.confirm-modal>
+                    @endcan
+                @else
+                <div class="d-flex flex-wrap align-items-center gap-2 py-2 {{ ! $loop->last ? 'border-bottom' : '' }}">
+                    <strong>{{ $mod->name }}</strong>
+                    <span class="text-muted small">{{ $mod->slug }}</span>
+                    <span class="badge {{ $mode === 'manual' ? 'text-bg-warning' : 'text-bg-success' }}">{{ ucfirst($mode) }}</span>
+                    <span class="ms-auto d-flex flex-wrap gap-2">
+                        @can('hosting.edit')
+                            @foreach (['create' => 'Create', 'suspend' => 'Suspend', 'unsuspend' => 'Unsuspend', 'terminate' => 'Terminate', 'delete' => 'Delete'] as $act => $label)
+                                <form method="POST" action="{{ route('admin.hosting.module-action', $hostingAccount) }}" class="d-inline" onsubmit="return confirm('Run {{ $label }} on {{ $mod->name }}?');">
+                                    @csrf
+                                    <input type="hidden" name="module_slug" value="{{ $mod->slug }}">
+                                    <input type="hidden" name="action" value="{{ $act }}">
+                                    <button type="submit" class="btn btn-sm {{ in_array($act, ['terminate', 'delete']) ? 'btn-outline-danger' : ($act === 'create' ? 'btn-outline-success' : 'btn-outline-primary') }}">{{ $label }}</button>
+                                </form>
+                            @endforeach
+                        @endcan
+                    </span>
+                </div>
+                @endif
+            @endforeach
+            <p class="text-muted small mb-0 mt-2">Calls the enabled module directly from this account. Manual links only run here — never automatically. Hyper-V power actions are state-checked on the host; Restart and Delete require typing the account name.</p>
+        </x-adminlte-card>
+    @endif
+
     {{-- Metric row --}}
     <x-adminlte.partials.metric-cards :items="[
         ['title' => $hostingAccount->disk_used.' / '.$hostingAccount->disk_quota.' MB', 'text' => 'Disk Usage', 'icon' => 'bi bi-hdd', 'theme' => 'primary'],

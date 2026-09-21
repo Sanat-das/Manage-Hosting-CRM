@@ -62,6 +62,9 @@ Route::middleware(['web', 'auth', 'admin', 'throttle:admin'])->prefix('admin')->
     Route::post('hosting/{hostingAccount}/change-password', [HostingController::class, 'changePassword'])
         ->middleware('permission:hosting.edit')
         ->name('hosting.change-password');
+    Route::post('hosting/{hostingAccount}/module-action', [HostingController::class, 'moduleAction'])
+        ->middleware('permission:hosting.edit')
+        ->name('hosting.module-action');
 
     // Billing
     Route::put('hosting/{hostingAccount}/billing', [HostingController::class, 'updateBilling'])
@@ -94,6 +97,9 @@ Route::middleware(['web', 'auth', 'admin', 'throttle:admin'])->prefix('admin')->
     Route::get('servers', [ServerController::class, 'index'])
         ->middleware('permission:hosting.view')
         ->name('servers.index');
+    Route::get('servers/create-type', [ServerController::class, 'createType'])
+        ->middleware('permission:hosting.manage')
+        ->name('servers.create-type');
     Route::get('servers/create', [ServerController::class, 'create'])
         ->middleware('permission:hosting.manage')
         ->name('servers.create');
@@ -109,6 +115,12 @@ Route::middleware(['web', 'auth', 'admin', 'throttle:admin'])->prefix('admin')->
     Route::put('servers/{server}', [ServerController::class, 'update'])
         ->middleware('permission:hosting.manage')
         ->name('servers.update');
+    Route::post('servers/{server}/test-connection', [ServerController::class, 'testConnection'])
+        ->middleware('permission:hosting.manage')
+        ->name('servers.test-connection');
+    Route::post('servers/test-connection-dry', [ServerController::class, 'testConnectionDry'])
+        ->middleware('permission:hosting.manage')
+        ->name('servers.test-connection-dry');
 
     // --- Server groups ---
     Route::get('server-groups', [ServerGroupController::class, 'index'])
@@ -126,4 +138,7 @@ Route::middleware(['web', 'auth', 'admin', 'throttle:admin'])->prefix('admin')->
     Route::put('server-groups/{serverGroup}', [ServerGroupController::class, 'update'])
         ->middleware('permission:hosting.server_groups')
         ->name('server-groups.update');
+    Route::post('server-groups/{serverGroup}/members/sync', [ServerGroupController::class, 'syncMembers'])
+        ->middleware('permission:hosting.server_groups')
+        ->name('server-groups.members.sync');
 });

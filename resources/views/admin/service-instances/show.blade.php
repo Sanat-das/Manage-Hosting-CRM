@@ -66,9 +66,19 @@
                 </form>
             </x-adminlte-card>
             <x-adminlte-card icon="bi bi-exclamation-triangle" title="Actions" class="mt-3">
+                @if (in_array($serviceInstance->provision_status, ['failed', 'pending'], true) || $serviceInstance->status === 'pending')
+                    <button type="button" class="btn btn-success w-100 mb-2" data-bs-toggle="modal" data-bs-target="#provision-service-modal">
+                        <i class="bi bi-plus-circle me-1"></i> Retry provisioning
+                    </button>
+                @endif
                 @if ($serviceInstance->status === 'active')
                     <button type="button" class="btn btn-warning w-100 mb-2" data-bs-toggle="modal" data-bs-target="#suspend-service-modal">
                         <i class="bi bi-pause-circle me-1"></i> Suspend
+                    </button>
+                @endif
+                @if ($serviceInstance->status === 'suspended')
+                    <button type="button" class="btn btn-success w-100 mb-2" data-bs-toggle="modal" data-bs-target="#unsuspend-service-modal">
+                        <i class="bi bi-play-circle me-1"></i> Unsuspend
                     </button>
                 @endif
                 @if ($serviceInstance->status !== 'terminated')
@@ -76,26 +86,47 @@
                         <i class="bi bi-x-circle me-1"></i> Terminate
                     </button>
                 @endif
+                <p class="text-muted small mb-0 mt-2">Each action calls the owning module first — local status changes only when the module succeeds.</p>
             </x-adminlte-card>
         </div>
     </div>
 
+    @if (in_array($serviceInstance->provision_status, ['failed', 'pending'], true) || $serviceInstance->status === 'pending')
+        <x-adminlte.partials.confirm-modal
+            id="provision-service-modal"
+            title="Retry provisioning"
+            message="Run the owning module's provision again? Already-created resources are reused (idempotent)."
+            method="POST"
+            :action="route('admin.service-instances.provision', $serviceInstance)"
+            confirm-label="Provision service"
+        />
+    @endif
     @if ($serviceInstance->status === 'active')
         <x-adminlte.partials.confirm-modal
             id="suspend-service-modal"
             title="Suspend service"
-            message="Suspend this service?"
+            message="Suspend this service on the module first, then locally?"
             method="POST"
             :action="route('admin.service-instances.suspend', $serviceInstance)"
             confirm-label="Suspend service"
             confirm-theme="warning"
         />
     @endif
+    @if ($serviceInstance->status === 'suspended')
+        <x-adminlte.partials.confirm-modal
+            id="unsuspend-service-modal"
+            title="Unsuspend service"
+            message="Re-enable this service on the module first, then locally?"
+            method="POST"
+            :action="route('admin.service-instances.unsuspend', $serviceInstance)"
+            confirm-label="Unsuspend service"
+        />
+    @endif
     @if ($serviceInstance->status !== 'terminated')
         <x-adminlte.partials.confirm-modal
             id="terminate-service-modal"
             title="Terminate service"
-            message="Terminate this service? This cannot be undone."
+            message="Terminate this service on the module first, then locally? This cannot be undone."
             method="POST"
             :action="route('admin.service-instances.terminate', $serviceInstance)"
             confirm-label="Terminate service"

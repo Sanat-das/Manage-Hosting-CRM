@@ -2,13 +2,13 @@
 
 namespace App\Http\Controllers\Admin;
 
-use App\Contracts\Module\ServerConnectionResult;
+use App\Contracts\Integrations\ServerConnectionResult;
 use App\Http\Controllers\Controller;
-use App\Models\Module;
 use App\Models\PanelAccount;
 use App\Models\Server;
 use App\Models\ServerGroup;
 use App\Models\ServerGroupMember;
+use App\Services\Integrations\IntegrationRegistry;
 use App\Services\Modules\ModuleManager;
 use App\ViewModels\Admin\ServerDetailViewModel;
 use Illuminate\Http\JsonResponse;
@@ -22,17 +22,16 @@ class ServerController extends Controller
 {
     private const PER_PAGE = 20;
 
-    public function index(Request $request, ModuleManager $modules): View
+    public function index(Request $request, IntegrationRegistry $registry): View
     {
         $search = trim((string) $request->query('search'));
         $status = $request->query('status');
         $serverType = trim((string) $request->query('server_type'));
         $connectionStatus = trim((string) $request->query('connection_status'));
 
-        $activeSlugs = $this->activeSlugs($modules);
+        $activeSlugs = $this->activeSlugs($registry);
 
         $servers = Server::query()
-            ->with(['module:id,slug,name,manifest'])
             ->withCount('hostingAccounts')
             ->when($search !== '', function ($query) use ($search) {
                 $query->where(function ($q) use ($search) {
@@ -64,7 +63,7 @@ class ServerController extends Controller
             ->paginate(self::PER_PAGE)
             ->withQueryString();
 
-        $serverTypeOptions = $modules->serverTypeOptions();
+        $serverTypeOptions = $registry->serverTypeOptions();
 
         return view('admin.servers.index', [
             'servers' => $servers,
@@ -77,12 +76,8 @@ class ServerController extends Controller
         ]);
     }
 
-    public function show(Server $server, ModuleManager $modules): View
+    public function show(Server $server, IntegrationRegistry $registry): View
     {
-        $server->load([
-            'module:id,slug,name,manifest',
-        ]);
-
         $perPage = 10;
 
         $hostingAccounts = $server->hostingAccounts()->with(['customer.user:id,email,first_name,last_name', 'product:id,name', 'order:id,order_number,status'])->orderByDesc('id')->paginate($perPage, ['*'], 'hosting_page');
@@ -100,7 +95,7 @@ class ServerController extends Controller
         $liveVms = null;
         if (($server->server_type ?? $server->panel_type) === 'hyperv' && ($server->connection_status ?? '') === 'connected') {
             try {
-                $driver = $modules->resolveForServer($server);
+                $driver = $registry->resolveForServer($server);
                 if ($driver !== null && method_exists($driver, 'listVms')) {
                     $liveVms = \Illuminate\Support\Facades\Cache::remember(
                         "hyperv:server:{$server->id}:vms",
@@ -130,7 +125,7 @@ class ServerController extends Controller
                 try {
                     $start = microtime(true);
                     // Enforce 8s WinRM bound via client timeout; cachedServerInfo(60) is single cache home (60s TTL)
-                    $client = new \Modules\HyperV\Services\HyperVClient($server, 8);
+                    $client = new \App\Modules\HyperV\Services\HyperVClient($server, 8);
                     $dto = $client->cachedServerInfo(60);
                     $elapsed = microtime(true) - $start;
                     // Bounded: treat >8s as failure even if client returned
@@ -154,7 +149,7 @@ class ServerController extends Controller
             } elseif (in_array($serverType, ['cpanel', 'plesk', 'directadmin', 'virtualizor'], true)) {
                 // Panels via getServerInfo bounded at 5s for HTTP drivers, degrade to persisted on failure/timeout
                 try {
-                    $driver = $modules->resolveForServer($server);
+                    $driver = $registry->resolveForServer($server);
                     if ($driver !== null && method_exists($driver, 'getServerInfo')) {
                         $start = microtime(true);
                         $dto = $driver->getServerInfo($server);
@@ -313,7 +308,7 @@ class ServerController extends Controller
             ->whereIn('status', ['pending', 'provisioning', 'active', 'suspended'])
             ->count();
 
-        // ΓöÇΓöÇ Aggregates (todo 10): pools-minus-allocations + usage/quotas, read-only ΓöÇΓöÇ
+        // ── Aggregates (todo 10): pools-minus-allocations + usage/quotas, read-only ──
         // Entitlement vs metered sources stay labeled, never merged; any failure
         // degrades to empty rows so the page (and todos 7/9/11) never breaks.
         $poolAvailability = [];
@@ -528,7 +523,7 @@ class ServerController extends Controller
     }
 
     /**
-     * Todo 10 aggregates ΓÇö entitlement Available, read-only.
+     * Todo 10 aggregates — entitlement Available, read-only.
      *
      * Available = SUM(resource_pools by server_id) minus SUM(resource_allocations
      * with status IN [allocated, active] only), grouped by pool_type+unit so
@@ -568,9 +563,9 @@ class ServerController extends Controller
     }
 
     /**
-     * Todo 10 aggregates ΓÇö Consumption rows, read-only.
+     * Todo 10 aggregates — Consumption rows, read-only.
      *
-     * Metered usage_records (via server ΓåÆ service_instances ΓåÆ usage_records,
+     * Metered usage_records (via server → service_instances → usage_records,
      * recent-50 per metric within the current calendar month and open billing
      * window) plus legacy hosting quota sums, each as a separately labeled row.
      *
@@ -619,7 +614,7 @@ class ServerController extends Controller
             array_push($rows, ...self::summarizeUsageByMetric($records));
         }
 
-        // Legacy caps: hosting quota sums (quotas are stored in MB ΓÇö see
+        // Legacy caps: hosting quota sums (quotas are stored in MB — see
         // admin.hosting.show) as separate labeled rows, never merged metered.
         $quota = DB::table('hosting_accounts')
             ->where('server_id', $server->id)
@@ -701,7 +696,7 @@ class ServerController extends Controller
 
     /**
      * Pure usage math behind consumptionForServer (DB-free for QA).
-     * Sums are grouped by metric+unit ΓÇö never across units.
+     * Sums are grouped by metric+unit — never across units.
      *
      * @param  list<array{metric:string,value:mixed,unit:mixed}>  $records
      * @return list<array{source:string,label:string,metric:string,value:float,unit:string,display:string}>
@@ -739,13 +734,13 @@ class ServerController extends Controller
 
     /**
      * Display one aggregate value. fmtBytes converts ONLY within the
-     * byte-dimension (B/KB/MB/GB/TB/PB); every other unit ΓÇö including unknown
-     * ones ΓÇö renders verbatim as "value unit" and never throws.
+     * byte-dimension (B/KB/MB/GB/TB/PB); every other unit — including unknown
+     * ones — renders verbatim as "value unit" and never throws.
      */
     public static function formatAggregateValue(mixed $value, mixed $unit): string
     {
         if (! is_numeric($value)) {
-            return is_scalar($value) ? (string) $value : 'ΓÇö';
+            return is_scalar($value) ? (string) $value : '—';
         }
 
         $numeric = (float) $value;
@@ -761,7 +756,7 @@ class ServerController extends Controller
             try {
                 return \App\ViewModels\Admin\ServerDetailViewModel::fmtBytes($numeric * $factor);
             } catch (\Throwable) {
-                // Fall through to verbatim below ΓÇö display must never throw.
+                // Fall through to verbatim below — display must never throw.
             }
         }
 
@@ -770,22 +765,31 @@ class ServerController extends Controller
         return $label !== '' ? $number.' '.$label : $number;
     }
 
-    public function create(Request $request, ModuleManager $modules): View
+    public function create(Request $request, IntegrationRegistry $registry): View
     {
         $type = trim((string) $request->query('type'));
 
         if ($type === '') {
-            return $this->createType($modules);
+            return $this->createType($registry);
         }
 
-        $activeSlugs = $this->activeSlugs($modules);
+        $activeSlugs = $this->activeSlugs($registry);
 
         if (! in_array($type, $activeSlugs, true)) {
             abort(404, "Unknown server type [{$type}].");
         }
 
-        $module = Module::where('slug', $type)->first();
-        $instance = $module ? $modules->resolve($module) : null;
+        $instance = $registry->instanceFor($type);
+
+        // Plugin fallback: registry->instanceFor only covers builtins
+        if ($instance === null) {
+            try {
+                $module = app(ModuleManager::class)->find($type);
+                $instance = $module ? app(ModuleManager::class)->resolve($module) : null;
+            } catch (\Throwable) {
+                $instance = null;
+            }
+        }
 
         $schema = [];
         if ($instance !== null && method_exists($instance, 'serverConfigSchema')) {
@@ -809,7 +813,7 @@ class ServerController extends Controller
             ->orderBy('name')
             ->get(['id', 'name', 'allowed_server_type', 'status']);
 
-        $moduleName = $module?->name ?? $type;
+        $moduleName = $registry->nameFor($type);
 
         return view('admin.servers.create', [
             'serverType' => $type,
@@ -819,47 +823,18 @@ class ServerController extends Controller
         ]);
     }
 
-    public function createType(ModuleManager $modules): View
+    public function createType(IntegrationRegistry $registry): View
     {
-        $options = $modules->serverTypeOptions();
+        $options = $registry->serverTypeOptions();
 
-        // Ensure Proxmox appears as Coming soon even when inactive/disabled
-        $hasProxmox = collect($options)->contains(fn ($o) => ($o['slug'] ?? $o['value'] ?? '') === 'proxmox');
-        if (! $hasProxmox) {
-            $proxmoxModule = \App\Models\Module::where('slug', 'proxmox')->first();
-            if ($proxmoxModule !== null) {
-                $options[] = [
-                    'value' => 'proxmox',
-                    'slug' => 'proxmox',
-                    'label' => $proxmoxModule->name ?? 'Proxmox VE',
-                    'group' => $proxmoxModule->manifest['group'] ?? 'virtualization',
-                    'description' => $proxmoxModule->manifest['description'] ?? 'Proxmox VE stub — coming soon.',
-                    'coming_soon' => true,
-                    'disabled' => true,
-                    'status' => $proxmoxModule->status,
-                ];
-            } else {
-                $options[] = [
-                    'value' => 'proxmox',
-                    'slug' => 'proxmox',
-                    'label' => 'Proxmox VE',
-                    'group' => 'virtualization',
-                    'description' => 'Proxmox VE stub — coming soon. Will manage PVE hosts via ticket auth + qm API.',
-                    'coming_soon' => true,
-                    'disabled' => true,
-                    'status' => 'inactive',
-                ];
+        // Keep proxmox marked as coming soon (stub) even though builtin now always exists
+        foreach ($options as &$opt) {
+            if (($opt['slug'] ?? $opt['value'] ?? '') === 'proxmox') {
+                $opt['coming_soon'] = true;
+                $opt['disabled'] = true;
             }
-        } else {
-            // Mark proxmox as coming soon even if active (stub)
-            foreach ($options as &$opt) {
-                if (($opt['slug'] ?? $opt['value'] ?? '') === 'proxmox') {
-                    $opt['coming_soon'] = true;
-                    $opt['disabled'] = true;
-                }
-            }
-            unset($opt);
         }
+        unset($opt);
 
         $grouped = collect($options)->groupBy('group')->all();
 
@@ -872,9 +847,9 @@ class ServerController extends Controller
         ]);
     }
 
-    public function store(Request $request, ModuleManager $modules): RedirectResponse
+    public function store(Request $request, IntegrationRegistry $registry): RedirectResponse
     {
-        $validated = $request->validate($this->rules($modules, $request->input('server_type')));
+        $validated = $request->validate($this->rules($registry, $request->input('server_type')));
 
         $serverType = (string) $validated['server_type'];
 
@@ -889,11 +864,8 @@ class ServerController extends Controller
             }
         }
 
-        $module = Module::where('slug', $serverType)->first();
-
         $attributes = $this->mapValidatedToAttributes($validated, $serverType);
         $attributes['server_type'] = $serverType;
-        $attributes['module_id'] = $module?->id;
         $attributes['connection_status'] = 'untested';
 
         // Hyper-V transport prefs live in connection_meta (no columns exist);
@@ -943,14 +915,19 @@ class ServerController extends Controller
             ->with('success', "Server {$server->name} created.");
     }
 
-    public function edit(Server $server, ModuleManager $modules): View
+    public function edit(Server $server, IntegrationRegistry $registry): View
     {
-        $server->load('module:id,slug,name,manifest');
-
         $type = (string) $server->server_type;
 
-        $module = $server->module ?: Module::where('slug', $type)->first();
-        $instance = $module ? $modules->resolve($module) : null;
+        $instance = $registry->instanceFor($type);
+        if ($instance === null) {
+            try {
+                $module = app(ModuleManager::class)->find($type);
+                $instance = $module ? app(ModuleManager::class)->resolve($module) : null;
+            } catch (\Throwable) {
+                $instance = null;
+            }
+        }
 
         $schema = [];
         if ($instance !== null && method_exists($instance, 'serverConfigSchema')) {
@@ -978,7 +955,7 @@ class ServerController extends Controller
         return view('admin.servers.edit', [
             'server' => $server,
             'serverType' => $type,
-            'moduleName' => $module?->name ?? $type,
+            'moduleName' => $registry->nameFor($type),
             'schema' => $schema,
             'groups' => $groups,
             'selectedGroupId' => $selectedGroupId,
@@ -986,12 +963,29 @@ class ServerController extends Controller
         ]);
     }
 
-    public function update(Request $request, Server $server, ModuleManager $modules): RedirectResponse
+    public function update(Request $request, Server $server, IntegrationRegistry $registry): RedirectResponse
     {
-        $validated = $request->validate($this->rules($modules, $request->input('server_type'), $server));
+        $oldType = (string) $server->server_type;
+
+        $rules = $this->rules($registry, $request->input('server_type'), $server);
+
+        // The type is immutable; accept the server's own value even when it is
+        // no longer in the active registry (legacy 'generic' rows, or a plugin
+        // module that is currently disabled).
+        $rules['server_type'] = ['required', 'string', Rule::in(array_merge($this->activeSlugs($registry), [$oldType]))];
+
+        // Editing never re-asks for stored credentials: blank keeps the current
+        // value (mapValidatedToAttributes skips blanks, update() skips null).
+        $rules['api_key'] = ['nullable', 'string', 'max:2000'];
+        $rules['api_password'] = ['nullable', 'string', 'max:2000'];
+        $rules['api_password_encrypted'] = ['nullable', 'string', 'max:2000'];
+        $rules['api_username'] = ['nullable', 'string', 'max:255'];
+        $rules['username'] = ['nullable', 'string', 'max:255'];
+        $rules['password'] = ['nullable', 'string', 'max:2000'];
+
+        $validated = $request->validate($rules);
 
         $newType = (string) $validated['server_type'];
-        $oldType = (string) $server->server_type;
 
         if ($newType !== $oldType) {
             $hasAccounts = $server->hostingAccounts()->exists() || PanelAccount::where('server_id', $server->id)->exists();
@@ -1019,8 +1013,8 @@ class ServerController extends Controller
         }
 
         $attributes = $this->mapValidatedToAttributes($validated, $newType);
-        // Never allow changing server_type or module_id via update (immutable)
-        unset($attributes['server_type'], $attributes['module_id'], $attributes['connection_status']);
+        // Never allow changing server_type via update (immutable)
+        unset($attributes['server_type'], $attributes['connection_status']);
 
         // Merge Hyper-V transport prefs into existing connection_meta so the
         // port/use_ssl/verify_tls toggles actually save (host telemetry under
@@ -1076,9 +1070,9 @@ class ServerController extends Controller
             ->with('success', "Server {$server->name} updated.");
     }
 
-    public function testConnection(Request $request, Server $server, ModuleManager $modules): JsonResponse
+    public function testConnection(Request $request, Server $server, IntegrationRegistry $registry): JsonResponse
     {
-        $driver = $modules->resolveForServer($server);
+        $driver = $registry->resolveForServer($server);
 
         if ($driver === null) {
             return response()->json([
@@ -1119,7 +1113,7 @@ class ServerController extends Controller
         ]);
     }
 
-    public function testConnectionDry(Request $request, ModuleManager $modules): JsonResponse
+    public function testConnectionDry(Request $request, IntegrationRegistry $registry): JsonResponse
     {
         $serverType = trim((string) $request->input('server_type'));
 
@@ -1127,7 +1121,7 @@ class ServerController extends Controller
             return response()->json(['ok' => false, 'message' => 'server_type is required.'], 422);
         }
 
-        $activeSlugs = $this->activeSlugs($modules);
+        $activeSlugs = $this->activeSlugs($registry);
 
         if (! in_array($serverType, $activeSlugs, true)) {
             return response()->json(['ok' => false, 'message' => "Unknown server type [{$serverType}]."], 422);
@@ -1150,8 +1144,15 @@ class ServerController extends Controller
             'verify_tls' => ['nullable', 'boolean'],
         ]);
 
-        $module = Module::where('slug', $serverType)->first();
-        $driver = $module ? $modules->resolve($module) : null;
+        $driver = $registry->instanceFor($serverType);
+        if ($driver === null) {
+            try {
+                $module = app(ModuleManager::class)->find($serverType);
+                $driver = $module ? app(ModuleManager::class)->resolve($module) : null;
+            } catch (\Throwable) {
+                $driver = null;
+            }
+        }
 
         if ($driver === null) {
             return response()->json(['ok' => false, 'message' => 'No module driver found for server type [' . $serverType . '].'], 422);
@@ -1160,7 +1161,6 @@ class ServerController extends Controller
         // Build transient Server instance (not persisted) with encrypted cast handling
         $transient = new Server();
         $transient->server_type = $serverType;
-        $transient->module_id = $module?->id;
 
         // Host resolution: prefer host, fallback to ip_address or api_url
         $host = trim((string) ($request->input('host') ?? $request->input('ip_address') ?? ''));
@@ -1220,9 +1220,9 @@ class ServerController extends Controller
     /**
      * @return array<string, mixed>
      */
-    private function rules(ModuleManager $modules, ?string $serverType = null, ?Server $existing = null): array
+    private function rules(IntegrationRegistry $registry, ?string $serverType = null, ?Server $existing = null): array
     {
-        $activeSlugs = $this->activeSlugs($modules);
+        $activeSlugs = $this->activeSlugs($registry);
 
         $base = [
             'name' => ['required', 'string', 'max:255'],
@@ -1272,8 +1272,11 @@ class ServerController extends Controller
         } elseif ($serverType !== null && $serverType !== '') {
             // For panel types, try to infer required keys from schema
             try {
-                $module = Module::where('slug', $serverType)->first();
-                $instance = $module ? $modules->resolve($module) : null;
+                $instance = $registry->instanceFor($serverType);
+                if ($instance === null) {
+                    $module = app(ModuleManager::class)->find($serverType);
+                    $instance = $module ? app(ModuleManager::class)->resolve($module) : null;
+                }
                 if ($instance !== null && method_exists($instance, 'serverConfigSchema')) {
                     $raw = $instance->serverConfigSchema();
                     $fields = $raw['fields'] ?? (is_array($raw) && array_is_list($raw) ? $raw : []);
@@ -1422,10 +1425,10 @@ class ServerController extends Controller
     /**
      * @return list<string>
      */
-    private function activeSlugs(ModuleManager $modules): array
+    private function activeSlugs(IntegrationRegistry $registry): array
     {
         try {
-            return array_column($modules->serverTypeOptions(), 'value');
+            return array_column($registry->serverTypeOptions(), 'value');
         } catch (\Throwable) {
             return [];
         }

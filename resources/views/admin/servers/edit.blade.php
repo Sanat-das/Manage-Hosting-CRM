@@ -125,11 +125,10 @@
 
         <div class="row">
             <div class="col-md-6">
-                <x-adminlte-select name="panel_type" label="Panel type">
-                    @foreach (['cpanel' => 'cPanel', 'plesk' => 'Plesk', 'directadmin' => 'DirectAdmin', 'custom' => 'Custom'] as $value => $label)
-                        <option value="{{ $value }}" @selected(old('panel_type', $server->panel_type) === $value)>{{ $label }}</option>
-                    @endforeach
-                </x-adminlte-select>
+                <label for="server-type-display" class="form-label fw-medium">Server type</label>
+                <input type="text" id="server-type-display" class="form-control" value="{{ $moduleName ?? $serverType }}" disabled>
+                <input type="hidden" name="server_type" value="{{ old('server_type', $serverType) }}">
+                <div class="form-text">Fixed after creation.</div>
             </div>
             <div class="col-md-6">
                 <x-adminlte-select name="status" label="Status">
@@ -161,7 +160,7 @@
             </div>
         </div>
 
-        @if (($server->server_type ?? $server->panel_type ?? '') === 'hyperv')
+        @if ($server->server_type === 'hyperv')
             <hr class="my-3">
             <h6 class="fw-semibold mb-3">Transport connection</h6>
             <div class="row">

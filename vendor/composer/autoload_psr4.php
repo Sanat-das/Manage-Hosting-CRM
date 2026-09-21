@@ -100,6 +100,8 @@ return array(
     'Laravel\\Passkeys\\' => array($vendorDir . '/laravel/passkeys/src'),
     'Laravel\\Pao\\' => array($vendorDir . '/laravel/pao/src'),
     'Laravel\\Pail\\' => array($vendorDir . '/laravel/pail/src'),
+    'Laravel\\Mcp\\Server\\' => array($vendorDir . '/laravel/mcp/src/Server'),
+    'Laravel\\Mcp\\' => array($vendorDir . '/laravel/mcp/src'),
     'Laravel\\Fortify\\' => array($vendorDir . '/laravel/fortify/src'),
     'Laravel\\Dusk\\' => array($vendorDir . '/laravel/dusk/src'),
     'Laravel\\AgentDetector\\' => array($vendorDir . '/laravel/agent-detector/src'),

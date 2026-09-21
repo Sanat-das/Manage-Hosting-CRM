@@ -412,7 +412,7 @@ final class SnmpHostingCardTest extends TestCase
         if (! $enabled) {
             ProductModule::query()
                 ->where('product_id', $product->id)
-                ->where('module_id', $module->id)
+                ->where('module_slug', $module->slug)
                 ->update(['enabled' => false]);
         } else {
             $this->linkOsModule($product, 'ssh-console');
@@ -439,7 +439,7 @@ final class SnmpHostingCardTest extends TestCase
         if ($osModule !== null) {
             ProductModule::create([
                 'product_id' => $product->id,
-                'module_id' => $osModule->id,
+                'module_slug' => $osModule->slug,
                 'enabled' => true,
                 'config' => [],
             ]);

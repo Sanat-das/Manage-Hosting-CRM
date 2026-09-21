@@ -40,7 +40,7 @@ final class PollController extends Controller
         // The link's config is decrypted through the module manager — never
         // read raw from the pivot. ensureForAccount provisions the target on
         // first use so the queued batch finds it even before the first render.
-        $link = $hostingAccount->product?->moduleLinks->firstWhere('module_id', $module->id);
+        $link = $hostingAccount->product?->moduleLinks->firstWhere('module_slug', $module->slug);
         $config = $this->manager->decryptConfig($module, $link->config ?? []);
 
         $target = app(TargetService::class)

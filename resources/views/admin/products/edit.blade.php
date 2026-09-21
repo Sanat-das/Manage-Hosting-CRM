@@ -39,8 +39,20 @@
     @if (session('success'))
         <x-adminlte-alert theme="success" dismissible>{{ session('success') }}</x-adminlte-alert>
     @endif
+    @if (session('warning'))
+        <x-adminlte-alert theme="warning" dismissible>{{ session('warning') }}</x-adminlte-alert>
+    @endif
     @if (session('error'))
         <x-adminlte-alert theme="danger" dismissible>{{ session('error') }}</x-adminlte-alert>
+    @endif
+    @php $missingRequiredOptionKeys = $missingRequiredOptionKeys ?? []; @endphp
+    @if (! empty($missingRequiredOptionKeys))
+        <x-adminlte-alert theme="warning" dismissible>
+            <i class="bi bi-exclamation-triangle me-1" aria-hidden="true"></i>
+            <strong>Missing required options for {{ $product->provisioning_module }}:</strong>
+            {{ implode(', ', $missingRequiredOptionKeys) }}.
+            <span class="small">Attach option groups with these keys to satisfy the provisioning module (warning only — checkout will enforce).</span>
+        </x-adminlte-alert>
     @endif
     @if ($errors->any())
         <x-adminlte-alert theme="danger" dismissible>
@@ -95,6 +107,13 @@
                         data-bs-toggle="tab" data-bs-target="#edit-pane-options" type="button" role="tab"
                         aria-controls="edit-pane-options" aria-selected="{{ $activeTab === 'options' ? 'true' : 'false' }}">
                     <i class="bi bi-sliders me-1"></i> Options
+                    @if (! empty($missingRequiredOptionKeys))
+                        <span class="badge text-bg-warning ms-1" title="Missing required: {{ implode(', ', $missingRequiredOptionKeys) }}">{{ count($missingRequiredOptionKeys) }} missing</span>
+                    @else
+                        @if (($product->optionLinks->count() ?? 0) > 0)
+                            <span class="badge text-bg-secondary ms-1">{{ $product->optionLinks->count() }}</span>
+                        @endif
+                    @endif
                 </button>
             </li>
             <li class="nav-item" role="presentation">
@@ -242,29 +261,34 @@
             {{-- Modules --}}
             <div class="tab-pane fade {{ $activeTab === 'modules' ? 'show active' : '' }}" id="edit-pane-modules"
                  role="tabpanel" aria-labelledby="edit-tab-modules">
-                {{-- Enable/disable + per-product config for active modules.
+                {{-- Enable/disable + per-product config for linkable modules (builtins + active plugins).
                      Lives inside the single update form, so actions run via
                      fetch (no nested forms) — same pattern as the option
                      attach picker. --}}
-                @forelse ($modules as $module)
+                @php $linkableModules = $linkableModules ?? []; $registry = $registry ?? app(\App\Services\Integrations\IntegrationRegistry::class); @endphp
+                @forelse ($linkableModules as $mod)
                     @php
-                        $link = $product->moduleLinks->firstWhere('module_id', $module->id);
+                        $slug = $mod['slug'];
+                        $link = $product->moduleLinks->firstWhere('module_slug', $slug);
                         $schema = [];
-                        try { $schema = app(\App\Services\Modules\ModuleManager::class)->resolve($module)?->configSchema() ?? ['fields' => []]; } catch (\Throwable $e) {}
                         $cfg = $link?->config ?? [];
-                        try { $cfg = app(\App\Services\Modules\ModuleManager::class)->decryptConfig($module, $cfg); } catch (\Throwable $e) {}
+                        try { $schema = $registry->configSchemaFor($slug); } catch (\Throwable $e) { $schema = ['fields' => []]; }
+                        try { $cfg = $registry->decryptConfigFor($slug, $cfg); } catch (\Throwable $e) {}
+                        $isBuiltin = (bool) ($mod['builtin'] ?? false);
                     @endphp
                     <div class="border rounded p-3 mb-3">
                         <div class="d-flex justify-content-between align-items-center mb-2">
                             <div>
-                                <strong>{{ $module->name }}</strong>
-                                @if ($module->version) <span class="badge text-bg-info ms-1">v{{ $module->version }}</span> @endif
+                                <strong>{{ $mod['name'] }}</strong>
+                                <span class="text-muted small ms-1">{{ $slug }}</span>
+                                @if($isBuiltin)<span class="badge text-bg-light border ms-1">builtin</span>@endif
+                                <span class="badge text-bg-secondary ms-1">{{ $mod['group'] }}</span>
                                 @if ($link?->enabled) <span class="badge text-bg-success ms-1">Enabled</span> @endif
                             </div>
                             <button type="button"
                                     class="btn btn-sm {{ $link?->enabled ? 'btn-outline-warning' : 'btn-outline-success' }}"
                                     data-module-toggle
-                                    data-url="{{ route('admin.products.modules.toggle', [$product, $module]) }}">
+                                    data-url="{{ route('admin.products.modules.toggle', [$product, $slug]) }}">
                                 {{ $link?->enabled ? 'Disable' : 'Enable' }}
                             </button>
                         </div>
@@ -273,15 +297,15 @@
                                 @include('admin.products._module_config_fields', ['schema' => $schema, 'cfg' => $cfg])
                             </div>
                             <button type="button" class="btn btn-sm btn-primary mt-3 module-config-save"
-                                    data-url="{{ route('admin.products.modules.config', [$product, $module]) }}">
-                                <i class="bi bi-save me-1"></i>Save {{ $module->name }} config
+                                    data-url="{{ route('admin.products.modules.config', [$product, $slug]) }}">
+                                <i class="bi bi-save me-1"></i>Save {{ $mod['name'] }} config
                             </button>
                         @elseif ($link?->enabled)
                             <p class="text-muted small mb-0 mt-2">This module has no per-product configuration.</p>
                         @endif
                     </div>
                 @empty
-                    <p class="text-muted mb-0">No modules available. Activate modules in System → Modules first.</p>
+                    <p class="text-muted mb-0">No modules available.</p>
                 @endforelse
             </div>
         </div>

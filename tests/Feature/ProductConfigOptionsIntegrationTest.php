@@ -37,6 +37,7 @@ class ProductConfigOptionsIntegrationTest extends TestCase
         $server = Server::create([
             'name' => 'VPS Node 01',
             'ip_address' => '10.0.0.11',
+            'server_type' => 'virtualizor',
         ]);
         $this->makeServerGroupMember($server, 'VPS Pool A');
 
@@ -105,6 +106,7 @@ class ProductConfigOptionsIntegrationTest extends TestCase
         $server = Server::create([
             'name' => 'Dedicated Node 02',
             'ip_address' => '10.0.0.12',
+            'server_type' => 'generic',
         ]);
         $datacenter = Datacenter::create([
             'name' => 'Mumbai DC-1',

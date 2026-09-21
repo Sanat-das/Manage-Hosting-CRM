@@ -14,28 +14,28 @@ use Illuminate\Support\Collection;
  * Picks the server a service will be provisioned onto.
  *
  * Server choice is core's job, not the module's: a provisioning module is
- * handed one server and talks to it. Nothing in the app did this before —
- * `products.server_group_id` and `server_group_members.priority` existed but
- * were never read at provisioning time — so services had no server and a
- * module would have had nothing to connect to.
+ * handed one server and talks to it.
  *
  * Selection order:
  *  1. servers in the product's server group, honouring the member `priority`
- *     column (lower first), then least-loaded;
- *  2. failing that (no group, or every group server full/inactive/wrong panel),
- *     any active server of the right panel type, least-loaded.
+ *     column (lower first), then least-loaded within that priority tier,
+ *     filtered by server_type matching the product's provisioning_module;
+ *  2. failing that (no group, or every group server full/inactive/wrong type),
+ *     any active server of the right server_type, least-loaded.
  *
  * A server at its `max_accounts` ceiling is skipped; `max_accounts = 0` means
- * unlimited, which is the column's documented default.
+ * unlimited. Group coherence (server_group.allowed_server_type == product
+ * provisioning_module) is enforced at product save time, but allocation
+ * double-checks so a legacy mismatch never provisions to the wrong infra.
  */
 class ServerAllocator
 {
     public function allocate(?Product $product, ?string $panelType = null): ?Server
     {
-        $panelType = $panelType !== null && $panelType !== '' ? $panelType : null;
+        $serverType = $this->resolveServerType($product, $panelType);
 
         if ($product?->server_group_id !== null) {
-            $grouped = $this->fromGroup((int) $product->server_group_id, $panelType);
+            $grouped = $this->fromGroup((int) $product->server_group_id, $serverType);
 
             if ($grouped !== null) {
                 return $grouped;
@@ -45,17 +45,42 @@ class ServerAllocator
         return $this->leastLoaded(
             Server::query()
                 ->where('status', 'active')
-                ->when($panelType !== null, fn ($q) => $q->where('panel_type', $panelType))
+                ->when($serverType !== null, fn ($q) => $q->where('server_type', $serverType))
                 ->get()
         );
+    }
+
+    /**
+     * Resolve the canonical server_type to filter by.
+     * Explicit $panelType param wins (backward compat for callers passing
+     * provisioning_module). Otherwise derive from product->provisioning_module
+     * when it is a real automatable type; 'manual'/'custom' map to null => any.
+     */
+    private function resolveServerType(?Product $product, ?string $panelType): ?string
+    {
+        $raw = $panelType !== null && trim($panelType) !== '' ? trim($panelType) : null;
+
+        if ($raw === null && $product !== null) {
+            $raw = trim((string) ($product->provisioning_module ?? ''));
+            if ($raw === '' || in_array($raw, ['manual', 'custom'], true)) {
+                return null;
+            }
+        }
+
+        if ($raw === null || $raw === '' || $raw === 'manual' || $raw === 'custom') {
+            return null;
+        }
+
+        return $raw;
     }
 
     /**
      * Group members ordered by priority; the first one with capacity wins.
      * Ties on priority fall through to least-loaded so a group of equals is
      * still balanced rather than always hitting the lowest id.
+     * Filters by server_type when a type is required.
      */
-    private function fromGroup(int $groupId, ?string $panelType): ?Server
+    private function fromGroup(int $groupId, ?string $serverType): ?Server
     {
         $members = ServerGroupMember::query()
             ->where('server_group_id', $groupId)
@@ -66,7 +91,7 @@ class ServerAllocator
         $byPriority = $members
             ->filter(fn (ServerGroupMember $m) => $m->server !== null
                 && $m->server->status === 'active'
-                && ($panelType === null || $m->server->panel_type === $panelType))
+                && ($serverType === null || ($m->server->server_type ?? $m->server->panel_type) === $serverType))
             ->groupBy('priority');
 
         foreach ($byPriority as $tier) {

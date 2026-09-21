@@ -51,7 +51,7 @@ class ServerHostingTreeReportTest extends TestCase
     {
         $this->actingAsAdmin();
 
-        $server = Server::create(['name' => 'Web-01', 'ip_address' => '10.0.0.10']);
+        $server = Server::create(['name' => 'Web-01', 'ip_address' => '10.0.0.10', 'server_type' => 'cpanel']);
         $productA = Product::create(['name' => 'Shared Hosting Basic']);
         $productB = Product::create(['name' => 'Reseller Pro']);
 
@@ -70,7 +70,7 @@ class ServerHostingTreeReportTest extends TestCase
     {
         $this->actingAsAdmin();
 
-        $server = Server::create(['name' => 'Web-01', 'ip_address' => '10.0.0.10']);
+        $server = Server::create(['name' => 'Web-01', 'ip_address' => '10.0.0.10', 'server_type' => 'cpanel']);
         $product = Product::create(['name' => 'Shared Hosting Basic']);
 
         AssetRelationship::create($this->relationshipPayload($server, $product, ['label' => 'Runs web stack']));
@@ -91,7 +91,7 @@ class ServerHostingTreeReportTest extends TestCase
     {
         $this->actingAsAdmin();
 
-        $server = Server::create(['name' => 'Empty-Srv', 'ip_address' => '10.0.0.99']);
+        $server = Server::create(['name' => 'Empty-Srv', 'ip_address' => '10.0.0.99', 'server_type' => 'cpanel']);
 
         $response = $this->get("/admin/hosting-tree?server_id={$server->id}");
 

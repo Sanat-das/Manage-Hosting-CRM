@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Modules\RdpConsole;
 
 use App\Contracts\Module\AbstractModule;
-use App\Contracts\Module\Capabilities\HostingAccountToolsProvider;
+use App\Contracts\Integrations\Capabilities\HostingAccountToolsProvider;
 use App\Contracts\Module\ModuleContext;
 use App\Models\HostingAccount;
 use App\Models\IpAddress;

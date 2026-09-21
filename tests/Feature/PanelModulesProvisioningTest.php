@@ -15,14 +15,13 @@ use App\Models\ServerGroup;
 use App\Models\ServerGroupMember;
 use App\Models\ServiceInstance;
 use App\Models\User;
-use App\Services\Modules\ModuleManager;
 use App\Services\OrderService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
-use Modules\DirectAdmin\DirectAdmin;
-use Modules\Plesk\Plesk;
-use Modules\Virtualizor\Virtualizor;
+use App\Modules\DirectAdmin\DirectAdmin;
+use App\Modules\Plesk\Plesk;
+use App\Modules\Virtualizor\Virtualizor;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
@@ -45,13 +44,6 @@ class PanelModulesProvisioningTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        app(ModuleManager::class)->reconcile();
-    }
-
-    private function activate(string $slug): void
-    {
-        $manager = app(ModuleManager::class);
-        $manager->activate($manager->find($slug));
     }
 
     // ─────────────────────────── Plesk ───────────────────────────
@@ -355,12 +347,10 @@ class PanelModulesProvisioningTest extends TestCase
      */
     private function makePaidOrder(string $slug, int $port, array $config = [], ?string $domain = 'acme.test'): Order
     {
-        $this->activate($slug);
-
         $server = Server::create([
             'name' => $slug.'-1',
             'ip_address' => '10.0.0.1',
-            'panel_type' => $slug,
+            'server_type' => $slug,
             'api_url' => 'https://panel.example.net:'.$port,
             'api_username' => $slug === 'virtualizor' ? 'KEYID' : 'admin',
             'api_key' => 'SECRET',
@@ -382,11 +372,23 @@ class PanelModulesProvisioningTest extends TestCase
             'server_group_id' => $group->id,
         ]);
 
+        $configToStore = $config === [] ? ['plan' => 'starter'] : $config;
+        // Virtualizor/HyperV/Proxmox now require cpu/ram/disk (ModuleRequiredOptions::MAP).
+        // Seed defaults for tests that only declare plan/osid so dispatcher merging
+        // still reaches the module's plan/osid guards and provisioning logic.
+        if (in_array($slug, ['virtualizor', 'hyperv', 'proxmox'], true)) {
+            foreach (['cpu' => 2, 'ram' => 2048, 'disk' => 50] as $k => $v) {
+                if (! array_key_exists($k, $configToStore) && ! array_key_exists(strtolower($k), array_change_key_case($configToStore, CASE_LOWER))) {
+                    $configToStore[$k] = $v;
+                }
+            }
+        }
+
         ProductModule::create([
             'product_id' => $product->id,
-            'module_id' => app(ModuleManager::class)->find($slug)->id,
+            'module_slug' => $slug,
             'enabled' => true,
-            'config' => $config === [] ? ['plan' => 'starter'] : $config,
+            'config' => $configToStore,
         ]);
 
         $customer = Customer::create([

@@ -8,7 +8,6 @@ use App\Models\Permission;
 use App\Models\Role;
 use App\Models\Server;
 use App\Models\User;
-use App\Services\Modules\ModuleManager;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
@@ -28,8 +27,6 @@ final class ServerTestConnectionMetaTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        config(['modules.path' => base_path('modules')]);
-        app(ModuleManager::class)->reconcile();
     }
 
     public function test_partial_success_preserves_persisted_telemetry(): void
@@ -96,14 +93,10 @@ final class ServerTestConnectionMetaTest extends TestCase
 
     private function hypervServer(): Server
     {
-        $module = app(ModuleManager::class)->find('hyperv');
-
         return Server::create([
             'name' => 'hv-meta-1',
             'ip_address' => '10.0.0.9',
             'server_type' => 'hyperv',
-            'panel_type' => 'hyperv',
-            'module_id' => $module?->id,
             'api_url' => 'http://10.0.0.9:5985',
             'api_username' => 'admin',
             'api_password_encrypted' => 'SECRET',

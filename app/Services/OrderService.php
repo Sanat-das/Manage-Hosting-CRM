@@ -57,11 +57,26 @@ class OrderService
     ];
 
     /**
-     * Provisioning modules that auto-provision on invoice payment. Anything
-     * else (the 'manual' module) lands the order in 'provisioning' for admin
-     * handling. Mirrors Product::PROVISIONING_MODULES minus 'manual'.
+     * Provisioning slugs that auto-provision on invoice payment. Anything
+     * else (the 'manual' slug) lands the order in 'provisioning' for admin
+     * handling. Derived from IntegrationRegistry::slugs() plus 'custom'.
      */
-    public const AUTO_PROVISION_MODULES = ['cpanel', 'plesk', 'directadmin', 'virtualizor', 'custom'];
+    public const AUTO_PROVISION_MODULES = ['cpanel', 'plesk', 'directadmin', 'virtualizor', 'hyperv', 'proxmox', 'custom'];
+
+    /**
+     * @return list<string>
+     */
+    private static function autoProvisionSlugs(): array
+    {
+        try {
+            $slugs = app(\App\Services\Integrations\IntegrationRegistry::class)->slugs();
+            $slugs[] = 'custom';
+
+            return array_values(array_unique($slugs));
+        } catch (\Throwable) {
+            return self::AUTO_PROVISION_MODULES;
+        }
+    }
 
     /**
      * Apply a guarded status transition and persist an audit row.
@@ -156,6 +171,7 @@ class OrderService
         // a panel must not hold database locks, and an unreachable panel must
         // not veto the operator's decision to suspend or terminate. Failures
         // are logged and written to provisioning_events for the operator.
+        $this->maybeAutoProvisionOnActivation($order, $from, $to);
         $this->applyLifecycleEffects($order, $from, $to, $notes);
 
         if ($from === Order::STATUS_PENDING && $to === Order::STATUS_ACTIVE) {
@@ -293,6 +309,62 @@ class OrderService
     }
 
     /**
+     * Provision on the way into active when the operator (or a retry) takes
+     * the manual path: pending -> active and failed -> active never touched
+     * the provisioning module, so without this an activated order has local
+     * rows and no remote resource.
+     *
+     * Post-commit and best-effort like applyLifecycleEffects: the order stays
+     * active either way and a module refusal lands as a `failed`
+     * provisioning_events row the operator can retry from the hosting page
+     * (HostingController::moduleAction, idempotent by PanelAccount).
+     *
+     * Skipped for manual products/links and when the service is already live
+     * (the advanceAfterPayment path provisioned before this transition, and
+     * re-running would duplicate the welcome mail).
+     */
+    private function maybeAutoProvisionOnActivation(Order $order, string $from, string $to): void
+    {
+        if ($to !== Order::STATUS_ACTIVE) {
+            return;
+        }
+
+        if (! in_array($from, [Order::STATUS_PENDING, Order::STATUS_PROVISIONING, Order::STATUS_FAILED], true)) {
+            return;
+        }
+
+        try {
+            // No installed provisioner: advanceAfterPayment already recorded
+            // the gap event — running again would only duplicate it.
+            if ($this->provisioning->moduleFor($order->product) === null) {
+                return;
+            }
+
+            if ($this->provisioning->isManual($order->product)) {
+                return;
+            }
+
+            if ($this->provisioning->alreadyProvisioned($order)) {
+                return;
+            }
+
+            $attempt = $this->provisioning->run($order);
+
+            if (! $attempt->succeeded()) {
+                Log::error('Provisioning module reported failure on order activation', [
+                    'order_id' => $order->id,
+                    'error' => $attempt->message,
+                ]);
+            }
+        } catch (\Throwable $e) {
+            Log::error('Auto-provisioning on order activation failed', [
+                'order_id' => $order->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
      * Run the product's provisioning module for the ending hops.
      *
      * Never throws and never changes the order's status: the transition has
@@ -392,14 +464,16 @@ class OrderService
      * Advance the order after its invoice is fully paid, following the
      * product's provisioning module:
      *
-     *  - 'manual' (and any unrecognized value) → the service awaits manual
-     *    provisioning: the order moves paid → provisioning, where an admin
-     *    completes it through the existing activate flow.
-     *  - automated modules (see AUTO_PROVISION_MODULES) → paid → provisioning,
-     *    then ProvisioningDispatcher resolves the product's module and calls
-     *    provision(). Success activates the order (creating the hosting
-     *    account and leasing IPs when available; IP leasing is best-effort and
-     *    never blocks activation), a module failure lands it in 'failed'.
+     *  - 'manual' (and any unrecognized value), or a product-module link set
+     *    to Manual → the service awaits manual provisioning: the order moves
+     *    paid → provisioning, where an admin completes it through the
+     *    existing activate flow (or the hosting page Create button).
+     *  - automated modules (see AUTO_PROVISION_MODULES) with an Auto link →
+     *    paid → provisioning, then ProvisioningDispatcher resolves the
+     *    product's module and calls provision(). Success activates the order
+     *    (creating the hosting account and leasing IPs when available; IP
+     *    leasing is best-effort and never blocks activation), a module
+     *    failure lands it in 'failed'.
      *
      * When no module implements the provisioning capability the order still
      * activates — that is the pre-existing behaviour and the local records
@@ -415,7 +489,7 @@ class OrderService
     {
         $module = $order->product?->provisioning_module ?? 'manual';
 
-        if (in_array($module, self::AUTO_PROVISION_MODULES, true)) {
+        if (in_array($module, self::autoProvisionSlugs(), true) && ! $this->provisioning->isManual($order->product)) {
             try {
                 $this->transition($order, Order::STATUS_PROVISIONING, 'Auto-provisioning after invoice payment');
 

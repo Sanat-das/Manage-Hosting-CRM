@@ -149,7 +149,7 @@ final class TargetService
         foreach ([['rdp-console', SnmpTarget::OS_WINDOWS], ['ssh-console', SnmpTarget::OS_LINUX]] as [$slug, $os]) {
             $module = app(ModuleManager::class)->find($slug);
 
-            if ($module !== null && $account->product?->moduleLinks->firstWhere('module_id', $module->id)?->enabled) {
+            if ($module !== null && $account->product?->moduleLinks->firstWhere('module_slug', $module->slug)?->enabled) {
                 return $os;
             }
         }

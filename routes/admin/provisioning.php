@@ -24,8 +24,12 @@ Route::middleware(['web', 'auth', 'admin', 'throttle:admin'])->prefix('admin')->
         ->middleware('permission:service-instances.view')->name('service-instances.show');
     Route::put('service-instances/{service_instance}', [ServiceInstanceController::class, 'update'])
         ->middleware('permission:service-instances.manage')->name('service-instances.update');
+    Route::post('service-instances/{serviceInstance}/provision', [ServiceInstanceController::class, 'provision'])
+        ->middleware('permission:service-instances.manage')->name('service-instances.provision');
     Route::post('service-instances/{serviceInstance}/suspend', [ServiceInstanceController::class, 'suspend'])
         ->middleware('permission:service-instances.manage')->name('service-instances.suspend');
+    Route::post('service-instances/{serviceInstance}/unsuspend', [ServiceInstanceController::class, 'unsuspend'])
+        ->middleware('permission:service-instances.manage')->name('service-instances.unsuspend');
     Route::post('service-instances/{serviceInstance}/terminate', [ServiceInstanceController::class, 'terminate'])
         ->middleware('permission:service-instances.manage')->name('service-instances.terminate');
 

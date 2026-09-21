@@ -121,7 +121,7 @@ trait InteractsWithSnmpMonitorModule
 
         ProductModule::create([
             'product_id' => $product->id,
-            'module_id' => $module->id,
+            'module_slug' => $module->slug,
             'enabled' => true,
             'config' => $manager->encryptConfig($module, $config),
         ]);

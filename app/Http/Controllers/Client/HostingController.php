@@ -2,7 +2,7 @@
 
 namespace App\Http\Controllers\Client;
 
-use App\Contracts\Module\Capabilities\HostingAccountInfoProvider;
+use App\Contracts\Integrations\Capabilities\HostingAccountInfoProvider;
 use App\Http\Controllers\Controller;
 use App\Models\HostingAccount;
 use App\Services\HostingService;
@@ -94,7 +94,7 @@ class HostingController extends Controller
                 continue;
             }
 
-            $link = $account->product?->moduleLinks->firstWhere('module_id', $module->id);
+            $link = $account->product?->moduleLinks->firstWhere('module_slug', $module->slug);
 
             if ($link === null || ! $link->enabled) {
                 continue;

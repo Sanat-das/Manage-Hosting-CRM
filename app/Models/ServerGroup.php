@@ -7,18 +7,14 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-#[Fillable(['name', 'description', 'load_balancing', 'status'])]
+#[Fillable(['name', 'description', 'load_balancing', 'status', 'allowed_server_type'])]
 class ServerGroup extends Model
 {
-    /**
-     * The server_groups table carries only created_at (DB default), no
-     * updated_at column — disable Eloquent's automatic timestamps so
-     * create/update don't write a nonexistent column.
-     */
     public $timestamps = false;
 
     protected $casts = [
         'status' => 'string',
+        'allowed_server_type' => 'string',
     ];
 
     public function members(): HasMany

@@ -61,7 +61,15 @@ class ProductOptionLinkController extends Controller
             'link_id' => $link->id,
         ]);
 
-        return back()->with('success', 'Option group attached.');
+        // Warning only — do not block attach. Compute remaining missing keys for the
+        // product's effective provisioning module and surface as a flash.
+        $missing = $this->missingRequiredKeys($product->fresh()->load('optionLinks.group'));
+
+        if (! empty($missing)) {
+            return back()->with('warning', 'Option group attached. Still missing required option groups for '.$product->provisioning_module.': '.implode(', ', $missing).'. Attach groups with those keys to satisfy the provisioning module (warning only).');
+        }
+
+        return back()->with('success', 'Option group attached. All required options for '.$product->provisioning_module.' are now covered.');
     }
 
     public function destroy(Product $product, ProductOptionGroupProduct $link): RedirectResponse
@@ -98,6 +106,56 @@ class ProductOptionLinkController extends Controller
         ]);
 
         return back()->with('success', 'Option values synced from the group.');
+    }
+
+    /**
+     * Missing required group keys for the product's provisioning module (warning only).
+     *
+     * Single source of truth is ModuleRequiredOptions::missingKeysFor().
+     *
+     * @return list<string>
+     */
+    private function missingRequiredKeys(Product $product): array
+    {
+        $attachedKeys = $product->optionLinks
+            ->map(fn ($link) => strtolower(trim((string) ($link->group?->key ?? ''))))
+            ->filter()
+            ->values()
+            ->all();
+
+        if (class_exists(\App\Services\Provisioning\ModuleRequiredOptions::class)) {
+            if (method_exists(\App\Services\Provisioning\ModuleRequiredOptions::class, 'missingKeysFor')) {
+                return \App\Services\Provisioning\ModuleRequiredOptions::missingKeysFor(
+                    (string) ($product->provisioning_module ?? ''),
+                    $attachedKeys
+                );
+            }
+
+            if (method_exists(\App\Services\Provisioning\ModuleRequiredOptions::class, 'missingKeys')) {
+                return \App\Services\Provisioning\ModuleRequiredOptions::missingKeys($product);
+            }
+        }
+
+        $module = strtolower(trim((string) ($product->provisioning_module ?? '')));
+
+        $requiredByModule = [
+            'hyperv' => ['cpu', 'ram', 'disk'],
+            'virtualizor' => ['cpu', 'ram', 'disk'],
+            'proxmox' => ['cpu', 'ram', 'disk'],
+            'cpanel' => ['plan'],
+            'plesk' => ['plan'],
+            'directadmin' => ['plan'],
+        ];
+
+        $required = $requiredByModule[$module] ?? [];
+
+        if ($required === []) {
+            return [];
+        }
+
+        $attachedSet = array_flip($attachedKeys);
+
+        return array_values(array_filter($required, fn (string $key) => ! isset($attachedSet[$key])));
     }
 
     /**

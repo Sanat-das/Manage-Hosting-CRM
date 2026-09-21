@@ -16,7 +16,6 @@ use App\Models\Server;
 use App\Models\ServerGroup;
 use App\Models\ServerGroupMember;
 use App\Models\User;
-use App\Services\Modules\ModuleManager;
 use App\Services\OrderService;
 use App\Settings\HostingSettings;
 use Database\Seeders\EmailTemplateSeeder;
@@ -43,10 +42,6 @@ class WelcomeEmailCredentialsTest extends TestCase
         parent::setUp();
 
         $this->seed(EmailTemplateSeeder::class);
-
-        $manager = app(ModuleManager::class);
-        $manager->reconcile();
-        $manager->activate($manager->find('cpanel'));
     }
 
     /**
@@ -223,7 +218,7 @@ class WelcomeEmailCredentialsTest extends TestCase
         $server = Server::create([
             'name' => 'whm-1',
             'ip_address' => '10.0.0.1',
-            'panel_type' => 'cpanel',
+            'server_type' => 'cpanel',
             'api_url' => 'https://whm.example.net:2087',
             'api_username' => 'root',
             'api_key' => 'TOKEN123',
@@ -247,7 +242,7 @@ class WelcomeEmailCredentialsTest extends TestCase
 
         ProductModule::create([
             'product_id' => $product->id,
-            'module_id' => app(ModuleManager::class)->find('cpanel')->id,
+            'module_slug' => 'cpanel',
             'enabled' => true,
             'config' => ['plan' => 'starter'],
         ]);

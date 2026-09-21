@@ -78,13 +78,17 @@ Route::middleware(['web', 'auth', 'admin', 'throttle:admin'])->prefix('admin')->
 
     // Product modules (enable/disable + per-product config on the show page;
     // the pivot ProductModule stores the per-product enabled flag and config).
-    Route::post('products/{product}/modules/{module}/toggle', [ProductModuleController::class, 'toggle'])
+    Route::post('products/{product}/modules/{moduleSlug}/toggle', [ProductModuleController::class, 'toggle'])
         ->middleware('permission:products.edit')
         ->name('products.modules.toggle');
 
-    Route::put('products/{product}/modules/{module}/config', [ProductModuleController::class, 'updateConfig'])
+    Route::put('products/{product}/modules/{moduleSlug}/config', [ProductModuleController::class, 'updateConfig'])
         ->middleware('permission:products.edit')
         ->name('products.modules.config');
+
+    Route::put('products/{product}/modules/{moduleSlug}/mode', [ProductModuleController::class, 'updateMode'])
+        ->middleware('permission:products.edit')
+        ->name('products.modules.mode');
 
     // Product groups
     Route::get('product-groups', [ProductGroupController::class, 'index'])

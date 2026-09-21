@@ -264,32 +264,12 @@ class SettingsSilentSaveFailuresTest extends TestCase
 
     /**
      * The control panel list is the modules that can actually provision, read
-     * from each module's stored manifest. Offering ssh-console or snmp-monitor
-     * as a "control panel" is how an admin ends up with a default that can
-     * never create an account.
+     * from IntegrationRegistry::slugs() (the six builtins). Offering ssh-console
+     * or snmp-monitor as a "control panel" is how an admin ends up with a default
+     * that can never create an account.
      */
     public function test_the_control_panel_list_holds_only_provisioning_modules(): void
     {
-        \App\Models\Module::query()->delete();
-        foreach ([
-            ['slug' => 'cpanel', 'caps' => ['provisioning']],
-            ['slug' => 'virtualizor', 'caps' => ['provisioning']],
-            ['slug' => 'snmp-monitor', 'caps' => ['hosting-account-info']],
-            ['slug' => 'ssh-console', 'caps' => []],
-        ] as $row) {
-            \App\Models\Module::query()->create([
-                'slug' => $row['slug'],
-                'name' => ucfirst($row['slug']),
-                'version' => '1.0.0',
-                'status' => 'active',
-                'provider' => 'Modules\\'.ucfirst($row['slug']).'\\Provider',
-                // An array, because Module::$casts stores it that way. Passing a
-                // JSON string here double-encodes it and the test then exercises
-                // a shape production never has.
-                'manifest' => ['capabilities' => $row['caps']],
-            ]);
-        }
-
         $html = $this->actingAsSettingsAdmin()
             ->get(route('admin.settings.index', ['tab' => 'hosting']))
             ->assertStatus(200)
@@ -298,8 +278,10 @@ class SettingsSilentSaveFailuresTest extends TestCase
         preg_match('/<select[^>]*name="settings\[hosting_default_panel\]".*?<\/select>/s', $html, $m);
         $this->assertNotEmpty($m, 'hosting_default_panel select missing.');
 
-        $this->assertStringContainsString('value="cpanel"', $m[0]);
-        $this->assertStringContainsString('value="virtualizor"', $m[0]);
+        // Builtins from IntegrationRegistry
+        foreach (['cpanel', 'plesk', 'directadmin', 'virtualizor', 'hyperv', 'proxmox'] as $slug) {
+            $this->assertStringContainsString('value="'.$slug.'"', $m[0], "Builtin [$slug] missing from control panel list.");
+        }
         $this->assertStringNotContainsString('value="snmp-monitor"', $m[0], 'A monitoring module is not a control panel.');
         $this->assertStringNotContainsString('value="ssh-console"', $m[0], 'A console module is not a control panel.');
     }

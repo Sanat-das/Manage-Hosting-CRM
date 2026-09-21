@@ -31,6 +31,6 @@ class Module extends Model
 
     public function productModules(): HasMany
     {
-        return $this->hasMany(ProductModule::class, 'module_id');
+        return $this->hasMany(ProductModule::class, 'module_slug', 'slug');
     }
 }

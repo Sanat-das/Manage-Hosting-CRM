@@ -104,7 +104,7 @@ final class SnmpMetricRepository
         $module = $this->module();
 
         if ($module !== null) {
-            $link = $account->product?->moduleLinks->firstWhere('module_id', $module->id);
+            $link = $account->product?->moduleLinks->firstWhere('module_slug', $module->slug);
 
             if ($link !== null && $link->enabled) {
                 return $module;
@@ -141,7 +141,7 @@ final class SnmpMetricRepository
             ->join('hosting_accounts as ha', 'ha.id', '=', 't.hosting_account_id')
             ->join('products as p', 'p.id', '=', 'ha.product_id')
             ->join('product_module as pm', 'pm.product_id', '=', 'p.id')
-            ->where('pm.module_id', $module->id)
+            ->where('pm.module_slug', $module->slug)
             ->where('pm.enabled', true)
             ->when(
                 ($filters['account'] ?? null) !== null && $filters['account'] !== '',
@@ -766,7 +766,7 @@ final class SnmpMetricRepository
         return DB::table('snmp_targets as t')
             ->join('hosting_accounts as ha', 'ha.id', '=', 't.hosting_account_id')
             ->join('product_module as pm', 'pm.product_id', '=', 'ha.product_id')
-            ->where('pm.module_id', $module->id)
+            ->where('pm.module_slug', $module->slug)
             ->where('pm.enabled', true)
             ->distinct()
             ->orderBy('ha.username')

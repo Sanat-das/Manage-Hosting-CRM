@@ -15,14 +15,13 @@ use App\Models\ServerGroup;
 use App\Models\ServerGroupMember;
 use App\Models\ServiceInstance;
 use App\Models\User;
-use App\Services\Modules\ModuleManager;
 use App\Services\OrderService;
 use App\Services\Provisioning\ServerAllocator;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
-use Modules\Cpanel\Cpanel;
+use App\Modules\Cpanel\Cpanel;
 use Tests\TestCase;
 
 /**
@@ -42,12 +41,6 @@ class CpanelProvisioningTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-
-        // The real modules directory (not the fixture one) — this exercises
-        // the shipped cpanel module, including its own migration.
-        $manager = app(ModuleManager::class);
-        $manager->reconcile();
-        $manager->activate($manager->find('cpanel'));
     }
 
     public function test_paid_order_provisions_a_cpanel_account(): void
@@ -243,11 +236,11 @@ class CpanelProvisioningTest extends TestCase
 
         $group = ServerGroup::create(['name' => 'Shared', 'status' => 'active']);
         $full = Server::create([
-            'name' => 'full', 'ip_address' => '10.0.0.1', 'panel_type' => 'cpanel',
+            'name' => 'full', 'ip_address' => '10.0.0.1', 'server_type' => 'cpanel',
             'max_accounts' => 1, 'status' => 'active',
         ]);
         $spare = Server::create([
-            'name' => 'spare', 'ip_address' => '10.0.0.2', 'panel_type' => 'cpanel',
+            'name' => 'spare', 'ip_address' => '10.0.0.2', 'server_type' => 'cpanel',
             'max_accounts' => 0, 'status' => 'active',
         ]);
 
@@ -275,7 +268,7 @@ class CpanelProvisioningTest extends TestCase
     {
         Server::create([
             'name' => 'plesk box', 'ip_address' => '10.0.0.3',
-            'panel_type' => 'plesk', 'status' => 'active',
+            'server_type' => 'plesk', 'status' => 'active',
         ]);
 
         $this->assertNull(app(ServerAllocator::class)->allocate(null, 'cpanel'));
@@ -296,7 +289,7 @@ class CpanelProvisioningTest extends TestCase
         $server = Server::create([
             'name' => 'whm-1',
             'ip_address' => '10.0.0.1',
-            'panel_type' => 'cpanel',
+            'server_type' => 'cpanel',
             'api_url' => 'https://whm.example.net:2087',
             'api_username' => 'root',
             'api_key' => 'TOKEN123',
@@ -319,10 +312,9 @@ class CpanelProvisioningTest extends TestCase
         ]);
 
         // The WHM package is per-product config on the module link.
-        $module = app(ModuleManager::class)->find('cpanel');
         ProductModule::create([
             'product_id' => $product->id,
-            'module_id' => $module->id,
+            'module_slug' => 'cpanel',
             'enabled' => true,
             'config' => ['plan' => 'starter', 'verify_tls' => true],
         ]);

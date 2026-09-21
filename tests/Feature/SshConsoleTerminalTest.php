@@ -278,7 +278,7 @@ class SshConsoleTerminalTest extends TestCase
         // The SSH/RDP cards are gated on an enabled module link per product.
         ProductModule::create([
             'product_id' => $account->product_id,
-            'module_id' => $this->module->id,
+            'module_slug' => $this->module->slug,
             'enabled' => true,
             'config' => [],
         ]);
@@ -313,7 +313,7 @@ class SshConsoleTerminalTest extends TestCase
         if ($ws !== null) {
             ProductModule::create([
                 'product_id' => $account->product_id,
-                'module_id' => $ws->id,
+                'module_slug' => $ws->slug,
                 'enabled' => true,
                 'config' => [],
             ]);

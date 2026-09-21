@@ -37,20 +37,8 @@ class Product extends Model
         'gst_enabled' => 'boolean',
     ];
 
-    /**
-     * Provisioning modules (reference: ProductModel::PROVISIONING_MODULES).
-     *
-     * 'manual' is the default: after payment the order awaits manual
-     * provisioning. The automated modules auto-provision instead.
-     */
-    public const PROVISIONING_MODULES = [
-        'manual' => 'Manual',
-        'cpanel' => 'cPanel/WHM',
-        'plesk' => 'Plesk',
-        'directadmin' => 'DirectAdmin',
-        'virtualizor' => 'Virtualizor',
-        'custom' => 'Custom',
-    ];
+    // PROVISIONING_MODULES removed — canonical list is IntegrationRegistry::slugs() + manual/custom.
+    // OrderService still references this const; listed in task report as out-of-scope.
 
     /**
      * Billing cycles valid on `product_pricing` rows (8 values).

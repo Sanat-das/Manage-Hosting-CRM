@@ -97,7 +97,7 @@ final readonly class ServerDetailViewModel
 
     public static function fromServer(Server $server): self
     {
-        $displayType = $server->display_type ?? ($server->module->manifest['name'] ?? Str::title(str_replace(['_', '-'], ' ', $server->server_type ?? $server->panel_type ?? '')));
+        $displayType = $server->display_type ?: Str::title(str_replace(['_', '-'], ' ', (string) $server->server_type));
         $connStatus = $server->connection_status ?? 'untested';
         $connBadgeTheme = match ($connStatus) {
             'connected' => 'success',

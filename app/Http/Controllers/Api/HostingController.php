@@ -227,7 +227,8 @@ class HostingController extends Controller
                 'id' => $account->server->id,
                 'name' => $account->server->name,
                 'ip_address' => $account->server->ip_address,
-                'panel_type' => $account->server->panel_type,
+                'panel_type' => $account->server->server_type ?? $account->server->panel_type,
+                'server_type' => $account->server->server_type ?? $account->server->panel_type,
             ] : null;
         }
 

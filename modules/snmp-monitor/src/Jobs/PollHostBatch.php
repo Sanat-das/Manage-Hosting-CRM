@@ -206,7 +206,7 @@ class PollHostBatch implements ShouldQueue
         }
 
         $link = $target->hostingAccount?->product?->moduleLinks
-            ->firstWhere('module_id', $module->id);
+            ->firstWhere('module_slug', $module->slug);
 
         if ($link === null || ! $link->enabled) {
             return [];

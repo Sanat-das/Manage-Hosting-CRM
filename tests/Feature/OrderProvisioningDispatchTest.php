@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
-use App\Contracts\Module\ProvisioningResult;
+use App\Contracts\Integrations\ProvisioningResult;
 use App\Models\Customer;
 use App\Models\Module;
 use App\Models\Order;
@@ -126,10 +126,12 @@ class OrderProvisioningDispatchTest extends TestCase
 
     public function test_order_with_no_installed_module_still_activates_but_records_the_gap(): void
     {
-        // 'cpanel' with nothing installed: the pre-existing behaviour (local
-        // hosting/billing records + active) is preserved, but the event row now
-        // makes it visible that no remote account was created.
-        $order = $this->makePaidOrder('cpanel');
+        // A provisioning_module that resolves to no driver (not a builtin, no
+        // active plugin): the pre-existing behaviour (local hosting/billing
+        // records + active) is preserved, but the event row now makes it
+        // visible that no remote account was created. Using 'custom' guarantees
+        // no driver even though cpanel/plesk etc are now always-builtin.
+        $order = $this->makePaidOrder('custom');
 
         $result = $this->orders->advanceAfterPayment($order);
 
@@ -171,13 +173,16 @@ class OrderProvisioningDispatchTest extends TestCase
 
     public function test_module_resolution_prefers_the_enabled_product_link(): void
     {
+        // Use a non-builtin provisioning_module so the initial resolve is null;
+        // the enabled plugin link then becomes the preferred driver, and a
+        // disabled link leaves no fallback.
         $dispatcher = app(ProvisioningDispatcher::class);
-        $order = $this->makePaidOrder('cpanel');
+        $order = $this->makePaidOrder('custom');
 
         $this->assertNull($dispatcher->moduleFor($order->product));
 
-        $module = $this->linkProvisioningModule($order->product);
-        $this->assertSame($module->id, $dispatcher->moduleFor($order->product->fresh())->id);
+        $this->linkProvisioningModule($order->product);
+        $this->assertSame('ok-module', $dispatcher->moduleFor($order->product->fresh()));
 
         // A disabled link is not a provisioning route.
         ProductModule::where('product_id', $order->product->id)->update(['enabled' => false]);
@@ -196,7 +201,7 @@ class OrderProvisioningDispatchTest extends TestCase
 
         ProductModule::create([
             'product_id' => $product->id,
-            'module_id' => $module->id,
+            'module_slug' => $module->slug,
             'enabled' => true,
             'config' => ['greeting' => 'hi'],
         ]);
