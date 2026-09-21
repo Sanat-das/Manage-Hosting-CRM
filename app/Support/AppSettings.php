@@ -341,6 +341,20 @@ class AppSettings
 
     private static ?array $cache = null;
 
+    /**
+     * Drop the cached legacy-settings snapshot so the next read rebuilds it
+     * from the database.
+     *
+     * The snapshot lives for the whole process, so it MUST be flushed after
+     * any write to the legacy `settings` table — otherwise a read after a save
+     * (later in the same request, in tests, queue workers, or Octane workers)
+     * serves the pre-save values. See SettingsController::saveUntyped().
+     */
+    public static function flush(): void
+    {
+        self::$cache = null;
+    }
+
     public static function get(string $key, ?string $default = null): ?string
     {
         if (isset(self::TYPED_KEYS[$key])) {

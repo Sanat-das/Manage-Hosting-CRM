@@ -760,6 +760,12 @@ class SettingsController extends Controller
                 ['setting_value' => $value, 'updated_at' => now()]
             );
         }
+
+        // The legacy-settings snapshot is process-static (AppSettings::$cache);
+        // drop it after a write so reads later in the same process — tests,
+        // queue workers, Octane — see the values just saved, not the pre-save
+        // snapshot. Regression: test_registration_middleware_blocks_when_disabled.
+        AppSettings::flush();
     }
 
     /**
