@@ -11,8 +11,8 @@ jobs:
       - uses: actions/checkout@v4
       - uses: shivammathur/setup-php@v2
         with:
-          php-version: '8.3'
-          extensions: sqlite, pdo_sqlite, mbstring, bcmath
+          php-version: '8.4'
+          extensions: sqlite, pdo_sqlite, mbstring, bcmath, gd, zip, curl, dom, fileinfo, xml, xmlwriter, iconv
           coverage: none
           ini-values: memory_limit=512M
       - run: composer install --no-interaction --prefer-dist
