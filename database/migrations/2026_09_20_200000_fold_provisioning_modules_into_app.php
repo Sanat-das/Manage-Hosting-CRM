@@ -66,16 +66,17 @@ return new class extends Migration
             });
         }
 
-        // 5) Drop unique(['product_id','module_id']) and dropForeign(['module_id'])
-        if (Schema::hasTable('product_module')) {
-            // Drop foreign key first
-            if (Schema::hasColumn('product_module', 'module_id')) {
-                // Drop the FK on EVERY driver. sqlite has no ALTER ... DROP
-                // CONSTRAINT, but Laravel's sqlite grammar rebuilds the table
-                // from BlueprintState when a dropForeign command is present.
-                // Skipping it on sqlite left the FK in the table definition and
-                // the following dropColumn failed with "unknown column
-                // module_id in foreign key definition".
+        // 5) product_module: detach module_id (FK + indexes) so the column can
+        //    be dropped. Driver split: sqlite has no ALTER ... DROP CONSTRAINT
+        //    and relies on Laravel rebuilding the table from BlueprintState
+        //    when a dropForeign command is present; MySQL/MariaDB InnoDB refuses
+        //    to drop a column whose index is still serving a sibling FK
+        //    (error 1553/1072 — the product_id FK was using the old
+        //    (product_id, module_id) unique index), so every FK is discovered
+        //    by its real name and dropped FIRST. The product_id FK is restored
+        //    by step 7b once the replacement unique index exists.
+        if (Schema::hasTable('product_module') && Schema::hasColumn('product_module', 'module_id')) {
+            if ($isSqlite) {
                 try {
                     Schema::table('product_module', function (Blueprint $table) {
                         $table->dropForeign(['module_id']);
@@ -84,8 +85,6 @@ return new class extends Migration
                     // constraint may be absent (partial run)
                 }
 
-                // Drop unique index — name is auto-generated or 'product_module_product_id_module_id_unique'
-                // Try by column list; fallback to raw name.
                 try {
                     Schema::table('product_module', function (Blueprint $table) {
                         $table->dropUnique(['product_id', 'module_id']);
@@ -100,11 +99,49 @@ return new class extends Migration
                         // index may be absent
                     }
                 }
-            }
-        }
+            } else {
+                // MySQL / MariaDB — discover the real constraint names; guessed
+                // names miss installations where they have drifted.
+                $foreignKeys = DB::select(
+                    'SELECT CONSTRAINT_NAME FROM information_schema.KEY_COLUMN_USAGE'
+                    .' WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND REFERENCED_TABLE_NAME IS NOT NULL',
+                    ['product_module']
+                );
 
-        // 6) dropColumn('module_id')
-        if (Schema::hasTable('product_module') && Schema::hasColumn('product_module', 'module_id')) {
+                foreach ($foreignKeys as $foreignKey) {
+                    try {
+                        Schema::table('product_module', function (Blueprint $table) use ($foreignKey) {
+                            $table->dropForeign($foreignKey->CONSTRAINT_NAME);
+                        });
+                    } catch (Throwable $e) {
+                        // constraint may be absent (partial run)
+                    }
+                }
+
+                // Indexes that still contain module_id: the old unique pairing
+                // and the standalone index MariaDB leaves behind after dropping
+                // the module_id FK. Both must go before the column.
+                foreach (['product_module_product_id_module_id_unique', 'product_module_module_id_foreign'] as $legacyIndex) {
+                    $legacyIndexExists = DB::select(
+                        'SELECT 1 FROM information_schema.STATISTICS'
+                        .' WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND INDEX_NAME = ? LIMIT 1',
+                        ['product_module', $legacyIndex]
+                    );
+
+                    if ($legacyIndexExists !== []) {
+                        try {
+                            Schema::table('product_module', function (Blueprint $table) use ($legacyIndex) {
+                                $table->dropIndex($legacyIndex);
+                            });
+                        } catch (Throwable $e) {
+                            // index may already be gone
+                        }
+                    }
+                }
+            }
+
+            // 6) Drop the column. On sqlite this rewrites the table; on
+            //    MySQL/MariaDB every FK/index that kept it alive is detached.
             Schema::table('product_module', function (Blueprint $table) {
                 $table->dropColumn('module_id');
             });
@@ -112,7 +149,7 @@ return new class extends Migration
 
         // 7) Add unique(['product_id','module_slug']) (guard against already existing)
         if (Schema::hasTable('product_module') && Schema::hasColumn('product_module', 'module_slug')) {
-            // Check if index already exists — best-effort probe via sqlite_master or information_schema
+            // Check if index already exists — sqlite via sqlite_master, MySQL via information_schema
             $needsIndex = true;
 
             if ($isSqlite) {
@@ -140,33 +177,70 @@ return new class extends Migration
                 } catch (Throwable $e) {
                     $needsIndex = true;
                 }
+            } else {
+                $slugUniqueExists = DB::select(
+                    'SELECT 1 FROM information_schema.STATISTICS'
+                    .' WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND INDEX_NAME = ? LIMIT 1',
+                    ['product_module', 'product_module_product_id_module_slug_unique']
+                );
+                $needsIndex = $slugUniqueExists === [];
             }
 
             if ($needsIndex) {
-                try {
+                Schema::table('product_module', function (Blueprint $table) {
+                    $table->unique(['product_id', 'module_slug']);
+                });
+            }
+
+            // 7b) MySQL/MariaDB: step 5 detached the product_id FK because the
+            //     old unique index that backed it also contained module_id.
+            //     Restore it now that the replacement index can serve it.
+            if (! $isSqlite) {
+                $productFkExists = DB::select(
+                    'SELECT CONSTRAINT_NAME FROM information_schema.KEY_COLUMN_USAGE'
+                    .' WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ? AND REFERENCED_TABLE_NAME IS NOT NULL LIMIT 1',
+                    ['product_module', 'product_id']
+                );
+
+                if ($productFkExists === []) {
                     Schema::table('product_module', function (Blueprint $table) {
-                        $table->unique(['product_id', 'module_slug']);
+                        $table->foreign('product_id')->references('id')->on('products')->cascadeOnDelete();
                     });
-                } catch (Throwable $e) {
-                    // may already exist (MySQL error 1061) or driver quirk
-                    if (! str_contains($e->getMessage(), 'already exists') && ! str_contains($e->getMessage(), 'Duplicate')) {
-                        // If it's not a duplicate error, rethrow? But guard says skip if already existing — so swallow duplicate
-                        // For other errors, still swallow to keep idempotent? Safer to swallow.
-                    }
                 }
             }
         }
 
-        // 8) servers: drop module_id
+        // 8) servers: drop module_id (and its FK/index) — servers are identified
+        //    by server_type now.
         if (Schema::hasTable('servers') && Schema::hasColumn('servers', 'module_id')) {
-            // Same as product_module above: drop the FK on every driver so the
-            // sqlite table rebuild removes it before the column goes away.
+            // Drop the FK on every driver so the sqlite table rebuild removes it
+            // before the column goes away.
             try {
                 Schema::table('servers', function (Blueprint $table) {
                     $table->dropForeign(['module_id']);
                 });
             } catch (Throwable $e) {
                 // constraint may be absent (partial run)
+            }
+
+            if (! $isSqlite) {
+                // MariaDB keeps the FK's backing index after DROP FOREIGN KEY;
+                // drop it explicitly so the column removal is unconstrained.
+                $serverIndexExists = DB::select(
+                    'SELECT 1 FROM information_schema.STATISTICS'
+                    .' WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND INDEX_NAME = ? LIMIT 1',
+                    ['servers', 'servers_module_id_foreign']
+                );
+
+                if ($serverIndexExists !== []) {
+                    try {
+                        Schema::table('servers', function (Blueprint $table) {
+                            $table->dropIndex('servers_module_id_foreign');
+                        });
+                    } catch (Throwable $e) {
+                        // index may already be gone
+                    }
+                }
             }
 
             Schema::table('servers', function (Blueprint $table) {
