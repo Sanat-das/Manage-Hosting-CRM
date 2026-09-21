@@ -9,7 +9,7 @@
 @section('content')
     <div class="row mb-4">
         <div class="col-lg-3 col-6">
-            <x-adminlte-small-box :title="'â‚¹' . number_format($totalRevenue, 0)" text="Total Revenue" icon="bi bi-currency-rupee" theme="success" />
+            <x-adminlte-small-box :title="'₹' . number_format($totalRevenue, 0)" text="Total Revenue" icon="bi bi-currency-rupee" theme="success" />
         </div>
         <div class="col-lg-3 col-6">
             <x-adminlte-small-box :title="$orderCount" text="Total Orders" icon="bi bi-cart" theme="primary" />
@@ -34,11 +34,11 @@
                 @forelse ($orders as $order)
                     <tr>
                         <td><strong>#{{ $order->id }}</strong></td>
-                        <td>{{ $order->customer?->full_name ?? 'â€”' }}</td>
+                        <td>{{ $order->customer?->full_name ?? '—' }}</td>
                         <td>
                             <x-adminlte.partials.status-badge :status="$order->status ?? 'pending'" />
                         </td>
-                        <td class="text-end fw-bold">â‚¹{{ number_format($order->total ?? 0, 2) }}</td>
+                        <td class="text-end fw-bold">₹{{ number_format($order->total ?? 0, 2) }}</td>
                         <td class="text-muted">{{ $order->created_at?->format('M j, Y') }}</td>
                     </tr>
                 @empty

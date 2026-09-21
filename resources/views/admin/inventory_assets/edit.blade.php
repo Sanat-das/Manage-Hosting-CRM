@@ -1,5 +1,5 @@
 ﻿@extends('adminlte::page')
-@section('title', 'Edit Asset â€” '.$inventoryAsset->asset_tag)
+@section('title', 'Edit Asset — '.$inventoryAsset->asset_tag)
 @section('content_header')
     <x-ui.page-header title="Edit: {{ $inventoryAsset->asset_tag }}" subtitle="Update inventory asset details" :breadcrumbs="[['label' => __('adminlte.home'), 'url' => url('/')],['label' => 'Inventory','url' => route('admin.inventory-assets.index')],['label' => 'Edit','active' => true]]" />
 @stop
@@ -15,7 +15,7 @@
             <div class="col-md-4"><x-adminlte-input name="model" label="Model" value="{{ old('model', $inventoryAsset->model) }}" /></div>
             <div class="col-md-4">
                 <x-adminlte-select name="datacenter_id" label="Datacenter">
-                    <option value="">â€” None â€”</option>
+                    <option value="">— None —</option>
                     @foreach ($datacenters as $dc)
                         <option value="{{ $dc->id }}" @selected(old('datacenter_id', $inventoryAsset->datacenter_id) == $dc->id)>{{ $dc->name }}</option>
                     @endforeach
@@ -23,7 +23,7 @@
             </div>
             <div class="col-md-4">
                 <x-adminlte-select name="rack_id" label="Rack">
-                    <option value="">â€” None â€”</option>
+                    <option value="">— None —</option>
                     @foreach ($racks as $rack)
                         <option value="{{ $rack->id }}" @selected(old('rack_id', $inventoryAsset->rack_id) == $rack->id)>{{ $rack->name }}</option>
                     @endforeach

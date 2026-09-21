@@ -1,5 +1,5 @@
 ﻿@extends('adminlte::page')
-@section('title', 'Edit Domain Pricing â€” '.$pricing->tld)
+@section('title', 'Edit Domain Pricing — '.$pricing->tld)
 @section('content_header')
     <x-ui.page-header title="Edit: .{{ $pricing->tld }}" subtitle="Update domain pricing details" :breadcrumbs="[['label' => __('adminlte.home'), 'url' => url('/')],['label' => 'Domain Pricing','url' => route('admin.domain-pricing.index')],['label' => 'Edit','active' => true]]" />
 @stop
@@ -44,7 +44,7 @@
             <div class="row mb-2">
                 <div class="col-md-4">
                     <x-adminlte-select name="terms[{{ $i }}][term_years]" label="{{ $i === 0 ? 'Term (Years)' : '' }}">
-                        <option value="">â€”</option>
+                        <option value="">—</option>
                         @foreach (range(1, 10) as $y)
                             <option value="{{ $y }}" @selected(old("terms.$i.term_years", $term?->term_years) == $y)>{{ $y }} year{{ $y > 1 ? 's' : '' }}</option>
                         @endforeach

@@ -25,7 +25,7 @@
         @forelse ($logs as $log)
             <tr>
                 <td class="text-muted small text-nowrap">{{ $log->created_at?->format('M j, H:i') }}</td>
-                <td>{{ $log->to_email ?? 'â€”' }}</td>
+                <td>{{ $log->to_email ?? '—' }}</td>
                 <td>{{ Str::limit($log->subject, 60) }}</td>
                 <td><x-adminlte.partials.status-badge :status="$log->status" /></td>
             </tr>

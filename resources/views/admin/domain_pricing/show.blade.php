@@ -1,5 +1,5 @@
 ﻿@extends('adminlte::page')
-@section('title', 'Domain Pricing â€” '.$pricing->tld)
+@section('title', 'Domain Pricing — '.$pricing->tld)
 @section('content_header')
     <x-ui.page-header title=".{{ $pricing->tld }}" subtitle="View domain pricing details" :breadcrumbs="[['label' => __('adminlte.home'), 'url' => url('/')],['label' => 'Domain Pricing','url' => route('admin.domain-pricing.index')],['label' => '.' . $pricing->tld,'active' => true]]" />
 @stop
@@ -16,7 +16,7 @@
                 <tr><th class="text-muted">Currency</th><td>{{ $pricing->currency }}</td></tr>
                 <tr><th class="text-muted">Premium</th><td><span class="badge {{ $pricing->premium ? 'text-bg-warning' : 'text-bg-secondary' }}">{{ $pricing->premium ? 'Yes' : 'No' }}</span></td></tr>
                 <tr><th class="text-muted">Enabled</th><td><span class="badge {{ $pricing->enabled ? 'text-bg-success' : 'text-bg-secondary' }}">{{ $pricing->enabled ? 'Yes' : 'No' }}</span></td></tr>
-                <tr><th class="text-muted">Synced At</th><td>{{ $pricing->synced_at?->diffForHumans() ?? 'â€”' }}</td></tr>
+                <tr><th class="text-muted">Synced At</th><td>{{ $pricing->synced_at?->diffForHumans() ?? '—' }}</td></tr>
             </tbody>
         </table>
     </x-adminlte-card>

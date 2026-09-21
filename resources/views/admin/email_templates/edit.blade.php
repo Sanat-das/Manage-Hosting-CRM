@@ -41,7 +41,7 @@
 /* Status bar */
 .et-statusbar{display:flex; flex-wrap:wrap; align-items:center; gap:.75rem; padding:.35rem .6rem; border-top:1px solid var(--bs-border-color); background:var(--bs-tertiary-bg); font-size:.75rem; color:var(--bs-secondary-color);}
 .et-statusbar .ok{color:#16a34a;} .et-statusbar .bad{color:#dc2626;}
-/* â”€â”€ z-index fix â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+/* ── z-index fix ─────────────────────────────────────────────── */
 /* Bootstrap .sticky-top is 1020 and .dropdown-menu is 1000, so the
    Variables sticky card was painting over the Load starter dropdown.
    Raise dropdowns above sticky, and keep the sticky card below them
@@ -85,7 +85,7 @@
                 <button class="btn btn-outline-secondary btn-sm dropdown-toggle" data-bs-toggle="dropdown"><i class="bi bi-collection me-1"></i> Load starter</button>
                 <ul class="dropdown-menu dropdown-menu-end" style="max-height:320px; overflow:auto;">
                     @foreach($defaults as $key => $def)
-                        <li><a class="dropdown-item small starter-item" href="#" data-name="{{ $key }}">{{ $key }} <span class="text-muted">â€” {{ Str::limit($def['subject'], 36) }}</span></a></li>
+                        <li><a class="dropdown-item small starter-item" href="#" data-name="{{ $key }}">{{ $key }} <span class="text-muted">— {{ Str::limit($def['subject'], 36) }}</span></a></li>
                     @endforeach
                 </ul>
             </div>
@@ -120,13 +120,13 @@
                             Subject <span class="text-danger">*</span>
                             <small class="text-muted">click a variable to insert</small>
                         </label>
-                        <input type="text" id="subjectInput" name="subject" value="{{ old('subject', $template->subject) }}" class="form-control" required placeholder="Invoice @{{invoice_no}} â€” @{{currency_symbol}}@{{total}} due @{{due_date}}">
+                        <input type="text" id="subjectInput" name="subject" value="{{ old('subject', $template->subject) }}" class="form-control" required placeholder="Invoice @{{invoice_no}} — @{{currency_symbol}}@{{total}} due @{{due_date}}">
                         <div class="mt-1 small text-muted">Rendered: <span id="subjectPreview" class="fw-semibold text-body"></span></div>
                     </div>
 
                     <div class="mb-2 d-flex justify-content-between align-items-center">
                         <label class="form-label fw-semibold mb-0">Body (HTML) <span class="text-danger">*</span></label>
-                        <small class="text-muted">Ctrl+F find Â· Ctrl+Shift+F format Â· F11 fullscreen</small>
+                        <small class="text-muted">Ctrl+F find · Ctrl+Shift+F format · F11 fullscreen</small>
                     </div>
 
                     {{-- Editor --}}
@@ -158,8 +158,8 @@
                                         <li><a class="dropdown-item small" href="#" data-snippet="hero">Hero / amount block</a></li>
                                         <li><hr class="dropdown-divider"></li>
                                         <li><h6 class="dropdown-header">Elements</h6></li>
-                                        <li><a class="dropdown-item small" href="#" data-snippet="cta-pay">CTA â€” Pay now</a></li>
-                                        <li><a class="dropdown-item small" href="#" data-snippet="cta-view">CTA â€” View invoice</a></li>
+                                        <li><a class="dropdown-item small" href="#" data-snippet="cta-pay">CTA — Pay now</a></li>
+                                        <li><a class="dropdown-item small" href="#" data-snippet="cta-view">CTA — View invoice</a></li>
                                         <li><a class="dropdown-item small" href="#" data-snippet="divider">Divider line</a></li>
                                         <li><a class="dropdown-item small" href="#" data-snippet="table-items">Line-items table</a></li>
                                         <li><a class="dropdown-item small" href="#" data-snippet="footer">Footer block</a></li>
@@ -186,12 +186,12 @@
                         {{-- Preview pane --}}
                         <div id="pane-preview" class="d-none" style="background:#f6f8fb; padding:12px;">
                             <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-1">
-                                <small class="text-muted">Preview with sample invoice <code>INV-2026-00001</code> â€¢ Shyamolesh Ghosh</small>
+                                <small class="text-muted">Preview with sample invoice <code>INV-2026-00001</code> • Shyamolesh Ghosh</small>
                                 <div class="d-flex align-items-center gap-2">
                                     <div class="btn-group btn-group-sm" id="vpToggleGroup">
-                                        <button type="button" class="vp-btn" data-vp="375" title="Mobile (375px)">ðŸ“± 375</button>
-                                        <button type="button" class="vp-btn active" data-vp="600" title="Email (600px)">âœ‰ 600</button>
-                                        <button type="button" class="vp-btn" data-vp="full" title="Full width">ðŸ–¥ Full</button>
+                                        <button type="button" class="vp-btn" data-vp="375" title="Mobile (375px)">📱 375</button>
+                                        <button type="button" class="vp-btn active" data-vp="600" title="Email (600px)">✉ 600</button>
+                                        <button type="button" class="vp-btn" data-vp="full" title="Full width">🖥 Full</button>
                                     </div>
                                     <button type="button" class="btn btn-sm btn-outline-secondary py-0" id="btnRefreshPreview">Refresh</button>
                                 </div>
@@ -215,7 +215,7 @@
 
         <div class="col-lg-4">
             {{-- Variable palette --}}
-            <x-adminlte-card icon="bi bi-braces" title="Variables â€” click to insert" class="sticky-top" style="top:1rem;">
+            <x-adminlte-card icon="bi bi-braces" title="Variables — click to insert" class="sticky-top" style="top:1rem;">
                 <div class="mb-2">
                     <input type="search" id="varSearch" class="form-control form-control-sm" placeholder="Filter variables...">
                 </div>
@@ -225,7 +225,7 @@
                             <div class="small fw-bold text-uppercase text-muted mb-1">{{ $group }}</div>
                             <div class="d-flex flex-wrap gap-1">
                                 @foreach($vars as $v)
-                                    <span class="et-var-chip" data-key="{{ $v['key'] }}" title="{{ $v['desc'] }} â€” {{ chr(123).chr(123).$v['key'].chr(125).chr(125) }}"><code>{{ chr(123).chr(123).$v['key'].chr(125).chr(125) }}</code> <span class="d-none d-xl-inline small">{{ $v['label'] }}</span></span>
+                                    <span class="et-var-chip" data-key="{{ $v['key'] }}" title="{{ $v['desc'] }} — {{ chr(123).chr(123).$v['key'].chr(125).chr(125) }}"><code>{{ chr(123).chr(123).$v['key'].chr(125).chr(125) }}</code> <span class="d-none d-xl-inline small">{{ $v['label'] }}</span></span>
                                 @endforeach
                             </div>
                         </div>
@@ -332,7 +332,7 @@ let fontSize = 13;
 
 subjectInput.addEventListener('focus', ()=> lastFocused = 'subject');
 
-/* â”€â”€ Highlight placeholders as an overlay mode â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+/* ── Highlight placeholders as an overlay mode ────────────────── */
 const varOverlay = {
   token: function(stream){
     if(stream.match(ob)){
@@ -351,7 +351,7 @@ const varOverlay = {
   }
 };
 
-/* â”€â”€ CodeMirror â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+/* ── CodeMirror ───────────────────────────────────────────────── */
 const cm = CodeMirror.fromTextArea(bodyTextarea, {
   mode: 'htmlmixed',
   theme: 'default',
@@ -393,11 +393,11 @@ function updateStatus(){
   const keys  = [...new Set(found.map(m => m.replace(/[{}]/g,'').trim()))];
   const bad   = keys.filter(k => !KNOWN_VARS.includes(k));
   stVars.innerHTML = bad.length
-    ? `<span class="bad">${keys.length} vars Â· ${bad.length} unknown</span>`
+    ? `<span class="bad">${keys.length} vars · ${bad.length} unknown</span>`
     : `<span class="ok">${keys.length} vars ok</span>`;
 }
 
-/* â”€â”€ Toolbar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+/* ── Toolbar ──────────────────────────────────────────────────── */
 function formatHtml(){
   if(typeof html_beautify !== 'function'){ flash('Formatter not loaded', true); return; }
   const cur = cm.getCursor();
@@ -453,7 +453,7 @@ document.getElementById('tbFullscreen').addEventListener('click', ()=>{
   if(f) setFont(f);
 })();
 
-/* â”€â”€ Placeholder checker â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+/* ── Placeholder checker ──────────────────────────────────────── */
 document.getElementById('tbCheckVars').addEventListener('click', ()=>{
   const val  = cm.getValue() + ' ' + subjectInput.value;
   const rx   = new RegExp(ob + '\\s*([a-zA-Z0-9_]+)\\s*' + cb, 'g');
@@ -463,7 +463,7 @@ document.getElementById('tbCheckVars').addEventListener('click', ()=>{
   const body = document.getElementById('varCheckBody');
   let html = '';
   if(bad.length){
-    html += '<div class="alert alert-danger py-2 small mb-3"><strong>' + bad.length + ' placeholder(s) will NOT be replaced</strong> â€” they are not produced by <code>buildVariables()</code> and will appear literally in the email.</div>';
+    html += '<div class="alert alert-danger py-2 small mb-3"><strong>' + bad.length + ' placeholder(s) will NOT be replaced</strong> — they are not produced by <code>buildVariables()</code> and will appear literally in the email.</div>';
     html += '<div class="d-flex flex-wrap gap-1 mb-3">' + bad.map(k => '<code class="text-danger border border-danger rounded px-2 py-1">' + ob + k + cb + '</code>').join('') + '</div>';
   } else {
     html += '<div class="alert alert-success py-2 small mb-3">All ' + keys.length + ' placeholders are valid and will be replaced at send time.</div>';
@@ -476,7 +476,7 @@ document.getElementById('tbCheckVars').addEventListener('click', ()=>{
   document.getElementById('varCheckTrigger').click();
 });
 
-/* â”€â”€ Snippets â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+/* ── Snippets ─────────────────────────────────────────────────── */
 const SNIPPETS = {
 'doc':`<!doctype html>
 <html lang="en">
@@ -547,7 +547,7 @@ document.querySelectorAll('[data-snippet]').forEach(a=>{
   });
 });
 
-/* â”€â”€ Variable chips â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+/* ── Variable chips ───────────────────────────────────────────── */
 function insertAtCursor(el, text){
   const start = el.selectionStart, end = el.selectionEnd;
   el.value = el.value.substring(0,start) + text + el.value.substring(end);
@@ -576,7 +576,7 @@ document.getElementById('varSearch')?.addEventListener('input', e=>{
   });
 });
 
-/* â”€â”€ Tabs â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+/* ── Tabs ─────────────────────────────────────────────────────── */
 document.querySelectorAll('.et-editor-tabs button[data-tab]').forEach(btn=>{
   btn.addEventListener('click', ()=>{
     document.querySelectorAll('.et-editor-tabs button[data-tab]').forEach(b=>b.classList.remove('active'));
@@ -589,7 +589,7 @@ document.querySelectorAll('.et-editor-tabs button[data-tab]').forEach(btn=>{
   });
 });
 
-/* â”€â”€ Starter loader â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+/* ── Starter loader ───────────────────────────────────────────── */
 const DEFAULTS = @json($defaults);
 document.querySelectorAll('.starter-item').forEach(a=>{
   a.addEventListener('click', e=>{
@@ -606,7 +606,7 @@ document.querySelectorAll('.starter-item').forEach(a=>{
   });
 });
 
-/* â”€â”€ Preview â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+/* ── Preview ──────────────────────────────────────────────────── */
 let previewTimer=null;
 function refreshPreviewDebounced(){ clearTimeout(previewTimer); previewTimer=setTimeout(refreshPreview, 400); }
 async function refreshPreview(){
@@ -648,7 +648,7 @@ document.querySelectorAll('#vpToggleGroup .vp-btn').forEach(b=>{
   });
 });
 
-/* â”€â”€ Auto-save draft â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+/* ── Auto-save draft ──────────────────────────────────────────── */
 const DRAFT_KEY = 'et_draft_{{ $template->id }}';
 const autosaveBadge = document.getElementById('autosaveBadge');
 const btnRestoreDraft = document.getElementById('btnRestoreDraft');
@@ -675,18 +675,18 @@ btnRestoreDraft?.addEventListener('click', ()=>{
   btnRestoreDraft.classList.add('d-none');
 });
 
-/* â”€â”€ Submit â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+/* ── Submit ───────────────────────────────────────────────────── */
 document.getElementById('etForm')?.addEventListener('submit', ()=>{
   cm.save();                       // write CodeMirror content back to the textarea
   localStorage.removeItem(DRAFT_KEY);
 });
 
-/* â”€â”€ Test send â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+/* ── Test send ────────────────────────────────────────────────── */
 document.getElementById('btnSendTest')?.addEventListener('click', async ()=>{
   const email = document.getElementById('testEmail').value.trim();
   const result = document.getElementById('testResult');
   if(!email){ result.textContent='Enter an email'; return; }
-  result.textContent='Sendingâ€¦';
+  result.textContent='Sending…';
   try{
     const res = await fetch('{{ route('admin.email-templates.send-test', $template) }}', {
       method:'POST',
@@ -694,9 +694,9 @@ document.getElementById('btnSendTest')?.addEventListener('click', async ()=>{
       body: JSON.stringify({ email, subject: subjectInput.value, body: cm.getValue() })
     });
     const data = await res.json();
-    result.textContent = res.ok ? 'âœ“ '+data.message : 'âœ— '+(data.message||res.statusText);
+    result.textContent = res.ok ? '✓ '+data.message : '✗ '+(data.message||res.statusText);
     result.className = res.ok ? 'small mt-2 text-success' : 'small mt-2 text-danger';
-  }catch(e){ result.textContent='âœ— '+e.message; }
+  }catch(e){ result.textContent='✗ '+e.message; }
 });
 
 updateStatus();

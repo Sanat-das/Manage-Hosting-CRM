@@ -30,10 +30,10 @@
             <tr>
                 <td class="text-muted small text-nowrap">{{ $log->created_at?->format('M j, H:i') }}</td>
                 <td><span class="badge text-bg-info">{{ $log->action }}</span></td>
-                <td>{{ $log->user?->full_name ?? 'â€”' }}</td>
-                <td>{{ $log->customer?->full_name ?? 'â€”' }}</td>
+                <td>{{ $log->user?->full_name ?? '—' }}</td>
+                <td>{{ $log->customer?->full_name ?? '—' }}</td>
                 <td>{{ Str::limit($log->description, 80) }}</td>
-                <td class="text-muted small">{{ $log->ip_address ?? 'â€”' }}</td>
+                <td class="text-muted small">{{ $log->ip_address ?? '—' }}</td>
             </tr>
         @empty
             <tr><td colspan="6" class="text-center text-muted py-4">No activity logged.</td></tr>

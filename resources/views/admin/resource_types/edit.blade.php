@@ -1,5 +1,5 @@
 ﻿@extends('adminlte::page')
-@section('title', 'Edit Resource Type â€” '.$type->name)
+@section('title', 'Edit Resource Type — '.$type->name)
 @section('content_header')
     <x-ui.page-header title="Edit: {{ $type->name }}" subtitle="Update resource type details" :breadcrumbs="[['label' => __('adminlte.home'), 'url' => url('/')],['label' => 'Resource Types','url' => route('admin.resource-types.index')],['label' => 'Edit','active' => true]]" />
 @stop

@@ -27,10 +27,10 @@
             <tbody>
                 @forelse ($accounts as $a)
                     <tr>
-                        <td>{{ $a->customer?->full_name ?? 'â€”' }}</td>
-                        <td>{{ $a->product?->name ?? 'â€”' }}</td>
-                        <td>{{ $a->domain ?? 'â€”' }}</td>
-                        <td class="text-muted">{{ $a->server?->name ?? 'â€”' }}</td>
+                        <td>{{ $a->customer?->full_name ?? '—' }}</td>
+                        <td>{{ $a->product?->name ?? '—' }}</td>
+                        <td>{{ $a->domain ?? '—' }}</td>
+                        <td class="text-muted">{{ $a->server?->name ?? '—' }}</td>
                         <td>
                             <x-adminlte.partials.status-badge :status="$a->status" />
                         </td>

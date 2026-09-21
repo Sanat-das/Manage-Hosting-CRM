@@ -1,5 +1,5 @@
 ﻿@extends('adminlte::page')
-@section('title', 'Edit Resource Pool â€” '.$resourcePool->name)
+@section('title', 'Edit Resource Pool — '.$resourcePool->name)
 @section('content_header')
     <x-ui.page-header title="Edit: {{ $resourcePool->name }}" subtitle="Update resource pool details" :breadcrumbs="[['label' => __('adminlte.home'), 'url' => url('/')],['label' => 'Resource Pools','url' => route('admin.resource-pools.index')],['label' => 'Edit','active' => true]]" />
 @stop

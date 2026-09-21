@@ -33,7 +33,7 @@
 
         // Full IANA timezone identifier list grouped by region prefix for every
         // Timezone select on this page (General `timezone`, User
-        // `user_default_timezone`). Zones without a region prefix (UTC, CET, â€¦)
+        // `user_default_timezone`). Zones without a region prefix (UTC, CET, …)
         // are collected under "Other", kept last.
         $timezonesGrouped = [];
         foreach (\DateTimeZone::listIdentifiers(\DateTimeZone::ALL) as $tzIdentifier) {
@@ -59,7 +59,7 @@
          * The stored value is ALWAYS selectable, even when it is not in the
          * list. Settings saves are last-write-wins across the whole tab, so a
          * select that quietly fell back to its first option would rewrite the
-         * stored value the moment anyone saved that tab â€” a silent data change
+         * stored value the moment anyone saved that tab — a silent data change
          * nobody asked for. An unrecognised value is kept and labelled instead,
          * which also surfaces the problem: role_default_role is currently
          * 'client', and there is no 'client' role.
@@ -82,7 +82,7 @@
             }
 
             if (! $matched && $current !== '') {
-                $html .= '<option value="'.e($current).'" selected>'.e($current).' â€” not a recognised value</option>';
+                $html .= '<option value="'.e($current).'" selected>'.e($current).' — not a recognised value</option>';
             }
 
             return $html;
@@ -92,13 +92,13 @@
          * A blank option label, but only when the value is genuinely unset.
          *
          * Option A (pinned in SettingsController::saveTyped) makes an empty
-         * submission mean "keep the stored value". Offering "â€” not set â€”" on a
+         * submission mean "keep the stored value". Offering "— not set —" on a
          * field that already has one would therefore be a control that looks
          * like it clears the setting and silently does nothing. It is offered
          * only to represent a value that is already empty, which the select
          * would otherwise have to misrepresent as its first real option.
          */
-        $blankIfUnset = fn ($current): ?string => trim((string) $current) === '' ? 'â€” not set â€”' : null;
+        $blankIfUnset = fn ($current): ?string => trim((string) $current) === '' ? '— not set —' : null;
 
         /** <option> markup for a <datalist>: suggestions that never constrain the value. */
         $datalistOptions = function (array $options): string {
@@ -126,7 +126,7 @@
     {{--
         novalidate is deliberate. Inactive .tab-pane elements are display:none, so
         a control that fails an HTML5 constraint (required, pattern, type=email,
-        number min/max) on a tab the admin is not looking at cannot be focused â€”
+        number min/max) on a tab the admin is not looking at cannot be focused —
         the browser refuses the submit, logs "An invalid form control ... is not
         focusable", and NOTHING happens on screen. Constraint validation is
         instead run by hand on submit (see the js block), which switches to the
@@ -161,7 +161,7 @@
                     <div class="mb-3" id="settings-search-wrap">
                         <div class="input-group input-group-sm">
                             <span class="input-group-text" aria-hidden="true"><i class="bi bi-search"></i></span>
-                            <input id="settings-search" type="search" class="form-control" placeholder="Search settingsâ€¦"
+                            <input id="settings-search" type="search" class="form-control" placeholder="Search settings…"
                                 aria-label="Search settings" autocomplete="off">
                             <button type="button" class="btn btn-outline-secondary btn-sm" id="settings-search-clear" aria-label="Clear search">Clear</button>
                         </div>
@@ -171,7 +171,7 @@
                         </div>
                     </div>
 
-                    {{-- Grouped nav pills â€”  id kept as settings-tabs-nav so existing JS references work --}}
+                    {{-- Grouped nav pills —  id kept as settings-tabs-nav so existing JS references work --}}
                     <ul class="nav flex-column nav-pills mb-3 settings-nav" role="tablist" id="settings-tabs-nav">
                         @foreach ($sectionsByGroup as $groupName => $groupSections)
                             <li class="nav-item settings-nav-group" role="none">
@@ -202,7 +202,7 @@
                         <i class="bi bi-check-lg me-1"></i> Save All Settings
                     </button>
                     <small id="save-all-concurrency-note" class="text-muted d-block text-center" style="font-size:0.75rem;">
-                        <i class="bi bi-people me-1"></i> Changes save immediately â€” coordinate with team when editing at the same time
+                        <i class="bi bi-people me-1"></i> Changes save immediately — coordinate with team when editing at the same time
                     </small>
                 </div>
             </div>
@@ -217,7 +217,7 @@
                     <div class="alert alert-danger" id="settings-error-summary" role="alert" aria-labelledby="settings-error-summary-heading">
                         <div class="d-flex align-items-center gap-2 mb-2">
                             <i class="bi bi-exclamation-triangle-fill" aria-hidden="true"></i>
-                            <strong id="settings-error-summary-heading">{{ $errors->count() }} {{ Str::plural('error', $errors->count()) }} found â€” fix the highlighted fields</strong>
+                            <strong id="settings-error-summary-heading">{{ $errors->count() }} {{ Str::plural('error', $errors->count()) }} found — fix the highlighted fields</strong>
                         </div>
                         <ul class="mb-0 ps-3">
                             @foreach($errors->messages() as $field => $messages)
@@ -231,7 +231,7 @@
                                     <a href="#pane-{{ $tabForKey }}" class="alert-link error-summary-link" data-tab="{{ $tabForKey }}" data-field="{{ $field }}" data-raw-key="{{ $rawKey }}">
                                         {{ $labelForKey }} ({{ $tabForKey }})
                                     </a>
-                                    â€” {{ $messages[0] }}
+                                    — {{ $messages[0] }}
                                 </li>
                             @endforeach
                         </ul>
@@ -253,12 +253,12 @@
                     </div>
                 </x-adminlte-card>
                 @php $lu = $lastUpdated['portal'] ?? $lastUpdated['all'] ?? null; @endphp
-                <small class="text-muted d-block mb-2 last-updated" data-section="portal">@if($lu)Last updated: {{ \Illuminate\Support\Carbon::parse($lu->created_at)->format('Y-m-d H:i:s') }} â€” <span title="{{ $lu->description }}">{{ \Illuminate\Support\Str::limit($lu->description, 120) }}</span>@else Last updated: never @endif</small>
+                <small class="text-muted d-block mb-2 last-updated" data-section="portal">@if($lu)Last updated: {{ \Illuminate\Support\Carbon::parse($lu->created_at)->format('Y-m-d H:i:s') }} — <span title="{{ $lu->description }}">{{ \Illuminate\Support\Str::limit($lu->description, 120) }}</span>@else Last updated: never @endif</small>
             </div>
 
             {{-- Branding --}}
             <div class="tab-pane fade @if ($activeTab === 'branding') show active @endif" id="pane-branding" role="tabpanel" aria-labelledby="tab-branding">
-                <x-adminlte-card icon="bi bi-palette" title="Branding â€” HostVexa">
+                <x-adminlte-card icon="bi bi-palette" title="Branding — HostVexa">
                     @php
                         $brandingData = $branding ?? \App\Support\Branding::all();
                         $brandingLogoUrl = $brandingData['logo_url'] ?? asset(\App\Support\Branding::DEFAULT_LOGO);
@@ -304,7 +304,7 @@
                             @error('settings.branding_primary_color')
                                 <span class="invalid-feedback d-block" role="alert">{{ $message }}</span>
                             @enderror
-                            <small class="form-text text-muted">Hex #RRGGBB â€” suggested <code>#0EA5E9</code></small>
+                            <small class="form-text text-muted">Hex #RRGGBB — suggested <code>#0EA5E9</code></small>
                         </div>
                         <div class="col-md-3">
                             <label for="branding_accent_color" class="form-label">Accent Color</label>
@@ -318,13 +318,13 @@
                             @error('settings.branding_accent_color')
                                 <span class="invalid-feedback d-block" role="alert">{{ $message }}</span>
                             @enderror
-                            <small class="form-text text-muted">Hex #RRGGBB â€” suggested <code>#6366F1</code></small>
+                            <small class="form-text text-muted">Hex #RRGGBB — suggested <code>#6366F1</code></small>
                         </div>
                         <div class="col-md-3">
                             @php $sidebarThemeCurrent = old('settings.branding_sidebar_theme', $settings['branding_sidebar_theme'] ?? ''); @endphp
                             <x-adminlte-select name="settings[branding_sidebar_theme]" label="Sidebar Theme">
                                 <option value="" @selected($sidebarThemeCurrent === '')>Use default</option>
-                                <option value="dark" @selected($sidebarThemeCurrent === 'dark')>Dark â€” navy #0F172A</option>
+                                <option value="dark" @selected($sidebarThemeCurrent === 'dark')>Dark — navy #0F172A</option>
                                 <option value="light" @selected($sidebarThemeCurrent === 'light')>Light</option>
                             </x-adminlte-select>
                             <small class="form-text text-muted">Overrides General sidebar theme for brand.</small>
@@ -357,7 +357,7 @@
                                 </picture>
                                 <div class="small text-muted">
                                     Current: <code class="small">{{ $settings['branding_logo_path'] ?? '' ?: \App\Support\Branding::DEFAULT_LOGO.' (default)' }}</code><br>
-                                    <span>Upload SVG, PNG, JPG or WEBP â€” max 2 MB.</span>
+                                    <span>Upload SVG, PNG, JPG or WEBP — max 2 MB.</span>
                                 </div>
                                 <picture class="ms-auto d-none d-md-block">
                                     <source srcset="{{ $brandingFaviconWebpUrl }}" type="image/webp">
@@ -381,7 +381,7 @@
                             <div class="form-check mt-2 @if(!$hasLogoFile) d-none @endif" id="branding_logo_remove_wrap">
                                 <input class="form-check-input" type="checkbox" name="remove_branding_logo" id="remove_branding_logo" value="1">
                                 <label class="form-check-label small text-danger" for="remove_branding_logo">
-                                    <i class="bi bi-trash me-1"></i>Remove current logo â€” revert to default
+                                    <i class="bi bi-trash me-1"></i>Remove current logo — revert to default
                                 </label>
                             </div>
                             <small class="text-muted d-block mt-1" style="font-size:0.72rem;">If checked, the stored file is deleted from <code>storage/app/public/branding</code> on Save. Uploading a new file takes priority over this checkbox.</small>
@@ -395,7 +395,7 @@
                                 </picture>
                                 <div class="small text-muted">
                                     Current: <code class="small">{{ $settings['branding_favicon_path'] ?? '' ?: \App\Support\Branding::DEFAULT_FAVICON.' (default)' }}</code><br>
-                                    <span>SVG, PNG, JPG, WEBP or ICO â€” max 1 MB.</span>
+                                    <span>SVG, PNG, JPG, WEBP or ICO — max 1 MB.</span>
                                 </div>
                             </div>
                             <input type="file" name="branding_favicon" id="branding_favicon"
@@ -415,7 +415,7 @@
                             <div class="form-check mt-2 @if(!$hasFaviconFile) d-none @endif" id="branding_favicon_remove_wrap">
                                 <input class="form-check-input" type="checkbox" name="remove_branding_favicon" id="remove_branding_favicon" value="1">
                                 <label class="form-check-label small text-danger" for="remove_branding_favicon">
-                                    <i class="bi bi-trash me-1"></i>Remove current favicon â€” revert to default
+                                    <i class="bi bi-trash me-1"></i>Remove current favicon — revert to default
                                 </label>
                             </div>
                             <small class="text-muted d-block mt-1" style="font-size:0.72rem;">Deletes the stored favicon on Save. New upload wins over remove.</small>
@@ -425,8 +425,8 @@
                         <div class="col-md-8">
                             <label for="branding_footer_text" class="form-label">Footer Text</label>
                             <input type="text" name="settings[branding_footer_text]" id="branding_footer_text"
-                                value="{{ old('settings.branding_footer_text', $settings['branding_footer_text'] ?? 'Â© {year} HostVexa. All rights reserved.') }}"
-                                maxlength="255" placeholder="Â© {year} HostVexa. All rights reserved."
+                                value="{{ old('settings.branding_footer_text', $settings['branding_footer_text'] ?? '© {year} HostVexa. All rights reserved.') }}"
+                                maxlength="255" placeholder="© {year} HostVexa. All rights reserved."
                                 class="form-control @error('settings.branding_footer_text') is-invalid @enderror">
                             @error('settings.branding_footer_text')
                                 <span class="invalid-feedback d-block" role="alert">{{ $message }}</span>
@@ -523,7 +523,7 @@
                                     }
                                 });
                             }
-                            // Final submit guard: if remove checked + file selected, file wins per backend â€” warn
+                            // Final submit guard: if remove checked + file selected, file wins per backend — warn
                             var settingsForm = document.getElementById('settings-form');
                             if(settingsForm){
                                 settingsForm.addEventListener('submit', function(e){
@@ -540,7 +540,7 @@
                     </script>
                 </x-adminlte-card>
                 @php $lu = $lastUpdated['branding'] ?? $lastUpdated['all'] ?? null; @endphp
-                <small class="text-muted d-block mb-2 last-updated" data-section="branding">@if($lu)Last updated: {{ \Illuminate\Support\Carbon::parse($lu->created_at)->format('Y-m-d H:i:s') }} â€” <span title="{{ $lu->description }}">{{ \Illuminate\Support\Str::limit($lu->description, 120) }}</span>@else Last updated: never @endif</small>
+                <small class="text-muted d-block mb-2 last-updated" data-section="branding">@if($lu)Last updated: {{ \Illuminate\Support\Carbon::parse($lu->created_at)->format('Y-m-d H:i:s') }} — <span title="{{ $lu->description }}">{{ \Illuminate\Support\Str::limit($lu->description, 120) }}</span>@else Last updated: never @endif</small>
             </div>
 
             {{-- General --}}
@@ -575,7 +575,7 @@
                             @error('settings.company_email')
                                 <span class="invalid-feedback d-block" role="alert">{{ $message }}</span>
                             @enderror
-                            <small class="form-text text-muted">Support / billing contact â€” used in <code>@{{company_email}}</code></small>
+                            <small class="form-text text-muted">Support / billing contact — used in <code>@{{company_email}}</code></small>
                         </div>
                     </div>
                     @php
@@ -595,30 +595,30 @@
                         if (old('company_phone_code')) $cpSelectedDial = old('company_phone_code');
                         if (old('company_phone_number') !== null) $cpNumberPart = old('company_phone_number');
                         $cpCountries = [
-                            ['code' => 'IN', 'name' => 'India', 'native' => 'à¤­à¤¾à¤°à¤¤', 'dial' => '+91', 'flag' => 'ðŸ‡®ðŸ‡³'],
-                            ['code' => 'US', 'name' => 'United States', 'native' => '', 'dial' => '+1', 'flag' => 'ðŸ‡ºðŸ‡¸'],
-                            ['code' => 'GB', 'name' => 'United Kingdom', 'native' => '', 'dial' => '+44', 'flag' => 'ðŸ‡¬ðŸ‡§'],
-                            ['code' => 'AU', 'name' => 'Australia', 'native' => '', 'dial' => '+61', 'flag' => 'ðŸ‡¦ðŸ‡º'],
-                            ['code' => 'CA', 'name' => 'Canada', 'native' => '', 'dial' => '+1', 'flag' => 'ðŸ‡¨ðŸ‡¦'],
-                            ['code' => 'AE', 'name' => 'United Arab Emirates', 'native' => 'Ø§Ù„Ø¥Ù…Ø§Ø±Ø§Øª', 'dial' => '+971', 'flag' => 'ðŸ‡¦ðŸ‡ª'],
-                            ['code' => 'SG', 'name' => 'Singapore', 'native' => '', 'dial' => '+65', 'flag' => 'ðŸ‡¸ðŸ‡¬'],
-                            ['code' => 'DE', 'name' => 'Germany', 'native' => 'Deutschland', 'dial' => '+49', 'flag' => 'ðŸ‡©ðŸ‡ª'],
-                            ['code' => 'FR', 'name' => 'France', 'native' => '', 'dial' => '+33', 'flag' => 'ðŸ‡«ðŸ‡·'],
-                            ['code' => 'BD', 'name' => 'Bangladesh', 'native' => 'à¦¬à¦¾à¦‚à¦²à¦¾à¦¦à§‡à¦¶', 'dial' => '+880', 'flag' => 'ðŸ‡§ðŸ‡©'],
-                            ['code' => 'NP', 'name' => 'Nepal', 'native' => 'à¤¨à¥‡à¤ªà¤¾à¤²', 'dial' => '+977', 'flag' => 'ðŸ‡³ðŸ‡µ'],
-                            ['code' => 'PK', 'name' => 'Pakistan', 'native' => 'Ù¾Ø§Ú©Ø³ØªØ§Ù†', 'dial' => '+92', 'flag' => 'ðŸ‡µðŸ‡°'],
-                            ['code' => 'LK', 'name' => 'Sri Lanka', 'native' => 'à·à·Šâ€à¶»à·“ à¶½à¶‚à¶šà·à·€', 'dial' => '+94', 'flag' => 'ðŸ‡±ðŸ‡°'],
-                            ['code' => 'SA', 'name' => 'Saudi Arabia', 'native' => 'Ø§Ù„Ù…Ù…Ù„ÙƒØ© Ø§Ù„Ø¹Ø±Ø¨ÙŠØ© Ø§Ù„Ø³Ø¹ÙˆØ¯ÙŠØ©', 'dial' => '+966', 'flag' => 'ðŸ‡¸ðŸ‡¦'],
-                            ['code' => 'MY', 'name' => 'Malaysia', 'native' => '', 'dial' => '+60', 'flag' => 'ðŸ‡²ðŸ‡¾'],
-                            ['code' => 'CN', 'name' => 'China', 'native' => 'ä¸­å›½', 'dial' => '+86', 'flag' => 'ðŸ‡¨ðŸ‡³'],
-                            ['code' => 'JP', 'name' => 'Japan', 'native' => 'æ—¥æœ¬', 'dial' => '+81', 'flag' => 'ðŸ‡¯ðŸ‡µ'],
+                            ['code' => 'IN', 'name' => 'India', 'native' => 'भारत', 'dial' => '+91', 'flag' => '🇮🇳'],
+                            ['code' => 'US', 'name' => 'United States', 'native' => '', 'dial' => '+1', 'flag' => '🇺🇸'],
+                            ['code' => 'GB', 'name' => 'United Kingdom', 'native' => '', 'dial' => '+44', 'flag' => '🇬🇧'],
+                            ['code' => 'AU', 'name' => 'Australia', 'native' => '', 'dial' => '+61', 'flag' => '🇦🇺'],
+                            ['code' => 'CA', 'name' => 'Canada', 'native' => '', 'dial' => '+1', 'flag' => '🇨🇦'],
+                            ['code' => 'AE', 'name' => 'United Arab Emirates', 'native' => 'الإمارات', 'dial' => '+971', 'flag' => '🇦🇪'],
+                            ['code' => 'SG', 'name' => 'Singapore', 'native' => '', 'dial' => '+65', 'flag' => '🇸🇬'],
+                            ['code' => 'DE', 'name' => 'Germany', 'native' => 'Deutschland', 'dial' => '+49', 'flag' => '🇩🇪'],
+                            ['code' => 'FR', 'name' => 'France', 'native' => '', 'dial' => '+33', 'flag' => '🇫🇷'],
+                            ['code' => 'BD', 'name' => 'Bangladesh', 'native' => 'বাংলাদেশ', 'dial' => '+880', 'flag' => '🇧🇩'],
+                            ['code' => 'NP', 'name' => 'Nepal', 'native' => 'नेपाल', 'dial' => '+977', 'flag' => '🇳🇵'],
+                            ['code' => 'PK', 'name' => 'Pakistan', 'native' => 'پاکستان', 'dial' => '+92', 'flag' => '🇵🇰'],
+                            ['code' => 'LK', 'name' => 'Sri Lanka', 'native' => 'ශ්‍රී ලංකාව', 'dial' => '+94', 'flag' => '🇱🇰'],
+                            ['code' => 'SA', 'name' => 'Saudi Arabia', 'native' => 'المملكة العربية السعودية', 'dial' => '+966', 'flag' => '🇸🇦'],
+                            ['code' => 'MY', 'name' => 'Malaysia', 'native' => '', 'dial' => '+60', 'flag' => '🇲🇾'],
+                            ['code' => 'CN', 'name' => 'China', 'native' => '中国', 'dial' => '+86', 'flag' => '🇨🇳'],
+                            ['code' => 'JP', 'name' => 'Japan', 'native' => '日本', 'dial' => '+81', 'flag' => '🇯🇵'],
                         ];
                         $cpDials = array_column($cpCountries, 'dial');
                         if (!in_array($cpSelectedDial, $cpDials, true)) {
-                            $cpCountries[] = ['code' => 'OT', 'name' => 'Other', 'native' => '', 'dial' => $cpSelectedDial, 'flag' => 'ðŸ³ï¸'];
+                            $cpCountries[] = ['code' => 'OT', 'name' => 'Other', 'native' => '', 'dial' => $cpSelectedDial, 'flag' => '🏳️'];
                         }
                     @endphp
-                    {{-- Company Phone â€” customer phone-input parity (code select + number) --}}
+                    {{-- Company Phone — customer phone-input parity (code select + number) --}}
                     <div class="mb-3" id="company-phone-field">
                         <label class="form-label fw-semibold">Mobile / Phone <span class="text-muted fw-normal">(Company)</span></label>
                         <div class="input-group" style="flex-wrap: nowrap;">
@@ -634,26 +634,26 @@
                             <span class="invalid-feedback d-block" role="alert">{{ $message }}</span>
                         @enderror
                         <div class="d-flex justify-content-between align-items-center mt-1">
-                            <small class="form-text text-muted">Select country flag and enter number without leading 0 â€” same as customer phone.</small>
+                            <small class="form-text text-muted">Select country flag and enter number without leading 0 — same as customer phone.</small>
                             <small class="text-muted" id="company_phone_hint" aria-live="polite"></small>
                         </div>
                     </div>
 
-                    {{-- Company Address â€” sundered ecommerce format (same fields as customer) --}}
+                    {{-- Company Address — sundered ecommerce format (same fields as customer) --}}
                     @php
                         $caLegacy = old('settings.company_address', $settings['company_address'] ?? '');
                         $caHasSundered = trim((string)($settings['company_address_line1'] ?? '') . ($settings['company_city'] ?? '') . ($settings['company_state'] ?? '')) !== '';
                     @endphp
                     @if(!$caHasSundered && trim((string)$caLegacy) !== '')
                         <div class="alert alert-info py-2 small mb-2">
-                            <i class="bi bi-info-circle me-1"></i> Migrating from legacy address: <code>{{ Str::limit($caLegacy, 120) }}</code> â€” split it into the fields below and save. It will replace the legacy line on invoices.
+                            <i class="bi bi-info-circle me-1"></i> Migrating from legacy address: <code>{{ Str::limit($caLegacy, 120) }}</code> — split it into the fields below and save. It will replace the legacy line on invoices.
                         </div>
                     @endif
                     <div class="border rounded p-3 mb-3 bg-light-subtle">
                         <div class="d-flex align-items-center gap-2 mb-3">
                             <i class="bi bi-geo-alt text-primary"></i>
                             <h6 class="mb-0 fw-semibold">Company Address</h6>
-                            <span class="text-muted small ms-1">â€” standard e-commerce fields, shown on invoices</span>
+                            <span class="text-muted small ms-1">— standard e-commerce fields, shown on invoices</span>
                         </div>
                         <div class="row g-3">
                             <div class="col-md-6">
@@ -696,14 +696,14 @@
                                                   :selected="$settings['company_country'] ?? null" />
                             </div>
                             <div class="col-md-6 d-flex align-items-end">
-                                <div class="form-text mb-2 w-100">State drives GST (CGST/SGST vs IGST). Postcode validates shipping/tax â€” same rules as customer address.</div>
+                                <div class="form-text mb-2 w-100">State drives GST (CGST/SGST vs IGST). Postcode validates shipping/tax — same rules as customer address.</div>
                             </div>
                         </div>
-                        {{-- Keep legacy field hidden for graceful fallback â€” synced in controller if empty --}}
+                        {{-- Keep legacy field hidden for graceful fallback — synced in controller if empty --}}
                         <input type="hidden" name="settings[company_address]" value="{{ old('settings.company_address', $settings['company_address'] ?? '') }}">
                     </div>
 
-                    {{-- Live invoice header preview â€” mirrors InvoiceEmailService handling --}}
+                    {{-- Live invoice header preview — mirrors InvoiceEmailService handling --}}
                     <div class="mt-3 p-3 border rounded-3" id="company-preview" style="background: var(--bs-tertiary-bg, #f8f9fa);">
                         <div class="d-flex justify-content-between align-items-center mb-2">
                             <small class="text-uppercase fw-semibold text-muted" style="letter-spacing:0.06em;font-size:0.7rem;">Invoice header preview</small>
@@ -711,10 +711,10 @@
                         </div>
                         <div class="bg-white border rounded p-3 shadow-sm" style="font-size:0.9rem;line-height:1.5;">
                             <div class="fw-bold" id="preview_company_name">{{ $settings['company_name'] ?? 'Your Company Name' }}</div>
-                            <div class="text-muted small" id="preview_company_address" style="white-space: pre-line;">{{ ($settings['company_address'] ?? '') !== '' ? $settings['company_address'] : (trim(implode(', ', array_filter([$settings['company_address_line1'] ?? null, $settings['company_address_line2'] ?? null, $settings['company_city'] ?? null, $settings['company_state'] ?? null, $settings['company_postcode'] ?? null, $settings['company_country'] ?? null]))) ?: '123 Business Park, Mumbai, Maharashtra â€” 400001, India') }}</div>
+                            <div class="text-muted small" id="preview_company_address" style="white-space: pre-line;">{{ ($settings['company_address'] ?? '') !== '' ? $settings['company_address'] : (trim(implode(', ', array_filter([$settings['company_address_line1'] ?? null, $settings['company_address_line2'] ?? null, $settings['company_city'] ?? null, $settings['company_state'] ?? null, $settings['company_postcode'] ?? null, $settings['company_country'] ?? null]))) ?: '123 Business Park, Mumbai, Maharashtra — 400001, India') }}</div>
                             <div class="small mt-1 text-muted">
                                 <span id="preview_company_email"><i class="bi bi-envelope me-1"></i>{{ $settings['company_email'] ?? 'billing@example.com' }}</span>
-                                <span class="mx-2">Â·</span>
+                                <span class="mx-2">·</span>
                                 <span id="preview_company_phone"><i class="bi bi-telephone me-1"></i>{{ $settings['company_phone'] ?? '+91 98765 43210' }}</span>
                             </div>
                         </div>
@@ -743,7 +743,7 @@
                                     else {
                                         var digits = hidden.value.replace(/\D/g,'').length;
                                         var ok = /^[\+\d][\d\s\-\.\(\)]{6,49}$/.test(hidden.value) && digits>=7 && digits<=15;
-                                        phoneHint.textContent = ok ? 'âœ“ valid' : digits<7 ? digits+' digits â€” need 7+' : 'check format';
+                                        phoneHint.textContent = ok ? '✓ valid' : digits<7 ? digits+' digits — need 7+' : 'check format';
                                         phoneHint.className = ok ? 'text-success' : 'text-warning';
                                     }
                                 }
@@ -756,7 +756,7 @@
                                     var el = document.getElementById(id);
                                     if(el && el.value.trim()!=='') parts.push(el.value.trim());
                                 });
-                                var txt = parts.length ? parts.join(', ') : '123 Business Park, Mumbai, Maharashtra â€” 400001, India';
+                                var txt = parts.length ? parts.join(', ') : '123 Business Park, Mumbai, Maharashtra — 400001, India';
                                 pAddr.textContent = txt;
                             }
                             function updatePreview(){
@@ -783,7 +783,7 @@
                             {{-- Deprecated alias: default_currency is legacy untyped; typed currency lives in Billing --}}
                             <x-adminlte-input name="settings[default_currency]" label="Default Currency (Deprecated)"
                                 value="{{ old('settings.default_currency', $settings['default_currency'] ?? 'INR') }}" disabled />
-                            <small class="form-text text-muted">Deprecated â€” use <strong>Currency</strong> in Billing tab (typed <code>currency</code>). Read-only alias.</small>
+                            <small class="form-text text-muted">Deprecated — use <strong>Currency</strong> in Billing tab (typed <code>currency</code>). Read-only alias.</small>
                         </div>
                         <div class="col-md-4">
                             <x-adminlte-input name="settings[default_tax_rate]" label="Default Tax Rate (%)"
@@ -806,12 +806,12 @@
                     <div class="row">
                         <div class="col-md-4">
                             @php
-                                // Each option shows today's date in that format â€” a
+                                // Each option shows today's date in that format — a
                                 // raw "d/m/Y" tells an admin nothing about whether it
                                 // is the one they want.
                                 $dateFormatOptions = [];
                                 foreach ($fieldOptions['date_formats'] ?? [] as $fmt) {
-                                    $dateFormatOptions[$fmt] = $fmt.'  â€”  '.now()->format($fmt);
+                                    $dateFormatOptions[$fmt] = $fmt.'  —  '.now()->format($fmt);
                                 }
                             @endphp
                             <x-adminlte-select name="settings[date_format]" label="Date Format">
@@ -822,7 +822,7 @@
                     </div>
                 </x-adminlte-card>
                 @php $lu = $lastUpdated['general'] ?? $lastUpdated['all'] ?? null; @endphp
-                <small class="text-muted d-block mb-2 last-updated" data-section="general">@if($lu)Last updated: {{ \Illuminate\Support\Carbon::parse($lu->created_at)->format('Y-m-d H:i:s') }} â€” <span title="{{ $lu->description }}">{{ \Illuminate\Support\Str::limit($lu->description, 120) }}</span>@else Last updated: never @endif</small>
+                <small class="text-muted d-block mb-2 last-updated" data-section="general">@if($lu)Last updated: {{ \Illuminate\Support\Carbon::parse($lu->created_at)->format('Y-m-d H:i:s') }} — <span title="{{ $lu->description }}">{{ \Illuminate\Support\Str::limit($lu->description, 120) }}</span>@else Last updated: never @endif</small>
             </div>
 
             {{-- Billing (includes Support ticket_prefix/ticket_next_number + legacy billing keys + typed currency) --}}
@@ -861,13 +861,13 @@
                             settings.gst_enabled. Nothing ever read it: the tax
                             engine (GstTaxService::loadSettings) reads the
                             gst_settings table and nothing else, so this control
-                            reported a state it did not control â€” it could read
+                            reported a state it did not control — it could read
                             "Yes" while every invoice was being written with zero
                             tax. The real controls are now in the GST & Tax card
                             below, which writes gst_settings directly.
                         --}}
                     </div>
-                    {{-- Typed billing + support keys (previously unrendered) â€” density 8 fields, show Advanced if >120 total --}}
+                    {{-- Typed billing + support keys (previously unrendered) — density 8 fields, show Advanced if >120 total --}}
                     <div class="mt-3 settings-group">
                         <h4 class="settings-group-title">Billing typed keys</h4>
                         <div class="row mt-2">
@@ -878,7 +878,7 @@
                                     pattern="[A-Za-z]{3}" title="Three letters, e.g. INR or USD"
                                     spellcheck="false" autocapitalize="characters" autocomplete="off"
                                     value="{{ old('settings.currency', $settings['currency'] ?? 'INR') }}" />
-                                <small class="form-text text-muted">ISO 4217 â€” 3 letters (e.g., INR, USD)</small>
+                                <small class="form-text text-muted">ISO 4217 — 3 letters (e.g., INR, USD)</small>
                             </div>
                             <div class="col-md-3">
                                 <x-adminlte-input name="settings[invoice_next_number]" label="Next Invoice Number" type="number" min="0"
@@ -889,7 +889,7 @@
                             <div class="col-md-3">
                                 <x-adminlte-input name="settings[tax_rate]" label="Tax Rate (%)" type="number" min="0" max="100" step="0.01"
                                     value="{{ old('settings.tax_rate', $settings['tax_rate'] ?? '18') }}">
-                                    <small class="form-text text-muted">0 â€“ 100 %</small>
+                                    <small class="form-text text-muted">0 – 100 %</small>
                                 </x-adminlte-input>
                             </div>
                             <div class="col-md-3">
@@ -903,7 +903,7 @@
                 </x-adminlte-card>
 
                 {{--
-                    GST & Tax â€” moved here from the standalone /admin/gst-settings
+                    GST & Tax — moved here from the standalone /admin/gst-settings
                     page so every billing switch is in one place.
 
                     These fields do NOT belong to the settings[] payload: they are
@@ -950,7 +950,7 @@
                             free-text code + name pair. The name is derived from
                             the code on save, so the two can no longer disagree,
                             and a customer's state code now comes from the same
-                            list â€” which is what makes the intra-state test able
+                            list — which is what makes the intra-state test able
                             to match at all.
                         --}}
                         <div class="col-md-6">
@@ -991,9 +991,9 @@
                         </div>
                         <div class="col-md-3">
                             <x-adminlte-select name="tax_mode" label="Tax Mode" form="gst-settings-form">
-                                <option value="global" @selected(old('tax_mode', $gst?->tax_mode) === 'global')>Global â€” these rates, every product</option>
-                                <option value="per_product" @selected(old('tax_mode', $gst?->tax_mode) === 'per_product')>Per Product â€” only products with GST enabled</option>
-                                <option value="mixed" @selected(old('tax_mode', $gst?->tax_mode) === 'mixed')>Mixed â€” product rates when set, else these</option>
+                                <option value="global" @selected(old('tax_mode', $gst?->tax_mode) === 'global')>Global — these rates, every product</option>
+                                <option value="per_product" @selected(old('tax_mode', $gst?->tax_mode) === 'per_product')>Per Product — only products with GST enabled</option>
+                                <option value="mixed" @selected(old('tax_mode', $gst?->tax_mode) === 'mixed')>Mixed — product rates when set, else these</option>
                             </x-adminlte-select>
                         </div>
                     </div>
@@ -1004,12 +1004,12 @@
                     {{-- Shown by the dirty tracker: these fields post to their own
                          form, so "Save All Settings" genuinely does not save them. --}}
                     <span id="gst-dirty-hint" class="ms-2 small text-danger d-none" role="status">
-                        <i class="bi bi-exclamation-triangle-fill me-1" aria-hidden="true"></i>Unsaved GST changes â€” <strong>Save All Settings</strong> does not save these.
+                        <i class="bi bi-exclamation-triangle-fill me-1" aria-hidden="true"></i>Unsaved GST changes — <strong>Save All Settings</strong> does not save these.
                     </span>
                 </x-adminlte-card>
 
                 @php $lu = $lastUpdated['billing'] ?? $lastUpdated['all'] ?? null; @endphp
-                <small class="text-muted d-block mb-2 last-updated" data-section="billing">@if($lu)Last updated: {{ \Illuminate\Support\Carbon::parse($lu->created_at)->format('Y-m-d H:i:s') }} â€” <span title="{{ $lu->description }}">{{ \Illuminate\Support\Str::limit($lu->description, 120) }}</span>@else Last updated: never @endif</small>
+                <small class="text-muted d-block mb-2 last-updated" data-section="billing">@if($lu)Last updated: {{ \Illuminate\Support\Carbon::parse($lu->created_at)->format('Y-m-d H:i:s') }} — <span title="{{ $lu->description }}">{{ \Illuminate\Support\Str::limit($lu->description, 120) }}</span>@else Last updated: never @endif</small>
             </div>
 
             {{-- Email --}}
@@ -1023,7 +1023,7 @@
                         <div class="col-md-3">
                             <x-adminlte-input name="settings[smtp_port]" label="SMTP Port" type="number" min="1" max="65535"
                                 value="{{ old('settings.smtp_port', $settings['smtp_port'] ?? '587') }}">
-                                <small class="form-text text-muted">1 â€“ 65535</small>
+                                <small class="form-text text-muted">1 – 65535</small>
                             </x-adminlte-input>
                         </div>
                         <div class="col-md-3">
@@ -1051,7 +1051,7 @@
                                 @error('settings.smtp_password')
                                     <span class="invalid-feedback d-block" role="alert">{{ $message }}</span>
                                 @enderror
-                                <small class="form-text text-muted">Encrypted â€” leave blank to keep current</small>
+                                <small class="form-text text-muted">Encrypted — leave blank to keep current</small>
                             </div>
                         </div>
                     </div>
@@ -1069,7 +1069,7 @@
                     </div>
 
                     {{-- Test send. The input/button live in this card but belong to
-                         #test-email-form (rendered after the settings form â€” forms
+                         #test-email-form (rendered after the settings form — forms
                          cannot nest), so they never post with Save and never count
                          towards dirty tracking, which only watches settings[*]. --}}
                     <hr class="my-3">
@@ -1088,7 +1088,7 @@
                             @error('test_email')
                                 <span class="invalid-feedback d-block" role="alert">{{ $message }}</span>
                             @enderror
-                            <small class="form-text text-muted">Sends with the <strong>saved</strong> SMTP settings â€” save this tab first if you just changed them.</small>
+                            <small class="form-text text-muted">Sends with the <strong>saved</strong> SMTP settings — save this tab first if you just changed them.</small>
                         </div>
                         <div class="col-md-6">
                             <div id="test-email-result" class="alert d-none mt-4 mb-0" role="alert" aria-live="polite"></div>
@@ -1096,7 +1096,7 @@
                     </div>
                 </x-adminlte-card>
 
-                {{-- Ticket email policy â€” department mailboxes are now the sole inbound path.
+                {{-- Ticket email policy — department mailboxes are now the sole inbound path.
                      Global Incoming Mail host/user has been removed; each department owns
                      its mailbox in Support > Departments. --}}
                 <x-adminlte-card icon="bi bi-inbox" title="Ticket Email Policy">
@@ -1104,7 +1104,7 @@
                         <i class="bi bi-info-circle flex-shrink-0 mt-1" aria-hidden="true"></i>
                         <div class="small" style="line-height: var(--leading-normal);">
                             Inbound mail is now <strong>per-department only</strong>. Configure each mailbox in
-                            <a href="{{ route('admin.ticket-departments.index') }}">Support &rsaquo; Departments</a> â€” every enabled department with a mailbox is polled every 5 minutes.
+                            <a href="{{ route('admin.ticket-departments.index') }}">Support &rsaquo; Departments</a> — every enabled department with a mailbox is polled every 5 minutes.
                             No global mailbox is used.
                         </div>
                     </div>
@@ -1114,7 +1114,7 @@
                                 <option value="yes" @selected(($settings['imap_auto_create_customers'] ?? 'no') === 'yes')>Yes</option>
                                 <option value="no" @selected(($settings['imap_auto_create_customers'] ?? 'no') === 'no')>No</option>
                             </x-adminlte-select>
-                            <small class="form-text text-muted">No = create guest ticket (no new customer account) â€” recommended</small>
+                            <small class="form-text text-muted">No = create guest ticket (no new customer account) — recommended</small>
                         </div>
                         <div class="col-md-4">
                             <x-adminlte-select name="settings[imap_default_department]" label="Default Department">
@@ -1123,14 +1123,14 @@
                                     <option value="{{ $slug }}" @selected(($settings['imap_default_department'] ?? '') === $slug)>{{ $label }}</option>
                                 @endforeach
                             </x-adminlte-select>
-                            <small class="form-text text-muted">Fallback when a mailbox has no department â€” blank = is_default / first enabled</small>
+                            <small class="form-text text-muted">Fallback when a mailbox has no department — blank = is_default / first enabled</small>
                             @php
                                 $imapDefaultDeptSlug = $settings['imap_default_department'] ?? '';
                             @endphp
                             @if ($imapDefaultDeptSlug !== '' && ! array_key_exists($imapDefaultDeptSlug, \App\Services\TicketService::departments()))
                                 <small class="form-text text-warning">
                                     <i class="bi bi-exclamation-triangle me-1" aria-hidden="true"></i>
-                                    The stored default department is disabled â€” mail falls back to the default/first enabled department instead.
+                                    The stored default department is disabled — mail falls back to the default/first enabled department instead.
                                 </small>
                             @endif
                         </div>
@@ -1141,7 +1141,7 @@
                                               min="1"
                                               max="1000"
                                               :value="$settings['imap_max_new_tickets_per_hour'] ?? 20"/>
-                            <small class="form-text text-muted">Replies are never limited â€” this caps how many new tickets one address can open. Mail over the limit is left unread for a human.</small>
+                            <small class="form-text text-muted">Replies are never limited — this caps how many new tickets one address can open. Mail over the limit is left unread for a human.</small>
                         </div>
                     </div>
                     <div class="row">
@@ -1155,7 +1155,7 @@
                     </div>
                 </x-adminlte-card>
                 @php $lu = $lastUpdated['email'] ?? $lastUpdated['all'] ?? null; @endphp
-                <small class="text-muted d-block mb-2 last-updated" data-section="email">@if($lu)Last updated: {{ \Illuminate\Support\Carbon::parse($lu->created_at)->format('Y-m-d H:i:s') }} â€” <span title="{{ $lu->description }}">{{ \Illuminate\Support\Str::limit($lu->description, 120) }}</span>@else Last updated: never @endif</small>
+                <small class="text-muted d-block mb-2 last-updated" data-section="email">@if($lu)Last updated: {{ \Illuminate\Support\Carbon::parse($lu->created_at)->format('Y-m-d H:i:s') }} — <span title="{{ $lu->description }}">{{ \Illuminate\Support\Str::limit($lu->description, 120) }}</span>@else Last updated: never @endif</small>
             </div>
 
             {{-- Security --}}
@@ -1230,7 +1230,7 @@
                     </div>
                 </x-adminlte-card>
                 @php $lu = $lastUpdated['security'] ?? $lastUpdated['all'] ?? null; @endphp
-                <small class="text-muted d-block mb-2 last-updated" data-section="security">@if($lu)Last updated: {{ \Illuminate\Support\Carbon::parse($lu->created_at)->format('Y-m-d H:i:s') }} â€” <span title="{{ $lu->description }}">{{ \Illuminate\Support\Str::limit($lu->description, 120) }}</span>@else Last updated: never @endif</small>
+                <small class="text-muted d-block mb-2 last-updated" data-section="security">@if($lu)Last updated: {{ \Illuminate\Support\Carbon::parse($lu->created_at)->format('Y-m-d H:i:s') }} — <span title="{{ $lu->description }}">{{ \Illuminate\Support\Str::limit($lu->description, 120) }}</span>@else Last updated: never @endif</small>
             </div>
 
             {{-- Notifications --}}
@@ -1263,13 +1263,13 @@
                         <div class="col-md-4">
                             <x-adminlte-input name="settings[domain_expiry_warning_days]" label="Domain expiry warning (days)" type="number" min="0" max="365"
                                 value="{{ old('settings.domain_expiry_warning_days', $settings['domain_expiry_warning_days'] ?? '30') }}">
-                                <small class="form-text text-muted">0 â€“ 365 days</small>
+                                <small class="form-text text-muted">0 – 365 days</small>
                             </x-adminlte-input>
                         </div>
                     </div>
                 </x-adminlte-card>
                 @php $lu = $lastUpdated['notification'] ?? $lastUpdated['all'] ?? null; @endphp
-                <small class="text-muted d-block mb-2 last-updated" data-section="notification">@if($lu)Last updated: {{ \Illuminate\Support\Carbon::parse($lu->created_at)->format('Y-m-d H:i:s') }} â€” <span title="{{ $lu->description }}">{{ \Illuminate\Support\Str::limit($lu->description, 120) }}</span>@else Last updated: never @endif</small>
+                <small class="text-muted d-block mb-2 last-updated" data-section="notification">@if($lu)Last updated: {{ \Illuminate\Support\Carbon::parse($lu->created_at)->format('Y-m-d H:i:s') }} — <span title="{{ $lu->description }}">{{ \Illuminate\Support\Str::limit($lu->description, 120) }}</span>@else Last updated: never @endif</small>
             </div>
 
             {{-- Domain --}}
@@ -1292,7 +1292,7 @@
                         <div class="col-md-4">
                             <x-adminlte-input name="settings[domain_renewal_reminder_days]" label="Renewal Reminder (days)" type="number" min="0" max="365"
                                 value="{{ old('settings.domain_renewal_reminder_days', $settings['domain_renewal_reminder_days'] ?? '30') }}">
-                                <small class="form-text text-muted">0 â€“ 365 days</small>
+                                <small class="form-text text-muted">0 – 365 days</small>
                             </x-adminlte-input>
                         </div>
                     </div>
@@ -1380,7 +1380,7 @@
                     </div>
                 </x-adminlte-card>
                 @php $lu = $lastUpdated['domain'] ?? $lastUpdated['all'] ?? null; @endphp
-                <small class="text-muted d-block mb-2 last-updated" data-section="domain">@if($lu)Last updated: {{ \Illuminate\Support\Carbon::parse($lu->created_at)->format('Y-m-d H:i:s') }} â€” <span title="{{ $lu->description }}">{{ \Illuminate\Support\Str::limit($lu->description, 120) }}</span>@else Last updated: never @endif</small>
+                <small class="text-muted d-block mb-2 last-updated" data-section="domain">@if($lu)Last updated: {{ \Illuminate\Support\Carbon::parse($lu->created_at)->format('Y-m-d H:i:s') }} — <span title="{{ $lu->description }}">{{ \Illuminate\Support\Str::limit($lu->description, 120) }}</span>@else Last updated: never @endif</small>
             </div>
 
             {{-- Integration --}}
@@ -1396,7 +1396,7 @@
                         <div class="col-md-2">
                             <x-adminlte-input name="settings[cpanel_port]" label="cPanel Port" type="number" min="1" max="65535"
                                 value="{{ old('settings.cpanel_port', $settings['cpanel_port'] ?? '2083') }}">
-                                <small class="form-text text-muted">1 â€“ 65535</small>
+                                <small class="form-text text-muted">1 – 65535</small>
                             </x-adminlte-input>
                         </div>
                         <div class="col-md-4">
@@ -1408,7 +1408,7 @@
                         <div class="col-md-2">
                             <x-adminlte-input name="settings[plesk_port]" label="Plesk Port" type="number" min="1" max="65535"
                                 value="{{ old('settings.plesk_port', $settings['plesk_port'] ?? '8443') }}">
-                                <small class="form-text text-muted">1 â€“ 65535</small>
+                                <small class="form-text text-muted">1 – 65535</small>
                             </x-adminlte-input>
                         </div>
                     </div>
@@ -1447,7 +1447,7 @@
                                     @error('settings.cpanel_api_token')
                                         <span class="invalid-feedback d-block" role="alert">{{ $message }}</span>
                                     @enderror
-                                    <small class="form-text text-muted">Encrypted â€” leave blank to keep current</small>
+                                    <small class="form-text text-muted">Encrypted — leave blank to keep current</small>
                                 </div>
                             </div>
                             <div class="col-md-3">
@@ -1468,7 +1468,7 @@
                                     @error('settings.plesk_password')
                                         <span class="invalid-feedback d-block" role="alert">{{ $message }}</span>
                                     @enderror
-                                    <small class="form-text text-muted">Encrypted â€” leave blank to keep current</small>
+                                    <small class="form-text text-muted">Encrypted — leave blank to keep current</small>
                                 </div>
                             </div>
                         </div>
@@ -1491,14 +1491,14 @@
                                     @error('settings.resellerclub_api_key')
                                         <span class="invalid-feedback d-block" role="alert">{{ $message }}</span>
                                     @enderror
-                                    <small class="form-text text-muted">Encrypted â€” leave blank to keep current</small>
+                                    <small class="form-text text-muted">Encrypted — leave blank to keep current</small>
                                 </div>
                             </div>
                         </div>
                     </div>
                 </x-adminlte-card>
                 @php $lu = $lastUpdated['integration'] ?? $lastUpdated['all'] ?? null; @endphp
-                <small class="text-muted d-block mb-2 last-updated" data-section="integration">@if($lu)Last updated: {{ \Illuminate\Support\Carbon::parse($lu->created_at)->format('Y-m-d H:i:s') }} â€” <span title="{{ $lu->description }}">{{ \Illuminate\Support\Str::limit($lu->description, 120) }}</span>@else Last updated: never @endif</small>
+                <small class="text-muted d-block mb-2 last-updated" data-section="integration">@if($lu)Last updated: {{ \Illuminate\Support\Carbon::parse($lu->created_at)->format('Y-m-d H:i:s') }} — <span title="{{ $lu->description }}">{{ \Illuminate\Support\Str::limit($lu->description, 120) }}</span>@else Last updated: never @endif</small>
             </div>
 
             {{-- Hosting --}}
@@ -1613,7 +1613,7 @@
                     </div>
                 </x-adminlte-card>
                 @php $lu = $lastUpdated['hosting'] ?? $lastUpdated['all'] ?? null; @endphp
-                <small class="text-muted d-block mb-2 last-updated" data-section="hosting">@if($lu)Last updated: {{ \Illuminate\Support\Carbon::parse($lu->created_at)->format('Y-m-d H:i:s') }} â€” <span title="{{ $lu->description }}">{{ \Illuminate\Support\Str::limit($lu->description, 120) }}</span>@else Last updated: never @endif</small>
+                <small class="text-muted d-block mb-2 last-updated" data-section="hosting">@if($lu)Last updated: {{ \Illuminate\Support\Carbon::parse($lu->created_at)->format('Y-m-d H:i:s') }} — <span title="{{ $lu->description }}">{{ \Illuminate\Support\Str::limit($lu->description, 120) }}</span>@else Last updated: never @endif</small>
             </div>
 
             {{-- IPAM --}}
@@ -1695,7 +1695,7 @@
                             <div class="col-md-3">
                                 <x-adminlte-input name="settings[ipam_low_capacity_warning_percent]" label="Low Capacity Warning (%)" type="number" min="0" max="100"
                                     value="{{ old('settings.ipam_low_capacity_warning_percent', $settings['ipam_low_capacity_warning_percent'] ?? '20') }}">
-                                    <small class="form-text text-muted">0 â€“ 100 %</small>
+                                    <small class="form-text text-muted">0 – 100 %</small>
                                 </x-adminlte-input>
                             </div>
                             <div class="col-md-3">
@@ -1722,7 +1722,7 @@
                     </div>
                 </x-adminlte-card>
                 @php $lu = $lastUpdated['ipam'] ?? $lastUpdated['all'] ?? null; @endphp
-                <small class="text-muted d-block mb-2 last-updated" data-section="ipam">@if($lu)Last updated: {{ \Illuminate\Support\Carbon::parse($lu->created_at)->format('Y-m-d H:i:s') }} â€” <span title="{{ $lu->description }}">{{ \Illuminate\Support\Str::limit($lu->description, 120) }}</span>@else Last updated: never @endif</small>
+                <small class="text-muted d-block mb-2 last-updated" data-section="ipam">@if($lu)Last updated: {{ \Illuminate\Support\Carbon::parse($lu->created_at)->format('Y-m-d H:i:s') }} — <span title="{{ $lu->description }}">{{ \Illuminate\Support\Str::limit($lu->description, 120) }}</span>@else Last updated: never @endif</small>
             </div>
 
             {{-- Inventory --}}
@@ -1776,7 +1776,7 @@
                     </div>
                 </x-adminlte-card>
                 @php $lu = $lastUpdated['inventory'] ?? $lastUpdated['all'] ?? null; @endphp
-                <small class="text-muted d-block mb-2 last-updated" data-section="inventory">@if($lu)Last updated: {{ \Illuminate\Support\Carbon::parse($lu->created_at)->format('Y-m-d H:i:s') }} â€” <span title="{{ $lu->description }}">{{ \Illuminate\Support\Str::limit($lu->description, 120) }}</span>@else Last updated: never @endif</small>
+                <small class="text-muted d-block mb-2 last-updated" data-section="inventory">@if($lu)Last updated: {{ \Illuminate\Support\Carbon::parse($lu->created_at)->format('Y-m-d H:i:s') }} — <span title="{{ $lu->description }}">{{ \Illuminate\Support\Str::limit($lu->description, 120) }}</span>@else Last updated: never @endif</small>
             </div>
 
             {{-- Catalog --}}
@@ -1792,20 +1792,20 @@
                         <div class="col-md-4">
                             <x-adminlte-input name="settings[catalog_products_per_page]" label="Products Per Page" type="number" min="1" max="100"
                                 value="{{ old('settings.catalog_products_per_page', $settings['catalog_products_per_page'] ?? '12') }}">
-                                <small class="form-text text-muted">1 â€“ 100</small>
+                                <small class="form-text text-muted">1 – 100</small>
                             </x-adminlte-input>
                         </div>
                         <div class="col-md-4">
                             <x-adminlte-input name="settings[catalog_price_precision]" label="Price Precision" type="number" min="0" max="4"
                                 value="{{ old('settings.catalog_price_precision', $settings['catalog_price_precision'] ?? '2') }}">
-                                <small class="form-text text-muted">0 â€“ 4</small>
+                                <small class="form-text text-muted">0 – 4</small>
                             </x-adminlte-input>
                         </div>
                     </div>
                     <div class="row">
                         <div class="col-md-4">
                             <x-adminlte-input name="settings[catalog_currency_symbol]" spellcheck="false" autocapitalize="none" autocomplete="off" label="Currency Symbol"
-                                value="{{ old('settings.catalog_currency_symbol', $settings['catalog_currency_symbol'] ?? 'â‚¹') }}" />
+                                value="{{ old('settings.catalog_currency_symbol', $settings['catalog_currency_symbol'] ?? '₹') }}" />
                         </div>
                         <div class="col-md-8">
                             <x-adminlte-input name="settings[catalog_featured_product_ids]" label="Featured Product IDs"
@@ -1872,14 +1872,14 @@
                             <div class="col-md-3">
                                 <x-adminlte-input name="settings[catalog_bundle_discount_default]" label="Bundle Discount (%)" type="number" min="0" max="100" step="0.01"
                                     value="{{ old('settings.catalog_bundle_discount_default', $settings['catalog_bundle_discount_default'] ?? '0') }}">
-                                    <small class="form-text text-muted">0 â€“ 100 %</small>
+                                    <small class="form-text text-muted">0 – 100 %</small>
                                 </x-adminlte-input>
                             </div>
                         </div>
                     </div>
                 </x-adminlte-card>
                 @php $lu = $lastUpdated['catalog'] ?? $lastUpdated['all'] ?? null; @endphp
-                <small class="text-muted d-block mb-2 last-updated" data-section="catalog">@if($lu)Last updated: {{ \Illuminate\Support\Carbon::parse($lu->created_at)->format('Y-m-d H:i:s') }} â€” <span title="{{ $lu->description }}">{{ \Illuminate\Support\Str::limit($lu->description, 120) }}</span>@else Last updated: never @endif</small>
+                <small class="text-muted d-block mb-2 last-updated" data-section="catalog">@if($lu)Last updated: {{ \Illuminate\Support\Carbon::parse($lu->created_at)->format('Y-m-d H:i:s') }} — <span title="{{ $lu->description }}">{{ \Illuminate\Support\Str::limit($lu->description, 120) }}</span>@else Last updated: never @endif</small>
             </div>
 
             {{-- Product --}}
@@ -1899,7 +1899,7 @@
                         <div class="col-md-4">
                             <x-adminlte-input name="settings[product_trial_days]" label="Trial Days" type="number" min="0" max="365"
                                 value="{{ old('settings.product_trial_days', $settings['product_trial_days'] ?? '0') }}">
-                                <small class="form-text text-muted">0 â€“ 365 days</small>
+                                <small class="form-text text-muted">0 – 365 days</small>
                             </x-adminlte-input>
                         </div>
                     </div>
@@ -1911,7 +1911,7 @@
                         <div class="col-md-4">
                             <x-adminlte-input name="settings[product_reseller_markup_percent]" label="Reseller Markup (%)" type="number" min="0" max="1000"
                                 value="{{ old('settings.product_reseller_markup_percent', $settings['product_reseller_markup_percent'] ?? '0') }}">
-                                <small class="form-text text-muted">0 â€“ 1000 %</small>
+                                <small class="form-text text-muted">0 – 1000 %</small>
                             </x-adminlte-input>
                         </div>
                     </div>
@@ -1988,7 +1988,7 @@
                             {{--
                                 "GST Applicable" used to be a select here,
                                 writing product.product_gst_applicable. Nothing
-                                read it either â€” whether a product is taxed is
+                                read it either — whether a product is taxed is
                                 decided by the product's own "Apply per-product
                                 GST rates" checkbox (products.gst_enabled), read
                                 by GstTaxService in per_product / mixed tax mode.
@@ -2011,7 +2011,7 @@
                     </div>
                 </x-adminlte-card>
                 @php $lu = $lastUpdated['product'] ?? $lastUpdated['all'] ?? null; @endphp
-                <small class="text-muted d-block mb-2 last-updated" data-section="product">@if($lu)Last updated: {{ \Illuminate\Support\Carbon::parse($lu->created_at)->format('Y-m-d H:i:s') }} â€” <span title="{{ $lu->description }}">{{ \Illuminate\Support\Str::limit($lu->description, 120) }}</span>@else Last updated: never @endif</small>
+                <small class="text-muted d-block mb-2 last-updated" data-section="product">@if($lu)Last updated: {{ \Illuminate\Support\Carbon::parse($lu->created_at)->format('Y-m-d H:i:s') }} — <span title="{{ $lu->description }}">{{ \Illuminate\Support\Str::limit($lu->description, 120) }}</span>@else Last updated: never @endif</small>
             </div>
 
             {{-- Analytics --}}
@@ -2107,7 +2107,7 @@
                     </div>
                 </x-adminlte-card>
                 @php $lu = $lastUpdated['analytics'] ?? $lastUpdated['all'] ?? null; @endphp
-                <small class="text-muted d-block mb-2 last-updated" data-section="analytics">@if($lu)Last updated: {{ \Illuminate\Support\Carbon::parse($lu->created_at)->format('Y-m-d H:i:s') }} â€” <span title="{{ $lu->description }}">{{ \Illuminate\Support\Str::limit($lu->description, 120) }}</span>@else Last updated: never @endif</small>
+                <small class="text-muted d-block mb-2 last-updated" data-section="analytics">@if($lu)Last updated: {{ \Illuminate\Support\Carbon::parse($lu->created_at)->format('Y-m-d H:i:s') }} — <span title="{{ $lu->description }}">{{ \Illuminate\Support\Str::limit($lu->description, 120) }}</span>@else Last updated: never @endif</small>
             </div>
 
             {{-- Automation --}}
@@ -2195,7 +2195,7 @@
                             <div class="col-md-3">
                                 <x-adminlte-input name="settings[automation_domain_expiry_reminder_days]" label="Domain Expiry Reminder (days)" type="number" min="0" max="365"
                                     value="{{ old('settings.automation_domain_expiry_reminder_days', $settings['automation_domain_expiry_reminder_days'] ?? '30') }}">
-                                    <small class="form-text text-muted">0 â€“ 365 days</small>
+                                    <small class="form-text text-muted">0 – 365 days</small>
                                 </x-adminlte-input>
                             </div>
                             <div class="col-md-3">
@@ -2209,7 +2209,7 @@
                     </div>
                 </x-adminlte-card>
                 @php $lu = $lastUpdated['automation'] ?? $lastUpdated['all'] ?? null; @endphp
-                <small class="text-muted d-block mb-2 last-updated" data-section="automation">@if($lu)Last updated: {{ \Illuminate\Support\Carbon::parse($lu->created_at)->format('Y-m-d H:i:s') }} â€” <span title="{{ $lu->description }}">{{ \Illuminate\Support\Str::limit($lu->description, 120) }}</span>@else Last updated: never @endif</small>
+                <small class="text-muted d-block mb-2 last-updated" data-section="automation">@if($lu)Last updated: {{ \Illuminate\Support\Carbon::parse($lu->created_at)->format('Y-m-d H:i:s') }} — <span title="{{ $lu->description }}">{{ \Illuminate\Support\Str::limit($lu->description, 120) }}</span>@else Last updated: never @endif</small>
             </div>
 
             {{-- Cron --}}
@@ -2303,7 +2303,7 @@
                     </div>
                 </x-adminlte-card>
                 @php $lu = $lastUpdated['cron'] ?? $lastUpdated['all'] ?? null; @endphp
-                <small class="text-muted d-block mb-2 last-updated" data-section="cron">@if($lu)Last updated: {{ \Illuminate\Support\Carbon::parse($lu->created_at)->format('Y-m-d H:i:s') }} â€” <span title="{{ $lu->description }}">{{ \Illuminate\Support\Str::limit($lu->description, 120) }}</span>@else Last updated: never @endif</small>
+                <small class="text-muted d-block mb-2 last-updated" data-section="cron">@if($lu)Last updated: {{ \Illuminate\Support\Carbon::parse($lu->created_at)->format('Y-m-d H:i:s') }} — <span title="{{ $lu->description }}">{{ \Illuminate\Support\Str::limit($lu->description, 120) }}</span>@else Last updated: never @endif</small>
             </div>
 
             {{-- Role --}}
@@ -2312,7 +2312,7 @@
                     <div class="row">
                         <div class="col-md-4">
                             <x-adminlte-select name="settings[role_default_role]" label="Default Role">
-                                {!! $selectOptions($fieldOptions['roles'] ?? [], old('settings.role_default_role', $settings['role_default_role'] ?? ''), 'â€” none â€”') !!}
+                                {!! $selectOptions($fieldOptions['roles'] ?? [], old('settings.role_default_role', $settings['role_default_role'] ?? ''), '— none —') !!}
                             </x-adminlte-select>
                             <small class="form-text text-muted">Roles defined under Roles &amp; Permissions.</small>
                         </div>
@@ -2351,7 +2351,7 @@
                     </div>
                 </x-adminlte-card>
                 @php $lu = $lastUpdated['role'] ?? $lastUpdated['all'] ?? null; @endphp
-                <small class="text-muted d-block mb-2 last-updated" data-section="role">@if($lu)Last updated: {{ \Illuminate\Support\Carbon::parse($lu->created_at)->format('Y-m-d H:i:s') }} â€” <span title="{{ $lu->description }}">{{ \Illuminate\Support\Str::limit($lu->description, 120) }}</span>@else Last updated: never @endif</small>
+                <small class="text-muted d-block mb-2 last-updated" data-section="role">@if($lu)Last updated: {{ \Illuminate\Support\Carbon::parse($lu->created_at)->format('Y-m-d H:i:s') }} — <span title="{{ $lu->description }}">{{ \Illuminate\Support\Str::limit($lu->description, 120) }}</span>@else Last updated: never @endif</small>
             </div>
 
             {{-- User --}}
@@ -2439,7 +2439,7 @@
                     </div>
                 </x-adminlte-card>
                 @php $lu = $lastUpdated['user'] ?? $lastUpdated['all'] ?? null; @endphp
-                <small class="text-muted d-block mb-2 last-updated" data-section="user">@if($lu)Last updated: {{ \Illuminate\Support\Carbon::parse($lu->created_at)->format('Y-m-d H:i:s') }} â€” <span title="{{ $lu->description }}">{{ \Illuminate\Support\Str::limit($lu->description, 120) }}</span>@else Last updated: never @endif</small>
+                <small class="text-muted d-block mb-2 last-updated" data-section="user">@if($lu)Last updated: {{ \Illuminate\Support\Carbon::parse($lu->created_at)->format('Y-m-d H:i:s') }} — <span title="{{ $lu->description }}">{{ \Illuminate\Support\Str::limit($lu->description, 120) }}</span>@else Last updated: never @endif</small>
             </div>
                 </div>{{-- /.tab-content --}}
             </div>{{-- /.col content --}}
@@ -2496,7 +2496,7 @@
             }
 
             /* Section label for the option groups that used to be collapsed
-               behind an "Advanced â€” â€¦" disclosure widget. The grouping is still
+               behind an "Advanced — …" disclosure widget. The grouping is still
                useful; the click needed to reach it was not. */
             .settings-group-title {
                 font-size: 0.8125rem;
@@ -2728,7 +2728,7 @@
                         }
                         var pane = wrapper.closest('.tab-pane');
                         var paneId = pane ? pane.id : '';
-                        // Fix 5: skip fields not inside a tab pane â€” they can't be counted or shown
+                        // Fix 5: skip fields not inside a tab pane — they can't be counted or shown
                         if (!paneId) return;
                         fields.push({ input: inp, wrapper: wrapper, labelEl: labelEl, rawKey: rawKey, labelText: labelText, paneId: paneId });
                     });
@@ -2888,7 +2888,7 @@
                 }
 
                 // -- Encrypted-field UX: reveal toggle shows masked dots only (client-only, no plaintext) --
-                // 4 encrypted keys keep value="" placeholder "Leave blank to keep current"; Reveal toggles â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢
+                // 4 encrypted keys keep value="" placeholder "Leave blank to keep current"; Reveal toggles ••••••••
                 // JS never puts plaintext into DOM; blank submit keeps old value via controller unset guard.
                 // old() not repopulated: raw inputs use value="" without resolvedValue(old()), so validation error stays blank.
                 var ENCRYPTED_MASK = '\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022';
@@ -2959,7 +2959,7 @@
                 // Per-tab Save buttons were removed (user request): the one
                 // #save-all-btn posts the whole form natively. The submit
                 // handler only clears masked dots before serialization (blank
-                // keeps the stored secret â€” controller unsets '') and syncs the
+                // keeps the stored secret — controller unsets '') and syncs the
                 // hidden active_tab to the visible pane so ?tab= survives the
                 // redirect. Server-side keyToSection scoping remains as
                 // defense-in-depth for scoped payloads.
@@ -2972,7 +2972,7 @@
                 // then hand back to reportValidity().
                 var submitAborted = false;
                 var findFirstInvalid = function (form) {
-                    // form.elements â€” not querySelector(':invalid') â€” because the GST
+                    // form.elements — not querySelector(':invalid') — because the GST
                     // inputs sit inside this form's markup while belonging to
                     // #gst-settings-form, and their required-ness is not ours to report.
                     var els = form.elements;
@@ -3016,7 +3016,7 @@
                 //
                 // Granularity is a PANE, not a field, and that is deliberate. The
                 // controller derives company_address from the six sundered address
-                // fields and company_phone from the code+number pair â€” post
+                // fields and company_phone from the code+number pair — post
                 // company_city alone and the address is recompiled from just the
                 // city, post the number alone and the country code snaps to +91.
                 // Those couplings live in the controller; duplicating them in a
@@ -3056,7 +3056,7 @@
                     settingsForm.addEventListener('submit', function (e) {
                         // Shrink BEFORE validating, so validation covers exactly what
                         // is about to be posted. A stored value that no longer passes
-                        // its rule must not block an edit on an unrelated tab â€” that
+                        // its rule must not block an edit on an unrelated tab — that
                         // is the same "save did nothing" trap from the other end.
                         var shrunk = shrinkPayloadToDirtyPanes();
 
@@ -3066,10 +3066,10 @@
                         if (invalid) {
                             e.preventDefault();
                             submitAborted = true;
-                            // Put the form back before anything else â€” a cancelled
+                            // Put the form back before anything else — a cancelled
                             // submit must not leave half the page disabled.
                             restoreShrunkPayload(shrunk);
-                            // The submit never happened â€” the beforeunload guard must
+                            // The submit never happened — the beforeunload guard must
                             // stay armed, or the admin loses the edits on the next click.
                             isSubmittingDirty = false;
                             revealInvalidControl(invalid);
@@ -3100,19 +3100,19 @@
                     });
                 }
                 // -- Dirty tracking and beforeunload guard --
-                // Snapshot initialValues = new FormData(form) on load; mark tab badge â€¢ Dirty and enable Save;
+                // Snapshot initialValues = new FormData(form) on load; mark tab badge • Dirty and enable Save;
                 // beforeunload "You have unsaved changes" if dirty; after POST success (302 + flash) reset snapshot for saved keys only (per-tab resets that tab, Save All resets all), not fire after success; revert clears dirty.
                 var dirtyForm = settingsForm || document.getElementById('settings-form');
                 var initialValues = dirtyForm ? new FormData(dirtyForm) : null;
                 var isSubmittingDirty = false;
                 var hasSuccessFlash = !!document.getElementById('settings-save-toast') || !!document.getElementById('settings-success-alert');
-                // Inject â€¢ Dirty badges into each tab button (hidden by default)
+                // Inject • Dirty badges into each tab button (hidden by default)
                 if (tabsNav) {
                     tabsNav.querySelectorAll('.nav-link').forEach(function(btn){
                         if (!btn.querySelector('.dirty-badge')) {
                             var badge = document.createElement('span');
                             badge.className = 'dirty-badge badge text-bg-warning ms-1 d-none';
-                            badge.textContent = 'â€¢ Dirty';
+                            badge.textContent = '• Dirty';
                             badge.setAttribute('data-dirty-badge', btn.id || '');
                             badge.setAttribute('aria-label', 'Unsaved changes');
                             btn.appendChild(badge);
@@ -3142,7 +3142,7 @@
                 // form.elements reflects form OWNERSHIP, not DOM containment, so this
                 // is exactly the GST set even though the markup lives in the Billing
                 // pane. Tracked separately because "Save All Settings" really does
-                // not save them â€” GstSettingController stays the single writer.
+                // not save them — GstSettingController stays the single writer.
                 var gstForm = document.getElementById('gst-settings-form');
                 var gstInputs = (gstForm && gstForm.elements)
                     ? Array.prototype.slice.call(gstForm.elements)
@@ -3261,7 +3261,7 @@
                 }
                 // Initial UI state (badges hidden, saves disabled if clean)
                 updateDirtyUI();
-                // On input change mark tab badge â€¢ Dirty and enable Save; revert clears dirty
+                // On input change mark tab badge • Dirty and enable Save; revert clears dirty
                 if (dirtyForm) {
                     var dirtyInputs = dirtyForm.querySelectorAll('[name^="settings["], input[type="file"][name], input[name^="remove_branding_logo"], input[name^="remove_branding_favicon"], input[name="remove_branding_logo"], input[name="remove_branding_favicon"]');
                     dirtyInputs.forEach(function(inp){
@@ -3275,7 +3275,7 @@
                         inp.addEventListener('input', function(){ updateDirtyUI(); });
                         inp.addEventListener('change', function(){ updateDirtyUI(); });
                     });
-                    // Saving GST navigates away too â€” do not warn about the edits
+                    // Saving GST navigates away too — do not warn about the edits
                     // that submit is on its way to persist.
                     if (gstForm) {
                         gstForm.addEventListener('submit', function(){ isSubmittingDirty = true; });
@@ -3342,9 +3342,9 @@
                         var tokenInput = testEmailForm.querySelector('input[name="_token"]');
                         var originalLabel = testEmailBtn.innerHTML;
                         testEmailBtn.disabled = true;
-                        testEmailBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span> Sendingâ€¦';
+                        testEmailBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span> Sending…';
                         testEmailResult.className = 'alert alert-info mt-4 mb-0';
-                        testEmailResult.textContent = 'Sending test emailâ€¦';
+                        testEmailResult.textContent = 'Sending test email…';
 
                         var payload = new FormData();
                         payload.append('test_email', address);
@@ -3389,7 +3389,7 @@
                         var alertEl = document.getElementById('settings-success-alert');
                         if(alertEl) alertEl.style.display='none';
                     }, 3600);
-                    // silent after success â€” ensure guard not fired on immediate navigation after toast
+                    // silent after success — ensure guard not fired on immediate navigation after toast
                     isSubmittingDirty = false;
                     updateDirtyUI();
                 }

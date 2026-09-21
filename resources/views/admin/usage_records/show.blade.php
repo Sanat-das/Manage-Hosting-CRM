@@ -11,12 +11,12 @@
         <table class="table table-sm table-borderless mb-0">
             <tbody>
                 <tr><th class="text-muted w-25">ID</th><td>#{{ $usageRecord->id }}</td></tr>
-                <tr><th class="text-muted">Service</th><td>{{ $usageRecord->service?->domain ?? $usageRecord->service?->username ?? 'â€”' }}</td></tr>
-                <tr><th class="text-muted">Resource Type</th><td>{{ $usageRecord->resourceType?->name ?? 'â€”' }}</td></tr>
+                <tr><th class="text-muted">Service</th><td>{{ $usageRecord->service?->domain ?? $usageRecord->service?->username ?? '—' }}</td></tr>
+                <tr><th class="text-muted">Resource Type</th><td>{{ $usageRecord->resourceType?->name ?? '—' }}</td></tr>
                 <tr><th class="text-muted">Quantity</th><td>{{ number_format($usageRecord->quantity, 2) }} {{ $usageRecord->resourceType?->unit ?? '' }}</td></tr>
                 <tr><th class="text-muted">Unit Cost</th><td>${{ number_format($usageRecord->unit_cost ?? 0, 4) }}</td></tr>
                 <tr><th class="text-muted">Total Cost</th><td>${{ number_format($usageRecord->total_cost ?? 0, 2) }}</td></tr>
-                <tr><th class="text-muted">Recorded At</th><td>{{ $usageRecord->recorded_at?->format('Y-m-d H:i') ?? 'â€”' }}</td></tr>
+                <tr><th class="text-muted">Recorded At</th><td>{{ $usageRecord->recorded_at?->format('Y-m-d H:i') ?? '—' }}</td></tr>
             </tbody>
         </table>
     </x-adminlte-card>

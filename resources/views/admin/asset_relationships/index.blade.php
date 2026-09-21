@@ -63,7 +63,7 @@
                     <span class="badge text-bg-secondary">{{ $kinds[$relationship->child_kind] ?? $relationship->child_kind }}</span>
                     <code>#{{ $relationship->child_id }}</code>
                 </td>
-                <td class="text-muted">{{ $relationship->label ?? 'â€”' }}</td>
+                <td class="text-muted">{{ $relationship->label ?? '—' }}</td>
                 <td class="text-end">{{ $relationship->sort_order }}</td>
                 <td class="text-end">
                     <div class="table-actions">

@@ -40,9 +40,9 @@
 
         @forelse ($records as $record)
             <tr>
-                <td><a href="{{ route('admin.usage-records.show', $record) }}">{{ $record->recorded_at?->format('Y-m-d') ?? 'â€”' }}</a></td>
-                <td>{{ $record->service?->domain ?? 'â€”' }}</td>
-                <td>{{ $record->resourceType?->name ?? 'â€”' }}</td>
+                <td><a href="{{ route('admin.usage-records.show', $record) }}">{{ $record->recorded_at?->format('Y-m-d') ?? '—' }}</a></td>
+                <td>{{ $record->service?->domain ?? '—' }}</td>
+                <td>{{ $record->resourceType?->name ?? '—' }}</td>
                 <td>{{ number_format($record->quantity, 2) }} {{ $record->resourceType?->unit ?? '' }}</td>
                 <td>${{ number_format($record->unit_cost ?? 0, 4) }}</td>
                 <td>${{ number_format($record->total_cost ?? 0, 2) }}</td>

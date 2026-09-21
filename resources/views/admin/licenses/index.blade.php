@@ -35,9 +35,9 @@
             <tr>
                 <td><a href="{{ route('admin.licenses.show', $license) }}"><strong>{{ $license->license_type }}</strong></a></td>
                 <td class="text-muted" title="{{ $license->license_key }}">{{ $license->license_key }}</td>
-                <td>{{ $license->vendor ?? 'â€”' }}</td>
-                <td>{{ $license->seats_available ?? 'â€”' }} / {{ $license->seats ?? 'â€”' }}</td>
-                <td>{{ $license->expiry_date?->format('Y-m-d') ?? 'â€”' }}</td>
+                <td>{{ $license->vendor ?? '—' }}</td>
+                <td>{{ $license->seats_available ?? '—' }} / {{ $license->seats ?? '—' }}</td>
+                <td>{{ $license->expiry_date?->format('Y-m-d') ?? '—' }}</td>
                 <td><x-adminlte.partials.status-badge :status="$license->status" /></td>
                 <td class="text-end">
                     <div class="table-actions">

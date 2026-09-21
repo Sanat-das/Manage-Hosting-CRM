@@ -45,10 +45,10 @@
             <tr>
                 <td><a href="{{ route('admin.inventory-assets.show', $asset) }}"><strong>{{ $asset->asset_tag }}</strong></a></td>
                 <td><span class="badge text-bg-info">{{ ucfirst($asset->asset_type) }}</span></td>
-                <td class="text-muted">{{ $asset->serial_number ?? 'â€”' }}</td>
-                <td>{{ $asset->model ?? 'â€”' }}</td>
-                <td>{{ $asset->datacenter?->name ?? 'â€”' }}</td>
-                <td>{{ $asset->rack?->name ?? 'â€”' }}</td>
+                <td class="text-muted">{{ $asset->serial_number ?? '—' }}</td>
+                <td>{{ $asset->model ?? '—' }}</td>
+                <td>{{ $asset->datacenter?->name ?? '—' }}</td>
+                <td>{{ $asset->rack?->name ?? '—' }}</td>
                 <td><x-adminlte.partials.status-badge :status="$asset->status" /></td>
                 <td class="text-end">
                     <div class="table-actions">

@@ -14,7 +14,7 @@
                 @forelse ($expiring as $d)
                     <tr>
                         <td><strong>{{ $d->name }}</strong></td>
-                        <td>{{ $d->customer?->full_name ?? 'â€”' }}</td>
+                        <td>{{ $d->customer?->full_name ?? '—' }}</td>
                         <td class="text-warning fw-bold">{{ $d->expiry_date?->format('M j, Y') }}</td>
                     </tr>
                 @empty

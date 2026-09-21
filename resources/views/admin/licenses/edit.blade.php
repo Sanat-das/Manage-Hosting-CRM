@@ -1,6 +1,6 @@
 ﻿@extends('adminlte::page')
 
-@section('title', 'Edit License â€” '.$license->license_type)
+@section('title', 'Edit License — '.$license->license_type)
 
 @section('content_header')
     <x-ui.page-header title="Edit License: {{ $license->license_type }}" subtitle="Update license details" :breadcrumbs="[['label' => __('adminlte.home'), 'url' => url('/')],['label' => 'Licenses','url' => route('admin.licenses.index')],['label' => 'Edit','active' => true]]" />

@@ -36,7 +36,7 @@
             <div class="row mb-2">
                 <div class="col-md-4">
                     <x-adminlte-select name="terms[{{ $i }}][term_years]" label="{{ $i === 0 ? 'Term (Years)' : '' }}">
-                        <option value="">â€”</option>
+                        <option value="">—</option>
                         @foreach (range(1, 10) as $year)
                             <option value="{{ $year }}" @selected(old("terms.$i.term_years") == $year)>{{ $year }} year{{ $year > 1 ? 's' : '' }}</option>
                         @endforeach

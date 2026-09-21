@@ -1,5 +1,5 @@
 ﻿@extends('adminlte::page')
-@section('title', 'Resource Type â€” '.$type->name)
+@section('title', 'Resource Type — '.$type->name)
 @section('content_header')
     <x-ui.page-header title="{{ $type->name }}" subtitle="View resource type details" :breadcrumbs="[['label' => __('adminlte.home'), 'url' => url('/')],['label' => 'Resource Types','url' => route('admin.resource-types.index')],['label' => $type->name,'active' => true]]" />
 @stop
@@ -11,9 +11,9 @@
             <tbody>
                 <tr><th class="text-muted w-25">Name</th><td>{{ $type->name }}</td></tr>
                 <tr><th class="text-muted">Slug</th><td><code>{{ $type->slug }}</code></td></tr>
-                <tr><th class="text-muted">Category</th><td>{{ $type->category ?? 'â€”' }}</td></tr>
-                <tr><th class="text-muted">Unit</th><td>{{ $type->unit ?? 'â€”' }}</td></tr>
-                <tr><th class="text-muted">Description</th><td>{{ $type->description ?? 'â€”' }}</td></tr>
+                <tr><th class="text-muted">Category</th><td>{{ $type->category ?? '—' }}</td></tr>
+                <tr><th class="text-muted">Unit</th><td>{{ $type->unit ?? '—' }}</td></tr>
+                <tr><th class="text-muted">Description</th><td>{{ $type->description ?? '—' }}</td></tr>
             </tbody>
         </table>
     </x-adminlte-card>

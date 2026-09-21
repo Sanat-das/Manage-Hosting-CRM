@@ -40,7 +40,7 @@
         <div class="col-lg-8">
             <x-adminlte-card icon="bi bi-eye" title="Rendered preview (sample data)">
                 <div class="d-flex justify-content-between align-items-center mb-2">
-                    <small class="text-muted">Sample invoice INV-2026-00001 Â· Shyamolesh Ghosh</small>
+                    <small class="text-muted">Sample invoice INV-2026-00001 · Shyamolesh Ghosh</small>
                     <button type="button" class="btn btn-sm btn-outline-secondary py-0" id="btnRefresh"><i class="bi bi-arrow-clockwise"></i> Refresh</button>
                 </div>
                 <div id="previewSubjectBadge" class="small fw-semibold p-2 bg-body-tertiary border rounded mb-2 text-truncate"></div>
@@ -102,16 +102,16 @@ document.getElementById('btnSendTest')?.addEventListener('click', async ()=>{
   const email = document.getElementById('testEmail').value.trim();
   const result = document.getElementById('testResult');
   if(!email){ result.textContent='Enter an email'; return; }
-  result.textContent='Sendingâ€¦';
+  result.textContent='Sending…';
   try{
     const res = await fetch('{{ route('admin.email-templates.send-test', $template) }}', {
       method:'POST', headers:{'Content-Type':'application/json','X-CSRF-TOKEN':'{{ csrf_token() }}','Accept':'application/json'},
       body: JSON.stringify({ email })
     });
     const data = await res.json();
-    result.textContent = res.ok ? 'âœ“ '+data.message : 'âœ— '+(data.message||res.statusText);
+    result.textContent = res.ok ? '✓ '+data.message : '✗ '+(data.message||res.statusText);
     result.className = res.ok ? 'small mt-2 text-success' : 'small mt-2 text-danger';
-  }catch(e){ result.textContent='âœ— '+e.message; }
+  }catch(e){ result.textContent='✗ '+e.message; }
 });
 })();
 </script>

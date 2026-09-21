@@ -16,7 +16,7 @@
     </x-adminlte-card>
 
     <x-adminlte-card icon="bi bi-currency-rupee" title="Paid Invoices">
-        <div class="mb-3"><strong>Total: â‚¹{{ number_format($total, 2) }}</strong></div>
+        <div class="mb-3"><strong>Total: ₹{{ number_format($total, 2) }}</strong></div>
         <table class="table table-hover align-middle mb-0">
             <thead>
                 <tr><th>Invoice #</th><th>Customer</th><th>Paid At</th><th class="text-end">Amount</th></tr>
@@ -25,9 +25,9 @@
                 @forelse ($invoices as $inv)
                     <tr>
                         <td><strong>{{ $inv->invoice_no }}</strong></td>
-                        <td>{{ $inv->customer?->full_name ?? 'â€”' }}</td>
+                        <td>{{ $inv->customer?->full_name ?? '—' }}</td>
                         <td class="text-muted">{{ $inv->paid_at?->format('M j, Y') }}</td>
-                        <td class="text-end fw-bold">â‚¹{{ number_format($inv->total, 2) }}</td>
+                        <td class="text-end fw-bold">₹{{ number_format($inv->total, 2) }}</td>
                     </tr>
                 @empty
                     <tr><td colspan="4" class="text-center text-muted py-4">No invoices in this period.</td></tr>

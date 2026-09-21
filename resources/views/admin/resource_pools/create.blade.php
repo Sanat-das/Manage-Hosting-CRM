@@ -15,7 +15,7 @@
             <div class="col-md-4"><x-adminlte-input name="unit" label="Unit" placeholder="e.g. GHz, GB" value="{{ old('unit') }}" /></div>
             <div class="col-md-4">
                 <x-adminlte-select name="server_id" label="Server">
-                    <option value="">â€” None â€”</option>
+                    <option value="">— None —</option>
                     @foreach ($servers as $srv)
                         <option value="{{ $srv->id }}" @selected(old('server_id') == $srv->id)>{{ $srv->name }}</option>
                     @endforeach

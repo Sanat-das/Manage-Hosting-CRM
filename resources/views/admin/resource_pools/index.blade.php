@@ -29,8 +29,8 @@
             <tr>
                 <td><a href="{{ route('admin.resource-pools.show', $pool) }}"><strong>{{ $pool->name }}</strong></a></td>
                 <td>{{ $pool->pool_type }}</td>
-                <td>{{ $pool->server?->name ?? 'â€”' }}</td>
-                <td>{{ $pool->total_capacity ?? 'â€”' }} {{ $pool->unit ?? '' }}</td>
+                <td>{{ $pool->server?->name ?? '—' }}</td>
+                <td>{{ $pool->total_capacity ?? '—' }} {{ $pool->unit ?? '' }}</td>
                 <td><x-adminlte.partials.status-badge :status="$pool->status" /></td>
                 <td class="text-end">
                     <div class="table-actions">

@@ -7,7 +7,7 @@
 @stop
 
 @php
-    // Plain-English map for every job declared in routes/console.php â€” single
+    // Plain-English map for every job declared in routes/console.php — single
     // source so the table can tell an operator what matters in their language,
     // not just the artisan signature. Keys must match ScheduleInspector keys.
     $cronDetails = [
@@ -43,7 +43,7 @@
         ],
         'ssl:check-expiry --days=30' => [
             'what' => 'Checks SSL certificates expiring within 30 days',
-            'why' => 'Avoids browser â€œNot secureâ€ warnings and downtime.',
+            'why' => 'Avoids browser “Not secure” warnings and downtime.',
             'when' => 'Runs daily at 03:00',
             'icon' => 'bi bi-shield-lock',
         ],
@@ -73,7 +73,7 @@
         ],
         'snmp-poll-dispatch-due' => [
             'what' => 'Dispatches SNMP polling batches for all monitored hosts and interfaces',
-            'why' => 'Feeds bandwidth and health graphs â€” no dispatch means no monitoring data.',
+            'why' => 'Feeds bandwidth and health graphs — no dispatch means no monitoring data.',
             'when' => 'Runs every minute',
             'icon' => 'bi bi-broadcast',
         ],
@@ -96,13 +96,13 @@
             'icon' => 'bi bi-terminal-x',
         ],
         'queue-emails-cron' => [
-            'what' => 'Sends queued emails â€” invoices, ticket replies, notifications',
+            'what' => 'Sends queued emails — invoices, ticket replies, notifications',
             'why' => 'Without it, emails stay in the queue and customers get nothing.',
             'when' => 'Runs every minute',
             'icon' => 'bi bi-send',
         ],
         'emails-queue-heartbeat' => [
-            'what' => 'Health check for the email queue â€” records at-risk backlog to health file',
+            'what' => 'Health check for the email queue — records at-risk backlog to health file',
             'why' => 'Lets the dashboard warn you when the queue is stuck.',
             'when' => 'Runs every 5 minutes',
             'icon' => 'bi bi-heart-pulse',
@@ -157,7 +157,7 @@
     @else
         <div class="alert alert-success d-flex align-items-center gap-2" role="alert" style="border-radius: var(--radius-md); border-left: 3px solid var(--color-success); box-shadow: var(--shadow-sm);">
             <i class="bi bi-check-circle-fill flex-shrink-0" aria-hidden="true"></i>
-            <div style="font-size: var(--text-sm);">Scheduler is ticking â€” last run {{ $lastTickAt->diffForHumans() }}.</div>
+            <div style="font-size: var(--text-sm);">Scheduler is ticking — last run {{ $lastTickAt->diffForHumans() }}.</div>
         </div>
     @endif
 
@@ -183,7 +183,7 @@
         $disabledCount = $totalTasks - $enabledCount;
         $customCount = $tasks->where('is_custom', true)->count();
     @endphp
-    {{-- Quick metrics â€” mirrors invoices/orders pattern with metric-cards --}}
+    {{-- Quick metrics — mirrors invoices/orders pattern with metric-cards --}}
     <x-adminlte.partials.metric-cards :items="[
         ['title' => $totalTasks, 'text' => 'Total tasks', 'icon' => 'bi bi-clock', 'theme' => 'info'],
         ['title' => $enabledCount, 'text' => 'Enabled', 'icon' => 'bi bi-check-circle', 'theme' => 'success'],
@@ -221,7 +221,7 @@
                             data-bs-toggle="modal" data-bs-target="#pause-scheduler-modal" aria-label="Pause scheduler">
                         <i class="bi bi-pause-fill" aria-hidden="true"></i> Pause scheduler
                     </button>
-                    <span class="small" style="color: var(--color-text-muted); font-size: var(--text-xs);">Stops every task at once â€” use for maintenance windows.</span>
+                    <span class="small" style="color: var(--color-text-muted); font-size: var(--text-xs);">Stops every task at once — use for maintenance windows.</span>
                     <span class="ms-auto small" style="color: var(--color-text-faint); font-size: var(--text-xs);">
                         <span id="cron-visible-count">{{ $totalTasks }}</span> of {{ $totalTasks }} shown
                     </span>
@@ -229,14 +229,14 @@
             @endunless
         @endcan
 
-        {{-- Live toolbar â€” client-side search + status pills, consistent with datatable filter bar --}}
+        {{-- Live toolbar — client-side search + status pills, consistent with datatable filter bar --}}
         <div class="p-3 border-bottom" style="background: var(--color-bg-subtle);">
             <div class="row g-2 align-items-center">
                 <div class="col-12 col-md-6 col-lg-5">
                     <label for="cron-task-search" class="visually-hidden">Filter tasks</label>
                     <div class="input-group">
                         <span class="input-group-text" style="background: var(--bs-body-bg);"><i class="bi bi-search" aria-hidden="true"></i></span>
-                        <input type="search" id="cron-task-search" class="form-control" placeholder="Filter by task name, key or what it doesâ€¦" aria-label="Filter by task name, key or what it does" autocomplete="off">
+                        <input type="search" id="cron-task-search" class="form-control" placeholder="Filter by task name, key or what it does…" aria-label="Filter by task name, key or what it does" autocomplete="off">
                         <button type="button" class="btn btn-outline-secondary" id="cron-search-clear" aria-label="Clear filter"><i class="bi bi-x-lg" aria-hidden="true"></i></button>
                     </div>
                 </div>
@@ -304,7 +304,7 @@
                                                 @if($plain)
                                                     <button type="button" class="btn btn-sm p-0 border-0 lh-1"
                                                             data-bs-toggle="tooltip" data-bs-placement="top"
-                                                            data-bs-title="{{ $plain['what'] }} â€” {{ $plain['why'] }}"
+                                                            data-bs-title="{{ $plain['what'] }} — {{ $plain['why'] }}"
                                                             aria-label="What this does: {{ $plain['what'] }}"
                                                             style="color: var(--color-text-faint); font-size: 0.82rem;">
                                                         <i class="bi bi-info-circle" aria-hidden="true"></i>
@@ -317,7 +317,7 @@
                                                 </div>
                                                 <div class="small d-inline-flex align-items-center gap-1" style="color: var(--color-text-faint); font-size: var(--text-xs);">
                                                     <i class="bi bi-clock-history" aria-hidden="true"></i> {{ $plain['when'] }}
-                                                    <span class="d-none d-sm-inline" style="opacity: 0.6;">Â·</span>
+                                                    <span class="d-none d-sm-inline" style="opacity: 0.6;">·</span>
                                                     <span class="d-none d-sm-inline">{{ $plain['why'] }}</span>
                                                 </div>
                                             @endif
@@ -340,12 +340,12 @@
                                     @unless ($task['manageable'])
                                         <div class="small d-flex align-items-start gap-1 mt-1" style="color: var(--color-warning); font-size: var(--text-xs);">
                                             <i class="bi bi-exclamation-triangle flex-shrink-0" style="margin-top: 0.15rem;" aria-hidden="true"></i>
-                                            <span>Unnamed closure â€” add <code>-&gt;name('...')</code> in <code>routes/console.php</code> to manage it here.</span>
+                                            <span>Unnamed closure — add <code>-&gt;name('...')</code> in <code>routes/console.php</code> to manage it here.</span>
                                         </div>
                                     @endunless
                                     @if (! empty($task['is_custom']))
                                         <div class="small d-inline-flex align-items-center gap-1 mt-1" style="color: var(--color-text-muted); font-size: var(--text-xs);">
-                                            <i class="bi bi-pencil-square" aria-hidden="true"></i> Overridden in DB â€” leave fields empty to revert to code default.
+                                            <i class="bi bi-pencil-square" aria-hidden="true"></i> Overridden in DB — leave fields empty to revert to code default.
                                         </div>
                                     @endif
                                 </div>
@@ -364,7 +364,7 @@
                                     <span class="fw-medium" style="color: var(--color-text);">{{ $task['next_due']->format('M j, H:i') }}</span>
                                     <div style="color: var(--color-text-muted); font-size: var(--text-xs);">{{ $task['next_due']->diffForHumans() }}</div>
                                 @else
-                                    <span style="color: var(--color-text-faint);">â€”</span>
+                                    <span style="color: var(--color-text-faint);">—</span>
                                 @endif
                             </td>
                             <td class="small" style="font-size: var(--text-sm);">
@@ -374,7 +374,7 @@
                                         @if ($task['last_run']->runtime_ms !== null)
                                             {{ number_format($task['last_run']->runtime_ms) }} ms
                                         @else
-                                            â€”
+                                            —
                                         @endif
                                     </div>
                                 @else
@@ -417,7 +417,7 @@
                                             </form>
                                         </div>
                                     @else
-                                        <span class="small" style="color: var(--color-text-faint);">â€”</span>
+                                        <span class="small" style="color: var(--color-text-faint);">—</span>
                                     @endif
                                 @endcan
                             </td>
@@ -425,7 +425,7 @@
                     @empty
                         <tr>
                             <td colspan="6" class="p-0 border-0">
-                                <x-adminlte.partials.empty-state icon="bi bi-clock" title="No scheduled tasks" message="No tasks are defined in routes/console.php â€” add a Schedule entry to see it here." />
+                                <x-adminlte.partials.empty-state icon="bi bi-clock" title="No scheduled tasks" message="No tasks are defined in routes/console.php — add a Schedule entry to see it here." />
                             </td>
                         </tr>
                     @endforelse
@@ -503,11 +503,11 @@
                                 @endif
                             </td>
                             <td class="small" style="font-variant-numeric: tabular-nums; font-size: var(--text-sm);">
-                                {{ $run->runtime_ms !== null ? number_format($run->runtime_ms).' ms' : 'â€”' }}
+                                {{ $run->runtime_ms !== null ? number_format($run->runtime_ms).' ms' : '—' }}
                             </td>
-                            <td class="small" style="font-variant-numeric: tabular-nums; font-size: var(--text-sm);">{{ $run->exit_code ?? 'â€”' }}</td>
+                            <td class="small" style="font-variant-numeric: tabular-nums; font-size: var(--text-sm);">{{ $run->exit_code ?? '—' }}</td>
                             <td class="small" style="color: var(--color-text-muted); font-size: var(--text-sm); max-width: 28ch; overflow-wrap: anywhere;">
-                                {{ $run->message ? Str::limit($run->message, 120) : 'â€”' }}
+                                {{ $run->message ? Str::limit($run->message, 120) : '—' }}
                             </td>
                         </tr>
                     @empty
@@ -566,7 +566,7 @@
                             <span class="d-inline-flex align-items-center justify-content-center rounded-2 flex-shrink-0" style="width: 32px; height: 32px; background: color-mix(in srgb, var(--color-info) 14%, transparent); color: var(--color-info);"><i class="{{ $plainModal['icon'] }}" aria-hidden="true"></i></span>
                             <div class="flex-fill">
                                 <div class="fw-medium" style="font-size: var(--text-sm); color: var(--color-text);">{{ $plainModal['what'] }}</div>
-                                <div class="small" style="font-size: var(--text-xs); color: var(--color-text-muted);">{{ $plainModal['why'] }} â€” {{ $plainModal['when'] }} by default.</div>
+                                <div class="small" style="font-size: var(--text-xs); color: var(--color-text-muted);">{{ $plainModal['why'] }} — {{ $plainModal['when'] }} by default.</div>
                             </div>
                         </div>
                     @endif
@@ -589,7 +589,7 @@
                                    pattern="^(\S+\s+){4}\S+$"
                                    aria-describedby="cron-help-{{ Str::slug($task['key']) }}">
                             <div class="form-text" id="cron-help-{{ Str::slug($task['key']) }}">
-                                5-field cron: <code>minute hour day month weekday</code> â€” e.g. <code>0 1 * * *</code> = daily 01:00. Current effective: <code>{{ $task['expression'] }}</code> ({{ $task['human'] }})
+                                5-field cron: <code>minute hour day month weekday</code> — e.g. <code>0 1 * * *</code> = daily 01:00. Current effective: <code>{{ $task['expression'] }}</code> ({{ $task['human'] }})
                                 <span class="d-block mt-1" style="color: var(--color-text-faint);">
                                     <i class="bi bi-lightbulb me-1" aria-hidden="true"></i> Tip: <code>*/5 * * * *</code> = every 5 minutes, <code>0 */6 * * *</code> = every 6 hours, <code>0 0 * * 1</code> = Mondays at midnight.
                                 </span>
@@ -600,7 +600,7 @@
                             <label class="form-label d-inline-flex align-items-center gap-1">
                                 Timezone <span class="text-muted small" style="font-weight: 400;">(leave empty for default)</span>
                                 <button type="button" class="btn btn-sm p-0 border-0 lh-1" data-bs-toggle="popover" data-bs-trigger="focus" data-bs-placement="top"
-                                        data-bs-content="PHP timezone for this task â€” e.g. UTC or Asia/Kolkata. Must be a valid PHP identifier. Leave empty to use app default."
+                                        data-bs-content="PHP timezone for this task — e.g. UTC or Asia/Kolkata. Must be a valid PHP identifier. Leave empty to use app default."
                                         aria-label="Explain timezone">
                                     <i class="bi bi-question-circle" style="color: var(--color-text-faint);" aria-hidden="true"></i>
                                 </button>
@@ -630,7 +630,7 @@
                         <div class="form-check mb-0">
                             <input type="hidden" name="enabled" value="0">
                             <input class="form-check-input" type="checkbox" name="enabled" value="1" id="edit-enabled-{{ Str::slug($task['key']) }}" @checked($task['enabled'])>
-                            <label class="form-check-label" for="edit-enabled-{{ Str::slug($task['key']) }}">Enabled â€” when off, the scheduler skips this task until re-enabled</label>
+                            <label class="form-check-label" for="edit-enabled-{{ Str::slug($task['key']) }}">Enabled — when off, the scheduler skips this task until re-enabled</label>
                         </div>
                     </form>
 

@@ -32,9 +32,9 @@
             <tr>
                 <td><a href="{{ route('admin.resource-types.show', $type) }}"><strong>{{ $type->name }}</strong></a></td>
                 <td><code>{{ $type->slug }}</code></td>
-                <td>{{ $type->category ?? 'â€”' }}</td>
-                <td>{{ $type->unit ?? 'â€”' }}</td>
-                <td class="text-muted">{{ $type->description ?? 'â€”' }}</td>
+                <td>{{ $type->category ?? '—' }}</td>
+                <td>{{ $type->unit ?? '—' }}</td>
+                <td class="text-muted">{{ $type->description ?? '—' }}</td>
                 <td class="text-end">
                     <div class="table-actions">
                         <a href="{{ route('admin.resource-types.edit', $type) }}" class="btn btn-sm btn-outline-secondary btn-icon" title="Edit" aria-label="Edit"><i class="bi bi-pencil"></i></a>

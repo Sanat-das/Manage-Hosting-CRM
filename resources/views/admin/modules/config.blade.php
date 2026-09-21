@@ -1,9 +1,9 @@
 ﻿@extends('adminlte::page')
 
-@section('title', 'Module â€” ' . $module->name . ' Config')
+@section('title', 'Module — ' . $module->name . ' Config')
 
 @section('content_header')
-    <x-ui.page-header title="{{ $module->name }} â€” Configuration" subtitle="View module configuration details" :breadcrumbs="[['label' => __('adminlte.home'), 'url' => url('/')],['label' => 'System'],['label' => 'Modules','url' => route('admin.modules.index')],['label' => $module->name,'active' => true]]" />
+    <x-ui.page-header title="{{ $module->name }} — Configuration" subtitle="View module configuration details" :breadcrumbs="[['label' => __('adminlte.home'), 'url' => url('/')],['label' => 'System'],['label' => 'Modules','url' => route('admin.modules.index')],['label' => $module->name,'active' => true]]" />
 @stop
 
 @section('content')

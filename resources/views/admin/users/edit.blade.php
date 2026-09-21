@@ -80,7 +80,7 @@
             <div class="d-flex align-items-center gap-2 mb-3">
                 <i class="bi bi-geo-alt text-primary"></i>
                 <h6 class="mb-0 fw-semibold">Address</h6>
-                <span class="text-muted small ms-1">â€” standard e-commerce fields</span>
+                <span class="text-muted small ms-1">— standard e-commerce fields</span>
             </div>
             <div class="row">
                 <div class="col-md-6">

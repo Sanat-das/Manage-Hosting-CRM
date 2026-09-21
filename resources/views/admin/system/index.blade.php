@@ -207,7 +207,7 @@
                                                 <code>{{ Str::limit($composerHash, 12, '') }}</code>
                                                 <button type="button" class="btn btn-sm btn-outline-secondary ms-2 py-0 px-1 copy-btn" data-copy="{{ $composerHash }}" aria-label="Copy composer hash"><i class="bi bi-clipboard"></i></button>
                                             @else
-                                                <span class="text-muted small">â€”</span>
+                                                <span class="text-muted small">—</span>
                                             @endif
                                         </td>
                                     </tr>
@@ -260,7 +260,7 @@
                                     <tbody>
                                         @foreach ($preflight as $row)
                                             <tr>
-                                                <td class="small">{{ $row['name'] ?? 'â€”' }}</td>
+                                                <td class="small">{{ $row['name'] ?? '—' }}</td>
                                                 <td>
                                                     @if (! empty($row['passed']))
                                                         <span class="badge text-bg-success">Pass</span>
@@ -336,7 +336,7 @@
             @php
                 $git = $appInfo['git'] ?? [];
                 // A ZIP install has no .git, so every gitInfo() field is null and
-                // this card used to read "â€”" / "Unknown" while the Updates tab
+                // this card used to read "—" / "Unknown" while the Updates tab
                 // reported the version and whether an update was pending. Fall
                 // back to the same check the Updates tab uses.
                 $isZipInstall = empty($git['commit']);
@@ -357,7 +357,7 @@
                                             @if (! empty($srcBranch))
                                                 <code>{{ $srcBranch }}</code>
                                             @else
-                                                <span class="text-muted small">â€”</span>
+                                                <span class="text-muted small">—</span>
                                             @endif
                                         </td>
                                     </tr>
@@ -372,13 +372,13 @@
                                                 <code>{{ $srcRef }}</code>
                                                 <button type="button" class="btn btn-sm btn-outline-secondary ms-2 py-0 px-1 copy-btn" data-copy="{{ $srcRef }}" aria-label="Copy installed version"><i class="bi bi-clipboard"></i></button>
                                             @else
-                                                <span class="text-muted small">â€”</span>
+                                                <span class="text-muted small">—</span>
                                             @endif
                                         </td>
                                     </tr>
                                     <tr>
                                         <th class="text-muted small">Date</th>
-                                        <td class="small">{{ $git['date'] ?? 'â€”' }}</td>
+                                        <td class="small">{{ $git['date'] ?? '—' }}</td>
                                     </tr>
                                     <tr>
                                         <th class="text-muted small">Dirty</th>
@@ -409,7 +409,7 @@
                                             @if (! empty($srcRemote))
                                                 <code>{{ $srcRemote }}</code>
                                             @else
-                                                <span class="text-muted">â€”</span>
+                                                <span class="text-muted">—</span>
                                             @endif
                                         </td>
                                     </tr>
@@ -423,7 +423,7 @@
                                                 {{-- ZIP install: no local commits can exist ahead of the remote. --}}
                                                 <span class="badge text-bg-{{ $srcBehind > 0 ? 'warning' : 'success' }}">Behind {{ $srcBehind }}</span>
                                             @else
-                                                <span class="text-muted">â€”</span>
+                                                <span class="text-muted">—</span>
                                             @endif
                                         </td>
                                     </tr>
@@ -491,7 +491,7 @@
                         <i class="bi bi-exclamation-circle-fill text-danger fs-3 flex-shrink-0"></i>
                         <div>
                             <div class="fw-semibold">Could not check for updates</div>
-                            <div class="small text-muted">Network error â€” please try again in a moment.</div>
+                            <div class="small text-muted">Network error — please try again in a moment.</div>
                         </div>
                     </div>
                 @else
@@ -564,9 +564,9 @@
                         <div class="modal-body">
                             {{-- Confirm area (shown before update starts) --}}
                             <div id="update-confirm-area">
-                                <p class="mb-1">Apply <strong>{{ $behind }} commit(s)</strong>? <span class="text-muted small">({{ $fromShort }} â†’ {{ $toShort }})</span></p>
+                                <p class="mb-1">Apply <strong>{{ $behind }} commit(s)</strong>? <span class="text-muted small">({{ $fromShort }} → {{ $toShort }})</span></p>
                                 <ul class="small text-muted mb-0">
-                                    <li>Site will be in maintenance for ~1â€“2 minutes.</li>
+                                    <li>Site will be in maintenance for ~1–2 minutes.</li>
                                     <li>Your existing data will <strong>not</strong> be modified or deleted.</li>
                                     <li>You can roll back immediately after if needed.</li>
                                 </ul>
@@ -672,7 +672,7 @@
                                     @endphp
                                     <tr>
                                         <td class="small text-muted" style="white-space: nowrap;">
-                                            {{ $row->created_at ? \Illuminate\Support\Carbon::parse($row->created_at)->format('M j, Y g:i A') : 'â€”' }}
+                                            {{ $row->created_at ? \Illuminate\Support\Carbon::parse($row->created_at)->format('M j, Y g:i A') : '—' }}
                                         </td>
                                         <td>
                                             @if ($statusHist === 'success')
@@ -692,7 +692,7 @@
                                                     <pre class="mb-0 bg-dark text-light p-2 rounded overflow-auto" style="max-height: 200px; font-size: 0.72rem; white-space: pre-wrap; word-break: break-word;"><code>{{ Str::limit((string) $outputExcerpt, 20000) }}</code></pre>
                                                 </div>
                                             @else
-                                                <span class="text-muted">â€”</span>
+                                                <span class="text-muted">—</span>
                                             @endif
                                         </td>
                                         <td>
@@ -701,7 +701,7 @@
                                                     <i class="bi bi-arrow-counterclockwise me-1"></i>Rollback
                                                 </button>
                                             @else
-                                                <span class="text-muted">â€”</span>
+                                                <span class="text-muted">—</span>
                                             @endif
                                         </td>
                                     </tr>
@@ -722,7 +722,7 @@
                             <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                         </div>
                         <div class="modal-body">
-                            <p>Roll back code to <strong id="rollback-hash-display">â€”</strong>?</p>
+                            <p>Roll back code to <strong id="rollback-hash-display">—</strong>?</p>
                             <div class="alert alert-warning small mb-0">
                                 <i class="bi bi-exclamation-triangle me-1"></i>
                                 Code will revert. <strong>Database schema changes are not reversed.</strong> If the rollback causes database errors, run <code>php artisan migrate:rollback</code> via SSH.
@@ -937,7 +937,7 @@ document.addEventListener('DOMContentLoaded', function () {
             // POST: controller returns {status:'started'} immediately after launching
             // the update as a detached background process (avoids IIS requestTimeout).
             // If PowerShell is unavailable the controller falls back to the SSE path
-            // and the response arrives later â€” both cases are handled here.
+            // and the response arrives later — both cases are handled here.
             fetch(updateUrl, {
                 method: 'POST',
                 headers: { 'Accept': 'text/event-stream', 'X-CSRF-TOKEN': csrfToken, 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -945,7 +945,7 @@ document.addEventListener('DOMContentLoaded', function () {
             }).then(function (r) { return r.json(); }).then(function (data) {
                 if (isDone) return;
                 if (data && data.status === 'started') {
-                    // Background process launched â€” poll handles all progress and completion.
+                    // Background process launched — poll handles all progress and completion.
                     return;
                 }
                 // Synchronous fallback: treat the POST response as the final result.

@@ -29,7 +29,7 @@
             </dd>
 
             <dt class="col-sm-3">Member since</dt>
-            <dd class="col-sm-9">{{ $user->created_at?->format('M j, Y') ?? 'â€”' }}</dd>
+            <dd class="col-sm-9">{{ $user->created_at?->format('M j, Y') ?? '—' }}</dd>
         </dl>
     </x-adminlte-card>
 

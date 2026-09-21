@@ -24,7 +24,7 @@
         <div class="row">
             <div class="col-md-4">
                 <x-adminlte-select name="datacenter_id" label="Datacenter">
-                    <option value="">â€” None â€”</option>
+                    <option value="">— None —</option>
                     @foreach ($datacenters as $dc)
                         <option value="{{ $dc->id }}" @selected(old('datacenter_id') == $dc->id)>{{ $dc->name }}</option>
                     @endforeach
@@ -32,7 +32,7 @@
             </div>
             <div class="col-md-4">
                 <x-adminlte-select name="rack_id" label="Rack">
-                    <option value="">â€” None â€”</option>
+                    <option value="">— None —</option>
                     @foreach ($racks as $rack)
                         <option value="{{ $rack->id }}" @selected(old('rack_id') == $rack->id)>{{ $rack->name }}</option>
                     @endforeach
