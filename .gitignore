@@ -52,6 +52,8 @@ opencode.jsonc
 phpunit.dusk.xml
 AGENTS.md
 LEDGER_FLUX_PHILOSOPHY.md
+# Local sqlite scratch DB (dev only)
+/local
 
 # Sensitive backups and local DB dumps
 /storage/backups/
@@ -60,6 +62,8 @@ LEDGER_FLUX_PHILOSOPHY.md
 /storage/app/update-restore-points/
 /sql/local.sql
 /sql/local-backup-addon-database-dump.sql
+/sql/local-good-*.sql
+/sql/pre-restore-*.sql
 
 # Public debug files
 /public/local-phpinfo.php
@@ -85,4 +89,6 @@ test_auth.php
 /storage/probe-*
 tests/Dusk/ScratchCartProbeTest.php
 tests/Feature/Client/ScratchDecimalCartTest.php
+/qa-visual-slice2.js
+/storage/qa-visual-slice2/
 
