@@ -108,9 +108,11 @@ class AdminTicketReplyComposeTest extends TestCase
             ->get(route('admin.tickets.show', $ticket));
 
         $response->assertOk();
-        $response->assertSee('id="reply-editor"', false);
-        $response->assertSee('id="reply-editor-toolbar"', false);
+        // The editor is Trix: the trix-editor element is bound to the hidden
+        // html_body field, with the plain-text mirror kept for no-JS posts.
+        $response->assertSee('<trix-editor input="reply-html-body"', false);
         $response->assertSee('id="reply-html-body"', false);
+        $response->assertSee('name="html_body"', false);
         $response->assertSee('name="message"', false);
     }
 

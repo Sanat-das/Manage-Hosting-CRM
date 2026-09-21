@@ -61,9 +61,13 @@ class ClientPortalDeptTest extends TestCase
 
         $response = $this->actingAs($client)->get(route('client.tickets.show', $ticket));
 
+        // Scoped to the ticket's own department cell: the client layout also
+        // renders the chat widget, whose copy legitimately contains the word
+        // "Support", so a page-wide assertDontSee would be a false positive.
         $response->assertOk()
             ->assertSee(TicketService::departmentLabel('billing'))
-            ->assertDontSee(TicketService::departmentLabel('support'));
+            ->assertSee('Department</th><td>'.TicketService::departmentLabel('billing').'</td>', false)
+            ->assertDontSee('Department</th><td>'.TicketService::departmentLabel('support').'</td>', false);
     }
 
     public function test_client_cannot_transfer(): void

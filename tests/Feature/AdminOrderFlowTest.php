@@ -14,7 +14,11 @@ use App\Models\OrderStatusHistory;
 use App\Models\Permission;
 use App\Models\Product;
 use App\Models\ProductGroup;
+use App\Models\ProductModule;
 use App\Models\Role;
+use App\Models\Server;
+use App\Models\ServerGroup;
+use App\Models\ServerGroupMember;
 use App\Models\User;
 use App\Services\Billing\BillingService;
 use App\Services\HostingService;
@@ -22,6 +26,7 @@ use App\Services\OrderService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
 /**
@@ -118,6 +123,42 @@ class AdminOrderFlowTest extends TestCase
         return IpAddress::create([
             'subnet_id' => $subnet->id,
             'ip_address' => $address,
+        ]);
+    }
+
+    /**
+     * Infrastructure the post-payment auto-provision path needs to be able
+     * to succeed: an active panel server in a group the product points at,
+     * plus the module link carrying the required plan. Panel HTTP calls are
+     * faked per test. Mirrors CpanelProvisioningTest's setup idiom.
+     */
+    private function attachProvisioning(string $panel, Product $product, string $plan = 'starter'): void
+    {
+        $server = Server::create([
+            'name' => $panel.'-1',
+            'ip_address' => '10.0.0.1',
+            'server_type' => $panel,
+            'api_url' => 'https://'.$panel.'.example.net:'.($panel === 'cpanel' ? '2087' : '8443'),
+            'api_username' => 'root',
+            'api_key' => 'TOKEN123',
+            'max_accounts' => 0,
+            'status' => 'active',
+        ]);
+
+        $group = ServerGroup::create(['name' => $panel.' group', 'status' => 'active']);
+        ServerGroupMember::create([
+            'server_group_id' => $group->id,
+            'server_id' => $server->id,
+            'priority' => 1,
+        ]);
+
+        $product->update(['server_group_id' => $group->id]);
+
+        ProductModule::create([
+            'product_id' => $product->id,
+            'module_slug' => $panel,
+            'enabled' => true,
+            'config' => ['plan' => $plan, 'verify_tls' => true],
         ]);
     }
 
@@ -816,15 +857,23 @@ class AdminOrderFlowTest extends TestCase
 
     public function test_payment_auto_provisions_automated_module_order(): void
     {
+        Http::fake([
+            '*/json-api/createacct*' => Http::response([
+                'metadata' => ['result' => 1, 'reason' => 'Account Created'],
+            ]),
+        ]);
+
         $customer = $this->makeCustomer();
         $product = $this->makeProduct([
             'provisioning_module' => 'cpanel',
             'name' => 'cPanel Hosting',
             'require_public_ip' => true,
         ]);
+        $this->attachProvisioning('cpanel', $product);
+
         $subnet = $this->makeSubnet('public');
         $free = $this->makeIp($subnet, '10.9.0.1');
-        $order = $this->makePendingOrder($customer, $product);
+        $order = $this->makePendingOrder($customer, $product, ['domain_name' => 'acme.test']);
         $invoice = $this->makeLinkedInvoice($order);
 
         app(BillingService::class)->recordPayment($invoice->id, 100.0, 'bank_transfer');
@@ -850,15 +899,23 @@ class AdminOrderFlowTest extends TestCase
 
     public function test_payment_auto_provisions_when_ip_pool_exhausted(): void
     {
+        Http::fake([
+            '*/json-api/createacct*' => Http::response([
+                'metadata' => ['result' => 1, 'reason' => 'Account Created'],
+            ]),
+        ]);
+
         $customer = $this->makeCustomer();
         $product = $this->makeProduct([
             'provisioning_module' => 'cpanel',
             'name' => 'VPS Auto',
             'require_public_ip' => true,
         ]);
+        $this->attachProvisioning('cpanel', $product);
+
         $private = $this->makeSubnet('private'); // only a private pool exists
         $this->makeIp($private, '10.10.0.1');
-        $order = $this->makePendingOrder($customer, $product);
+        $order = $this->makePendingOrder($customer, $product, ['domain_name' => 'pool-exhausted.test']);
         $invoice = $this->makeLinkedInvoice($order);
 
         // IP leasing is best-effort: auto-provisioning with an exhausted
@@ -879,6 +936,11 @@ class AdminOrderFlowTest extends TestCase
 
     public function test_payment_auto_provisions_ip_less_hosting_product(): void
     {
+        Http::fake([
+            '*/api/v2/clients*' => Http::response(['id' => 501, 'name' => 'Acme Client']),
+            '*/api/v2/domains*' => Http::response(['id' => 77, 'name' => 'shared.test']),
+        ]);
+
         $customer = $this->makeCustomer();
         $group = ProductGroup::create([
             'name' => 'Shared Hosting',
@@ -894,7 +956,9 @@ class AdminOrderFlowTest extends TestCase
             'name' => 'Plesk Shared Hosting',
             'product_group_id' => $group->id,
         ]);
-        $order = $this->makePendingOrder($customer, $product);
+        $this->attachProvisioning('plesk', $product);
+
+        $order = $this->makePendingOrder($customer, $product, ['domain_name' => 'shared.test']);
         $invoice = $this->makeLinkedInvoice($order);
 
         app(BillingService::class)->recordPayment($invoice->id, 100.0, 'bank_transfer');

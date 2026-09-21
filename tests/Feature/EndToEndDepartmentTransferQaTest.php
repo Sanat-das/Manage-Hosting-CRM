@@ -195,9 +195,16 @@ class EndToEndDepartmentTransferQaTest extends TestCase
         $salesIndex = $this->actingAs($this->salesStaff)
             ->get(route('admin.tickets.index'));
         $salesIndex->assertOk();
-        $this->assertStringNotContainsString(
+        // Scope the check to the listing itself: the admin layout's notification
+        // dropdown legitimately carries the "New ticket TKT-…" notification that
+        // was sent to Sales staff when the ticket was still in their department,
+        // so a whole-page string check would be a false positive.
+        $listedTicketNos = collect($salesIndex->viewData('tickets')->items())
+            ->pluck('ticket_no')
+            ->all();
+        $this->assertNotContains(
             $this->adminTransferredTicket->ticket_no,
-            $salesIndex->getContent(),
+            $listedTicketNos,
             '[CP6] staff A (Sales) admin index must not list the transferred ticket'
         );
 
