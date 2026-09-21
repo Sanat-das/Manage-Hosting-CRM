@@ -16,6 +16,8 @@ jobs:
           coverage: none
           ini-values: memory_limit=512M
       - run: composer install --no-interaction --prefer-dist
+      - name: Mark the application installed (install.lock is gitignored)
+        run: touch install.lock
       - name: Unit + Feature tests
         run: php -d memory_limit=512M artisan test
       - name: Seeder integrity gate (sqlite:memory, fast)
