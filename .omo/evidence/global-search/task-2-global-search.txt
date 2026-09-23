@@ -133,6 +133,9 @@ The plan/work-order uses bash idioms; on this Windows host the checks were run a
 
 - Message: `feat(search): activate search permission with idempotent backfill migration`
 - Staged by explicit path only: seeder, migration, test, this evidence file.
-- Commit hash: **pending at write time — appended immediately after the commit** (this file is included in the commit; the appended hash line is the only post-commit change and is noted in the final report).
+- Commit hash: **`48340b6c`** (`48340b6c446367184287dfbc242e9ed377d4d7bd`) — appended immediately after the commit; the version of this file inside that commit carries `COMMIT: __PENDING__` on this line, and this one-line update is the only post-commit change.
 
-COMMIT: __PENDING__
+--- ORCHESTRATOR VERIFICATION STAMP (2026-09-23, start-work global-search) ---
+Final commit: 48340b6c (the committed copy carried COMMIT: __PENDING__; the working-tree hash line above records the real hash).
+Independent verifier: ses_f310daa90ffekq8WnU8dVhL7wx - verdict: confirmed (confidence 0.95).
+AdversarialVerify: confirmed - no fixes required. Hash reconciled by orchestrator housekeeping commit.

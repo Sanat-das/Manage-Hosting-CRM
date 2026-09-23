@@ -234,3 +234,8 @@ raw `require` nor the framework read a stale cached config.
 - Hash: `6d1be5f56551c959cc9ac8812eea6f4d2d25711c` (`6d1be5f5`) — the commit created for this task.
   This hash line was embedded by one `git commit --amend --no-edit` immediately after the commit, so
   `git log -1` shows the amended commit: same message, same 7-file tree apart from this line.
+
+--- ORCHESTRATOR VERIFICATION STAMP (2026-09-23, start-work global-search) ---
+Final commit: 95182344 (the pre-amend hash 6d1be5f5 cited above is stale; this file was amended into 95182344).
+Independent verifier: ses_f310dab63ffe1j5iqzLKLxdTdG - verdict: confirmed (confidence 0.93).
+AdversarialVerify: confirmed - no fixes required. Hash reconciled by orchestrator housekeeping commit.
