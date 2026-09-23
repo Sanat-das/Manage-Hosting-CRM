@@ -190,11 +190,26 @@ same directory (`CustomerSearchProvider`, `ContactSearchProvider`, `StaffUserSea
 untouched. Staging is by explicit path only (never `git add -A` / `git add .` / `git commit -a`); the
 evidence file is force-added because `.gitignore:22` ignores `/.omo/`.
 
-`git show --stat HEAD` (after the commit):
+`git show --stat` of the commit carrying this task's files (`48e7ad7f`):
 
 ```
-PENDING_COMMIT_STAT
+commit 48e7ad7f763de37f4a1ddbba4c40f887989ac430
+    feat(search): add hosting and infrastructure providers
+
+ .../global-search/task-4-global-search.txt         |   7 +-      <- NOT mine: see "Concurrent-commit race"
+ .../global-search/task-6-global-search.txt         | 226 +++++++++++++++++++
+ .../Search/Providers/DomainSearchProvider.php      |  69 ++++++
+ .../Providers/HostingAccountSearchProvider.php     |  76 +++++++
+ .../Providers/ServerSearchProvider.php             |  67 ++++++
+ .../Search/Providers/ServiceInstanceSearchProvider.php |  71 ++++++
+ .../Search/Providers/SslCertificateSearchProvider.php  |  70 ++++++
+ tests/Feature/HostingSearchProvidersTest.php       | 246 +++++++++++++++++++++
+ 8 files changed, 829 insertions(+), 3 deletions(-)
 ```
+
+The seven task-6 files are exactly the 5 providers + the test + this evidence file. The eighth path
+(`task-4-global-search.txt`) entered this commit through another worker's concurrent `git commit --amend`
+— documented below; history was deliberately NOT rewritten to remove it (see the race note for why).
 
 ### 5. Stale state (config cache)
 
@@ -217,10 +232,40 @@ $ php artisan test --filter=HostingSearchProviders        (EXIT=0)
   started.
 - Repeated interruptions: not applicable — no interruption occurred during this task.
 
+## Concurrent-commit race (recorded honestly)
+
+The environment runs several plan workers against the same branch. Immediately after this task's commit
+was created, another worker's `git commit --amend --no-edit` (intending to embed their own evidence hash)
+landed on this task's HEAD instead, rewriting it:
+
+```
+$ git reflog -5
+48e7ad7f HEAD@{0}: commit (amend): feat(search): add hosting and infrastructure providers   <- foreign amend
+30dc7594 HEAD@{1}: commit: feat(search): add hosting and infrastructure providers           <- this task's original commit
+70112f95 HEAD@{2}: commit (amend): feat(search): add customer, contact and staff user providers
+719ff2b4 HEAD@{3}: commit: feat(search): add customer, contact and staff user providers
+59a5e63b HEAD@{4}: commit: feat(search): add permission-aware queryFor hook to the provider contract
+```
+
+Effect: commit `48e7ad7f` = this task's original commit `30dc7594` + one 7-line edit to
+`.omo/evidence/global-search/task-4-global-search.txt` (that worker embedding their hash `719ff2b`).
+This task's five providers, its test and this evidence file are all present, byte-identical, under the
+exact required message; only the extra evidence path is foreign.
+
+Why history was NOT rewritten: by the time the race was identified, the other worker had already committed
+`c3c0a40f` ("correct task-14 evidence note after concurrent-commit race") on top of `48e7ad7f`, and the
+reflog shows two independent amend races between workers. Rewriting `48e7ad7f` (reset/rebase) would have
+invalidated that worker's live commit and risked cascading the same race onto them. The foreign evidence
+edit is another task's already-intended content (their hash reconciliation), so nothing was lost; it was
+left in place for the orchestrator to keep or reconcile, and the deviation is recorded here instead of
+being silently hidden. The commit hash for the task's deliverables is `48e7ad7f` (pre-amend: `30dc7594`).
+
 ## Commit
 
 - Staged paths (explicit): the 5 provider files + the test + this evidence file.
 - Message: `feat(search): add hosting and infrastructure providers`
-- Hash: PENDING_HASH
-  (This line is embedded by one `git commit --amend --no-edit` immediately after the commit, matching the
-  task-1/task-14 evidence convention; the amended commit is the final one reported to the orchestrator.)
+- Hash: `48e7ad7f763de37f4a1ddbba4c40f887989ac430` (`48e7ad7f`) — the commit that contains this task's seven
+  files. It was created as `30dc7594` and rewritten in place by another worker's concurrent
+  `commit --amend` (see the race note above); both hashes are recorded. This evidence update (the two
+  placeholders filled in) is a separate one-file follow-up commit, whose hash is reported in the task's
+  FINAL REPORT because a commit cannot embed its own hash.
