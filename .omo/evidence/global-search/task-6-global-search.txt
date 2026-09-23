@@ -1,0 +1,226 @@
+# Task 6 — Hosting and infrastructure providers: service instances, hosting accounts, servers, domains, SSL
+
+Plan: `.omo/plans/global-search.md` (todo 6, lines 167-173; provider matrix rows 3-6 and 16, lines 42-45 and 55;
+shared contracts lines 58-80)
+Date: 2026-09-23
+Environment: Windows, PowerShell 5.1, PHP 8.4.16, Laravel 13, PHPUnit 12.5.35
+Test DB: sqlite `:memory:` (`phpunit.xml`); `Tests\TestCase::setUp()` seeds the real RBAC roles per test
+(`AdminLteRbacSeeder`), which is what the permission-leak assertions are built on.
+
+## Files created (in scope only)
+
+- `app/Services/Search/Providers/ServiceInstanceSearchProvider.php`
+- `app/Services/Search/Providers/HostingAccountSearchProvider.php`
+- `app/Services/Search/Providers/ServerSearchProvider.php`
+- `app/Services/Search/Providers/DomainSearchProvider.php`
+- `app/Services/Search/Providers/SslCertificateSearchProvider.php`
+- `tests/Feature/HostingSearchProvidersTest.php` — 5 tests / 26 assertions
+- this evidence file
+
+`config/search.php` was NOT edited — its rows 8-12 already name exactly these five classes. No foundation file
+(`SearchProvider`, `AbstractSearchProvider`, `GlobalSearchService`, `LikePattern`) and no other provider
+group's files were touched.
+
+## Plan-name verification (columns / routes) — real names used, no silent drops
+
+| Provider | Model | Columns checked against model + migration | Route names checked with `route:list` |
+| --- | --- | --- | --- |
+| Service instances | `ServiceInstance` | `service_tag`, `username`, `domain` — `2026_07_30_120100_create_service_tables.php:17-19` | `admin.service-instances.index` / `.show` (`routes/admin/provisioning.php:22-24`, gate `service-instances.view`) |
+| Hosting accounts | `HostingAccount` | `username`, `domain` (`2026_07_30_120030_create_order_tables.php:47-48`), `host_name` (`2026_08_26_000001_add_host_name_to_hosting_accounts_table.php`) | `admin.hosting.index` / `.show` (`routes/admin/hosting.php:27-38`, gate `hosting.view`) |
+| Servers | `Server` | `name`, `ip_address` (`2026_07_30_120020_create_config_tables.php:14-15`), `server_type` (`2026_09_18_100000_server_type_locked_hyperv.php`, renamed from `panel_type`) | `admin.servers.index` / `.show` (`routes/admin/hosting.php:107-121`, gate `hosting.view`) |
+| Domains | `Domain` | `name` (`2026_07_30_120030_create_order_tables.php:70`) | `admin.domains.index` / `.show` (`routes/admin/domains.php:15-33`, gate `domains.view`) |
+| SSL certificates | `SslCertificate` | `domain_name`, `provider` (`2026_07_31_000002_create_ssl_certificates_table.php:19-21`) | `admin.ssl.index` / `.show` (`routes/admin/ssl.php:28-39`, gate `hosting.view`) |
+
+Deviations: none — every plan-named column and route exists under that name. Two documented implementation
+choices, both inside the provider's own file:
+
+- `HostingAccountSearchProvider::rankColumn()` returns `host_name`. The base class defaults ranking to the
+  first searchable column (`username`), but the model's own docblock names `host_name` as "the product's
+  identifier across the application", and the shared contract says the strongest identifier decides
+  closeness — so the result label and the ranking column are the same identifier. Matching still covers all
+  three columns.
+- No eager loads are declared: none of the five `toResult()` methods touch a relation (labels/subtitles come
+  from plain columns only), so adding `with()` would spend queries for nothing. The subtitle never contains
+  a secret: hosting accounts use `domain ?: username` (never the legacy panel password), servers use
+  `ip_address · server_type` (never `api_key`/`api_password_encrypted`), SSL uses `provider ?: certificate_type`.
+
+All five list routes accept the `search` query param the foundation's "View all" links use
+(`HostingController.php:104`, `ServerController.php:27`, `DomainController.php:28`, `SslController.php:38`,
+`ServiceInstanceController.php:29` all `trim((string) $request->query('search'))`).
+
+## Baseline (given by orchestrator, confirmed)
+
+```
+php artisan test --filter=GlobalSearchService  -> 11/11 green (now 14/14 after the todo-14 amendment landed)
+php artisan test --filter=AdminSearch          ->  8/8 green
+```
+
+## Failing-first (RED — test written before any provider class existed)
+
+```
+$ php artisan test --filter=HostingSearchProviders        (EXIT=1)
+{"tool":"phpunit","result":"failed","tests":5,"passed":0,"assertions":10,"duration_ms":4237,"failed":5,
+ "failures":[
+  {"test":"...test_staff_without_hosting_view_gets_no_hosting_server_or_ssl_groups_but_does_get_domains","message":"Failed asserting that an array contains 'domains'."},
+  {"test":"...test_support_holding_hosting_view_gets_the_server_group","message":"Failed asserting that an array contains 'servers'."},
+  {"test":"...test_a_server_is_found_by_its_ip_address_and_links_to_its_show_page","message":"Failed asserting that null is not null."},
+  {"test":"...test_a_service_instance_is_found_by_its_service_tag_and_links_to_its_show_page","message":"Failed asserting that null is not null."},
+  {"test":"...test_a_literal_percent_in_a_hosting_identifier_is_matched_as_a_literal_not_a_wildcard","message":"Failed asserting that null is not null."}]}
+```
+
+RED observables: 5/5 failed, 0 passed. Note the failure mode is assertion-level, not a fatal
+class-not-found: `GlobalSearchService::providers()` is designed to skip classes that do not exist yet
+(logged once), so with zero of the five classes present every group lookup came back empty — exactly the
+"nothing leaks, nothing found" starting state. The permission-gating tests fail on the *positive* half
+(staff must still see `domains`, support must see `servers`), which is what makes them non-vacuous.
+
+## GREEN
+
+```
+$ php artisan test --filter=HostingSearchProviders        (EXIT=0)
+{"tool":"phpunit","result":"passed","tests":5,"passed":5,"assertions":26,"duration_ms":4416}
+```
+
+Syntax gate (`php -l`, LSP is not installed in this environment and the user previously declined it):
+
+```
+No syntax errors detected in app\Services\Search\Providers\ServiceInstanceSearchProvider.php
+No syntax errors detected in app\Services\Search\Providers\HostingAccountSearchProvider.php
+No syntax errors detected in app\Services\Search\Providers\ServerSearchProvider.php
+No syntax errors detected in app\Services\Search\Providers\DomainSearchProvider.php
+No syntax errors detected in app\Services\Search\Providers\SslCertificateSearchProvider.php
+No syntax errors detected in tests\Feature\HostingSearchProvidersTest.php
+```
+
+Route names used by the five providers (all ten exist):
+
+```
+$ php artisan route:list --name=admin.service-instances
+ GET|HEAD admin/service-instances            admin.service-instances.index › Admin\ServiceInstanceController@index
+ GET|HEAD admin/service-instances/{service_instance}  admin.service-instances.show › Admin\ServiceInstanceController@show
+$ php artisan route:list --name=admin.hosting
+ GET|HEAD admin/hosting                      admin.hosting.index › Admin\HostingController@index
+ GET|HEAD admin/hosting/{hostingAccount}     admin.hosting.show › Admin\HostingController@show
+$ php artisan route:list --name=admin.servers
+ GET|HEAD admin/servers                      admin.servers.index › Admin\ServerController@index
+ GET|HEAD admin/servers/{server}             admin.servers.show › Admin\ServerController@show
+$ php artisan route:list --name=admin.domains
+ GET|HEAD admin/domains                      admin.domains.index › Admin\DomainController@index
+ GET|HEAD admin/domains/{domain}             admin.domains.show › Admin\DomainController@show
+$ php artisan route:list --name=admin.ssl
+ GET|HEAD admin/ssl                          admin.ssl.index › Admin\SslController@index
+ GET|HEAD admin/ssl/{ssl}                    admin.ssl.show › Admin\SslController@show
+```
+
+No regression on the shared foundation or the existing search page:
+
+```
+$ php artisan test --filter=GlobalSearchService           (EXIT=0)
+{"tool":"phpunit","result":"passed","tests":14,"passed":14,"assertions":41,"duration_ms":6174}
+$ php artisan test --filter=AdminSearch                   (EXIT=0)
+{"tool":"phpunit","result":"passed","tests":8,"passed":8,"assertions":16,"duration_ms":6880}
+```
+
+## Adversarial probes
+
+### 1. Permission leak (the critical one)
+
+Approach: the REAL seeded role grants, not hand-built permission sets. `TestCase::setUp()` runs
+`AdminLteRbacSeeder`, so `panelUser('staff')` resolves exactly the matrix at
+`database/seeders/AdminLteRbacSeeder.php:251-269` — and that matrix deliberately excludes `hosting.view`
+(its comment explains it gates stored server credentials) and `service-instances.view`. `support` holds
+`hosting.view` (`:194-213`).
+
+Live observables:
+- The test asserts the precondition from the same resolver the service uses:
+  `assertContains('domains.view', $permissions)`, `assertNotContains('hosting.view', $permissions)`,
+  `assertNotContains('service-instances.view', $permissions)` — so the denial is not a typo'd role name
+  silently resolving to zero permissions.
+- Staff groups for `acme`: `domains` present; `hosting`, `servers`, `ssl`, `service-instances` asserted
+  ABSENT with dedicated failure messages ("Servers leaked to a viewer without hosting.view", etc.).
+- Isolated run of the critical test:
+
+```
+$ php artisan test --filter=test_staff_without_hosting_view_gets_no_hosting_server_or_ssl_groups_but_does_get_domains
+{"tool":"phpunit","result":"passed","tests":1,"passed":1,"assertions":8,"duration_ms":3600}
+```
+
+- Static probe over the five new provider files: no `hasPermission` call, no unescaped `whereLike(` call,
+  no invented `ssl.view` permission:
+
+```
+$ Select-String -Path app\Services\Search\Providers\{ServiceInstance,HostingAccount,Server,Domain,SslCertificate}SearchProvider.php -Pattern "hasPermission|whereLike\(|ssl\.view"
+no matches (PASS)
+```
+
+### 2. Malformed input (literal `%`)
+
+`test_a_literal_percent_in_a_hosting_identifier_is_matched_as_a_literal_not_a_wildcard`: two hosting
+accounts, `host-50%` (literal percent) and `host-501` (ordinary). Querying the single character `%` returns
+EXACTLY one result — `host-50%`, at `route('admin.hosting.show', $literal)` — so the term never degenerates
+into a full-table dump. The generated SQL is asserted, not assumed: the captured `hosting_accounts` query
+contains `ESCAPE '!'` and the binding `%!%%`.
+
+### 3. Misleading success output (exact URLs + presence/absence)
+
+- URLs are asserted with `assertSame(route('admin.servers.show', $server), ...['url'])` and
+  `assertSame(route('admin.service-instances.show', $instance), ...['url'])` — equality with the
+  server-resolved route, not `assertStringContainsString('/admin/')`.
+- Group presence/absence is asserted with `assertContains`/`assertNotContains` on the actual group keys
+  returned by `groups()`.
+- The server lookup uses the provider's identifier (`ip_address`, not the name), the service-instance lookup
+  uses `service_tag`; both fixtures are the only matching row, and `assertCount(1, ...)` guards against a
+  stray row making the assertion accidentally pass.
+
+### 4. Dirty worktree
+
+```
+$ git status --porcelain -- <the 6 task paths>
+?? app/Services/Search/Providers/DomainSearchProvider.php
+?? app/Services/Search/Providers/HostingAccountSearchProvider.php
+?? app/Services/Search/Providers/ServerSearchProvider.php
+?? app/Services/Search/Providers/ServiceInstanceSearchProvider.php
+?? app/Services/Search/Providers/SslCertificateSearchProvider.php
+?? tests/Feature/HostingSearchProvidersTest.php
+$ (git status --porcelain).Count      # 103: pre-existing changes from other sessions, none staged here
+```
+
+No tracked file outside the task scope was modified; the identity providers another worker created in the
+same directory (`CustomerSearchProvider`, `ContactSearchProvider`, `StaffUserSearchProvider`) were left
+untouched. Staging is by explicit path only (never `git add -A` / `git add .` / `git commit -a`); the
+evidence file is force-added because `.gitignore:22` ignores `/.omo/`.
+
+`git show --stat HEAD` (after the commit):
+
+```
+PENDING_COMMIT_STAT
+```
+
+### 5. Stale state (config cache)
+
+`php artisan config:clear` was run before the post-clear re-run; the providers are resolved through
+`config('search.providers')`, so the re-run proves no cached config is being read:
+
+```
+$ php artisan config:clear                                (EXIT=0)
+INFO Configuration cache cleared successfully.
+$ php artisan test --filter=HostingSearchProviders        (EXIT=0)
+{"tool":"phpunit","result":"passed","tests":5,"passed":5,"assertions":26,"duration_ms":4432}
+```
+
+### 6. Flaky tests / cancel-resume / hung commands / repeated interruptions
+
+- Flaky tests: not applicable — no time, random or network dependency. Three independent runs (pre-clear,
+  post-clear, repeat) produced identical results: 5 tests / 26 assertions each.
+- Cancel-resume: not applicable — this todo is a single-shot file creation + test + commit; nothing to resume.
+- Hung commands: not applicable — every command exited with the recorded code; no long-running process was
+  started.
+- Repeated interruptions: not applicable — no interruption occurred during this task.
+
+## Commit
+
+- Staged paths (explicit): the 5 provider files + the test + this evidence file.
+- Message: `feat(search): add hosting and infrastructure providers`
+- Hash: PENDING_HASH
+  (This line is embedded by one `git commit --amend --no-edit` immediately after the commit, matching the
+  task-1/task-14 evidence convention; the amended commit is the final one reported to the orchestrator.)

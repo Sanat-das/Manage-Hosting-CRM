@@ -243,6 +243,7 @@ EXIT: 0
   `tests/Feature/IdentitySearchProvidersTest.php`, and this evidence file (force-added: `.gitignore:22` has `/.omo/`
   while `.omo/evidence/**` is already tracked).
 - Message: `feat(search): add customer, contact and staff user providers`
-- Hash: `<PENDING>` — filled in immediately after `git commit` and embedded by one `git commit --amend --no-edit`
-  (same pattern as task 1: the hash line records the pre-amend commit; `git log -1` shows the amended commit with the
-  same message and the same 5-file tree apart from this line).
+- Hash: `719ff2b432a5ecab14f81d0283b3c4c7e4fb752b` (`719ff2b`) — the commit created for this task; this line was
+  embedded by one `git commit --amend --no-edit` immediately after the commit (same pattern as task 1), so `git log -1`
+  shows the amended commit: same message, same 5-file tree apart from this line. The final amended hash is reported in
+  the task's FINAL REPORT (it cannot be embedded here: writing it in would itself change the hash again).
