@@ -1,0 +1,236 @@
+# Task 1 — Search service foundation: provider contract, registry, LIKE escaping, ranking
+
+Plan: `.omo/plans/global-search.md` (todo 1, lines 127-133; shared contracts lines 58-80)
+Date: 2026-09-23
+Environment: Windows, PowerShell 5.1, PHP 8.4.16 (NTS), Laravel Framework 13.31.0, PHPUnit 12.5.35
+Test DB: sqlite `:memory:` (`phpunit.xml:26-27`); `Tests\TestCase::setUp()` seeds the real RBAC roles per test.
+
+## Files created (in scope only)
+
+- `app/Services/Search/LikePattern.php` — final class, `ESCAPE = '!'`, `contains()`
+- `app/Services/Search/SearchProvider.php` — interface (key, label, icon, permission, showRoute, listRoute, query, toResult)
+- `app/Services/Search/AbstractSearchProvider.php` — grouped WHERE, escaped LIKE helper, SQL-side ranking, route skip guard
+- `app/Services/Search/GlobalSearchService.php` — registry + `groups()` + `permissionNames()` (1 query)
+- `config/search.php` — all 17 provider FQCNs pre-listed
+- `tests/Feature/GlobalSearchServiceTest.php` — 11 tests / 33 assertions
+
+## Baseline (untouched tree, before this task)
+
+```
+$ php artisan test --filter=AdminSearch
+{"tool":"phpunit","result":"passed","tests":8,"passed":8,"assertions":16,"duration_ms":7316}
+```
+
+## Failing-first (RED, captured before any production file existed)
+
+```
+$ php artisan test --filter=GlobalSearchService
+An error occurred inside PHPUnit.
+Message: Class "App\Services\Search\AbstractSearchProvider" not found
+Location: C:\Users\Administrator\Local Sites\managehosting\app\tests\Feature\GlobalSearchServiceTest.php:257
+EXIT: 255
+```
+
+The RED run failed at file load on the first missing production class. After the first implementation
+attempt the class loaded and 7/11 passed; the 4 failures were real bugs the tests caught (see
+"misleading success output" below) — they were fixed before the green run.
+
+## Implementation notes (contract compliance)
+
+- `LikePattern::contains('100%_!') === '%100!%!_!!%'`; the escape character is escaped first so a
+  literal `!` still matches.
+- `whereLikeEscaped()` emits exactly
+  `whereRaw($query->getGrammar()->wrap($column)." LIKE ? ESCAPE '!'", [$pattern])`:
+  column wrapped by the grammar (never interpolated), pattern bound, ESCAPE named explicitly
+  (MySQL's default is a backslash, SQLite has none).
+- Grouped WHERE: every column is OR'd inside ONE closure, relations match via `orWhereHas` with their
+  own grouped closure — no `orWhere` outside a grouped closure, no `orWhere` leak into caller scoping.
+  Verified in the generated SQL below.
+- Ranking is SQL-side and applied BEFORE the LIMIT:
+  `ORDER BY (CASE WHEN LOWER(col)=LOWER(?) THEN 0 WHEN LOWER(col) LIKE ? ESCAPE '!' THEN 1 ELSE 2 END), id DESC`.
+  Deviation from the plan's sketch (which omitted `ESCAPE '!'` on the ranking LIKE): the ranking reuses
+  the escaped pattern, so it must name the same ESCAPE character — without it `q=%` would rank by
+  "contains !" instead of a literal percent. Same contract, correct escape semantics.
+- Route guard: `Route::has($this->showRoute())` or the provider returns an empty collection and logs
+  `Log::warning` exactly once per route name (process-static set); never throws.
+- Registry: `config/search.php` pre-lists all 17 provider FQCNs. `GlobalSearchService::providers()`
+  skips entries that do not exist yet (`class_exists` + `is_subclass_of`), logging once per class,
+  never throwing — the 16 classes still to be created in todos 4-7 do not break anything today.
+- Query budget: `permissionNames()` is ONE query (pivot roles + legacy `users.role` fallback inside a
+  single grouped `where`); `groups()` fetches `limit + 1` per provider for the capped count, so no
+  `COUNT(*)` is ever issued.
+- Tests register a SINGLE stub provider (`new GlobalSearchService([StubProvider::class])`) — the
+  constructor accepts an explicit provider list and falls back to `config('search.providers')`.
+
+## GREEN
+
+```
+$ php -l app/Services/Search/LikePattern.php
+No syntax errors detected in app/Services/Search/LikePattern.php
+$ php -l app/Services/Search/SearchProvider.php
+No syntax errors detected in app/Services/Search/SearchProvider.php
+$ php -l app/Services/Search/AbstractSearchProvider.php
+No syntax errors detected in app/Services/Search/AbstractSearchProvider.php
+$ php -l app/Services/Search/GlobalSearchService.php
+No syntax errors detected in app/Services/Search/GlobalSearchService.php
+$ php -l config/search.php
+No syntax errors detected in config/search.php
+```
+
+```
+$ php artisan test --filter=GlobalSearchService --testdox
+PHPUnit 12.5.35 by Sebastian Bergmann and contributors.
+Runtime: PHP 8.4.16
+Global Search Service (Tests\Feature\GlobalSearchService)
+ Like pattern escapes percent underscore and the escape character
+ Like pattern turns a lone wildcard into a literal match
+ A single stub provider yields one group within the query budget
+ A provider is skipped when the user lacks its permission
+ A provider class that does not exist yet is skipped without throwing
+ A provider with a missing route is skipped and logs once
+ Groups fetch one extra row to report a capped count without a count query
+ A blank term returns no groups and runs no provider query
+ Provider sql uses the escape clause and percent matches only a literal percent
+ Ranking is applied before the limit so an exact match is never cut off
+ Exact matches rank before partial matches
+OK (11 tests, 33 assertions)
+EXIT: 0
+```
+
+Repeat run (determinism):
+
+```
+$ php artisan test --filter=GlobalSearchService
+{"tool":"phpunit","result":"passed","tests":11,"passed":11,"assertions":33,"duration_ms":5193}
+EXIT: 0
+```
+
+No regression on the existing contract:
+
+```
+$ php artisan test --filter=AdminSearch
+{"tool":"phpunit","result":"passed","tests":8,"passed":8,"assertions":16,"duration_ms":6901}
+EXIT: 0
+```
+
+Config surface (after `config:clear`, so no stale cached config):
+
+```
+$ php artisan config:clear
+INFO Configuration cache cleared successfully.
+$ php -r "print_r(require 'config/search.php');"
+Array ( [providers] => Array (
+  [0] App\Services\Search\Providers\CustomerSearchProvider
+  [1] App\Services\Search\Providers\ContactSearchProvider
+  [2] App\Services\Search\Providers\StaffUserSearchProvider
+  [3] App\Services\Search\Providers\OrderSearchProvider
+  [4] App\Services\Search\Providers\InvoiceSearchProvider
+  [5] App\Services\Search\Providers\PaymentSearchProvider
+  [6] App\Services\Search\Providers\TransactionSearchProvider
+  [7] App\Services\Search\Providers\QuoteSearchProvider
+  [8] App\Services\Search\Providers\ServiceInstanceSearchProvider
+  [9] App\Services\Search\Providers\HostingAccountSearchProvider
+  [10] App\Services\Search\Providers\ServerSearchProvider
+  [11] App\Services\Search\Providers\DomainSearchProvider
+  [12] App\Services\Search\Providers\SslCertificateSearchProvider
+  [13] App\Services\Search\Providers\TicketSearchProvider
+  [14] App\Services\Search\Providers\KnowledgeBaseSearchProvider
+  [15] App\Services\Search\Providers\CatalogProductSearchProvider
+  [16] App\Services\Search\Providers\ProductSearchProvider
+))
+EXIT: 0
+```
+
+## Adversarial probes
+
+### 1. Malformed input (LIKE wildcards)
+
+Raw probe, app booted with sqlite `:memory:` so the developer's local DB was never touched
+(probe script lived in the pre-approved temp dir, outside the repo):
+
+```
+$ $env:DB_CONNECTION='sqlite'; $env:DB_DATABASE=':memory:'; php <temp>\search_probe.php
+LikePattern::contains("100%_!") = %100!%!_!!%
+LikePattern::contains("%")     = %!%%
+SQL fragment                   = "ticket_no" LIKE ? ESCAPE '!'
+Provider registry count        = 17
+PROBE_EXIT: 0
+```
+
+Test-level observables (from `GlobalSearchServiceTest`):
+- generated SQL contains `ESCAPE '!'` and the binding `%!%%` for `q=%`;
+- `q=%` returns exactly the one ticket whose number holds a literal `%` (`TKT-50%`) and not the
+  ordinary row (`TKT-200`) — i.e. the query never degenerates into a full-table dump;
+- `LikePattern::contains('100%_!') === '%100!%!_!!%'`.
+
+### 2. Misleading success output (query counts, not log lines)
+
+All query-budget claims are asserted from `DB::getQueryLog()`:
+- `test_a_single_stub_provider_yields_one_group_within_the_query_budget`: `<= 3` queries for the whole
+  request (1 permission pluck + 1 provider query + 1 eager load); the assertion message prints the
+  captured SQL on failure.
+- `test_groups_fetch_one_extra_row_to_report_a_capped_count_without_a_count_query`: asserts the
+  captured SQL contains no `count(*)`.
+- `test_a_blank_term_returns_no_groups_and_runs_no_provider_query`: `<= 1` query (the permission pluck;
+  no provider was asked).
+
+These assertions are live, not vacuous: on the first implementation attempt the run reported
+`{"result":"failed","tests":11,"passed":7,"failed":4}` — the tests caught a grouped-WHERE bug (columns
+were AND-joined, so `TKT-ACME` matched nothing) and a fixture bug (the seeded `marketing` role's
+permissions leaked through the `users.role` fallback, which is real `hasPermission()` semantics and is
+now handled by the shared `CreatesChatUsers` test concern). Both were fixed before the green run.
+
+### 3. Dirty worktree
+
+```
+$ git status --porcelain -- app/Services/Search config/search.php tests/Feature/GlobalSearchServiceTest.php
+?? app/Services/Search/
+?? config/search.php
+?? tests/Feature/GlobalSearchServiceTest.php
+$ (git status --porcelain).Count   # before this task: 99 (other sessions); with this task's new files: 103
+```
+
+No tracked file outside the task scope was modified; only the 6 new files + this evidence file were
+staged by explicit path (never `git add -A`/`git add .`/`git commit -a`).
+
+`git show --stat HEAD` (after the commit):
+
+```
+commit 6d1be5f5
+    feat(search): add provider contract, registry, LIKE escaping and ranking
+
+ .../global-search/task-1-global-search.txt         | 221 +++++++++++++
+ app/Services/Search/AbstractSearchProvider.php     | 190 +++++++++++
+ app/Services/Search/GlobalSearchService.php        | 180 +++++++++++
+ app/Services/Search/LikePattern.php                |  34 ++
+ app/Services/Search/SearchProvider.php             |  52 +++
+ config/search.php                                  |  31 ++
+ tests/Feature/GlobalSearchServiceTest.php          | 348 +++++++++++++++++++++
+ 7 files changed, 1056 insertions(+)
+```
+
+Exactly the 7 in-scope files; none of the ~99 unrelated dirty files from other sessions was staged.
+
+### 4. Stale state (config cache)
+
+`php artisan config:clear` was run immediately before the config surface proof above; the probe also
+read the registry through Laravel's config repository (`Provider registry count = 17`), so neither the
+raw `require` nor the framework read a stale cached config.
+
+### 5. Flaky tests / cancel-resume / hung commands / repeated interruptions
+
+- Flaky tests: not applicable — no time/random/network dependency; two consecutive green runs produced
+  identical results (11 tests, 33 assertions each).
+- Cancel-resume: not applicable — this todo is a single-shot file creation; nothing to resume.
+- Hung commands: not applicable — every command exited with the recorded exit code; no long-running
+  process was started.
+- Repeated interruptions: not applicable — no interruption occurred during this task.
+
+## Commit
+
+- Staged paths (explicit): the 6 files above + this evidence file (force-added because `.gitignore`
+  has `/.omo/` while `.omo/evidence/**` is already tracked; no other `.omo` file was staged).
+- Message: `feat(search): add provider contract, registry, LIKE escaping and ranking`
+- Hash: `6d1be5f56551c959cc9ac8812eea6f4d2d25711c` (`6d1be5f5`) — the commit created for this task.
+  This hash line was embedded by one `git commit --amend --no-edit` immediately after the commit, so
+  `git log -1` shows the amended commit: same message, same 7-file tree apart from this line.
