@@ -1,0 +1,270 @@
+# Task 5 — Billing providers: orders, invoices, payments, transactions, quotes
+
+Plan: `.omo/plans/global-search.md` (todo 5, lines 159-165; provider matrix rows 7-11, lines 46-50; shared contracts lines 58-80)
+Date: 2026-09-23
+Environment: Windows, PowerShell 5.1, PHP 8.4.16 (NTS), Laravel Framework 13.31.0, PHPUnit 12.5.35
+Test DB: sqlite `:memory:` (`phpunit.xml:26-27`); `Tests\TestCase::setUp()` seeds the real RBAC roles per test.
+Foundation amendment (todo 14) landed mid-task: `queryFor()` now exists on the contract. These five providers
+inherit `query()`/`queryFor()` from `AbstractSearchProvider` and only supply `baseQuery()`/`searchableColumns()`/
+`rankColumn()`/`toResult()`, so they work under both the pre- and post-amendment pipelines (verified green after it landed).
+
+## Files created (in scope only)
+
+- `app/Services/Search/Providers/OrderSearchProvider.php` — key `orders`, label `Orders`, icon `bi bi-cart`, `orders.view`, `admin.orders.show` / `admin.orders.index`, columns `order_number`, `domain_name`, rankColumn `order_number`
+- `app/Services/Search/Providers/InvoiceSearchProvider.php` — key `invoices`, label `Invoices`, icon `bi bi-receipt`, `invoices.view`, `admin.invoices.show` / `admin.invoices.index`, column `invoice_no`
+- `app/Services/Search/Providers/PaymentSearchProvider.php` — key `payments`, label `Payments`, icon `bi bi-credit-card`, `payments.view`, `admin.payments.show` / `admin.payments.index`, column `transaction_id`
+- `app/Services/Search/Providers/TransactionSearchProvider.php` — key `transactions`, label `Transactions`, icon `bi bi-arrow-left-right`, `invoices.view` (per `routes/admin/billing.php:107,111`), `admin.transactions.show` / `admin.transactions.index`, column `transaction_id`
+- `app/Services/Search/Providers/QuoteSearchProvider.php` — key `quotes`, label `Quotes`, icon `bi bi-file-text`, `invoices.view` (per `routes/admin/billing.php:78,90`), `admin.quotes.show` / `admin.quotes.index`, columns `quote_no`, `subject`
+- `tests/Feature/BillingSearchProvidersTest.php` — 12 tests / 75 assertions
+- `config/search.php` was NOT edited (already lists all five FQCNs; verified below).
+
+## Column / route verification (plan names vs. reality)
+
+| Plan name | Reality | Evidence |
+| --- | --- | --- |
+| `orders.order_number` | exists (nullable, unique) | `database/migrations/2026_08_01_000001_add_order_number_billing_cycle_to_orders_table.php:22,26` |
+| `orders.domain_name` | exists (nullable) | `database/migrations/2026_07_30_120030_create_order_tables.php:18` |
+| `invoices.invoice_no` | exists (unique) | `database/migrations/2026_07_30_120040_create_financial_tables.php:13` |
+| `payments.transaction_id` | exists (nullable) | `database/migrations/2026_07_30_120040_create_financial_tables.php:65` |
+| `transactions.transaction_id` | exists (nullable) | `database/migrations/2026_07_30_120040_create_financial_tables.php:93` |
+| `quotes.quote_no`, `quotes.subject` | exist | `database/migrations/2026_07_30_120040_create_financial_tables.php:104-105` |
+| `admin.orders.show` / `.index` | exist | `routes/admin/orders.php:22,34`; route:list below |
+| `admin.invoices.show` / `.index` | exist | `routes/admin/billing.php:23,35`; route:list below |
+| `admin.payments.show` / `.index` | exist | `routes/admin/billing.php:60,72`; route:list below |
+| `admin.transactions.show` / `.index` | exist, gated `invoices.view` | `routes/admin/billing.php:106,110`; route:list below |
+| `admin.quotes.show` / `.index` | exist, gated `invoices.view` | `routes/admin/billing.php:77,89`; route:list below |
+
+**No plan-named column or route deviated; nothing was dropped or renamed.**
+
+Findings recorded (not deviations, no product change):
+- The `transactions` table has only `created_at` (migration line 96) and the `Transaction` model does not disable
+  `updated_at` (unlike `Payment`, which sets `UPDATED_AT = null`), so `Transaction::create()` writes a
+  non-existent column. The provider only reads the table; the test fixture inserts with `$model->timestamps = false`.
+  The model is outside this task's scope and was not modified.
+- No `toResult()` reads a relation (order label = `order_no` accessor on its own column; subtitles = own
+  `domain_name` / `status` / `subject`), so no eager loads were added; each provider costs exactly 1 query.
+- `OrderSearchProvider` overrides `rankColumn()` to `order_number` explicitly (the base default would also pick
+  the first searchable column; the override locks the intent).
+
+## Baseline (before this task)
+
+```
+$ php artisan test --filter=GlobalSearchService   # at task start, 11/11 green per handoff
+$ php artisan test --filter=AdminSearch
+{"tool":"phpunit","result":"passed","tests":8,"passed":8,"assertions":16,"duration_ms":6901}
+```
+
+## Failing-first (RED, captured before any provider class existed)
+
+First RED run also exposed a fixture bug (the `transactions.updated_at` finding above):
+
+```
+$ php artisan test --filter=BillingSearchProviders
+{"tool":"phpunit","result":"failed","tests":12,"passed":2,"assertions":15,...,"errors":4,
+ "error_details":[{"test":"...test_transaction_is_found_by_transaction_id...",
+ "message":"SQLSTATE[HY000]: General error: 1 table transactions has no column named updated_at ..."}]}
+```
+
+Fixture fixed in the test (not in product code), re-run — pure "provider does not exist yet" RED:
+
+```
+$ php artisan test --filter=BillingSearchProviders
+{"tool":"phpunit","result":"failed","tests":12,"passed":3,"assertions":18,"duration_ms":5880,"failed":8,"errors":1,
+ "failures":[
+  {"test":"...test_invoice_is_found_by_invoice_no_for_a_viewer_with_invoices_view","message":"Failed asserting that an array has the key 'invoices'."},
+  {"test":"...test_order_is_found_by_order_number_and_links_to_its_show_route","message":"Failed asserting that an array has the key 'orders'."},
+  {"test":"...test_order_is_found_by_domain_name","message":"Failed asserting that an array has the key 'orders'."},
+  {"test":"...test_payment_is_found_by_transaction_id_and_links_to_its_show_route","message":"Failed asserting that an array has the key 'payments'."},
+  {"test":"...test_transaction_is_found_by_transaction_id_and_links_to_its_show_route","message":"Failed asserting that an array has the key 'transactions'."},
+  {"test":"...test_quote_is_found_by_quote_no_and_by_subject","message":"Failed asserting that an array has the key 'quotes'."},
+  {"test":"...test_a_literal_percent_in_a_billing_identifier_is_matched_literally","message":"Failed asserting that an array has the key 'invoices'."},
+  {"test":"...test_billing_typeahead_payload_never_contains_monetary_fields","message":"Every billing group should have matched ACME. Failed asserting that actual size 0 matches expected size 5."}],
+ "error_details":[{"test":"...test_transactions_and_quotes_are_gated_by_invoices_view_never_payments_view",
+  "message":"Class \"App\\Services\\Search\\Providers\\OrderSearchProvider\" not found"}]}
+EXIT: 1
+```
+
+(The 3 passes are the denial/registry tests, which are vacuously true with no provider classes — they become
+meaningful once the classes exist, see GREEN.)
+
+## GREEN
+
+Syntax (`php -l`; the PHP LSP server is not installed in this environment — previously declined — so `php -l`
+is the syntax gate):
+
+```
+$ php -l app\Services\Search\Providers\OrderSearchProvider.php
+No syntax errors detected in app\Services\Search\Providers\OrderSearchProvider.php
+$ php -l app\Services\Search\Providers\InvoiceSearchProvider.php
+No syntax errors detected in app\Services\Search\Providers\InvoiceSearchProvider.php
+$ php -l app\Services\Search\Providers\PaymentSearchProvider.php
+No syntax errors detected in app\Services\Search\Providers\PaymentSearchProvider.php
+$ php -l app\Services\Search\Providers\TransactionSearchProvider.php
+No syntax errors detected in app\Services\Search\Providers\TransactionSearchProvider.php
+$ php -l app\Services\Search\Providers\QuoteSearchProvider.php
+No syntax errors detected in app\Services\Search\Providers\QuoteSearchProvider.php
+$ php -l tests\Feature\BillingSearchProvidersTest.php
+No syntax errors detected in tests\Feature\BillingSearchProvidersTest.php
+```
+
+```
+$ php artisan test --filter=BillingSearchProviders --testdox
+Billing Search Providers (Tests\Feature\BillingSearchProviders)
+ Invoice is found by invoice no for a viewer with invoices view
+ Invoice is absent for a viewer without invoices view
+ Order is found by order number and links to its show route
+ Order is found by domain name
+ Payment is found by transaction id and links to its show route
+ Transaction is found by transaction id and links to its show route
+ Quote is found by quote no and by subject
+ Transactions and quotes are gated by invoices view never payments view
+ A viewer with only customers view gets zero billing groups
+ Config registry lists all five billing providers in order
+ A literal percent in a billing identifier is matched literally
+ Billing typeahead payload never contains monetary fields
+OK (12 tests, 75 assertions)
+EXIT: 0
+```
+
+Final run after `php artisan config:clear` (no stale cached config), plus both regression suites:
+
+```
+$ php artisan config:clear
+INFO Configuration cache cleared successfully.
+
+$ php artisan test --filter=BillingSearchProviders
+{"tool":"phpunit","result":"passed","tests":12,"passed":12,"assertions":75,"duration_ms":5801}
+EXIT: 0
+
+$ php artisan test --filter=GlobalSearchService
+{"tool":"phpunit","result":"passed","tests":14,"passed":14,"assertions":41,"duration_ms":6155}
+EXIT: 0
+# 14 tests: the concurrent todo-14 foundation amendment added 3 queryFor tests; all green with these providers.
+
+$ php artisan test --filter=AdminSearch
+{"tool":"phpunit","result":"passed","tests":8,"passed":8,"assertions":16,"duration_ms":6645}
+EXIT: 0
+```
+
+Repeat run (determinism): `php artisan test --filter=BillingSearchProviders` twice more produced
+`passed 12/12, 75 assertions` both times.
+
+Route-name proof:
+
+```
+$ foreach ($n in @('admin.orders','admin.invoices','admin.payments','admin.transactions','admin.quotes')) {
+    php artisan route:list --name=$n | Select-String -Pattern "\.(index|show)\b" }
+== route:list --name=admin.orders
+GET|HEAD admin/orders .. admin.orders.index › Admin\OrderController@index
+GET|HEAD admin/orders/{order} .. admin.orders.show › Admin\OrderController@show
+== route:list --name=admin.invoices
+GET|HEAD admin/invoices .. admin.invoices.index › Admin\InvoiceController@index
+GET|HEAD admin/invoices/{invoice} .. admin.invoices.show › Admin\InvoiceController@show
+== route:list --name=admin.payments
+GET|HEAD admin/payments .. admin.payments.index › Admin\PaymentController@index
+GET|HEAD admin/payments/{payment} .. admin.payments.show › Admin\PaymentController@show
+== route:list --name=admin.transactions
+GET|HEAD admin/transactions .. admin.transactions.index › Admin\TransactionController@index
+GET|HEAD admin/transactions/{transaction} .. admin.transactions.show › Admin\TransactionController@show
+== route:list --name=admin.quotes
+GET|HEAD admin/quotes .. admin.quotes.index › Admin\QuoteController@index
+GET|HEAD admin/quotes/{quote} .. admin.quotes.show › Admin\QuoteController@show
+```
+
+## Manual QA channel — real rows, real URLs
+
+Test-filter output is the primary channel: every happy-path test asserts the result URL with
+`assertSame(route('admin.<entity>.show', $model), $result['url'])` and the identifier with `assertSame` (never a
+substring), so a wrong destination or wrong row fails the suite.
+
+Raw probe against an isolated sqlite `:memory:` DB (developer's local DB untouched; script in the pre-approved
+temp dir, outside the repo), seeding one row per entity:
+
+```
+$ $env:DB_CONNECTION='sqlite'; $env:DB_DATABASE=':memory:'; php <temp>\billing_search_probe.php
+REGISTRY_COUNT=17
+GROUP_KEYS=orders,invoices,payments,transactions,quotes
+PAYLOAD=[{"key":"orders","label":"Orders","icon":"bi bi-cart","results":[{"id":1,"label":"ORD-ACME-1","subtitle":"acme-order.com","url":"http://managehosting.local/admin/orders/1"}],"has_more":false,"list_url":"http://managehosting.local/admin/orders?search=ACME"},
+{"key":"invoices","label":"Invoices","icon":"bi bi-receipt","results":[{"id":1,"label":"INV-ACME-1","subtitle":"Sent","url":"http://managehosting.local/admin/invoices/1"}],"has_more":false,"list_url":"http://managehosting.local/admin/invoices?search=ACME"},
+{"key":"payments","label":"Payments","icon":"bi bi-credit-card","results":[{"id":1,"label":"PAY-ACME-1","subtitle":"Completed","url":"http://managehosting.local/admin/payments/1"}],"has_more":false,"list_url":"http://managehosting.local/admin/payments?search=ACME"},
+{"key":"transactions","label":"Transactions","icon":"bi bi-arrow-left-right","results":[{"id":1,"label":"TXN-ACME-1","subtitle":"Completed","url":"http://managehosting.local/admin/transactions/1"}],"has_more":false,"list_url":"http://managehosting.local/admin/transactions?search=ACME"},
+{"key":"quotes","label":"Quotes","icon":"bi bi-file-text","results":[{"id":1,"label":"QT-ACME-1","subtitle":"Acme migration plan","url":"http://managehosting.local/admin/quotes/1"}],"has_more":false,"list_url":"http://managehosting.local/admin/quotes?search=ACME"}]
+MONETARY_DECIMALS_PRESENT=no
+WILDCARD_INVOICE_LABELS=["INV-50%"]
+WILDCARD_ROW_COUNT=2
+WILDCARD_ESCAPE_SQL=select * from "orders" where (("order_number" LIKE ? ESCAPE '!') or ("domain_name" LIKE ? ESCAPE '!')) order by (CASE WHEN LOWER("order_number") = LOWER(?) THEN 0 WHEN LOWER("order_number") LIKE ? ESCAPE '!' THEN 1 ELSE 2 END), id DESC limit 6
+WILDCARD_ESCAPE_BINDINGS=["%!%%","%!%%","%","%!%%"]
+PROBE_EXIT: 0
+```
+
+Observables: five groups in config order; URLs resolve to the exact show routes (`/admin/orders/1`,
+`/admin/invoices/1`, `/admin/payments/1`, `/admin/transactions/1`, `/admin/quotes/1`); list links carry
+`?search=ACME`; every subtitle is a non-monetary descriptor (domain, status, subject); no monetary decimal
+(9876.54 / 1234.56 / 543.21 / 321.45 / 654.32, the seeded values) appears anywhere in the payload.
+
+## Adversarial probes
+
+### 1. Malformed input — literal `%` identifier
+
+- Test `test_a_literal_percent_in_a_billing_identifier_is_matched_literally`: seeds `INV-50%` and `INV-200`
+  (2 rows), queries `q=%`; asserts exactly 1 result, label `INV-50%`, SQL contains `ESCAPE '!'`, and the
+  bindings contain `%!%%` — i.e. the query never degenerates into a full-table dump.
+- Probe observables above: `WILDCARD_INVOICE_LABELS=["INV-50%"]` with `WILDCARD_ROW_COUNT=2`; the generated
+  SQL names `ESCAPE '!'` on every LIKE and the bound pattern is `%!%%`.
+- The escaping itself comes from the shared `LikePattern::contains()` + `whereLikeEscaped()`; the providers
+  never build LIKE strings by hand.
+
+### 2. Misleading success — exact URLs and payload shape, not substring matches
+
+- All five happy-path tests assert `assertSame(route('admin.<entity>.show', $model), $result['url'])` and
+  `assertSame(<identifier>, $result['label'])`, so a swapped destination or a wrong row fails.
+- `test_billing_typeahead_payload_never_contains_monetary_fields`: all five groups matched (`assertCount(5)`),
+  every result has exactly `['id','label','subtitle','url']`, and none of the seeded monetary values
+  (9876.54 / 1234.56 / 543.21 / 321.45 / 654.32) appears in `json_encode($groups)`.
+- `test_a_viewer_with_only_customers_view_gets_zero_billing_groups`: all five rows match `ACME`, yet the
+  explicit five-provider registry returns `[]` — all five providers skipped.
+- `test_transactions_and_quotes_are_gated_by_invoices_view_never_payments_view`: direct `permission()`
+  assertions plus a functional run — a `payments.view`-only viewer sees the payments group but none of
+  transactions/quotes/invoices/orders.
+
+### 3. Dirty worktree — only this task's files
+
+```
+$ git status --porcelain -- app/Services/Search/Providers tests/Feature/BillingSearchProvidersTest.php .omo/evidence/global-search
+?? app/Services/Search/Providers/InvoiceSearchProvider.php
+?? app/Services/Search/Providers/OrderSearchProvider.php
+?? app/Services/Search/Providers/PaymentSearchProvider.php
+?? app/Services/Search/Providers/QuoteSearchProvider.php
+?? app/Services/Search/Providers/TransactionSearchProvider.php
+?? tests/Feature/BillingSearchProvidersTest.php
+```
+
+The tree also carries ~100 unrelated dirty files from other sessions; nothing outside the six new files above
+was staged (staging is by explicit path, never `git add -A`/`.`/`-a`). `git show --stat HEAD` after the commit:
+
+```
+$ git show --stat HEAD
+<see committed output below / final report>
+```
+
+### 4. Stale state — config cache
+
+`php artisan config:clear` was run immediately before the final green run above. The probe also read the
+registry through Laravel's config repository (`REGISTRY_COUNT=17`), so no cached config was involved.
+
+### 5. Cancel/resume, hung commands, flaky tests, repeated interruptions
+
+- Cancel/resume: not applicable — the task ran start-to-finish in one session; nothing to resume.
+- Hung commands: not applicable — every command exited with the recorded exit code; no long-running process.
+- Flaky tests: not applicable — no time/random/network dependency; three consecutive runs produced identical
+  results (12 tests, 75 assertions).
+- Repeated interruptions: not applicable — no interruption occurred during this task.
+
+## Commit
+
+- Staged paths (explicit): the 5 provider files + `tests/Feature/BillingSearchProvidersTest.php` + this
+  evidence file (force-added: `.gitignore:22` has `/.omo/` while `.omo/evidence/**` is already tracked).
+- Message: `feat(search): add billing providers (orders, invoices, payments, transactions, quotes)`
+- Hash: `f7f2a133cc08ad386c015f12b002a7a4efd121cd` (`f7f2a133`) — the commit created for this task. This
+  line was embedded by one `git commit --amend --no-edit` immediately after the commit, so `git log -1`
+  shows the amended commit: same message and same 7-file tree apart from this line.
