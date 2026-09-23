@@ -240,12 +240,26 @@ $ git status --porcelain -- app/Services/Search/Providers tests/Feature/BillingS
 ```
 
 The tree also carries ~100 unrelated dirty files from other sessions; nothing outside the six new files above
-was staged (staging is by explicit path, never `git add -A`/`.`/`-a`). `git show --stat HEAD` after the commit:
+was staged (staging is by explicit path, never `git add -A`/`.`/`-a`). `git show --stat HEAD` after the commit
+(only this task's 7 files — the 5 providers, the test, this evidence file):
 
 ```
-$ git show --stat HEAD
-<see committed output below / final report>
+$ git show --stat HEAD --format="%h %s"
+d9527593 feat(search): add billing providers (orders, invoices, payments, transactions, quotes)
+
+ .../global-search/task-5-global-search.txt         | 270 ++++++++++++++
+ .../Search/Providers/InvoiceSearchProvider.php     |  67 ++++
+ .../Search/Providers/OrderSearchProvider.php       |  81 ++++
+ .../Search/Providers/PaymentSearchProvider.php     |  71 ++++
+ .../Search/Providers/QuoteSearchProvider.php       |  67 ++++
+ .../Search/Providers/TransactionSearchProvider.php |  71 ++++
+ tests/Feature/BillingSearchProvidersTest.php       | 413 +++++++++++++++++++++
+ 7 files changed, 1040 insertions(+)
 ```
+
+The quoted hash above is the commit that first contained this file; this stat block was recorded by a
+follow-up evidence-only commit (a second `--amend` was skipped because another worker committed on top
+during the race).
 
 ### 4. Stale state — config cache
 
@@ -265,6 +279,7 @@ registry through Laravel's config repository (`REGISTRY_COUNT=17`), so no cached
 - Staged paths (explicit): the 5 provider files + `tests/Feature/BillingSearchProvidersTest.php` + this
   evidence file (force-added: `.gitignore:22` has `/.omo/` while `.omo/evidence/**` is already tracked).
 - Message: `feat(search): add billing providers (orders, invoices, payments, transactions, quotes)`
-- Hash: `f7f2a133cc08ad386c015f12b002a7a4efd121cd` (`f7f2a133`) — the commit created for this task. This
-  line was embedded by one `git commit --amend --no-edit` immediately after the commit, so `git log -1`
-  shows the amended commit: same message and same 7-file tree apart from this line.
+- Hash: `d9527593eb9a8157a9a467044a89939ec83e4f53` (`d9527593`) — the commit created for this task, amended
+  once to embed this hash line (`f7f2a133` → `d9527593`). The `git show --stat` block above was recorded by a
+  follow-up evidence-only commit; a second `--amend` was skipped because another worker committed on top
+  during the race.
