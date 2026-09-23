@@ -1,0 +1,163 @@
+TASK 7 — Support and catalog providers: tickets, KB articles, catalog products, products
+Plan: .omo/plans/global-search.md todo 7 (lines 175-181), provider matrix rows 12-15 (lines 51-54), shared contracts (lines 58-80)
+Draft amendment read: .omo/drafts/global-search.md "Execution amendments" (todo 14 queryFor/baseQueryFor hook, commit 59a5e63b)
+Repo: C:\Users\Administrator\Local Sites\managehosting\app (Laravel 13, PHP 8.4.16, Windows PowerShell 5.1)
+Date: 2026-09-23
+Baseline before this task: --filter=GlobalSearchService 14/14 green, --filter=AdminSearch 8/8 green (sibling providers untouched)
+
+================================================================================
+STEP 1 — FAILING-FIRST PROOF (RED), before any provider class existed
+================================================================================
+command: php artisan test --filter=SupportCatalogSearchProviders
+exit: 1
+result: tests 8, passed 2, failed 6 (the 2 passes are the two absence assertions, vacuous
+        by construction while the provider classes do not exist — the 6 presence/URL/
+        visibility assertions all failed, which is the RED signal)
+failures:
+  - test_a_draft_kb_article_is_visible_to_a_kb_edit_holder: Failed asserting that actual size 0 matches expected size 1.
+  - test_a_published_kb_article_is_visible_to_a_kb_view_only_viewer: Non-vacuity: published articles must still be found. Failed asserting that actual size 0 matches expected size 1.
+  - test_the_kb_subtitle_never_contains_the_article_content_body: Failed asserting that actual size 0 matches expected size 1.
+  - test_a_ticket_is_found_by_ticket_no_and_links_to_its_show_route: Failed asserting that actual size 0 matches expected size 1.
+  - test_a_literal_percent_sign_in_a_ticket_number_matches_only_that_ticket: Failed asserting that actual size 0 matches expected size 1.
+  - test_catalog_products_are_found_by_sku_and_products_by_name: The catalog-products group must be present. Failed asserting that null is not null.
+raw:
+{"tool":"phpunit","result":"failed","tests":8,"passed":2,"assertions":8,"duration_ms":4418,"failed":6,"failures":[{"test":"Tests\\Feature\\SupportCatalogSearchProvidersTest::test_a_draft_kb_article_is_visible_to_a_kb_edit_holder","file":"C:\\Users\\Administrator\\Local Sites\\managehosting\\app\\tests\\Feature\\SupportCatalogSearchProvidersTest.php","line":73,"message":"Failed asserting that actual size 0 matches expected size 1."},{"test":"Tests\\Feature\\SupportCatalogSearchProvidersTest::test_a_published_kb_article_is_visible_to_a_kb_view_only_viewer","file":"C:\\Users\\Administrator\\Local Sites\\managehosting\\app\\tests\\Feature\\SupportCatalogSearchProvidersTest.php","line":90,"message":"Non-vacuity: published articles must still be found.\nFailed asserting that actual size 0 matches expected size 1."},{"test":"Tests\\Feature\\SupportCatalogSearchProvidersTest::test_the_kb_subtitle_never_contains_the_article_content_body","file":"C:\\Users\\Administrator\\Local Sites\\managehosting\\app\\tests\\Feature\\SupportCatalogSearchProvidersTest.php","line":109,"message":"Failed asserting that actual size 0 matches expected size 1."},{"test":"Tests\\Feature\\SupportCatalogSearchProvidersTest::test_a_ticket_is_found_by_ticket_no_and_links_to_its_show_route","file":"C:\\Users\\Administrator\\Local Sites\\managehosting\\app\\tests\\Feature\\SupportCatalogSearchProvidersTest.php","line":132,"message":"Failed asserting that actual size 0 matches expected size 1."},{"test":"Tests\\Feature\\SupportCatalogSearchProvidersTest::test_a_literal_percent_sign_in_a_ticket_number_matches_only_that_ticket","file":"C:\\Users\\Administrator\\Local Sites\\managehosting\\app\\tests\\Feature\\SupportCatalogSearchProvidersTest.php","line":153,"message":"Failed asserting that actual size 0 matches expected size 1."},{"test":"Tests\\Feature\\SupportCatalogSearchProvidersTest::test_catalog_products_are_found_by_sku_and_products_by_name","file":"C:\\Users\\Administrator\\Local Sites\\managehosting\\app\\tests\\Feature\\SupportCatalogSearchProvidersTest.php","line":191,"message":"The catalog-products group must be present.\nFailed asserting that null is not null."}]}
+
+================================================================================
+STEP 2 — COLUMN / ROUTE VERIFICATION (plan-named names vs real schema)
+================================================================================
+- tickets columns: ticket_no, subject -> database/migrations/2026_07_30_120050_create_support_tables.php:13,15 (MATCH; no deviation)
+- knowledge_base columns: title, content, status enum draft|published, category -> same migration :44,46,50 (MATCH)
+- catalog_products columns: sku, name, status -> database/migrations/2026_07_30_120020_create_config_tables.php:80,81,92 (MATCH)
+- products columns: name -> database/migrations/2026_07_30_120010_create_product_tables.php:13 (MATCH)
+- routes: routes/admin/support.php:60-62 admin.tickets.index (permission:tickets.view), :76-78 admin.tickets.show,
+  :126-128 admin.kb.index (kb.view), :138-140 admin.kb.show; routes/admin/enterprise.php:137-138 admin.catalog-products.index
+  (catalog-products.view), :143-144 admin.catalog-products.show; routes/admin/products.php:37-39 admin.products.index
+  (products.view), :49-51 admin.products.show. ALL MATCH, no deviation.
+- list routes accept ?search=: TicketController.php:98, KbController.php:39, CatalogProductController.php:16,
+  ProductController.php:43 all do trim($request->query('search')) (MATCH; foundation appends ['search' => $term]).
+- KbService::STATUS_PUBLISHED exists at app/Services/KbService.php:40 (MATCH).
+- config/search.php:26-29 already names the exact 4 classes created here; config/search.php NOT edited.
+
+DEVIATIONS RECORDED: none. Every plan-named column and route exists under the planned name.
+
+================================================================================
+STEP 3 — IMPLEMENTATION
+================================================================================
+Created (parameterless constructors; resolved via app($class) by GlobalSearchService):
+- app/Services/Search/Providers/TicketSearchProvider.php
+  key tickets / label Tickets / icon bi-life-preserver / permission tickets.view
+  showRoute admin.tickets.show / listRoute admin.tickets.index
+  searchableColumns ['ticket_no','subject'] / rankColumn ticket_no
+  toResult: label ticket_no, subtitle subject
+- app/Services/Search/Providers/KnowledgeBaseSearchProvider.php
+  key kb / label Knowledge Base / icon bi-book / permission kb.view
+  showRoute admin.kb.show / listRoute admin.kb.index
+  searchableColumns ['title','content'] / rankColumn title
+  baseQuery(): published-only (KbService::STATUS_PUBLISHED)
+  baseQueryFor(array $permissionNames): kb.edit present -> KnowledgeBase::query() (all statuses);
+    otherwise -> $this->baseQuery() (published-only). No hasPermission() call anywhere.
+  toResult: label title, subtitle KbService::CATEGORIES[category] (category label ONLY — never content)
+- app/Services/Search/Providers/CatalogProductSearchProvider.php
+  key catalog-products / label Catalog Products / icon bi-boxes / permission catalog-products.view
+  showRoute admin.catalog-products.show / listRoute admin.catalog-products.index
+  searchableColumns ['name','sku'] / rankColumn default name
+  toResult: label name, subtitle sku ?: status (SoftDeletes global scope excludes trashed rows)
+- app/Services/Search/Providers/ProductSearchProvider.php
+  key products / label Products / icon bi-box / permission products.view
+  showRoute admin.products.show / listRoute admin.products.index
+  searchableColumns ['name'] / rankColumn default name
+  toResult: label name, subtitle status
+
+No eager loads added: no toResult() reads a relation (KB category is a column; the category LABEL
+comes from KbService::CATEGORIES), so there is no N+1 to eager-load away.
+No foundation file, no sibling provider, no config/search.php touched.
+
+================================================================================
+STEP 4 — GREEN (automated verification)
+================================================================================
+command: php artisan config:clear; php artisan test --filter=SupportCatalogSearchProviders
+exit: 0
+{"tool":"phpunit","result":"passed","tests":8,"passed":8,"assertions":40,"duration_ms":4379}
+(Note: a first green attempt showed 7/8 because the test asserted the catalog label was the SKU;
+ the provider's intended shape is label=name, subtitle=sku — the TEST was corrected, the
+ assertion was strengthened with a SKU-only term probe, and the provider was left as designed.)
+
+command: php artisan test --filter=GlobalSearchService
+exit: 0
+{"tool":"phpunit","result":"passed","tests":14,"passed":14,"assertions":41,"duration_ms":5549}
+
+command: php artisan test --filter=AdminSearch
+exit: 0
+{"tool":"phpunit","result":"passed","tests":8,"passed":8,"assertions":16,"duration_ms":5983}
+
+command: php artisan test --filter=GlobalSearch
+exit: 0
+{"tool":"phpunit","result":"passed","tests":14,"passed":14,"assertions":41,"duration_ms":5524}
+
+command: php -l (each new file)
+app/Services/Search/Providers/TicketSearchProvider.php        -> No syntax errors detected
+app/Services/Search/Providers/KnowledgeBaseSearchProvider.php -> No syntax errors detected
+app/Services/Search/Providers/CatalogProductSearchProvider.php-> No syntax errors detected
+app/Services/Search/Providers/ProductSearchProvider.php       -> No syntax errors detected
+tests/Feature/SupportCatalogSearchProvidersTest.php           -> No syntax errors detected
+
+command: php vendor/bin/pint --test <5 files>
+exit: 0 -> {"tool":"pint","result":"passed"}
+
+command: php artisan route:list --name=<filter> (names confirmed, real URIs)
+admin.tickets.index  admin/tickets
+admin.tickets.show   admin/tickets/{ticket}
+admin.kb.index       admin/kb
+admin.kb.show        admin/kb/{article}
+admin.catalog-products.index  admin/catalog-products
+admin.catalog-products.show   admin/catalog-products/{catalogProduct}
+admin.products.index  admin/products
+admin.products.show   admin/products/{product}
+
+MANUAL-QA CHANNEL (real rows, real URLs, draft visibility both ways):
+- draft KB article + kb.view-only viewer, real registry -> groups === [] (no KB group)
+- draft KB article + kb.view+kb.edit viewer, real registry -> kb group, label 'Acme draft runbook',
+  url route('admin.kb.show', $article), list_url route('admin.kb.index', ['search' => 'acme'])
+- published KB article + kb.view-only viewer -> kb group present (non-vacuity)
+- ticket TKT-2027-00042 + tickets.view viewer, real registry -> tickets group, url
+  route('admin.tickets.show', $ticket)
+- ticket TKT-50% + q='%' -> exactly 1 result (TKT-50%) out of 2 tickets; no full-table dump
+
+================================================================================
+STEP 5 — ADVERSARIAL PROBES (observables)
+================================================================================
+1. Permission leak (critical): draft KB must not leak to kb.view-only. PROVEN by
+   test_a_draft_kb_article_is_invisible_to_a_kb_view_only_viewer driving the REAL registry
+   (GlobalSearchService with config/search.php) and asserting groups === []. The kb.edit-only
+   widening is PROVEN symmetric by test_a_draft_kb_article_is_visible_to_a_kb_edit_holder.
+   Also test_a_viewer_without_support_permissions_gets_no_support_or_catalog_groups seeds a
+   matching ticket + published article + catalog product + product for an invoices.view-only
+   viewer and asserts groups === [].
+2. Malformed input: literal `%` -> test_a_literal_percent_sign_in_a_ticket_number_matches_only_that_ticket
+   asserts exactly one row (the row whose ticket_no contains a literal `%`) and its exact URL;
+   the generated SQL uses LIKE ? ESCAPE '!' via the shared foundation helper (also covered by the
+   foundation LikePattern tests for `%`, `_`, `!`).
+3. Misleading success: assertions are exact — full route URLs via route() (not substring), exact
+   labels/subtitles, group presence AND absence, has_more/list_url, and the KB content body
+   asserted absent from both the subtitle and the whole json_encode($groups) payload.
+4. Dirty worktree: this task stages ONLY the 4 provider files + the test + this evidence file
+   (explicit paths; evidence force-added). The repo has unrelated modified files from another
+   workstream that are deliberately NOT staged. Verified after commit with `git show --stat HEAD`.
+5. Stale state: `php artisan config:clear` executed before the green test re-run (output:
+   "INFO Configuration cache cleared successfully."), so config/search.php was re-read from disk.
+6. Cancel/resume: NOT APPLICABLE — this todo is a single non-interactive test+implement pass;
+   no long-running or cancellable operation exists, and all state is on disk (files + this
+   evidence file), so an interruption would resume by re-running the same test filter.
+7. Hung commands: NOT APPLICABLE — every command was run with a bounded timeout and exited
+   (longest: full test filters, ~6s each; no daemon, queue or browser process involved).
+8. Flaky tests: NOT APPLICABLE as a failure class — the suite was executed 3 times (RED, first
+   green with a test-side assertion defect, final green) with identical deterministic results;
+   no time-, order- or network-dependent behavior is asserted.
+9. Repeated interruptions: NOT APPLICABLE — no interruptions occurred in this session; the work
+   is idempotent (file writes + test reruns) and the evidence file is the recovery anchor.
+
+================================================================================
+STEP 6 — COMMIT
+================================================================================
+(commit hash recorded by the follow-up `chore(search): record task-7 evidence hash` commit)
