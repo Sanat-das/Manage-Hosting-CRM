@@ -290,6 +290,18 @@ class AppServiceProvider extends ServiceProvider
                 : Limit::perMinute(30)->by($key);
         });
 
+        // Global search — applied as `throttle:search` to the typeahead and
+        // full-results routes, which opt OUT of `throttle:admin` so a single
+        // keystroke is not charged to two buckets. The palette debounces at
+        // 250ms, so a sustained typist peaks at ~240 requests/min; 300/min
+        // matches the `admin` limiter's GET ceiling and still stops a scripted
+        // flood. Keyed per user (IP only for the unauthenticated caller the
+        // route's `auth` middleware rejects anyway), so one noisy staff member
+        // cannot throttle everybody else.
+        RateLimiter::for('search', function (Request $request) {
+            return Limit::perMinute(300)->by($request->user()?->getAuthIdentifier() ?: $request->ip());
+        });
+
         // Chat writes — applied as `throttle:chat` to the chat's message routes,
         // which additionally opt OUT of `throttle:admin`. Chat is the one admin
         // surface where a human legitimately posts faster than the 30/min the

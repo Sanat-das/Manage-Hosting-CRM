@@ -1,0 +1,215 @@
+================================================================================
+GLOBAL SEARCH - TASK 3 EVIDENCE
+"Typeahead validation request + dedicated throttle:search limiter"
+================================================================================
+Repo:    C:\Users\Administrator\Local Sites\managehosting\app
+Branch:  main
+Date:    2026-09-23
+Worker:  todo 3 lane (plan .omo/plans/global-search.md lines 143-149)
+Env:     Windows / PowerShell 5.1 (no bash) - plan's grep/test checks translated:
+         `grep -q X`  -> `Select-String -Quiet -Pattern X`
+         `test -f X`  -> `Test-Path -LiteralPath X`
+
+--------------------------------------------------------------------------------
+1. FILES CHANGED (in-scope only)
+--------------------------------------------------------------------------------
+NEW  app/Http/Requests/SearchTypeaheadRequest.php
+     - authorize(): bool => $this->user()?->hasPermission('search') ?? false
+       (repo convention: app/Http/Requests/ProductRequest.php:24)
+     - rules(): q => ['nullable','string','max:100']
+       (short q is NOT a validation error - the controller answers <2 chars with
+       a 200 empty envelope; only >100 chars is a 422)
+MOD  app/Providers/AppServiceProvider.php
+     - RateLimiter::for('search', ...) Limit::perMinute(300)->by(user id ?: ip),
+       inserted directly after the existing `admin` limiter (was :285-291).
+       The existing `admin` limiter numbers are UNCHANGED (diff below).
+NEW  tests/Feature/SearchThrottleTest.php (9 tests, 320 assertions)
+
+--------------------------------------------------------------------------------
+2. FAILING-FIRST RED (tests written BEFORE production code)
+--------------------------------------------------------------------------------
+Command: php artisan test --filter=SearchThrottle
+Exit:    2
+
+{"tool":"phpunit","result":"failed","tests":9,"passed":0,"assertions":3,"duration_ms":17572,"failed":3,"failures":[{"test":"Tests\\Feature\\SearchThrottleTest::test_search_limiter_is_registered_and_resolvable","file":"C:\\Users\\Administrator\\Local Sites\\managehosting\\app\\tests\\Feature\\SearchThrottleTest.php","line":68,"message":"Rate limiter 'search' is not registered.\nFailed asserting that null is of type callable."},{"test":"Tests\\Feature\\SearchThrottleTest::test_search_limiter_keys_authenticated_requests_by_user_id_and_guests_by_ip","file":"C:\\Users\\Administrator\\Local Sites\\managehosting\\app\\tests\\Feature\\SearchThrottleTest.php","line":80,"message":"Rate limiter 'search' is not registered.\nFailed asserting that null is of type callable."},{"test":"Tests\\Feature\\SearchThrottleTest::test_search_throttle_allows_300_requests_and_rejects_the_301st","file":"C:\\Users\\Administrator\\Local Sites\\managehosting\\app\\tests\\Feature\\SearchThrottleTest.php","line":106,"message":"Request #1 must be allowed (200).\nFailed asserting that 500 is identical to 200."}],"errors":6,"error_details":[{"test":"Tests\\Feature\\SearchThrottleTest::test_q_longer_than_100_chars_fails_validation","file":"C:\\Users\\Administrator\\Local Sites\\managehosting\\app\\tests\\Feature\\SearchThrottleTest.php","line":125,"message":"Class \"App\\Http\\Requests\\SearchTypeaheadRequest\" not found"},{"test":"Tests\\Feature\\SearchThrottleTest::test_q_of_exactly_100_chars_passes_validation","file":"C:\\Users\\Administrator\\Local Sites\\managehosting\\app\\tests\\Feature\\SearchThrottleTest.php","line":136,"message":"Class \"App\\Http\\Requests\\SearchTypeaheadRequest\" not found"},{"test":"Tests\\Feature\\SearchThrottleTest::test_one_char_q_passes_validation","file":"C:\\Users\\Administrator\\Local Sites\\managehosting\\app\\tests\\Feature\\SearchThrottleTest.php","line":147,"message":"Class \"App\\Http\\Requests\\SearchTypeaheadRequest\" not found"},{"test":"Tests\\Feature\\SearchThrottleTest::test_empty_and_missing_q_pass_validation","file":"C:\\Users\\Administrator\\Local Sites\\managehosting\\app\\tests\\Feature\\SearchThrottleTest.php","line":156,"message":"Class \"App\\Http\\Requests\\SearchTypeaheadRequest\" not found"},{"test":"Tests\\Feature\\SearchThrottleTest::test_array_q_fails_validation","file":"C:\\Users\\Administrator\\Local Sites\\managehosting\\app\\tests\\Feature\\SearchThrottleTest.php","line":169,"message":"Class \"App\\Http\\Requests\\SearchTypeaheadRequest\" not found"},{"test":"Tests\\Feature\\SearchThrottleTest::test_authorize_requires_the_search_permission","file":"C:\\Users\\Administrator\\Local Sites\\managehosting\\app\\tests\\Feature\\SearchThrottleTest.php","line":182,"message":"Class \"App\\Http\\Requests\\SearchTypeaheadRequest\" not found"}]}
+
+Interpretation: every test failed for the RIGHT reason - the limiter was null
+(callback not registered) and the FormRequest class did not exist. The throttle
+route answered 500 (undefined limiter) instead of 200.
+
+--------------------------------------------------------------------------------
+3. PRODUCTION DIFF (admin limiter untouched)
+--------------------------------------------------------------------------------
+$env:GIT_MASTER='1'; git diff -- app/Providers/AppServiceProvider.php
+
+@@ -290,6 +290,18 @@ public function boot(): void
+                 : Limit::perMinute(30)->by($key);
+         });
+
++        // Global search - applied as `throttle:search` to the typeahead and
++        // full-results routes, which opt OUT of `throttle:admin` so a single
++        // keystroke is not charged to two buckets. The palette debounces at
++        // 250ms, so a sustained typist peaks at ~240 requests/min; 300/min
++        // matches the `admin` limiter's GET ceiling and still stops a scripted
++        // flood. Keyed per user (IP only for the unauthenticated caller the
++        // route's `auth` middleware rejects anyway), so one noisy staff member
++        // cannot throttle everybody else.
++        RateLimiter::for('search', function (Request $request) {
++            return Limit::perMinute(300)->by($request->user()?->getAuthIdentifier() ?: $request->ip());
++        });
++
+         // Chat writes - applied as `throttle:chat` to the chat's message routes,
+
+Confirmed: no `admin` limiter line changed (300 GET / 30 write stay as-is).
+
+Syntax checks:
+$ php -l app/Http/Requests/SearchTypeaheadRequest.php
+No syntax errors detected in app/Http/Requests/SearchTypeaheadRequest.php
+$ php -l app/Providers/AppServiceProvider.php
+No syntax errors detected in app/Providers/AppServiceProvider.php
+
+--------------------------------------------------------------------------------
+4. GREEN - php artisan test --filter=SearchThrottle
+--------------------------------------------------------------------------------
+RUN 1 (immediately after production code):
+{"tool":"phpunit","result":"passed","tests":9,"passed":9,"assertions":320,"duration_ms":6098}
+EXIT=0
+
+Stale-state probe before RUN 2:
+$ php artisan config:clear   -> "INFO Configuration cache cleared successfully." EXIT=0
+$ php artisan cache:clear    -> "INFO Application cache cleared successfully."   EXIT=0
+
+RUN 2 (same command, after config/cache clear - flakiness check):
+{"tool":"phpunit","result":"passed","tests":9,"passed":9,"assertions":320,"duration_ms":6149}
+EXIT=0
+
+RUN 3 (re-run at the end, after a parallel lane wrote its own test files):
+{"tool":"phpunit","result":"passed","tests":9,"passed":9,"assertions":320,"duration_ms":6278}
+EXIT=0
+
+All 9 tests:
+  test_search_limiter_is_registered_and_resolvable ................ pass
+  test_search_limiter_keys_authenticated_requests_by_user_id_and_guests_by_ip .. pass
+  test_search_throttle_allows_300_requests_and_rejects_the_301st ... pass
+  test_q_longer_than_100_chars_fails_validation ................... pass
+  test_q_of_exactly_100_chars_passes_validation ................... pass
+  test_one_char_q_passes_validation ............................... pass
+  test_empty_and_missing_q_pass_validation ........................ pass
+  test_array_q_fails_validation ................................... pass
+  test_authorize_requires_the_search_permission ................... pass
+
+Test-design notes (no assumption, no log-line success):
+  - (a) `RateLimiter::limiter('search')` is asserted callable, then invoked and
+    its Limit asserted: maxAttempts === 300, decaySeconds === 60; key asserted
+    === user id when authenticated and === request ip for a guest.
+  - (b) a test-defined route carrying the REAL `throttle:search` middleware is
+    hit 301 times by one acting-as user; exact status codes are asserted:
+    #1 -> 200, #2..#300 -> 200, #301 -> 429.
+  - (c) Validator::make against the real SearchTypeaheadRequest::rules():
+    101 chars fails; 100 chars passes.
+  - (d) 1 char passes (short q is a controller 200-empty, never a 422); empty
+    string / null / missing q pass (nullable); array q fails (malformed input).
+  - setUp() flushes the cache and clears the limiter so no run leaks counters.
+
+--------------------------------------------------------------------------------
+5. MANUAL-QA CHANNEL (real executable surface, raw observables)
+--------------------------------------------------------------------------------
+A temporary probe test (tests/Feature/SearchThrottleProbeTest.php) was run
+against the real middleware + real FormRequest rules, then DELETED before
+commit (see section 8 cleanup). Raw output:
+
+$ php artisan test --filter=SearchThrottleProbe
+[PROBE] limiter registered: yes, maxAttempts=300, decaySeconds=60
+[PROBE] request #1 -> HTTP 200
+[PROBE] request #301 -> HTTP 429
+[PROBE] Validator(q = 101 chars) fails=true errors={"q":["The q field must not be greater than 100 characters."]}
+[PROBE] Validator(q = 1 char) fails=false errors=[]
+[PROBE] Validator(q = array q[]) fails=true errors={"q":["The q field must be a string."]}
+[PROBE] Validator(q = empty string) fails=false errors=[]
+[PROBE] Validator(q = null) fails=false errors=[]
+{"tool":"phpunit","result":"passed","tests":1,"passed":1,"assertions":1,"duration_ms":4634}
+EXIT=0
+
+What it shows: exact HTTP codes through the real `throttle:search` middleware
+(1st -> 200, 301st -> 429) and the exact validation booleans/error strings for
+101-char / 1-char / array / empty / null q. No log lines are used as proof.
+
+--------------------------------------------------------------------------------
+6. ADMINSEARCH STAYS GREEN (existing contracts untouched)
+--------------------------------------------------------------------------------
+$ php artisan test --filter=AdminSearch
+{"tool":"phpunit","result":"passed","tests":8,"passed":8,"assertions":16,"duration_ms":6839}
+EXIT=0
+
+--------------------------------------------------------------------------------
+7. INTERPRETATION NOTE - route:list acceptance line DEFERRED to todo 8
+--------------------------------------------------------------------------------
+Plan acceptance line for todo 3:
+  php artisan route:list --name=admin.search.typeahead | grep -q 'throttle:search'
+The typeahead route is created in todo 8 (plan line 184), so it does not exist
+yet. This todo verifies the limiter via (a)+(b) above instead. Recorded fact:
+
+$ php artisan route:list --name=admin.search
+ GET|HEAD admin/search .. admin.search.index > Admin\SearchController@search
+ Showing [1] routes
+EXIT=0
+=> no `admin.search.typeahead` route yet (as expected). The literal
+   `route:list --name=admin.search.typeahead` check is deferred to todo 8.
+   Translated form when it runs: `php artisan route:list --name=admin.search.typeahead | Select-String -Quiet -Pattern 'throttle:search'`.
+
+Also deferred with reason: proving "1-char q -> HTTP 200, not 422" at the HTTP
+level requires the todo-8 route/controller; here it is proven at the validation
+layer (1-char passes) per the todo-3 spec.
+
+--------------------------------------------------------------------------------
+8. ADVERSARIAL PROBES
+--------------------------------------------------------------------------------
+| class                    | probe + observable                                                              | result |
+|--------------------------|---------------------------------------------------------------------------------|--------|
+| malformed input          | probe: q=101 chars fails=true with exact error; q[] fails=true; q='' / null pass | PASS   |
+| flaky tests              | 3 consecutive green runs of SearchThrottle (9 tests / 320 assertions each),      | PASS   |
+|                          | exit 0 every time; setUp() flushes cache + clears limiter; run 2 preceded by    |        |
+|                          | `config:clear` + `cache:clear`                                                  |        |
+| misleading success       | probe prints raw HTTP 200/429 and validator booleans; tests assert exact status  | PASS   |
+|                          | codes and booleans - no log line is used as evidence                            |        |
+| stale state              | limiter resolved via RateLimiter::limiter('search') (not assumed) AFTER          | PASS   |
+|                          | config:clear + cache:clear; green run 2 confirms                                      |        |
+| dirty worktree           | `git status --porcelain -- <3 paths>` = exactly `M AppServiceProvider.php`,     | PASS   |
+|                          | `?? SearchTypeaheadRequest.php`, `?? SearchThrottleTest.php`; probe deleted;    |        |
+|                          | only explicit paths staged (no `git add -A`/`.`); post-commit `git show --stat` |        |
+|                          | in section 9 lists only in-scope files + this evidence file                     |        |
+| cancel/resume            | NOT APPLICABLE - single uninterrupted lane; no command was cancelled            | n/a    |
+| hung commands            | NOT APPLICABLE - longest command was the 17.6s RED run; no timeout hit          | n/a    |
+| repeated interruptions   | NOT APPLICABLE - no interruption occurred during this todo                      | n/a    |
+
+--------------------------------------------------------------------------------
+9. COMMIT
+--------------------------------------------------------------------------------
+Staged paths (explicit, by name; -f because /.omo/ is gitignored but tracked):
+  app/Http/Requests/SearchTypeaheadRequest.php
+  app/Providers/AppServiceProvider.php
+  tests/Feature/SearchThrottleTest.php
+  .omo/evidence/global-search/task-3-global-search.txt   (git add -f)
+
+Message: feat(search): add typeahead request validation and search rate limiter
+
+Commit hash: b0fa09a4c8e490f7cc638ce980eaa22b8ffaa2e0
+  (pre-amend hash - captured immediately after the initial commit; this evidence
+  file was then folded into that same commit with `git commit --amend --no-edit`,
+  which re-hashes it. The final HEAD hash is reported in the worker's final
+  report; the amended commit's message and tree are identical apart from this
+  hash line.)
+
+$env:GIT_MASTER='1'; git show --stat HEAD  (recorded after commit)
+commit b0fa09a4c8e490f7cc638ce980eaa22b8ffaa2e0
+feat(search): add typeahead request validation and search rate limiter
+
+ .../global-search/task-3-global-search.txt         | 206 +++++++++++++++++++++
+ app/Http/Requests/SearchTypeaheadRequest.php       |  31 ++++
+ app/Providers/AppServiceProvider.php               |  12 ++
+ tests/Feature/SearchThrottleTest.php               | 192 +++++++++++++++++++
+ 4 files changed, 441 insertions(+)
+
+================================================================================
+END OF EVIDENCE
+================================================================================
