@@ -160,4 +160,14 @@ STEP 5 — ADVERSARIAL PROBES (observables)
 ================================================================================
 STEP 6 — COMMIT
 ================================================================================
-(commit hash recorded by the follow-up `chore(search): record task-7 evidence hash` commit)
+commit: 66c80b77afc7f2e15b9ece0e723c44c08ab89a50
+subject: feat(search): add ticket, KB and catalog providers
+staged paths (ONLY these 6; unrelated dirty-worktree files from another workstream left untouched):
+  app/Services/Search/Providers/TicketSearchProvider.php
+  app/Services/Search/Providers/KnowledgeBaseSearchProvider.php
+  app/Services/Search/Providers/CatalogProductSearchProvider.php
+  app/Services/Search/Providers/ProductSearchProvider.php
+  tests/Feature/SupportCatalogSearchProvidersTest.php
+  .omo/evidence/global-search/task-7-global-search.txt
+`git show --stat HEAD` = 6 files changed, 738 insertions(+), no sibling/foundation/config file.
+No `git commit --amend` was used (sibling amend races polluted this wave's history).
