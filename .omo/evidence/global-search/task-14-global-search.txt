@@ -176,7 +176,11 @@ produced deterministic results: 12/14 with the same 2 named failures pre-impleme
   gitignored-but-tracked).
 - Message: `feat(search): add permission-aware queryFor hook to the provider contract`
 - Hash: `59a5e63b1f4535012c5900ee559bf93e7de3e1a1` (`59a5e63b`) — the commit created for this
-  task. This hash line was embedded by one `git commit --amend --no-edit` immediately after the
-  commit, so `git log -1` shows the amended commit: same message, same 5-file tree apart from
-  this line (same convention as `task-1-global-search.txt`; the orchestrator reconciles the
-  amended hash in its housekeeping stamp).
+  task: message exactly as specified, 5-file scope (4 code/test files + this evidence file).
+- Concurrency note: this hash/stat update was intended to be embedded with one `git commit
+  --amend --no-edit` (the task-1 convention), but a parallel worker's commit (`719ff2b4` ->
+  `70112f95`, task 4) landed between this task's commit and the amend, so the amend hit HEAD
+  instead of `59a5e63b` and this update was absorbed into the task-4 commit. History was NOT
+  rewritten (other workers were committing concurrently); the authoritative task-14 commit is
+  `59a5e63b`, and this note is corrected by a follow-up housekeeping commit on top. The
+  orchestrator's hash-reconciliation stamp applies as usual.
