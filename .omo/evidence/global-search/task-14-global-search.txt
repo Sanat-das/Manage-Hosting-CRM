@@ -1,0 +1,166 @@
+# Task 14 — Foundation amendment: permission-aware `queryFor` hook
+
+Plan: `.omo/plans/global-search.md` (todo 14, lines 231-237; amendment note in `.omo/drafts/global-search.md` "Execution amendments", 2026-09-23)
+Date: 2026-09-23
+Environment: Windows, PowerShell 5.1, PHP 8.4.16, Laravel 13, PHPUnit 12.5.35
+Test DB: sqlite `:memory:` (`phpunit.xml`); `Tests\TestCase::setUp()` seeds the real RBAC roles per test.
+
+Why this amendment exists: todo 7's acceptance (a draft KB article must be invisible to a
+`kb.view`-only user but visible to a `kb.edit` holder) cannot be met by the frozen
+`query(string $term, int $limit)` interface, and the plan guardrails forbid `hasPermission()`
+inside providers. The amendment is minimal and backward-compatible: a permission-aware
+`queryFor()` on the contract, a `baseQueryFor()` hook on the base class, and one call swap in
+`GlobalSearchService::groups()`.
+
+## Files changed (in scope only)
+
+- `app/Services/Search/SearchProvider.php` — added `queryFor(array $permissionNames, string $term, int $limit): Collection` + docblock
+- `app/Services/Search/AbstractSearchProvider.php` — `query()` delegates to `queryFor([], ...)`; `queryFor()` owns the existing pipeline; new `protected baseQueryFor()` defaulting to `baseQuery()`
+- `app/Services/Search/GlobalSearchService.php` — `groups()` calls `queryFor($permissionNames, ...)`
+- `tests/Feature/GlobalSearchServiceTest.php` — 3 new tests + recording stub; existing 11 untouched
+
+`applyTermFilter`, `applyRanking`, `whereLikeEscaped`, `resultRow`, `routeIsRegistered` and
+`rankColumn` are unchanged (git diff below shows the pipeline body moved verbatim, only the
+`$query = $this->baseQuery();` line became `$query = $this->baseQueryFor($permissionNames);`).
+
+## Baseline (given by orchestrator, confirmed by RED run)
+
+```
+php artisan test --filter=GlobalSearchService  -> 11/11 green
+php artisan test --filter=AdminSearch          ->  8/8 green
+```
+
+## Failing-first (RED — tests written before implementation)
+
+```
+$ php artisan test --filter=GlobalSearchService        (EXIT=2)
+{"tool":"phpunit","result":"failed","tests":14,"passed":12,"assertions":37,"duration_ms":5618,
+ "failed":1,"failures":[{"test":"Tests\\Feature\\GlobalSearchServiceTest::test_groups_passes_the_callers_permission_set_to_the_provider",
+ "message":"Failed asserting that two arrays are identical.\n--- Expected\n+++ Actual\n@@ @@\n-Array &0 [\n-    0 => 'tickets.view',\n-]\n+Array &0 []"}],
+ "errors":1,"error_details":[{"test":"Tests\\Feature\\GlobalSearchServiceTest::test_query_for_passes_the_permission_set_to_the_base_query_hook_and_returns_its_constrained_rows",
+ "message":"Call to undefined method Tests\\Feature\\StubPermissionAwareSearchProvider::queryFor()"}]}
+```
+
+RED observables: 1 error (`queryFor()` did not exist on the contract) + 1 assertion failure
+(`groups()` did not pass `['tickets.view']` through to the provider — it recorded `[]`).
+The other 12 tests passed, which re-confirms the 11 existing contracts were green at RED time
+plus the new backward-compat test (`query()` keeps the default base query).
+
+## Implementation notes
+
+- `queryFor()` is the permission-aware scoping hook: the permission set is resolved ONCE by
+  `GlobalSearchService::permissionNames()` and passed in; providers vary their base query by
+  overriding `baseQueryFor()`; no provider calls `hasPermission()` (grep below: the only
+  occurrences of the token in `app/Services/Search/*.php` are pre-existing docblock prose plus
+  the new docblock's "providers must never call `hasPermission()`" line — zero calls).
+- `query()` keeps its exact old behavior: `queryFor([], ...)` → `baseQueryFor([])` → `baseQuery()`.
+  Every existing provider extends `AbstractSearchProvider` (checked), so all inherit the new
+  concrete method; no implementor of the interface was left incomplete.
+- `baseQueryFor()` default returns `baseQuery()`, so all 8 currently-created providers under
+  `app/Services/Search/Providers/` are byte-for-byte unchanged in behavior.
+
+## GREEN
+
+```
+$ php -l app/Services/Search/SearchProvider.php
+No syntax errors detected in app\Services\Search\SearchProvider.php
+$ php -l app/Services/Search/AbstractSearchProvider.php
+No syntax errors detected in app\Services\Search\AbstractSearchProvider.php
+$ php -l app/Services/Search/GlobalSearchService.php
+No syntax errors detected in app\Services\Search\GlobalSearchService.php
+```
+
+```
+$ php artisan test --filter=GlobalSearchService        (EXIT=0)
+{"tool":"phpunit","result":"passed","tests":14,"passed":14,"assertions":41,"duration_ms":5877}
+```
+
+Stale-state probe — clear the config cache, then re-run:
+
+```
+$ php artisan config:clear                             (EXIT=0)
+INFO Configuration cache cleared successfully.
+$ php artisan test --filter=GlobalSearchService        (EXIT=0)
+{"tool":"phpunit","result":"passed","tests":14,"passed":14,"assertions":41,"duration_ms":6010}
+```
+
+No regression on the existing surface:
+
+```
+$ php artisan test --filter=AdminSearch                (EXIT=0)
+{"tool":"phpunit","result":"passed","tests":8,"passed":8,"assertions":16,"duration_ms":6544}
+```
+
+## Adversarial probes
+
+### 1. Misleading success output (assert the VALUE, not "a call happened")
+
+The new stub records the received permission array and the tests assert it exactly
+(`assertSame(['customers.view'], $provider->receivedPermissionNames)` and
+`assertSame($permissionNames, $provider->receivedPermissionNames)`), plus that the constrained
+rows actually come back (`['TKT-ACME-OPEN']` only) and that `query()` records `[]`.
+
+Mutation probe — temporarily broke the production call in `groups()` to pass `[]`, expecting
+the pass-through test to fail; file restored in the same command's `finally` block:
+
+```
+$ (mutate GlobalSearchService: queryFor($permissionNames, ... -> queryFor([], ...))
+$ php artisan test --filter=test_groups_passes_the_callers_permission_set_to_the_provider
+{"tool":"phpunit","result":"failed","tests":1,"passed":0,"assertions":2,
+ "failed":1,"message":"Failed asserting that two arrays are identical.\n-Array &0 [\n- 0 => 'tickets.view',\n-]\n+Array &0 []"}
+MUTANT_EXIT=1
+RESTORED_CHECK:
+$rows = $provider->queryFor($permissionNames, $term, $limitPerType + 1);   <- restored verbatim
+```
+
+The assertion is therefore live, not vacuous: a broken delegation turns it red.
+
+### 2. Stale state
+
+`php artisan config:clear` was run before the post-clear green run (see GREEN). The amendment
+touches no config surface, so there is no cached-config path to be stale; the re-run proves it.
+
+### 3. Dirty worktree
+
+```
+$ git diff --stat -- app/Services/Search/SearchProvider.php app/Services/Search/AbstractSearchProvider.php app/Services/Search/GlobalSearchService.php tests/Feature/GlobalSearchServiceTest.php
+ app/Services/Search/AbstractSearchProvider.php | 27 ++++++++-
+ app/Services/Search/GlobalSearchService.php    |  2 +-
+ app/Services/Search/SearchProvider.php         | 13 +++++
+ tests/Feature/GlobalSearchServiceTest.php      | 78 +++++++++++++++++++++++++-
+ 4 files changed, 116 insertions(+), 4 deletions(-)
+```
+
+No file under `app/Services/Search/Providers/` (other workers' lane) and no other production
+file was touched. Staging is by explicit path only (never `git add -A`/`git add .`).
+
+`git show --stat HEAD` (after the commit):
+
+```
+PENDING_COMMIT_STAT
+```
+
+### 4. Malformed input
+
+Not applicable — the amendment adds no parsing or input surface: `$permissionNames` is an
+internal, typed `array` passed between PHP call sites, and `$term`/`$limit` handling is the
+untouched existing pipeline (trim + escaped LIKE + clamped limit). No request data reaches
+`queryFor()` directly.
+
+### 5. Cancel-resume / hung commands / repeated interruptions
+
+Not applicable — this todo is a single-shot edit + test + commit cycle; no long-running
+process, job or resumable state was involved, and every command exited with the recorded code.
+
+### 6. Flaky tests
+
+Three independent `--filter=GlobalSearchService` runs (RED, green pre-clear, green post-clear)
+produced deterministic results: 12/14 with the same 2 named failures pre-implementation, then
+14/14 / 41 assertions twice. No time, random or network dependency.
+
+## Commit
+
+- Staged paths (explicit): the 4 files above + this evidence file (force-added; `.omo` is
+  gitignored-but-tracked).
+- Message: `feat(search): add permission-aware queryFor hook to the provider contract`
+- Hash: PENDING_HASH

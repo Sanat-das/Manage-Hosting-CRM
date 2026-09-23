@@ -200,6 +200,54 @@ class GlobalSearchServiceTest extends TestCase
         $this->assertSame(['TKT-ACME', 'TKT-ACME-EXTRA'], $rows->pluck('ticket_no')->all());
     }
 
+    // --- permission-aware queryFor ----------------------------------------
+
+    public function test_query_for_passes_the_permission_set_to_the_base_query_hook_and_returns_its_constrained_rows(): void
+    {
+        $this->makeTicket('TKT-ACME-OPEN', 'Acme open ticket');
+        $this->makeTicket('TKT-ACME-CLOSED', 'Acme closed ticket', 'closed');
+
+        $provider = new StubPermissionAwareSearchProvider;
+
+        $rows = $provider->queryFor(['customers.view'], 'acme', 5);
+
+        // The exact array is asserted, not merely "a call happened".
+        $this->assertSame(['customers.view'], $provider->receivedPermissionNames);
+        $this->assertSame(['TKT-ACME-OPEN'], $rows->pluck('ticket_no')->all());
+    }
+
+    public function test_query_without_permissions_keeps_the_default_base_query(): void
+    {
+        $this->makeTicket('TKT-ACME-OPEN', 'Acme open ticket');
+        $this->makeTicket('TKT-ACME-CLOSED', 'Acme closed ticket', 'closed');
+
+        $provider = new StubPermissionAwareSearchProvider;
+
+        $rows = $provider->query('acme', 5);
+
+        $this->assertSame([], $provider->receivedPermissionNames);
+        $this->assertSame(['TKT-ACME-CLOSED', 'TKT-ACME-OPEN'], $rows->pluck('ticket_no')->all());
+    }
+
+    public function test_groups_passes_the_callers_permission_set_to_the_provider(): void
+    {
+        $user = $this->panelUserWith('tickets.view');
+        $this->makeTicket('TKT-ACME', 'Acme ticket');
+
+        $provider = new StubPermissionAwareSearchProvider;
+        $this->app->instance(StubPermissionAwareSearchProvider::class, $provider);
+
+        $service = new GlobalSearchService([StubPermissionAwareSearchProvider::class]);
+        $permissionNames = $service->permissionNames($user);
+
+        $groups = $service->groups($permissionNames, 'acme', 5);
+
+        $this->assertContains('tickets.view', $permissionNames);
+        $this->assertSame($permissionNames, $provider->receivedPermissionNames);
+        $this->assertCount(1, $groups);
+        $this->assertSame('tickets', $groups[0]['key']);
+    }
+
     // --- helpers ----------------------------------------------------------
 
     private function makeCustomer(string $email, string $company): Customer
@@ -213,13 +261,13 @@ class GlobalSearchServiceTest extends TestCase
         ]);
     }
 
-    private function makeTicket(string $ticketNo, string $subject): Ticket
+    private function makeTicket(string $ticketNo, string $subject, string $status = 'open'): Ticket
     {
         return Ticket::create([
             'ticket_no' => $ticketNo,
             'subject' => $subject,
             'priority' => 'medium',
-            'status' => 'open',
+            'status' => $status,
             'department' => 'support',
         ]);
     }
@@ -344,5 +392,31 @@ class StubMissingRouteSearchProvider extends StubTicketSearchProvider
     public function showRoute(): string
     {
         return 'admin.search.missing-route-stub';
+    }
+}
+
+/**
+ * Permission-aware provider: records the permission set `queryFor()` hands to
+ * `baseQueryFor()` and narrows the base query whenever a permission is
+ * supplied — the stand-in for a real provider whose scope depends on the
+ * viewer (e.g. KB published-only unless the viewer may edit). With no
+ * permissions (the legacy `query()` path) the default base query is kept.
+ */
+class StubPermissionAwareSearchProvider extends StubTicketSearchProvider
+{
+    /** @var list<string> */
+    public array $receivedPermissionNames = [];
+
+    protected function baseQueryFor(array $permissionNames): Builder
+    {
+        $this->receivedPermissionNames = $permissionNames;
+
+        $query = parent::baseQueryFor($permissionNames);
+
+        if ($permissionNames !== []) {
+            $query->where('status', '!=', 'closed');
+        }
+
+        return $query;
     }
 }

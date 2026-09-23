@@ -43,6 +43,19 @@ interface SearchProvider
     public function query(string $term, int $limit): Collection;
 
     /**
+     * Permission-aware scoping hook: the same match/rank/limit pipeline as
+     * query(), but with the viewer's permission set available to the provider.
+     *
+     * The set is resolved ONCE by GlobalSearchService and passed in — a
+     * provider that must vary its base query by the viewer's permissions
+     * overrides `baseQueryFor()`; providers must never call `hasPermission()`.
+     *
+     * @param  list<string>  $permissionNames
+     * @return Collection<int, Model>
+     */
+    public function queryFor(array $permissionNames, string $term, int $limit): Collection;
+
+    /**
      * One result row. `url` is resolved server-side from showRoute(), never
      * accepted from the client.
      *

@@ -93,7 +93,7 @@ class GlobalSearchService
                 continue;
             }
 
-            $rows = $provider->query($term, $limitPerType + 1);
+            $rows = $provider->queryFor($permissionNames, $term, $limitPerType + 1);
             $hasMore = $rows->count() > $limitPerType;
 
             if ($rows->isEmpty()) {

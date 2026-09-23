@@ -55,6 +55,19 @@ abstract class AbstractSearchProvider implements SearchProvider
 
     public function query(string $term, int $limit): Collection
     {
+        return $this->queryFor([], $term, $limit);
+    }
+
+    /**
+     * The same pipeline as query() — trim, route guard, escaped LIKE, grouped
+     * WHERE, ranking, LIMIT — except the base query comes from baseQueryFor(),
+     * so a provider can scope it by the viewer's permissions.
+     *
+     * @param  list<string>  $permissionNames
+     * @return Collection<int, Model>
+     */
+    public function queryFor(array $permissionNames, string $term, int $limit): Collection
+    {
         $term = trim($term);
 
         if ($term === '' || ! $this->routeIsRegistered()) {
@@ -63,12 +76,24 @@ abstract class AbstractSearchProvider implements SearchProvider
 
         $pattern = LikePattern::contains($term);
 
-        $query = $this->baseQuery();
+        $query = $this->baseQueryFor($permissionNames);
 
         $this->applyTermFilter($query, $pattern);
         $this->applyRanking($query, $term, $pattern);
 
         return $query->limit($limit)->get();
+    }
+
+    /**
+     * The base query for a viewer holding $permissionNames. Defaults to
+     * baseQuery(); override to constrain it by permission — e.g. published-only
+     * rows unless the viewer may edit.
+     *
+     * @param  list<string>  $permissionNames
+     */
+    protected function baseQueryFor(array $permissionNames): Builder
+    {
+        return $this->baseQuery();
     }
 
     /**
