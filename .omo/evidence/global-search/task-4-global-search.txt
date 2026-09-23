@@ -1,0 +1,248 @@
+# Task 4 — Identity providers: customers, customer contacts, staff users
+
+Plan: `.omo/plans/global-search.md` (todo 4, lines 151-157; provider matrix rows 1, 2, 17 at lines 40-41, 56; shared contracts lines 58-80)
+Date: 2026-09-23
+Environment: Windows, PowerShell 5.1, PHP 8.4.16 (NTS), Laravel Framework 13.31.0, PHPUnit 12.5.35
+Test DB: sqlite `:memory:` (`phpunit.xml`); `Tests\TestCase::setUp()` seeds the real RBAC roles per test.
+Provider registry: `config/search.php` was NOT edited (it already listed all 17 classes) — `git diff --exit-code -- config/search.php` exits 0 (proof below).
+
+## Files created (in scope only)
+
+- `app/Services/Search/Providers/CustomerSearchProvider.php` — key `customers`, label `Customers`, icon `bi bi-people`
+  (matches the Customers menu icon at `config/adminlte.php:235`), permission `customers.view`,
+  show `admin.customers.show`, list `admin.customers.index`; `searchableColumns()` = `['company']`,
+  `searchableRelations()` = `['user' => ['email','first_name','last_name']]`, `baseQuery()` = `Customer::query()->with('user')`,
+  rankColumn default `company`; `toResult()` via the inherited `resultRow()` (label = company, subtitle = user email).
+- `app/Services/Search/Providers/ContactSearchProvider.php` — key `contacts`, label `Contacts`, icon `bi bi-person-lines-fill`,
+  permission `customers.view`, show `admin.customers.show` (the PARENT customer page), list `admin.customers.index`;
+  `searchableColumns()` = `['first_name','last_name','email']`; `rankColumn()` overridden to `email` (most identifier-like);
+  `baseQuery()` = `CustomerContact::query()->with('customer')` (eager load; the URL needs the parent).
+- `app/Services/Search/Providers/StaffUserSearchProvider.php` — key `staff`, label `Staff`, icon `bi bi-person-badge`
+  (matches the Users menu icon in `config/adminlte.php`), permission `users.view`, show `admin.users.show`,
+  list `admin.users.index`; `searchableColumns()` = `['email','first_name','last_name']`; `rankColumn()` overridden to `email`;
+  `baseQuery()` = `User::query()->whereNot('role', 'client')`.
+- `tests/Feature/IdentitySearchProvidersTest.php` — 12 tests / 61 assertions, class name matches filter `IdentitySearchProviders`.
+- `.omo/evidence/global-search/task-4-global-search.txt` — this file.
+
+All three providers extend `AbstractSearchProvider` and use only the inherited `LikePattern::contains()` + `whereLikeEscaped()`
+path (via `applyTermFilter`): no `orWhere` outside the grouped template, no `hasPermission()` calls, no unescaped LIKE,
+no constructor (so `app($class)` resolution stays parameterless).
+
+## Baseline (untouched tree, before this task)
+
+```
+$ php artisan test --filter=GlobalSearchService
+{"tool":"phpunit","result":"passed","tests":11,"passed":11,"assertions":33,"duration_ms":5193}
+
+$ php artisan test --filter=AdminSearch
+{"tool":"phpunit","result":"passed","tests":8,"passed":8,"assertions":16,"duration_ms":7316}
+```
+
+(During this task the concurrent todo-14 worker landed the `queryFor` hook in the three foundation files; they remain
+uncommitted in the worktree and were NOT staged by this task. `GlobalSearchService` now reports 14 tests — see GREEN.)
+
+## Failing-first (RED, captured before any provider class existed)
+
+```
+$ php artisan test --filter=IdentitySearchProviders
+{"tool":"phpunit","result":"failed","tests":12,"passed":2,"assertions":14,"duration_ms":5855,
+ "failed":8,
+ "failures":[
+   "test_customer_is_found_by_the_linked_user_email — Failed asserting that actual size 0 matches expected size 1.",
+   "test_customer_is_found_by_company — Failed asserting that actual size 0 matches expected size 1.",
+   "test_contact_is_found_by_email_and_by_name — term: jane.doe@example.com — actual size 0 matches expected size 1.",
+   "test_contact_result_url_is_the_parent_customer_show_page — Failed asserting that actual size 0 matches expected size 1.",
+   "test_contact_group_eager_loads_the_customer_relation_for_its_url — actual size 0 matches expected size 1.",
+   "test_contact_ranking_prefers_the_email_column — Failed asserting that actual size 0 matches expected size 1.",
+   "test_staff_user_is_found_by_email_and_by_name — Failed asserting that actual size 0 matches expected size 1.",
+   "test_client_accounts_are_excluded_from_the_staff_provider — actual size 0 matches expected size 1."],
+ "errors":2,
+ "error_details":[
+   "test_contact_without_a_loaded_parent_falls_back_to_the_customer_list — Class \"...ContactSearchProvider\" not found",
+   "test_a_literal_percent_is_matched_by_q_percent_without_a_full_table_dump — Class \"...CustomerSearchProvider\" not found"]}
+EXIT: 2
+```
+
+The 2 "passing" tests in the RED run are the two negative assertions (absent-without-permission, permission-leak):
+they pass vacuously while no provider exists, which is exactly why the positive fixtures exist to fail loudly.
+The 8 failures + 2 class-not-found errors are the failing-first proof.
+
+## GREEN
+
+Syntax:
+
+```
+$ php -l app/Services/Search/Providers/CustomerSearchProvider.php
+No syntax errors detected in app/Services/Search/Providers/CustomerSearchProvider.php
+$ php -l app/Services/Search/Providers/ContactSearchProvider.php
+No syntax errors detected in app/Services/Search/Providers/ContactSearchProvider.php
+$ php -l app/Services/Search/Providers/StaffUserSearchProvider.php
+No syntax errors detected in app/Services/Search/Providers/StaffUserSearchProvider.php
+$ php -l tests/Feature/IdentitySearchProvidersTest.php
+No syntax errors detected in tests/Feature/IdentitySearchProvidersTest.php
+```
+
+```
+$ php artisan test --filter=IdentitySearchProviders --testdox
+PHPUnit 12.5.35 by Sebastian Bergmann and contributors.
+Runtime: PHP 8.4.16
+Identity Search Providers (Tests\Feature\IdentitySearchProviders)
+ Customer is found by the linked user email
+ Customer is found by company
+ Customer is absent for a viewer without customers view
+ Contact is found by email and by name
+ Contact result url is the parent customer show page
+ Contact without a loaded parent falls back to the customer list
+ Contact group eager loads the customer relation for its url
+ Contact ranking prefers the email column
+ Staff user is found by email and by name
+ Client accounts are excluded from the staff provider
+ A viewer with only tickets view gets no identity groups
+ A literal percent is matched by q percent without a full table dump
+OK (12 tests, 61 assertions)
+EXIT: 0
+```
+
+```
+$ php artisan test --filter=IdentitySearchProviders
+{"tool":"phpunit","result":"passed","tests":12,"passed":12,"assertions":61,"duration_ms":5768}
+EXIT: 0
+```
+
+No regression on the two neighbouring filters (foundation + existing page contracts):
+
+```
+$ php artisan test --filter=GlobalSearchService
+{"tool":"phpunit","result":"passed","tests":14,"passed":14,"assertions":41,"duration_ms":5990}
+EXIT: 0
+$ php artisan test --filter=AdminSearch
+{"tool":"phpunit","result":"passed","tests":8,"passed":8,"assertions":16,"duration_ms":6733}
+EXIT: 0
+```
+
+Destination routes the providers name (verified, not assumed):
+
+```
+$ php artisan route:list --name=admin.customers.show
+ GET|HEAD admin/customers/{customer} .. admin.customers.show › Admin\CustomerController@show
+$ php artisan route:list --name=admin.customers.index
+ GET|HEAD admin/customers .. admin.customers.index › Admin\CustomerController@index
+$ php artisan route:list --name=admin.users.show
+ GET|HEAD admin/users/{user} .. admin.users.show › Admin\UserController@show
+$ php artisan route:list --name=admin.users.index
+ GET|HEAD admin/users .. admin.users.index › Admin\UserController@index
+```
+
+`config/search.php` untouched:
+
+```
+$ git diff --exit-code -- config/search.php
+config/search.php diff EXIT: 0
+```
+
+## Implementation notes (contract compliance + deviations)
+
+- **Contact URL (the wrong-id-binding trap):** `toResult()` never passes the contact model into the customer route.
+  It resolves `route($this->showRoute(), $model->customer)` — the parent customer — and falls back to
+  `route('admin.customers.index')` when the relation is absent (explicitly tested with `setRelation('customer', null)`).
+  The URL is eager-loaded (`with('customer')`) so rendering N contacts is 1 query, not N.
+  No plan column/route name differed from reality; no silent drops. The fallback branch is an addition mandated by the
+  task spec (plan line 152 says only "destination the parent `admin.customers.show`").
+- **Staff exclusion:** `whereNot('role', 'client')` compiles to `where not "role" = ?` with binding `["client"]`
+  (probe output below) and runs BEFORE the LIMIT, so client rows never consume result slots.
+  **NULL-role semantics:** the SQL `NOT (role = 'client')` would also drop a NULL role, but a NULL role cannot exist —
+  `users.role` is `enum(...)->default('client')` and NOT NULL (`database/migrations/0001_01_01_000000_create_users_table.php:18`),
+  and the probe's NULL-role insert is rejected by the database itself (observable below). No NULL-role user is silently
+  excluded in practice.
+- **Icons:** `bi bi-people` (customers) and `bi bi-person-badge` (staff) mirror the existing menu icons; contacts use
+  the Bootstrap Icons `bi bi-person-lines-fill` (no existing contacts menu entry to mirror).
+- **Ranking:** `ContactSearchProvider` and `StaffUserSearchProvider` override `rankColumn()` to `email`; customers keep
+  the default (first column = `company`). The contact override is behaviourally proven by
+  `test_contact_ranking_prefers_the_email_column` (an email-identifier row outranks an exact first-name row; with the
+  default `first_name` ranking the assertion would fail).
+- **Escaping:** every match goes through the shared `applyTermFilter()` → `whereLikeEscaped()`; no provider builds its
+  own LIKE, so `ESCAPE '!'` and the grouped closure are guaranteed by construction.
+
+## Adversarial probes
+
+### 1. Malformed input (LIKE wildcards)
+
+Raw probe on sqlite `:memory:` (temp-dir script, never the local DB):
+
+```
+$ $env:DB_CONNECTION='sqlite'; $env:DB_DATABASE=':memory:'; php <temp>\task4_identity_probe.php
+Customer SQL : select * from "customers"
+Contact  SQL : select * from "customer_contacts"
+Staff    SQL : select * from "users" where not "role" = ? | bindings: ["client"]
+LikePattern::contains("%") = %!%%
+NULL-role insert rejected: Illuminate\Database\QueryException: SQLSTATE[23000]: Integrity constraint violation:
+  19 NOT NULL constraint failed: users.role
+PROBE_EXIT: 0
+EXIT: 0
+```
+
+Test-level observables (`test_a_literal_percent_is_matched_by_q_percent_without_a_full_table_dump`):
+- generated SQL contains `ESCAPE '!'`, binding `%!%%` for `q=%`;
+- exactly ONE row is returned — the customer whose company holds a literal `%` (`Save 50% Now`, asserted by id) —
+  and NOT the ordinary row (`No Discount Here`); `q=%` never degenerates into a full-table dump;
+- the same through `GlobalSearchService::groups()` with the real permission set.
+
+### 2. Misleading success output (exact strings, row identity)
+
+- `test_contact_result_url_is_the_parent_customer_show_page` asserts the EXACT string
+  `route('admin.customers.show', $parent)` and additionally `assertNotSame(route('admin.customers.show', $contact), …)`.
+  The fixture creates two customers so the parent's id (2) and the contact's id (1) differ — a wrong-id URL would fail,
+  not merely be non-empty.
+- `test_staff_user_is_found_by_email_and_by_name` asserts the exact `route('admin.users.show', $staff)` URL and
+  `route('admin.users.index', ['search' => …])` list URL.
+- `test_client_accounts_are_excluded_from_the_staff_provider` seeds a client AND a staff row with equally matching
+  emails and asserts the returned row id is the staff one — proving matching still runs (not a vacuous empty result).
+- `test_contact_group_eager_loads_the_customer_relation_for_its_url` reads `DB::getQueryLog()`: `<= 3` queries
+  (1 permission pluck + 1 contact query + 1 eager load); a lazy `$model->customer` in `toResult()` would add a 4th.
+- `test_customer_is_absent_for_a_viewer_without_customers_view` and
+  `test_a_viewer_with_only_tickets_view_gets_no_identity_groups` read the query log too: `<= 1` query
+  (the single permission pluck) — no provider query runs at all for a forbidden viewer.
+
+### 3. Dirty worktree
+
+```
+$ git status --porcelain -- app/Services/Search config/search.php tests/Feature/IdentitySearchProvidersTest.php
+ M app/Services/Search/AbstractSearchProvider.php      <- concurrent todo-14 worker (NOT staged)
+ M app/Services/Search/GlobalSearchService.php         <- concurrent todo-14 worker (NOT staged)
+ M app/Services/Search/SearchProvider.php              <- concurrent todo-14 worker (NOT staged)
+?? app/Services/Search/Providers/
+?? tests/Feature/IdentitySearchProvidersTest.php
+```
+
+`app/Services/Search/Providers/` also contains the billing/hosting providers of other in-flight workers (13 files total);
+only this task's 3 files are staged, by explicit path — never `git add -A`/`git add .`/`git commit -a`.
+`git show --stat HEAD` (after the commit) is recorded in the Commit section below.
+
+### 4. Stale state (config cache)
+
+```
+$ php artisan config:clear
+INFO Configuration cache cleared successfully.
+$ php artisan test --filter=IdentitySearchProviders
+{"tool":"phpunit","result":"passed","tests":12,"passed":12,"assertions":61,"duration_ms":6180}
+EXIT: 0
+```
+
+### 5. Flaky tests / cancel-resume / hung commands / repeated interruptions
+
+- Flaky tests: not applicable — no time/random/network dependency; the two runs (pre- and post-`config:clear`)
+  produced identical 12 tests / 61 assertions, exit 0.
+- Cancel-resume: not applicable — the todo completed in one pass; nothing was cancelled or resumed.
+- Hung commands: not applicable — every command exited with the recorded exit code; no long-running process started.
+- Repeated interruptions: not applicable — no interruption occurred during this task.
+
+## Commit
+
+- Staged paths (explicit): `app/Services/Search/Providers/CustomerSearchProvider.php`,
+  `app/Services/Search/Providers/ContactSearchProvider.php`, `app/Services/Search/Providers/StaffUserSearchProvider.php`,
+  `tests/Feature/IdentitySearchProvidersTest.php`, and this evidence file (force-added: `.gitignore:22` has `/.omo/`
+  while `.omo/evidence/**` is already tracked).
+- Message: `feat(search): add customer, contact and staff user providers`
+- Hash: `<PENDING>` — filled in immediately after `git commit` and embedded by one `git commit --amend --no-edit`
+  (same pattern as task 1: the hash line records the pre-amend commit; `git log -1` shows the amended commit with the
+  same message and the same 5-file tree apart from this line).

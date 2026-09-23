@@ -137,8 +137,20 @@ file was touched. Staging is by explicit path only (never `git add -A`/`git add 
 `git show --stat HEAD` (after the commit):
 
 ```
-PENDING_COMMIT_STAT
+commit 59a5e63b1f4535012c5900ee559bf93e7de3e1a1
+    feat(search): add permission-aware queryFor hook to the provider contract
+
+ .../global-search/task-14-global-search.txt        | 166 +++++++++++++++++++++
+ app/Services/Search/AbstractSearchProvider.php     |  27 +++-
+ app/Services/Search/GlobalSearchService.php        |   2 +-
+ app/Services/Search/SearchProvider.php             |  13 ++
+ tests/Feature/GlobalSearchServiceTest.php          |  78 +++++++++-
+ 5 files changed, 282 insertions(+), 4 deletions(-)
 ```
+
+Exactly the 5 in-scope paths (4 code/test files + this evidence file); none of the ~100
+unrelated dirty files from other sessions was staged, and `app/Services/Search/Providers/`
+(other workers' lane) was left untracked/untouched.
 
 ### 4. Malformed input
 
@@ -163,4 +175,8 @@ produced deterministic results: 12/14 with the same 2 named failures pre-impleme
 - Staged paths (explicit): the 4 files above + this evidence file (force-added; `.omo` is
   gitignored-but-tracked).
 - Message: `feat(search): add permission-aware queryFor hook to the provider contract`
-- Hash: PENDING_HASH
+- Hash: `59a5e63b1f4535012c5900ee559bf93e7de3e1a1` (`59a5e63b`) — the commit created for this
+  task. This hash line was embedded by one `git commit --amend --no-edit` immediately after the
+  commit, so `git log -1` shows the amended commit: same message, same 5-file tree apart from
+  this line (same convention as `task-1-global-search.txt`; the orchestrator reconciles the
+  amended hash in its housekeeping stamp).
