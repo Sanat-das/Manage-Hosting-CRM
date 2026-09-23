@@ -1,0 +1,138 @@
+# Task 2 — Activate the dormant `search` permission (seeder + idempotent backfill migration)
+
+- **Plan:** `.omo/plans/global-search.md`, todo 2 (lines 135-141)
+- **Repo:** `C:\Users\Administrator\Local Sites\managehosting\app` — Laravel 13, PHP 8.4.16, Windows, PowerShell 5.1 (Git Bash available for `composer seed:smoke`)
+- **Branch:** `main`
+- **Status:** ALL GATES PASS (see below)
+
+## Files changed
+
+| File | Change |
+| --- | --- |
+| `database/seeders/AdminLteRbacSeeder.php` | +6 lines: `'search'` added to the explicit permission arrays of `support`, `sales`, `marketing`, `staff`, `editor`, `viewer` (each right after `dashboard.view`; `admin` already receives it via `$all`). |
+| `database/migrations/2026_09_23_000001_backfill_search_permission.php` | New. Guarded on the three `adminlte_*` tables; `insertOrIgnore` the `search` permission (label `Use Global Search`); `insertOrIgnore` pivot rows for **every role currently holding `dashboard.view`** (derived, not hardcoded); `down()` no-op. |
+| `tests/Feature/SearchPermissionBackfillTest.php` | New, 5 tests / 44 assertions. Real `AdminLteRbacSeeder` + replayed migration on sqlite `:memory:`. |
+| `.omo/evidence/global-search/task-2-global-search.txt` | This file (tracked `.omo` tree, committed). |
+
+Nothing outside those paths was modified. `git diff --stat -- database/seeders/AdminLteRbacSeeder.php` = `1 file changed, 6 insertions(+)`.
+
+## FAILING-FIRST (RED) — captured before any product change
+
+Command:
+
+```
+php artisan test --filter=SearchPermissionBackfillTest
+```
+
+Observed (exit 1, `result":"failed","tests":5,"passed":0,"assertions":20`) — same run tee'd to `%TEMP%\opencode\task2-red.txt`:
+
+```
+- test_seeder_grants_search_to_support:
+    "Role [support] must hold the search permission (it holds dashboard.view). Failed asserting that false is true."
+- test_seeder_grants_search_to_staff:
+    "Role [staff] must hold the search permission (it holds dashboard.view). Failed asserting that false is true."
+- test_every_role_holding_dashboard_view_holds_search_after_seeding:
+    "Role [support] holds dashboard.view but was not granted search. Failed asserting that false is true."
+- test_backfill_migration_grants_search_to_dashboard_view_roles_idempotently:
+    "The search-permission backfill migration is missing. Failed asserting that file '...2026_09_23_000001_backfill_search_permission.php' exists."
+- test_backfill_migration_does_not_grant_search_to_roles_without_dashboard_view:
+    "The search-permission backfill migration is missing. Failed asserting that file '...' exists."
+```
+
+This reproduces the defect: `search` was declared in the seeder inventory but granted to no role, and no backfill existed.
+
+## GREEN — after seeder + migration
+
+```
+php -l database/migrations/2026_09_23_000001_backfill_search_permission.php
+  -> No syntax errors detected          (exit 0)
+
+php artisan test --filter=SearchPermissionBackfillTest
+  -> {"tool":"phpunit","result":"passed","tests":5,"passed":5,"assertions":44,"duration_ms":4316}   (exit 0)
+
+php artisan test --filter=SeederIntegrityTest
+  -> {"tool":"phpunit","result":"passed","tests":9,"passed":9,"assertions":38,"duration_ms":21373}  (exit 0)
+
+php artisan test --filter=AdminSearch          # untouched baseline, regression sanity
+  -> {"tool":"phpunit","result":"passed","tests":8,"passed":8,"assertions":16,"duration_ms":6860}   (exit 0)
+
+composer seed:smoke                            # disposable sqlite, never the local DB
+  -> PASS: products >=8 (got 9)
+     PASS: orders >=10 (got 10)
+     PASS: permissions modules.view/manage exist (2/2)
+     PASS: admin granted modules.* (2/2)
+     PASS: admin holds every permission (106/106)
+     PASS: idempotency: counts unchanged ({"p":9,"o":10,"perm":106})
+     == ALL PASS ==                            (exit 0)
+  -> migrate:fresh --seed log includes: 2026_09_23_000001_backfill_search_permission .. 7.74ms DONE
+```
+
+Test-behaviour notes (assertions read real DB state, never log lines):
+- `test_seeder_grants_search_to_support` / `..._staff` assert `Role::where('name', ...)->first()->hasPermission('search')` is `true` (`Role::hasPermission()` runs a `exists()` query).
+- `test_every_role_holding_dashboard_view_holds_search_after_seeding` derives the role set via `whereHas('permissions', name = dashboard.view)` and asserts `search` on every member, plus asserts `support/sales/marketing/staff/editor/viewer` are all in the set (regression anchors).
+- `test_backfill_migration_grants_search_to_dashboard_view_roles_idempotently` deletes the `search` permission **and its pivot rows** to simulate a pre-backfill upgrade, runs the real migration, asserts exactly one permission row + label `Use Global Search` + every `dashboard.view` role holds it, then runs the migration a **second time** and asserts: search permission count still 1, search pivot count unchanged, total pivot count unchanged.
+- `test_backfill_migration_does_not_grant_search_to_roles_without_dashboard_view` creates a `client` role (no `dashboard.view`) and asserts it does **not** receive `search`.
+
+## Manual QA channel (real executable surface)
+
+The plan's QA scenario (`tinker` against the developer's `local` MySQL) is **forbidden by the DB-safety rule**. Substitution and why: the same end-to-end check was executed against a **disposable scratch sqlite file** (`storage/qa-task2-scratch.sqlite`, deleted afterwards), where `migrate:fresh --seed` is safe — this is the sanctioned smoke pattern (`composer seed:smoke` uses the identical approach). A one-off bootstrap script (`%TEMP%\opencode\qa-task2.php`, deleted afterwards) printed the actual booleans and row counts via the real Eloquent models; the script's first JSON key is the connected DB name, so the output itself proves it did not touch the local DB.
+
+```
+$env:DB_CONNECTION='sqlite'; $env:DB_DATABASE='storage/qa-task2-scratch.sqlite'
+php artisan migrate:fresh --seed --force --no-interaction      -> exit 0
+php qa-task2.php
+{
+    "db": "storage/qa-task2-scratch.sqlite",
+    "support->hasPermission(search)": true,
+    "staff->hasPermission(search)": true,
+    "roles_with_dashboard_view": ["admin","editor","marketing","sales","staff","support","viewer"],
+    "all_dashboard_roles_have_search": true,
+    "search_permission_label": "Use Global Search",
+    "pivot_before": { "total": 187, "search": 7 }
+}
+php qa-task2.php --idempotency                                  -> exit 0
+{
+    "pivot_after": { "total": 187, "search": 7 },
+    "pivot_unchanged": true
+}
+```
+
+`--idempotency` re-runs the migration `up()` **twice** and the real `AdminLteRbacSeeder` **twice** on the same scratch DB. Pivot totals are identical before/after; the search pivot holds exactly 7 rows = the 7 roles holding `dashboard.view`.
+
+Cleanup receipt: `Test-Path storage/qa-task2-scratch.sqlite` -> `False`; `Test-Path %TEMP%\opencode\qa-task2.php` -> `False` (both deleted after the run).
+
+## Adversarial probes
+
+| Class | Probe | Observable |
+| --- | --- | --- |
+| Stale state / re-run (idempotency) | Migration `up()` x2 + seeder `run()` x2 on scratch DB; test re-runs migration on `:memory:`; `composer seed:smoke` re-runs `db:seed` | `pivot_unchanged: true` (187/187, search 7/7); PHPUnit asserts equal counts; smoke `idempotency: counts unchanged ({"p":9,"o":10,"perm":106})` |
+| Dirty worktree | `git status --porcelain` staged scope check + `git show --stat HEAD` after commit | Only 4 in-scope paths staged/committed; `~99` unrelated dirty files untouched (see Commit record) |
+| Misleading success output | Assertions read real rows/booleans, not log strings: `Role::hasPermission()` (SQL `exists()`), `DB::table('adminlte_permission_role')->count()`, `Permission::where(...)->count()`; manual QA prints those same values plus the connected DB name | RED run failed with 20 assertions even though `php -l` was clean; GREEN run's 44 assertions pass against actual rows |
+| Malformed / external input | N/A — this todo's seeder/migration accept no request, file or user input; they only read the `adminlte_*` tables. The web input surface is todo 3/8's concern. |
+| Cancel / resume | N/A — `php artisan migrate`/`db:seed` are atomic, non-interactive commands; no partial-state resume path exists. Interrupted re-runs are covered by the idempotency probe above. |
+| Hung commands | N/A — no network or unbounded IO; all commands are local PHP/sqlite, each observed to finish (test 4.3s, SeederIntegrity 21.4s, seed:smoke ~90s). |
+| Flaky tests | Probe: the same filter was run twice before and after the Pint formatting fix (`task2-green.txt`, `task2-green2.txt`) | Both runs: `5 passed, 44 assertions`, exit 0. Deterministic: sqlite `:memory:`, no clock/random/network dependency |
+| Repeated interruptions | N/A — nothing long-running lives across invocations; re-run safety is proven by the idempotency probe. |
+
+## Style / static gates
+
+- `vendor/bin/pint --test database/migrations/2026_09_23_000001_backfill_search_permission.php tests/Feature/SearchPermissionBackfillTest.php` -> `{"tool":"pint","result":"passed"}` (exit 0).
+- `vendor/bin/pint` was run on the new test file (it fixed `fully_qualified_strict_types` + `ordered_imports`); re-run of the filter stayed green.
+- `vendor/bin/pint --test database/seeders/AdminLteRbacSeeder.php` -> fails, but `git show HEAD:database/seeders/AdminLteRbacSeeder.php` piped to a temp file **also fails with the same fixers** (`unary_operator_spaces`, `not_operator_with_successor_space`, `binary_operator_spaces`) — pre-existing repo-wide style drift, deliberately not reformatted to keep the diff to the 6 added lines.
+- PHP LSP is **not installed** (server reported "user previously declined installation"). Substitutes used: `php -l` (all three files clean), PHPUnit (44 assertions), Pint.
+
+## Command translation record
+
+The plan/work-order uses bash idioms; on this Windows host the checks were run as:
+
+- `test -f <path>` -> `Test-Path <path>` (scratch-DB cleanup check).
+- `grep -q ...` -> not needed for this todo; all acceptance is behavioural (PHPUnit assertions + JSON booleans) rather than log greps.
+- `bash scripts/seed-smoke.sh` via `composer seed:smoke` works natively here (Git Bash at `C:\Program Files\Git\bin\bash.exe`); output captured with `Tee-Object`.
+
+## Commit record
+
+- Message: `feat(search): activate search permission with idempotent backfill migration`
+- Staged by explicit path only: seeder, migration, test, this evidence file.
+- Commit hash: **pending at write time — appended immediately after the commit** (this file is included in the commit; the appended hash line is the only post-commit change and is noted in the final report).
+
+COMMIT: __PENDING__

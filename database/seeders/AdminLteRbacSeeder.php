@@ -198,6 +198,7 @@ class AdminLteRbacSeeder extends Seeder
                 'label' => 'Support Team',
                 'permissions' => [
                     'dashboard.view',
+                    'search',
                     'activity.view',
                     'customers.view',
                     'invoices.view',
@@ -214,6 +215,7 @@ class AdminLteRbacSeeder extends Seeder
                 'label' => 'Sales Team',
                 'permissions' => [
                     'dashboard.view',
+                    'search',
                     'analytics.view',
                     'reports.view',
                     'customers.view', 'customers.create', 'customers.edit',
@@ -232,6 +234,7 @@ class AdminLteRbacSeeder extends Seeder
                 'label' => 'Marketing Team',
                 'permissions' => [
                     'dashboard.view',
+                    'search',
                     'analytics.view',
                     'reports.view',
                     'customers.view',
@@ -254,6 +257,7 @@ class AdminLteRbacSeeder extends Seeder
                     // role should not carry that by default -- grant it per
                     // install in the Roles UI to the people who need it.
                     'dashboard.view',
+                    'search',
                     'customers.view',
                     'products.view',
                     'invoices.view',
@@ -268,6 +272,7 @@ class AdminLteRbacSeeder extends Seeder
                 'label' => 'Editor',
                 'permissions' => [
                     'dashboard.view',
+                    'search',
                     'customers.view', 'customers.edit',
                     'products.view', 'products.edit',
                     'invoices.view',
@@ -279,6 +284,7 @@ class AdminLteRbacSeeder extends Seeder
                 'label' => 'Viewer',
                 'permissions' => [
                     'dashboard.view',
+                    'search',
                     'customers.view',
                     'products.view',
                     'invoices.view',
