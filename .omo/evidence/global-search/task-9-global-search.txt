@@ -206,3 +206,96 @@ git show --stat HEAD (verified after commit — exactly these 5 files, nothing f
 No `git commit --amend` was used. The evidence file was force-added (`git add -f`, it lives under an ignored
 path). This file was then updated with the hash above and committed separately as
 `chore(search): record task-9 evidence hash` (the same bookkeeping pattern as tasks 7 and 8).
+
+================================================================================
+FIX (F2 major -> resolved) — results-page `q` validation (final verification wave)
+================================================================================
+Date: 2026-09-24
+Finding (oracle F2, blocking): `SearchController@search` read
+  `$q = trim((string) $request->query('q', ''))` with NO validation.
+  - `?q[]=a` casts an array to string -> PHP "Array to string conversion" warning -> 500.
+  - No 100-character bound on the page (the typeahead has one via `SearchTypeaheadRequest`),
+    violating the plan's shared input contract (line 31: "min 2 / max 100 chars, compared
+    with `mb_strlen` on BOTH surfaces").
+Fix (minimal, convention-consistent):
+  1. NEW `app/Http/Requests/SearchPageRequest.php` mirroring `SearchTypeaheadRequest`:
+     `authorize(): bool` = `$this->user()?->hasPermission('search') ?? false`;
+     rules `q => ['nullable','string','max:100']` (short queries stay a 200 page, not 422).
+  2. `SearchController@search(SearchPageRequest $request)`: derives
+     `$validated = $request->validated(); $q = trim((string) ($validated['q'] ?? ''));`.
+     The now-unused `Illuminate\Http\Request` import was removed. Behavior preserved:
+     missing/1-char q -> the existing 200 "short query" page; 2..100 chars -> grouped page.
+     `typeahead()` untouched.
+  NOT touched: providers, foundation, routes, views, palette. Diff = 2 modified + 1 new file.
+
+STEP 1 — FAILING-FIRST PROOF (RED, tests written before the implementation)
+New tests in tests/Feature/AdminSearchTest.php (existing 17 contracts untouched):
+  - test_an_array_q_is_rejected_with_a_redirect_and_a_validation_error
+  - test_an_array_q_returns_422_for_a_json_request
+  - test_a_query_longer_than_100_characters_is_rejected
+  - test_a_query_of_exactly_100_characters_is_accepted (boundary guard)
+command: php artisan test --filter=AdminSearch --no-ansi   exit 1
+raw: {"tool":"phpunit","result":"failed","tests":17,"passed":14,"assertions":38,"duration_ms":23795,"failed":3}
+failing (exactly the malformed-input cases):
+  - array q, browser-style -> "Expected response status code [302] but received 500" /
+    "ErrorException: Array to string conversion in app/Http/Controllers/Admin/SearchController.php:28"
+  - array q, JSON Accept  -> "Expected response status code [422] but received 500" (same ErrorException)
+  - 101-char q, JSON      -> "Expected response status code [422] but received 200" (no bound)
+The 100-char boundary test already passed at baseline (nothing bounds it, so 200 either way);
+it is the guard that keeps the fix from over-rejecting.
+
+STEP 2 — GREEN (config:clear + view:clear immediately before)
+command: php artisan test --filter=AdminSearch --no-ansi           exit 0
+  raw: {"tool":"phpunit","result":"passed","tests":17,"passed":17,"assertions":44,"duration_ms":12869}
+command: php artisan test --filter=GlobalSearch --no-ansi          exit 0
+  raw: {"tool":"phpunit","result":"passed","tests":26,"passed":26,"assertions":398,"duration_ms":10912}
+command: php artisan test --filter=CommandPaletteRecords --no-ansi exit 0
+  raw: {"tool":"phpunit","result":"passed","tests":2,"passed":2,"assertions":11,"duration_ms":4143}
+command: php -l on SearchPageRequest.php / SearchController.php / AdminSearchTest.php
+  -> "No syntax errors detected" each
+command: php vendor/bin/pint --test <same 3 files> -> {"tool":"pint","result":"passed"} exit 0
+
+STEP 3 — MALFORMED-INPUT MATRIX (real HTTP kernel; temp harness, one request per method,
+raw status observables captured to storage/app/f2-capture.txt; harness + capture deleted
+afterwards, never staged)
+  browser q[]=a    -> 302 Location: http://managehosting.local
+  browser 101-char -> 302 Location: <previous URL> (redirect back with errors flashed)
+  browser 100-char -> 200
+  browser 1-char   -> 200   (historical short-query page preserved)
+  browser missing  -> 200   (same)
+  json q[]=a       -> 422 errors.q=["The q field must be a string."]
+  json 101-char    -> 422 errors.q=["The q field must not be greater than 100 characters."]
+  json 100-char    -> 200
+No 500 path remains for any malformed q; the browser/JSON split is Laravel-standard.
+
+STEP 4 — ADVERSARIAL PROBES
+1. Malformed input: matrix above + 4 committed tests. Exact statuses asserted, not absence-of-error.
+2. Misleading success: assertions are exact — 302 + assertSessionHasErrors('q'), 422 +
+   assertJsonValidationErrors('q'), 200 for the 100-char boundary. The 200s are also proven
+   non-vacuous by the existing short-query and grouped-page contracts in the same suite.
+3. Stale state: php artisan config:clear + view:clear ran immediately before the final green
+   AdminSearch run; tests use sqlite :memory: + RefreshDatabase.
+4. Dirty worktree: the repo carries many unrelated modified/untracked files from a sibling
+   HyperV/RDP lane. Only app/Http/Requests/SearchPageRequest.php,
+   app/Http/Controllers/Admin/SearchController.php, tests/Feature/AdminSearchTest.php and this
+   evidence file are staged; `git show --stat HEAD` verified after the commit.
+5. Cancel/resume: NOT APPLICABLE — single non-interactive pass, all state on disk; an
+   interruption resumes by re-running the same test filters.
+6. Hung commands: NOT APPLICABLE — every command ran under an explicit timeout and exited
+   (longest: the RED AdminSearch run at ~24 s); no daemon, server or watcher started.
+7. Flaky tests: NOT APPLICABLE as a failure class — AdminSearch ran 3x (RED/green/matrix) and
+   GlobalSearch + CommandPaletteRecords 1x each, with identical deterministic results.
+8. Repeated interruptions: NOT APPLICABLE — none occurred; this evidence file is the recovery anchor.
+9. Scope fidelity: `git diff --stat` = SearchController.php 12 +/- and AdminSearchTest.php +37,
+   plus the new request file; routes/views/providers/palette show no diff from this fix.
+
+STEP 5 — COMMIT
+staged paths (ONLY these 4):
+  app/Http/Requests/SearchPageRequest.php
+  app/Http/Controllers/Admin/SearchController.php
+  tests/Feature/AdminSearchTest.php
+  .omo/evidence/global-search/task-9-global-search.txt
+message: fix(search): validate the results-page q parameter
+commit: pending — recorded below in the follow-up bookkeeping commit
+No `git commit --amend` was used; the evidence file was force-added (`git add -f`).
+

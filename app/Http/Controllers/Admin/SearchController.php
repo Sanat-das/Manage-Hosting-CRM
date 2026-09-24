@@ -3,11 +3,11 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\SearchPageRequest;
 use App\Http\Requests\SearchTypeaheadRequest;
 use App\Models\User;
 use App\Services\Search\GlobalSearchService;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
 use Illuminate\View\View;
 
 class SearchController extends Controller
@@ -22,10 +22,16 @@ class SearchController extends Controller
      * never runs a COUNT(*). Queries shorter than two characters keep the
      * historical contract: the page renders the form only, with no results
      * section at all.
+     *
+     * `q` obeys the shared input contract (min 2 / max 100 chars, `mb_strlen`)
+     * via `SearchPageRequest`, mirroring the typeahead: a malformed query (an
+     * array, or longer than 100 characters) is rejected before this method
+     * runs and can never reach the string cast below.
      */
-    public function search(Request $request): View
+    public function search(SearchPageRequest $request): View
     {
-        $q = trim((string) $request->query('q', ''));
+        $validated = $request->validated();
+        $q = trim((string) ($validated['q'] ?? ''));
 
         $groups = [];
 

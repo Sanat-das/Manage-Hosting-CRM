@@ -167,6 +167,43 @@ class AdminSearchTest extends TestCase
         $response->assertDontSee('No results found for');
     }
 
+    // --- malformed input (F2 fix: shared 2/100 contract on the page) --------
+
+    public function test_an_array_q_is_rejected_with_a_redirect_and_a_validation_error(): void
+    {
+        // `?q[]=a` must never reach the controller's string cast (that cast
+        // would emit an "Array to string conversion" warning and 500). A
+        // browser-style request gets Laravel's standard redirect-back.
+        $response = $this->actingAsAdmin()->get('/admin/search?q[]=a');
+
+        $response->assertStatus(302);
+        $response->assertSessionHasErrors('q');
+    }
+
+    public function test_an_array_q_returns_422_for_a_json_request(): void
+    {
+        $this->actingAsAdmin()
+            ->getJson('/admin/search?q[]=a')
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('q');
+    }
+
+    public function test_a_query_longer_than_100_characters_is_rejected(): void
+    {
+        $this->actingAsAdmin()
+            ->getJson('/admin/search?q='.str_repeat('a', 101))
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('q');
+    }
+
+    public function test_a_query_of_exactly_100_characters_is_accepted(): void
+    {
+        // The boundary itself is valid: max is inclusive on both surfaces.
+        $this->actingAsAdmin()
+            ->get('/admin/search?q='.str_repeat('a', 100))
+            ->assertStatus(200);
+    }
+
     // --- grouped results page (todo 9) -------------------------------------
 
     private function makeCustomer(string $email, string $company): Customer
