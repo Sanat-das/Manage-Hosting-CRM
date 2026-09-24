@@ -54,6 +54,15 @@ All notable user-facing changes to this project are documented in this file.
 - **Compiled Vite assets committed** (`public/build/`). `npm` and Node.js
   are no longer required on the server; assets ship with the repository.
 
+- **Global search across the panel** (`Ctrl/Cmd+K`). A permission-aware
+  provider registry of 17 entities (customers, contacts, staff, orders,
+  invoices, payments, transactions, quotes, service instances, hosting
+  accounts, servers, domains, SSL certificates, tickets, KB articles, catalog
+  products, products) now powers both the command palette and the grouped
+  `/admin/search` results page. Each provider is one class listed in
+  `config/search.php`, and a viewer only ever sees the groups their
+  permissions allow. Reference: [docs/search.md](docs/search.md).
+
 ### Changed
 
 - **Quantity & Service Behaviour is the single switch.** `products.quantity_behaviour`

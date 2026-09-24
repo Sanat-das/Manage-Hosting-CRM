@@ -1,0 +1,364 @@
+﻿=== GLOBAL SEARCH TASK 12: DOCUMENTATION + CHANGELOG ===
+captured: 2026-09-24T13:52:27.3074783+05:30
+HEAD before task: 1b8aa515acdc7889711b01518b3bb91333dd5077
+
+--- RED 1: docs/search.md does not exist yet ---
+PS> Test-Path docs/search.md
+False
+--- RED 2: README.md has no 'Global Search' section yet ---
+PS> Select-String -Path README.md -Pattern 'Global Search'
+matches: 0
+--- RED 3: CHANGELOG.md has no search entry yet ---
+PS> Select-String -Path CHANGELOG.md -Pattern 'search'
+matches (case-sensitive): 0
+
+--- FACT CHECK (before writing docs): intended documented routes vs php artisan route:list ---
+PS> php artisan route:list | Select-String <name>  (36 intended names)
+PASS route admin.search.index
+PASS route admin.search.typeahead
+PASS route admin.customers.show
+PASS route admin.customers.index
+PASS route admin.service-instances.show
+PASS route admin.service-instances.index
+PASS route admin.hosting.show
+PASS route admin.hosting.index
+PASS route admin.servers.show
+PASS route admin.servers.index
+PASS route admin.domains.show
+PASS route admin.domains.index
+PASS route admin.orders.show
+PASS route admin.orders.index
+PASS route admin.invoices.show
+PASS route admin.invoices.index
+PASS route admin.payments.show
+PASS route admin.payments.index
+PASS route admin.transactions.show
+PASS route admin.transactions.index
+PASS route admin.quotes.show
+PASS route admin.quotes.index
+PASS route admin.tickets.show
+PASS route admin.tickets.index
+PASS route admin.kb.show
+PASS route admin.kb.index
+PASS route admin.catalog-products.show
+PASS route admin.catalog-products.index
+PASS route admin.products.show
+PASS route admin.products.index
+PASS route admin.ssl.show
+PASS route admin.ssl.index
+PASS route admin.users.show
+PASS route admin.users.index
+route check: 34/34 PASS
+
+--- FACT CHECK (before writing docs): intended documented provider classes vs real files + config/search.php ---
+PASS provider CustomerSearchProvider (file + config/search.php)
+PASS provider ContactSearchProvider (file + config/search.php)
+PASS provider StaffUserSearchProvider (file + config/search.php)
+PASS provider OrderSearchProvider (file + config/search.php)
+PASS provider InvoiceSearchProvider (file + config/search.php)
+PASS provider PaymentSearchProvider (file + config/search.php)
+PASS provider TransactionSearchProvider (file + config/search.php)
+PASS provider QuoteSearchProvider (file + config/search.php)
+PASS provider ServiceInstanceSearchProvider (file + config/search.php)
+PASS provider HostingAccountSearchProvider (file + config/search.php)
+PASS provider ServerSearchProvider (file + config/search.php)
+PASS provider DomainSearchProvider (file + config/search.php)
+PASS provider SslCertificateSearchProvider (file + config/search.php)
+PASS provider TicketSearchProvider (file + config/search.php)
+PASS provider KnowledgeBaseSearchProvider (file + config/search.php)
+PASS provider CatalogProductSearchProvider (file + config/search.php)
+PASS provider ProductSearchProvider (file + config/search.php)
+provider check: 17/17 PASS
+
+--- FACT CHECK (before writing docs): interface methods on the real contract files ---
+PASS interface method key() in SearchProvider.php
+PASS interface method label() in SearchProvider.php
+PASS interface method icon() in SearchProvider.php
+PASS interface method permission() in SearchProvider.php
+PASS interface method showRoute() in SearchProvider.php
+PASS interface method listRoute() in SearchProvider.php
+PASS interface method query() in SearchProvider.php
+PASS interface method queryFor() in SearchProvider.php
+PASS interface method toResult() in SearchProvider.php
+PASS abstract method baseQueryFor() in AbstractSearchProvider.php
+PASS abstract method baseQuery() in AbstractSearchProvider.php
+PASS abstract method searchableColumns() in AbstractSearchProvider.php
+PASS abstract method searchableRelations() in AbstractSearchProvider.php
+PASS abstract method rankColumn() in AbstractSearchProvider.php
+PASS abstract method applyTermFilter() in AbstractSearchProvider.php
+PASS abstract method applyRanking() in AbstractSearchProvider.php
+PASS abstract method whereLikeEscaped() in AbstractSearchProvider.php
+PASS abstract method resultRow() in AbstractSearchProvider.php
+
+--- FACT CHECK (before writing docs): palette state at doc time ---
+PS> Select-String -Path resources\js\chat.js -Pattern '__mhChatShortcuts'
+matches: 0 (0 = palette todo 10 still in flight; the precedence section documents the plan's contract)
+
+=== GREEN: automated acceptance (after writing docs) ===
+PS> Test-Path docs/search.md
+True
+PS> (Select-String -Path docs/search.md -Pattern 'ESCAPE' | Measure-Object).Count
+14
+PS> (Select-String -Path README.md -Pattern 'Global Search' | Measure-Object).Count
+2
+PS> (Select-String -Path CHANGELOG.md -Pattern 'Global search' | Measure-Object).Count
+1
+provider list in docs/search.md: 17/17 present; missing: 
+
+--- GREEN: scripted consistency check (docs/search.md vs real files + route:list) ---
+PS> powershell -NoProfile -ExecutionPolicy Bypass -File "C:\Users\Administrator\AppData\Local\Temp\2\opencode\task12-consistency.ps1"
+== provider classes documented in docs/search.md ==
+FAIL provider AbstractSearchProvider (file=False config=False)
+PASS provider CatalogProductSearchProvider (file + config/search.php)
+PASS provider ContactSearchProvider (file + config/search.php)
+PASS provider CustomerSearchProvider (file + config/search.php)
+PASS provider DomainSearchProvider (file + config/search.php)
+PASS provider HostingAccountSearchProvider (file + config/search.php)
+PASS provider InvoiceSearchProvider (file + config/search.php)
+PASS provider KnowledgeBaseSearchProvider (file + config/search.php)
+PASS provider LicenseSearchProvider (worked example: correctly absent from code and config; doc marks it 'not shipped as part of the 17')
+PASS provider OrderSearchProvider (file + config/search.php)
+PASS provider PaymentSearchProvider (file + config/search.php)
+PASS provider ProductSearchProvider (file + config/search.php)
+PASS provider QuoteSearchProvider (file + config/search.php)
+PASS provider ServerSearchProvider (file + config/search.php)
+PASS provider ServiceInstanceSearchProvider (file + config/search.php)
+PASS provider SslCertificateSearchProvider (file + config/search.php)
+PASS provider StaffUserSearchProvider (file + config/search.php)
+PASS provider TicketSearchProvider (file + config/search.php)
+PASS provider TransactionSearchProvider (file + config/search.php)
+== route names documented in docs/search.md ==
+PASS route admin.catalog-products.index (in route:list)
+PASS route admin.catalog-products.show (in route:list)
+PASS route admin.customers.index (in route:list)
+PASS route admin.customers.show (in route:list)
+PASS route admin.domains.index (in route:list)
+PASS route admin.domains.show (in route:list)
+PASS route admin.hosting.index (in route:list)
+PASS route admin.hosting.show (in route:list)
+PASS route admin.invoices.index (in route:list)
+PASS route admin.invoices.show (in route:list)
+PASS route admin.kb.index (in route:list)
+PASS route admin.kb.show (in route:list)
+PASS route admin.licenses.index (in route:list)
+PASS route admin.licenses.show (in route:list)
+PASS route admin.orders.index (in route:list)
+PASS route admin.orders.show (in route:list)
+PASS route admin.payments.index (in route:list)
+PASS route admin.payments.show (in route:list)
+PASS route admin.products.index (in route:list)
+PASS route admin.products.show (in route:list)
+PASS route admin.quotes.index (in route:list)
+PASS route admin.quotes.show (in route:list)
+PASS route admin.search.index (in route:list)
+PASS route admin.search.typeahead (in route:list)
+PASS route admin.servers.index (in route:list)
+PASS route admin.servers.show (in route:list)
+PASS route admin.service-instances.index (in route:list)
+PASS route admin.service-instances.show (in route:list)
+PASS route admin.ssl.index (in route:list)
+PASS route admin.ssl.show (in route:list)
+PASS route admin.tickets.index (in route:list)
+PASS route admin.tickets.show (in route:list)
+PASS route admin.transactions.index (in route:list)
+PASS route admin.transactions.show (in route:list)
+PASS route admin.users.index (in route:list)
+PASS route admin.users.show (in route:list)
+== interface methods documented in docs/search.md ==
+PASS interface method key() in SearchProvider.php
+PASS interface method label() in SearchProvider.php
+PASS interface method icon() in SearchProvider.php
+PASS interface method permission() in SearchProvider.php
+PASS interface method showRoute() in SearchProvider.php
+PASS interface method listRoute() in SearchProvider.php
+PASS interface method query() in SearchProvider.php
+PASS interface method queryFor() in SearchProvider.php
+PASS interface method toResult() in SearchProvider.php
+PASS abstract method baseQueryFor() in AbstractSearchProvider.php
+PASS abstract method baseQuery() in AbstractSearchProvider.php
+PASS abstract method searchableColumns() in AbstractSearchProvider.php
+PASS abstract method searchableRelations() in AbstractSearchProvider.php
+PASS abstract method rankColumn() in AbstractSearchProvider.php
+PASS abstract method whereLikeEscaped() in AbstractSearchProvider.php
+PASS abstract method resultRow() in AbstractSearchProvider.php
+
+consistency check: 70 PASS / 1 FAIL / 19 provider classes / 36 route names
+exit code: 1
+
+--- GREEN (re-run after checker fix): first run above exposed a checker bug, not a doc bug: AbstractSearchProvider is the base machinery class at app/Services/Search/, not a registry entry. Corrected checker verifies it there and correctly not in config/search.php. ---
+== provider classes documented in docs/search.md ==
+PASS provider AbstractSearchProvider (base machinery at app/Services/Search/AbstractSearchProvider.php; correctly not a registry entry)
+PASS provider CatalogProductSearchProvider (file + config/search.php)
+PASS provider ContactSearchProvider (file + config/search.php)
+PASS provider CustomerSearchProvider (file + config/search.php)
+PASS provider DomainSearchProvider (file + config/search.php)
+PASS provider HostingAccountSearchProvider (file + config/search.php)
+PASS provider InvoiceSearchProvider (file + config/search.php)
+PASS provider KnowledgeBaseSearchProvider (file + config/search.php)
+PASS provider LicenseSearchProvider (worked example: correctly absent from code and config; doc marks it 'not shipped as part of the 17')
+PASS provider OrderSearchProvider (file + config/search.php)
+PASS provider PaymentSearchProvider (file + config/search.php)
+PASS provider ProductSearchProvider (file + config/search.php)
+PASS provider QuoteSearchProvider (file + config/search.php)
+PASS provider ServerSearchProvider (file + config/search.php)
+PASS provider ServiceInstanceSearchProvider (file + config/search.php)
+PASS provider SslCertificateSearchProvider (file + config/search.php)
+PASS provider StaffUserSearchProvider (file + config/search.php)
+PASS provider TicketSearchProvider (file + config/search.php)
+PASS provider TransactionSearchProvider (file + config/search.php)
+== route names documented in docs/search.md ==
+PASS route admin.catalog-products.index (in route:list)
+PASS route admin.catalog-products.show (in route:list)
+PASS route admin.customers.index (in route:list)
+PASS route admin.customers.show (in route:list)
+PASS route admin.domains.index (in route:list)
+PASS route admin.domains.show (in route:list)
+PASS route admin.hosting.index (in route:list)
+PASS route admin.hosting.show (in route:list)
+PASS route admin.invoices.index (in route:list)
+PASS route admin.invoices.show (in route:list)
+PASS route admin.kb.index (in route:list)
+PASS route admin.kb.show (in route:list)
+PASS route admin.licenses.index (in route:list)
+PASS route admin.licenses.show (in route:list)
+PASS route admin.orders.index (in route:list)
+PASS route admin.orders.show (in route:list)
+PASS route admin.payments.index (in route:list)
+PASS route admin.payments.show (in route:list)
+PASS route admin.products.index (in route:list)
+PASS route admin.products.show (in route:list)
+PASS route admin.quotes.index (in route:list)
+PASS route admin.quotes.show (in route:list)
+PASS route admin.search.index (in route:list)
+PASS route admin.search.typeahead (in route:list)
+PASS route admin.servers.index (in route:list)
+PASS route admin.servers.show (in route:list)
+PASS route admin.service-instances.index (in route:list)
+PASS route admin.service-instances.show (in route:list)
+PASS route admin.ssl.index (in route:list)
+PASS route admin.ssl.show (in route:list)
+PASS route admin.tickets.index (in route:list)
+PASS route admin.tickets.show (in route:list)
+PASS route admin.transactions.index (in route:list)
+PASS route admin.transactions.show (in route:list)
+PASS route admin.users.index (in route:list)
+PASS route admin.users.show (in route:list)
+== interface methods documented in docs/search.md ==
+PASS interface method key() in SearchProvider.php
+PASS interface method label() in SearchProvider.php
+PASS interface method icon() in SearchProvider.php
+PASS interface method permission() in SearchProvider.php
+PASS interface method showRoute() in SearchProvider.php
+PASS interface method listRoute() in SearchProvider.php
+PASS interface method query() in SearchProvider.php
+PASS interface method queryFor() in SearchProvider.php
+PASS interface method toResult() in SearchProvider.php
+PASS abstract method baseQueryFor() in AbstractSearchProvider.php
+PASS abstract method baseQuery() in AbstractSearchProvider.php
+PASS abstract method searchableColumns() in AbstractSearchProvider.php
+PASS abstract method searchableRelations() in AbstractSearchProvider.php
+PASS abstract method rankColumn() in AbstractSearchProvider.php
+PASS abstract method whereLikeEscaped() in AbstractSearchProvider.php
+PASS abstract method resultRow() in AbstractSearchProvider.php
+
+consistency check: 71 PASS / 0 FAIL / 19 provider classes / 36 route names
+exit code: 0
+
+=== GREEN FINAL (after doc corrections: real test file names) ===
+Test-Path docs/search.md -> True
+(Select-String docs/search.md 'ESCAPE').Count -> 14
+(Select-String README.md 'Global Search').Count -> 2
+(Select-String CHANGELOG.md 'Global search').Count -> 1
+== provider classes documented in docs/search.md ==
+PASS provider AbstractSearchProvider (base machinery at app/Services/Search/AbstractSearchProvider.php; correctly not a registry entry)
+PASS provider CatalogProductSearchProvider (file + config/search.php)
+PASS provider ContactSearchProvider (file + config/search.php)
+PASS provider CustomerSearchProvider (file + config/search.php)
+PASS provider DomainSearchProvider (file + config/search.php)
+PASS provider HostingAccountSearchProvider (file + config/search.php)
+PASS provider InvoiceSearchProvider (file + config/search.php)
+PASS provider KnowledgeBaseSearchProvider (file + config/search.php)
+PASS provider LicenseSearchProvider (worked example: correctly absent from code and config; doc marks it 'not shipped as part of the 17')
+PASS provider OrderSearchProvider (file + config/search.php)
+PASS provider PaymentSearchProvider (file + config/search.php)
+PASS provider ProductSearchProvider (file + config/search.php)
+PASS provider QuoteSearchProvider (file + config/search.php)
+PASS provider ServerSearchProvider (file + config/search.php)
+PASS provider ServiceInstanceSearchProvider (file + config/search.php)
+PASS provider SslCertificateSearchProvider (file + config/search.php)
+PASS provider StaffUserSearchProvider (file + config/search.php)
+PASS provider TicketSearchProvider (file + config/search.php)
+PASS provider TransactionSearchProvider (file + config/search.php)
+== route names documented in docs/search.md ==
+PASS route admin.catalog-products.index (in route:list)
+PASS route admin.catalog-products.show (in route:list)
+PASS route admin.customers.index (in route:list)
+PASS route admin.customers.show (in route:list)
+PASS route admin.domains.index (in route:list)
+PASS route admin.domains.show (in route:list)
+PASS route admin.hosting.index (in route:list)
+PASS route admin.hosting.show (in route:list)
+PASS route admin.invoices.index (in route:list)
+PASS route admin.invoices.show (in route:list)
+PASS route admin.kb.index (in route:list)
+PASS route admin.kb.show (in route:list)
+PASS route admin.licenses.index (in route:list)
+PASS route admin.licenses.show (in route:list)
+PASS route admin.orders.index (in route:list)
+PASS route admin.orders.show (in route:list)
+PASS route admin.payments.index (in route:list)
+PASS route admin.payments.show (in route:list)
+PASS route admin.products.index (in route:list)
+PASS route admin.products.show (in route:list)
+PASS route admin.quotes.index (in route:list)
+PASS route admin.quotes.show (in route:list)
+PASS route admin.search.index (in route:list)
+PASS route admin.search.typeahead (in route:list)
+PASS route admin.servers.index (in route:list)
+PASS route admin.servers.show (in route:list)
+PASS route admin.service-instances.index (in route:list)
+PASS route admin.service-instances.show (in route:list)
+PASS route admin.ssl.index (in route:list)
+PASS route admin.ssl.show (in route:list)
+PASS route admin.tickets.index (in route:list)
+PASS route admin.tickets.show (in route:list)
+PASS route admin.transactions.index (in route:list)
+PASS route admin.transactions.show (in route:list)
+PASS route admin.users.index (in route:list)
+PASS route admin.users.show (in route:list)
+== interface methods documented in docs/search.md ==
+PASS interface method key() in SearchProvider.php
+PASS interface method label() in SearchProvider.php
+PASS interface method icon() in SearchProvider.php
+PASS interface method permission() in SearchProvider.php
+PASS interface method showRoute() in SearchProvider.php
+PASS interface method listRoute() in SearchProvider.php
+PASS interface method query() in SearchProvider.php
+PASS interface method queryFor() in SearchProvider.php
+PASS interface method toResult() in SearchProvider.php
+PASS abstract method baseQueryFor() in AbstractSearchProvider.php
+PASS abstract method baseQuery() in AbstractSearchProvider.php
+PASS abstract method searchableColumns() in AbstractSearchProvider.php
+PASS abstract method searchableRelations() in AbstractSearchProvider.php
+PASS abstract method rankColumn() in AbstractSearchProvider.php
+PASS abstract method whereLikeEscaped() in AbstractSearchProvider.php
+PASS abstract method resultRow() in AbstractSearchProvider.php
+== test files documented in docs/search.md ==
+PASS test file tests/Feature/GlobalSearchServiceTest.php
+PASS test file tests/Feature/HostingSearchProvidersTest.php
+PASS test file tests/Feature/IdentitySearchProvidersTest.php
+
+consistency check: 74 PASS / 0 FAIL / 19 provider classes / 36 route names / 3 test files
+exit code: 0
+
+--- PRE-COMMIT STATE ---
+PS> git status --porcelain -- docs/search.md README.md CHANGELOG.md .omo/evidence/global-search/task-12-global-search.txt
+ M CHANGELOG.md
+ M README.md
+?? docs/search.md
+PS> git diff --stat -- docs/search.md README.md CHANGELOG.md
+ CHANGELOG.md |  9 +++++++++
+ README.md    | 22 ++++++++++++++++++++++
+ 2 files changed, 31 insertions(+)
+
+--- PALETTE (todo 10) STATE AT DOC TIME: flag matches in resources/js/chat.js = 0; palette typeahead/Records markers = 0 (both 0: sibling palette work still in flight). Section 8 documents the plan's precedence contract; final verification (F1-F4) runs after todo 10 lands. ---

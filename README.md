@@ -119,6 +119,28 @@ Three permissions in `AdminLteRbacSeeder` and a backfill migration so
 with inbox operator actions additionally policy gated via `ChatConversationPolicy`.
 The customer widget is guest token scoped, not permission gated.
 
+## Global Search
+
+One permission-aware search box across the whole panel. Press **Ctrl/Cmd+K** on
+any admin page for the command palette (navigation links plus live records), or
+open the full grouped results page at `/admin/search`. Full reference lives in
+[docs/search.md](docs/search.md).
+
+- **Ctrl/Cmd+K palette** on every admin page: the sidebar Navigation group plus
+  a Records group fetched from `GET /admin/search/typeahead`.
+- **Full results page** at `/admin/search`, grouped per entity with capped
+  counts and "View all" links into the matching list screen.
+- **Permission-aware**: each provider names one permission, and the viewer's
+  permission set is resolved once per request, so a group they cannot read is
+  never built.
+- **Provider-extensible**: 17 entities ship as classes in
+  `app/Services/Search/Providers/`, registered in `config/search.php`. Adding
+  one is a class plus a config line.
+- **`throttle:search`**: both routes run on a dedicated 300/min per-user
+  limiter and opt out of `throttle:admin`.
+
+Admin/staff only. There is no client-portal global search.
+
 ## About Laravel
 
 Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
