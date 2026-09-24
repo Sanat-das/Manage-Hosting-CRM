@@ -1,0 +1,195 @@
+[
+  {
+    "k": "login_landing",
+    "v": "http://managehosting.local/admin/dashboard"
+  },
+  {
+    "k": "a_palette_open",
+    "v": true
+  },
+  {
+    "k": "a_input_focused",
+    "v": "adminlteCommandPaletteInput"
+  },
+  {
+    "k": "a_group_headers",
+    "v": [
+      "Customers"
+    ]
+  },
+  {
+    "k": "a_rows",
+    "v": [
+      {
+        "id": "adminlteCmdkOption0",
+        "active": true,
+        "ariaSelected": "true",
+        "text": "KCsomenath@hotmail.com",
+        "small": "somenath@hotmail.com"
+      },
+      {
+        "id": "adminlteCmdkOption1",
+        "active": false,
+        "ariaSelected": "false",
+        "text": "View all results",
+        "small": ""
+      }
+    ]
+  },
+  {
+    "k": "a_activedescendant",
+    "v": "adminlteCmdkOption0"
+  },
+  {
+    "k": "a_active_after_arrowdown",
+    "v": "View all results"
+  },
+  {
+    "k": "a_activedescendant_after_arrowdown",
+    "v": "adminlteCmdkOption1"
+  },
+  {
+    "k": "a_active_after_arrowup",
+    "v": "KCsomenath@hotmail.com"
+  },
+  {
+    "k": "a_activedescendant_after_arrowup",
+    "v": "adminlteCmdkOption0"
+  },
+  {
+    "k": "a1_enter_url",
+    "v": "http://managehosting.local/admin/customers/1"
+  },
+  {
+    "k": "a2_rows",
+    "v": [
+      "KCsomenath@hotmail.com",
+      "Some-Hyper-V10.1.3.133 · hyperv",
+      "View all results"
+    ]
+  },
+  {
+    "k": "a2_active_after_arrowdown",
+    "v": "Some-Hyper-V10.1.3.133 · hyperv"
+  },
+  {
+    "k": "a2_enter_url",
+    "v": "http://managehosting.local/admin/dashboard"
+  },
+  {
+    "k": "b_group_titles",
+    "v": [
+      "Customers (1)"
+    ]
+  },
+  {
+    "k": "b_view_all_hrefs",
+    "v": [
+      "http://managehosting.local/admin/customers?search=somenath"
+    ]
+  },
+  {
+    "k": "b_result_links",
+    "v": [
+      {
+        "text": "KC",
+        "href": "http://managehosting.local/admin/customers/1"
+      }
+    ]
+  },
+  {
+    "k": "b_click_landing",
+    "v": "http://managehosting.local/admin/customers/1"
+  },
+  {
+    "k": "b_click_page_heading",
+    "v": "Somenath Patr"
+  },
+  {
+    "k": "b_acme_empty_state",
+    "v": true
+  },
+  {
+    "k": "b_acme_empty_text",
+    "v": "No results found for “acme”\n\nTry a different spelling, a customer email, an invoice number, or a domain name."
+  },
+  {
+    "k": "case_c_error",
+    "v": "page.waitForSelector: Timeout 20000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('#chat-switcher') to be visible\u001b[22m\n\u001b[2m    43 × locator resolved to hidden <div role=\"dialog\" aria-modal=\"true\" id=\"chat-switcher\" class=\"chat-palette d-none\" aria-labelledby=\"chat-switcher-title\">…</div>\u001b[22m\n"
+  },
+  {
+    "k": "f_viewport",
+    "v": [
+      375,
+      812
+    ]
+  },
+  {
+    "k": "f_horizontal_overflow",
+    "v": false
+  },
+  {
+    "k": "f_group_titles",
+    "v": [
+      "Customers (1)"
+    ]
+  },
+  {
+    "k": "f_result_rows",
+    "v": 1
+  },
+  {
+    "k": "f_input_visible",
+    "v": true
+  },
+  {
+    "k": "d_support_hyper",
+    "v": {
+      "url": "http://managehosting.local/admin/search?q=Hyper",
+      "status": "HostVexa | Hosting Management Platform",
+      "forbidden_403": false,
+      "group_titles": [
+        "Servers (1)"
+      ],
+      "empty_state": false,
+      "result_rows": 1
+    }
+  },
+  {
+    "k": "d_staff_hyper",
+    "v": {
+      "url": "http://managehosting.local/admin/search?q=Hyper",
+      "status": "HostVexa | Hosting Management Platform",
+      "forbidden_403": false,
+      "group_titles": [],
+      "empty_state": true,
+      "result_rows": 0
+    }
+  },
+  {
+    "k": "d_support_somenath",
+    "v": {
+      "url": "http://managehosting.local/admin/search?q=somenath",
+      "status": "HostVexa | Hosting Management Platform",
+      "forbidden_403": false,
+      "group_titles": [
+        "Customers (1)"
+      ],
+      "empty_state": false,
+      "result_rows": 1
+    }
+  },
+  {
+    "k": "d_staff_somenath",
+    "v": {
+      "url": "http://managehosting.local/admin/search?q=somenath",
+      "status": "HostVexa | Hosting Management Platform",
+      "forbidden_403": false,
+      "group_titles": [
+        "Customers (1)"
+      ],
+      "empty_state": false,
+      "result_rows": 1
+    }
+  }
+]

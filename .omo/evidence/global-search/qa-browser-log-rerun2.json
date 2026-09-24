@@ -1,0 +1,54 @@
+[
+  {
+    "k": "rerun2_login_landing",
+    "v": "http://managehosting.local/admin/dashboard"
+  },
+  {
+    "k": "a2_active_after_arrowdown",
+    "v": "Some-Hyper-V10.1.3.133 · hyperv"
+  },
+  {
+    "k": "a2_enter_url",
+    "v": "http://managehosting.local/admin/servers/1"
+  },
+  {
+    "k": "a2_landed_heading",
+    "v": "Some-Hyper-V"
+  },
+  {
+    "k": "c_chat_url",
+    "v": "http://managehosting.local/admin/chat"
+  },
+  {
+    "k": "c_chat_flag",
+    "v": true
+  },
+  {
+    "k": "c_switcher_at_rest_hidden",
+    "v": true
+  },
+  {
+    "k": "c_chat_switcher_visible",
+    "v": true
+  },
+  {
+    "k": "c_palette_hidden_on_chat",
+    "v": true
+  },
+  {
+    "k": "c_palette_input_visible",
+    "v": false
+  },
+  {
+    "k": "c_switcher_closed_after_escape",
+    "v": true
+  },
+  {
+    "k": "c_elsewhere_palette_open",
+    "v": true
+  },
+  {
+    "k": "c_elsewhere_switcher_exists",
+    "v": false
+  }
+]
