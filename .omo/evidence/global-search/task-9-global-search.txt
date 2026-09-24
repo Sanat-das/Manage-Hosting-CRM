@@ -195,4 +195,14 @@ staged paths (ONLY these 5):
   tests/Feature/AdminSearchTest.php
   .omo/evidence/global-search/task-9-global-search.txt
 message: feat(search): upgrade the full results page to grouped, gated, paginated results
-commit: <recorded in the follow-up hash commit>
+commit: 1157b955a08376114dc27e920b66c891a68c1117
+git show --stat HEAD (verified after commit — exactly these 5 files, nothing from the sibling lane):
+  .omo/evidence/global-search/task-9-global-search.txt | 198 +++++++++++++++++
+  app/Http/Controllers/Admin/SearchController.php       |  52 +++---
+  resources/views/admin/search/index.blade.php          | 133 +++++++-------
+  routes/admin/search.php                               |  10 +-
+  tests/Feature/AdminSearchTest.php                     | 116 +++++++++++-
+  5 files changed, 414 insertions(+), 95 deletions(-)
+No `git commit --amend` was used. The evidence file was force-added (`git add -f`, it lives under an ignored
+path). This file was then updated with the hash above and committed separately as
+`chore(search): record task-9 evidence hash` (the same bookkeeping pattern as tasks 7 and 8).
