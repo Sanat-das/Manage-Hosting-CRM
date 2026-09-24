@@ -4,11 +4,6 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\SearchTypeaheadRequest;
-use App\Models\CatalogProduct;
-use App\Models\Customer;
-use App\Models\Invoice;
-use App\Models\ServiceInstance;
-use App\Models\Ticket;
 use App\Models\User;
 use App\Services\Search\GlobalSearchService;
 use Illuminate\Http\JsonResponse;
@@ -17,34 +12,35 @@ use Illuminate\View\View;
 
 class SearchController extends Controller
 {
+    /**
+     * The full grouped results page.
+     *
+     * The viewer's permission names are resolved ONCE (a single pluck) and the
+     * service skips every provider the viewer may not read, so a group that
+     * must not be visible is never even built. Each group is capped at 10 rows;
+     * the service fetches `limit + 1` and reports `has_more`, so this page
+     * never runs a COUNT(*). Queries shorter than two characters keep the
+     * historical contract: the page renders the form only, with no results
+     * section at all.
+     */
     public function search(Request $request): View
     {
         $q = trim((string) $request->query('q', ''));
-        $results = [];
-        if (strlen($q) >= 2) {
-            $results['customers'] = Customer::whereHas('user', function ($query) use ($q) {
-                $query->where('email', 'like', "%{$q}%")
-                    ->orWhere('first_name', 'like', "%{$q}%")
-                    ->orWhere('last_name', 'like', "%{$q}%");
-            })
-                ->orWhere('company', 'like', "%{$q}%")
-                ->with('user')
-                ->limit(5)->get();
-            $results['services'] = ServiceInstance::where('username', 'like', "%{$q}%")
-                ->orWhere('domain', 'like', "%{$q}%")
-                ->with('customer')
-                ->limit(5)->get();
-            $results['invoices'] = Invoice::where('invoice_no', 'like', "%{$q}%")
-                ->limit(5)->get();
-            $results['tickets'] = Ticket::where('subject', 'like', "%{$q}%")
-                ->orWhere('ticket_no', 'like', "%{$q}%")
-                ->limit(5)->get();
-            $results['products'] = CatalogProduct::where('name', 'like', "%{$q}%")
-                ->orWhere('sku', 'like', "%{$q}%")
-                ->limit(5)->get();
+
+        $groups = [];
+
+        if (mb_strlen($q) >= 2) {
+            $service = app(GlobalSearchService::class);
+
+            /** @var User $user */
+            $user = $request->user();
+
+            $permissionNames = $service->permissionNames($user);
+
+            $groups = $service->groups($permissionNames, $q, 10);
         }
 
-        return view('admin.search.index', compact('q', 'results'));
+        return view('admin.search.index', compact('q', 'groups'));
     }
 
     /**

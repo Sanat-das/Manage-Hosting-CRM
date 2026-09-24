@@ -1,0 +1,198 @@
+TASK 9 — Full results page upgrade
+Plan: .omo/plans/global-search.md todo 9 (lines 191-197); shared contracts lines 58-80; provider matrix lines 35-56
+Repo: C:\Users\Administrator\Local Sites\managehosting\app (Laravel 13, PHP 8.4.16, Windows PowerShell 5.1)
+Date: 2026-09-24
+Baseline: --filter=AdminSearch 8/8 green; --filter=GlobalSearch 26/26 green; todo 8's admin.search.typeahead route committed at HEAD 2bf1fd02 (search.index still gated permission:dashboard.view by design).
+
+================================================================================
+STEP 1 — BASELINE CHARACTERIZATION (untouched tree, before any edit)
+================================================================================
+command: php artisan test --filter=AdminSearch
+exit: 0
+raw: {"tool":"phpunit","result":"passed","tests":8,"passed":8,"assertions":16,"duration_ms":6728}
+Interpretation: the 8 pre-existing contracts are characterization-pinned before the rewrite,
+so any regression in the q/<2-chars behavior or the found-record contracts is visible.
+
+================================================================================
+STEP 2 — FAILING-FIRST PROOF (RED), tests written before the implementation
+================================================================================
+tests/Feature/AdminSearchTest.php extended (existing 8 tests untouched):
+  - actingAsAdmin() now also grants: search, customers.view, invoices.view, service-instances.view,
+    catalog-products.view (kb.view/tickets.view/dashboard.view were already granted). The fixture must hold
+    both the new route gate (`search`) and every per-provider gate the existing assertions rely on; without
+    `search` the retargeted route would 403, without customers.view the existing customer contract could not pass.
+  - NEW test_a_seeded_acme_request_shows_a_customers_group_with_a_view_all_link
+  - NEW test_a_group_capped_at_ten_results_is_flagged_with_a_plus_count
+  - NEW test_a_viewer_without_customers_view_sees_no_customers_group (uses CreatesChatUsers: baseline role
+    marketing emptied, a fresh role with exactly `search`)
+  - NEW test_a_panel_user_without_the_search_permission_is_forbidden_from_the_results_page
+  - NEW test_the_results_page_route_carries_the_search_permission_and_dedicated_throttle
+    (resolves via app('router')->gatherRouteMiddleware(), i.e. the real resolved middleware list with
+     withoutMiddleware exclusions applied — not a string grep)
+
+command: php artisan test --filter=AdminSearch
+exit: (non-zero; result "failed")
+raw: {"tool":"phpunit","result":"failed","tests":13,"passed":8,"assertions":26,"duration_ms":9069,"failed":5,...}
+failing (exactly the 5 new tests):
+  - test_a_seeded_acme_request_shows_a_customers_group_with_a_view_all_link
+    (old view renders "Customers (1)" + show link but has no "View all")
+  - test_a_group_capped_at_ten_results_is_flagged_with_a_plus_count
+    (old controller LIMIT 5: rendered "Customers (5)" and 5 rows)
+  - test_a_viewer_without_customers_view_sees_no_customers_group
+    (old route gate dashboard.view -> 403 for a `search`-only viewer)
+  - test_a_panel_user_without_the_search_permission_is_forbidden_from_the_results_page
+    (old gate allowed dashboard.view holders -> 200, not 403)
+  - test_the_results_page_route_carries_the_search_permission_and_dedicated_throttle
+    (route carried permission:dashboard.view + throttle:admin)
+All 8 pre-existing contracts stayed green in the RED run (passed=8).
+
+================================================================================
+STEP 3 — IMPLEMENTATION
+================================================================================
+1) app/Http/Controllers/Admin/SearchController.php — search() rewritten (method name and route kept):
+   - 5 now-unused model imports removed (CatalogProduct, Customer, Invoice, ServiceInstance, Ticket).
+   - $q = trim((string) $request->query('q', '')); if (mb_strlen($q) >= 2) { app(GlobalSearchService::class);
+     $permissionNames = $service->permissionNames($user) [ONE pluck]; $groups = $service->groups($permissionNames, $q, 10); }
+   - The short-query (<2 chars) branch leaves $groups = [] and renders the form only — the historical contract.
+   - No COUNT( anywhere in the file (grep below). count() in the view is a PHP array count of already-fetched rows.
+   - typeahead() byte-identical (git diff hunks touch only the import block and search()).
+2) resources/views/admin/search/index.blade.php — rewritten: page-header kept; search card kept (role="search",
+   aria-label, autofocus); results only when mb_strlen($q) >= 2:
+   - per-type card header `<i class="{icon}">` + label + capped count `({n})` / `({n}+)` when has_more;
+   - result rows `<li ... data-search-result>` deep-linking to the provider's server-resolved `url` with the
+     subtitle rendered as text (Blade escaping, no {!! !!});
+   - "View all {n}(+)" link in the card tools slot using the service's `list_url`
+     (route('admin.<entity>.index', ['search' => $q])), now with aria-label "View all {label} results";
+     the link is the pagination path — no per-group pagination widget was built;
+   - shared components: x-adminlte.partials.empty-state (0 groups) and x-adminlte.partials.loading-skeleton
+     (list variant, inside a d-none wrapper revealed on form submit by a small @push('js') progressive-
+     enhancement script; no-JS submits still work). Token conventions (`gap-2`, `table-link`) follow the
+     existing datatable/page conventions; no new CSS file, no new dependency, no Alpine/Livewire/Vue/React.
+   - A group the viewer cannot see is never built by the service, so it renders nothing here.
+3) routes/admin/search.php — search.index retargeted:
+   ->middleware(['permission:search', 'throttle:search'])->withoutMiddleware('throttle:admin') (typeahead untouched).
+4) tests/Feature/AdminSearchTest.php — extended as in STEP 2; no existing test or assertion removed.
+
+================================================================================
+STEP 4 — GREEN (automated verification, after view:clear + config:clear + route:clear)
+================================================================================
+command: php artisan test --filter=AdminSearch              exit 0
+  raw: {"tool":"phpunit","result":"passed","tests":13,"passed":13,"assertions":34,"duration_ms":11372}
+command: php artisan test --filter=GlobalSearch             exit 0
+  raw: {"tool":"phpunit","result":"passed","tests":26,"passed":26,"assertions":398,"duration_ms":11196}
+command: php artisan test --filter=PanelAccess              exit 0
+  raw: {"tool":"phpunit","result":"passed","tests":5,"passed":5,"assertions":10,"duration_ms":18831}
+  NOTE: PanelAccessTest (the admin.search.index reachability probe at :64) did NOT need a fixture change —
+  its permissionless `support` user (permissions()->sync([])) is denied at the AdminMiddleware door (hasAnyPermission)
+  exactly as before, with or without the gate retarget, so its assertions were neither removed nor weakened.
+command: php artisan view:cache                             exit 0
+  raw: INFO  Blade templates cached successfully.
+command: php artisan route:list --name=admin.search -v      exit 0
+  raw:
+   GET|HEAD admin/search .. admin.search.index › Admin\SearchController@search
+     ⇂ web
+     ⇂ Illuminate\Auth\Middleware\Authenticate
+     ⇂ App\Http\Middleware\AdminMiddleware
+     ⇂ App\Http\Middleware\PermissionMiddleware:search
+     ⇂ Illuminate\Routing\Middleware\ThrottleRequests:search
+   GET|HEAD admin/search/typeahead .. admin.search.typeahead › Admin\SearchController@typeahead
+     ⇂ web
+     ⇂ Illuminate\Auth\Middleware\Authenticate
+     ⇂ App\Http\Middleware\AdminMiddleware
+     ⇂ App\Http\Middleware\PermissionMiddleware:search
+     ⇂ Illuminate\Routing\Middleware\ThrottleRequests:search
+   Showing [2] routes
+  (BOTH routes show permission:search + throttle:search and NO ThrottleRequests:admin line.)
+command: php -l on the 3 changed PHP files -> "No syntax errors detected" each
+command: php vendor/bin/pint --test <3 files> -> {"tool":"pint","result":"passed"} exit 0
+command: Select-String -Path app\Http\Controllers\Admin\SearchController.php -Pattern "COUNT\(" -SimpleMatch
+  -> 0 matches
+command: Select-String -Path resources\views\admin\search\index.blade.php -Pattern "x-adminlte.partials.empty-state"    -> 1 match
+command: Select-String -Path resources\views\admin\search\index.blade.php -Pattern "x-adminlte.partials.loading-skeleton" -> 1 match
+
+================================================================================
+STEP 5 — MANUAL QA CHANNEL (real surface: feature-test HTTP requests, raw HTML fragments)
+================================================================================
+Harness: a temporary tests/Feature/TmpTask9QaCaptureTest.php (deleted after capture; never staged) performed real
+GET /admin/search?q=acme requests through the HTTP kernel, asserted the exact facts, and wrote the matching raw
+HTML lines to a scratch file. One request per test method (see harness note in STEP 6).
+
+command: php artisan test --filter=TmpTask9QaCaptureTest
+exit: 0
+raw: {"tool":"phpunit","result":"passed","tests":2,"passed":2,"assertions":10,"duration_ms":4164}
+
+(a) ALLOWED VIEWER (search + customers.view), raw rendered lines:
+    <i class="bi bi-people me-1"></i>                    Customers (1)
+    <a href="http://managehosting.local/admin/customers?search=acme"
+    aria-label="View all Customers results">
+    View all 1
+    <ul class="list-group list-group-flush" aria-label="Customers results">
+    <li class="list-group-item d-flex justify-content-between align-items-center gap-2" data-search-result>
+    <a href="http://managehosting.local/admin/customers/1" class="table-link">
+    <span class="text-muted">&mdash; acme-client@example.com</span>
+    <div class="d-none" data-search-loading aria-hidden="true">
+  asserted: 'Customers (1)' present; href equals route('admin.customers.show', $customer);
+  href equals route('admin.customers.index', ['search' => 'acme']); exactly 1 data-search-result row.
+
+(b) DENIED VIEWER (search only, no customers.view), raw rendered lines:
+    <div class="d-none" data-search-loading aria-hidden="true">
+    No results found for &amp;ldquo;acme&amp;rdquo;
+  asserted: no 'Acme Hosting', no route('admin.customers.index') substring anywhere in the page,
+  no data-search-result row, and the empty state IS shown (non-vacuous: the search really ran).
+
+(c) LIVE HOST spot-check (guest, no session), both routes:
+  command: curl.exe -s -D - -o NUL --max-time 15 "http://managehosting.local/admin/search?q=acme"
+   raw: HTTP/1.1 302 Found / Server: nginx/1.26.1 / X-Powered-By: PHP/8.4.10
+        Location: http://managehosting.local/admin
+  command: curl.exe -s -D - -o NUL --max-time 15 "http://managehosting.local/admin/search/typeahead?q=acme"
+   raw: HTTP/1.1 302 Found / Location: http://managehosting.local/admin
+  Interpretation: the results route is registered live and auth-gated (guest redirects to the admin login entry),
+  exactly like the typeahead. Authenticated rendering proof is (a)/(b) above.
+
+================================================================================
+STEP 6 — ADVERSARIAL PROBES (observables)
+================================================================================
+1. Permission leak: test_a_viewer_without_customers_view_sees_no_customers_group (committed) plus capture (b):
+   a `search`-only viewer gets 200 with zero customer rows, zero customers links and no list_url — while the
+   empty state proves the query executed. The service skips providers by the once-plucked permission set; the
+   view renders only groups the service returned.
+2. Misleading success: assertions are exact, not status-only — exact card titles ('Customers (1)', 'Customers (10+)'),
+   exact hrefs built with route() on both sides (no substring-only checks for the link), exact row count via
+   substr_count($html, 'data-search-result') === 10 for the capped group, and the route gate is asserted on the
+   resolved middleware list (PermissionMiddleware:search, ThrottleRequests:search, NOT ThrottleRequests:admin).
+3. Stale state: php artisan view:clear + config:clear + route:clear ran immediately before the final green
+   AdminSearch run (13/13); view:cache was then re-run and exited 0. Tests use sqlite :memory: + RefreshDatabase.
+4. Dirty worktree: the repo carries many unrelated modified/untracked files from another workstream (HyperV/RDP).
+   Only 4 product files + this evidence file were staged (git show --stat HEAD recorded in STEP 7).
+5. Malformed input (short-q contract): test_search_short_query_returns_empty_results (existing contract, kept)
+   asserts q=a -> 200 and no "No results found for" text; the new view additionally renders no results section,
+   no group cards and no skeleton for mb_strlen($q) < 2 (the skeleton block sits inside the >= 2 branch).
+   Wildcard/injection handling on this page rides the same GlobalSearchService pipeline whose escaping/`%`/`_`/
+   injection cases are green in the 26/26 GlobalSearch suite; the page adds no query path of its own.
+6. Cancel/resume: NOT APPLICABLE — single non-interactive test+implement pass, all state on disk; an interruption
+   resumes by re-running the same test filters.
+7. Hung commands: NOT APPLICABLE — every command ran with a bounded timeout and exited (longest: the 26-test
+   GlobalSearch suite at ~11 s); no daemon, queue or browser process involved.
+8. Flaky tests: NOT APPLICABLE as a failure class — AdminSearch ran 4x (baseline/RED/green/final-after-clears),
+   GlobalSearch 4x, PanelAccess 3x with identical deterministic results. One harness artifact was found and
+   explained: the admin menu singleton is built once per application instance, so two HTTP requests inside ONE
+   test method render the second page with the first viewer's menu (the temp harness first made both the allowed
+   and denied requests in a single method, and the denied page then showed the allowed viewer's sidebar links).
+   Real requests each get a fresh application instance; splitting the harness to one request per method (as the
+   committed tests already do) reproduces correct filtering — this was a test-harness shape, not a product bug.
+9. Repeated interruptions: NOT APPLICABLE — none occurred; file writes + test reruns are idempotent and this
+   evidence file is the recovery anchor.
+10. Deviation check (recorded): none from the plan contract. PanelAccessTest needed no fixture change (STEP 4 note).
+
+================================================================================
+STEP 7 — COMMIT
+================================================================================
+command: git add -f <4 product files + evidence>; git commit (no --amend)
+staged paths (ONLY these 5):
+  app/Http/Controllers/Admin/SearchController.php
+  resources/views/admin/search/index.blade.php
+  routes/admin/search.php
+  tests/Feature/AdminSearchTest.php
+  .omo/evidence/global-search/task-9-global-search.txt
+message: feat(search): upgrade the full results page to grouped, gated, paginated results
+commit: <recorded in the follow-up hash commit>

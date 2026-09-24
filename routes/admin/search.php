@@ -12,8 +12,16 @@ use Illuminate\Support\Facades\Route;
 */
 
 Route::middleware(['web', 'auth', 'admin', 'throttle:admin'])->prefix('admin')->name('admin.')->group(function () {
+    /*
+     | Full grouped results page. Gated on `search` (the service then skips any
+     | provider whose own permission the viewer lacks) and charged to the
+     | dedicated `throttle:search` bucket instead of `throttle:admin`, exactly
+     | like the typeahead below.
+     */
     Route::get('search', [SearchController::class, 'search'])
-        ->middleware('permission:dashboard.view')->name('search.index');
+        ->middleware(['permission:search', 'throttle:search'])
+        ->withoutMiddleware('throttle:admin')
+        ->name('search.index');
 
     /*
      | JSON typeahead for the command palette: 300/min per user via

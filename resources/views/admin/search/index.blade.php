@@ -5,80 +5,83 @@
 @stop
 @section('content')
     <x-adminlte-card icon="bi bi-search" title="Search">
-        <form method="GET" action="{{ route('admin.search.index') }}">
-            <div class="input-group mb-3">
-                <input type="text" name="q" class="form-control" placeholder="Search customers, services, invoices, tickets, products..." value="{{ $q }}">
-                <button type="submit" class="btn btn-primary"><i class="bi bi-search"></i></button>
+        <form method="GET" action="{{ route('admin.search.index') }}" role="search" data-search-form>
+            <div class="input-group">
+                <input type="search" name="q" class="form-control"
+                       placeholder="Search customers, services, invoices, tickets, products..."
+                       value="{{ $q }}" aria-label="Search records" autofocus>
+                <button type="submit" class="btn btn-primary" aria-label="Search">
+                    <i class="bi bi-search" aria-hidden="true"></i>
+                </button>
             </div>
         </form>
     </x-adminlte-card>
 
-    @if ($q && strlen($q) >= 2)
-        @php $total = ($results['customers']->count() ?? 0) + ($results['services']->count() ?? 0) + ($results['invoices']->count() ?? 0) + ($results['tickets']->count() ?? 0) + ($results['products']->count() ?? 0); @endphp
-
-        @if ($total === 0)
-            <x-adminlte-alert theme="info">No results found for "{{ $q }}".</x-adminlte-alert>
-        @endif
-
-        @if (isset($results['customers']) && $results['customers']->count())
-            <x-adminlte-card icon="bi bi-people" title="Customers ({{ $results['customers']->count() }})">
-                <ul class="list-group list-group-flush">
-                    @foreach ($results['customers'] as $c)
-                        <li class="list-group-item d-flex justify-content-between align-items-center">
-                            <span><a href="{{ route('admin.customers.show', $c) }}" class="table-link"><strong>{{ $c->full_name }}</strong></a> — {{ $c->user?->email }}</span>
-                        </li>
-                    @endforeach
-                </ul>
+    @if (mb_strlen($q) >= 2)
+        {{-- Shown while the form navigates; progressive enhancement only. --}}
+        <div class="d-none" data-search-loading aria-hidden="true">
+            <x-adminlte-card title="Searching…">
+                <x-adminlte.partials.loading-skeleton variant="list" :rows="3" />
             </x-adminlte-card>
-        @endif
+        </div>
 
-        @if (isset($results['services']) && $results['services']->count())
-            <x-adminlte-card icon="bi bi-hdd-network" title="Services ({{ $results['services']->count() }})">
-                <ul class="list-group list-group-flush">
-                    @foreach ($results['services'] as $s)
-                        <li class="list-group-item d-flex justify-content-between align-items-center">
-                            <span><a href="{{ route('admin.service-instances.show', $s) }}" class="table-link"><strong>{{ $s->domain ?? $s->username }}</strong></a> — {{ $s->customer?->full_name ?? '—' }}</span>
-                        </li>
-                    @endforeach
-                </ul>
+        @if ($groups === [])
+            <x-adminlte-card>
+                <x-adminlte.partials.empty-state
+                    icon="bi bi-search"
+                    title="No results found for &ldquo;{{ $q }}&rdquo;"
+                    message="Try a different spelling, a customer email, an invoice number, or a domain name." />
             </x-adminlte-card>
-        @endif
+        @else
+            @foreach ($groups as $group)
+                @php
+                    $shown = count($group['results']);
+                    $countLabel = $shown.($group['has_more'] ? '+' : '');
+                @endphp
+                <x-adminlte-card :icon="$group['icon']" :title="$group['label'].' ('.$countLabel.')'">
+                    @if ($group['list_url'] !== null)
+                        <x-slot name="tools">
+                            <a href="{{ $group['list_url'] }}"
+                               class="btn btn-sm btn-outline-secondary text-nowrap"
+                               aria-label="View all {{ $group['label'] }} results">
+                                View all {{ $countLabel }}
+                            </a>
+                        </x-slot>
+                    @endif
 
-        @if (isset($results['invoices']) && $results['invoices']->count())
-            <x-adminlte-card icon="bi bi-receipt" title="Invoices ({{ $results['invoices']->count() }})">
-                <ul class="list-group list-group-flush">
-                    @foreach ($results['invoices'] as $inv)
-                        <li class="list-group-item d-flex justify-content-between align-items-center">
-                            <span><a href="{{ route('admin.invoices.show', $inv) }}" class="table-link"><strong>{{ $inv->invoice_no }}</strong></a> — ${{ number_format($inv->total, 2) }}</span>
-                        </li>
-                    @endforeach
-                </ul>
-            </x-adminlte-card>
-        @endif
-
-        @if (isset($results['tickets']) && $results['tickets']->count())
-            <x-adminlte-card icon="bi bi-ticket" title="Tickets ({{ $results['tickets']->count() }})">
-                <ul class="list-group list-group-flush">
-                    @foreach ($results['tickets'] as $t)
-                        <li class="list-group-item d-flex justify-content-between align-items-center">
-                            <span><a href="{{ route('admin.tickets.show', $t) }}" class="table-link"><strong>{{ $t->ticket_no }}</strong></a> — {{ $t->subject }}</span>
-                        </li>
-                    @endforeach
-                </ul>
-            </x-adminlte-card>
-        @endif
-
-        @if (isset($results['products']) && $results['products']->count())
-            <x-adminlte-card icon="bi bi-box-seam" title="Products ({{ $results['products']->count() }})">
-                <ul class="list-group list-group-flush">
-                    @foreach ($results['products'] as $p)
-                        <li class="list-group-item d-flex justify-content-between align-items-center">
-                            <span><a href="{{ route('admin.catalog-products.show', $p) }}" class="table-link"><strong>{{ $p->name }}</strong></a> — <code>{{ $p->sku }}</code></span>
-                        </li>
-                    @endforeach
-                </ul>
-            </x-adminlte-card>
+                    <ul class="list-group list-group-flush" aria-label="{{ $group['label'] }} results">
+                        @foreach ($group['results'] as $result)
+                            <li class="list-group-item d-flex justify-content-between align-items-center gap-2" data-search-result>
+                                <span class="text-truncate">
+                                    <a href="{{ $result['url'] }}" class="table-link">
+                                        <strong>{{ $result['label'] }}</strong>
+                                    </a>
+                                    @if ($result['subtitle'] !== null && $result['subtitle'] !== '')
+                                        <span class="text-muted">&mdash; {{ $result['subtitle'] }}</span>
+                                    @endif
+                                </span>
+                                <i class="bi bi-arrow-right-short text-muted" aria-hidden="true"></i>
+                            </li>
+                        @endforeach
+                    </ul>
+                </x-adminlte-card>
+            @endforeach
         @endif
     @endif
 @stop
 
+@push('js')
+<script>
+    // Progressive enhancement: reveal the shared skeleton while the browser
+    // navigates to the next query. Without JS the form still submits normally.
+    document.addEventListener('DOMContentLoaded', function () {
+        var form = document.querySelector('[data-search-form]');
+        var loading = document.querySelector('[data-search-loading]');
+        if (!form || !loading) return;
+        form.addEventListener('submit', function () {
+            loading.classList.remove('d-none');
+            loading.removeAttribute('aria-hidden');
+        });
+    });
+</script>
+@endpush

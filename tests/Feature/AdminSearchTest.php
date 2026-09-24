@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Http\Middleware\PermissionMiddleware;
 use App\Models\CatalogProduct;
 use App\Models\Customer;
 use App\Models\Invoice;
@@ -11,19 +12,37 @@ use App\Models\ServiceInstance;
 use App\Models\Ticket;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Routing\Middleware\ThrottleRequests;
+use Tests\Concerns\CreatesChatUsers;
 use Tests\TestCase;
 
 class AdminSearchTest extends TestCase
 {
+    use CreatesChatUsers;
     use RefreshDatabase;
 
+    /**
+     * An admin who may reach the results page AND see every group the existing
+     * contracts assert. The page route is gated on `search` (the group itself
+     * checks each provider's own permission), so the fixture has to hold both
+     * the route gate and the per-provider gates its assertions rely on.
+     */
     private function actingAsAdmin()
     {
         $user = User::factory()->create();
 
         // Seed the admin role and search-view permissions in test DB
         $adminRole = Role::firstOrCreate(['name' => 'admin'], ['label' => 'Administrator']);
-        foreach (['dashboard.view', 'tickets.view', 'kb.view'] as $permName) {
+        foreach ([
+            'search',
+            'dashboard.view',
+            'customers.view',
+            'invoices.view',
+            'service-instances.view',
+            'tickets.view',
+            'kb.view',
+            'catalog-products.view',
+        ] as $permName) {
             $perm = Permission::firstOrCreate(['name' => $permName], ['label' => ucfirst($permName)]);
             $adminRole->permissions()->syncWithoutDetaching($perm->id);
         }
@@ -146,5 +165,100 @@ class AdminSearchTest extends TestCase
         // The results section (and its empty-state message) must not render
         // for queries shorter than 2 characters.
         $response->assertDontSee('No results found for');
+    }
+
+    // --- grouped results page (todo 9) -------------------------------------
+
+    private function makeCustomer(string $email, string $company): Customer
+    {
+        $clientUser = User::factory()->create(['email' => $email]);
+        $clientUser->assignRole('client');
+
+        return Customer::create([
+            'user_id' => $clientUser->id,
+            'company' => $company,
+            'status' => 'active',
+        ]);
+    }
+
+    public function test_a_seeded_acme_request_shows_a_customers_group_with_a_view_all_link(): void
+    {
+        $customer = $this->makeCustomer('acme-client@example.com', 'Acme Hosting');
+
+        $html = $this->actingAsAdmin()->get('/admin/search?q=acme')->assertOk()->getContent();
+
+        // Group header: label and the count of the rows actually rendered.
+        $this->assertStringContainsString('Customers (1)', $html);
+
+        // Result row deep-links to the server-resolved show URL.
+        $this->assertStringContainsString('href="'.route('admin.customers.show', $customer).'"', $html);
+
+        // "View all" is the pagination path: the customers list, pre-filtered
+        // with the same term.
+        $this->assertStringContainsString('View all', $html);
+        $this->assertStringContainsString(
+            'href="'.route('admin.customers.index', ['search' => 'acme']).'"',
+            $html
+        );
+    }
+
+    public function test_a_group_capped_at_ten_results_is_flagged_with_a_plus_count(): void
+    {
+        for ($i = 1; $i <= 11; $i++) {
+            $this->makeCustomer("acme-{$i}@example.com", "Acme Hosting {$i}");
+        }
+
+        $html = $this->actingAsAdmin()->get('/admin/search?q=acme')->assertOk()->getContent();
+
+        // `limit + 1` was fetched, so the truncated group reports "10+".
+        $this->assertStringContainsString('Customers (10+)', $html);
+
+        // Exactly ten rows render — the LIMIT, never a COUNT(*).
+        $this->assertSame(10, substr_count($html, 'data-search-result'));
+    }
+
+    public function test_a_viewer_without_customers_view_sees_no_customers_group(): void
+    {
+        $customer = $this->makeCustomer('acme-client@example.com', 'Acme Hosting');
+
+        // Holds `search` (so the page is reachable) but NOT `customers.view`.
+        $html = $this->actingAs($this->chatUser('search'))
+            ->get('/admin/search?q=acme')
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringNotContainsString('Acme Hosting', $html);
+        $this->assertStringNotContainsString(route('admin.customers.index'), $html);
+        $this->assertStringNotContainsString(route('admin.customers.show', $customer), $html);
+
+        // Non-vacuous: the page really ran the search and found nothing.
+        $this->assertStringContainsString('No results found', $html);
+    }
+
+    public function test_a_panel_user_without_the_search_permission_is_forbidden_from_the_results_page(): void
+    {
+        $this->makeCustomer('acme-client@example.com', 'Acme Hosting');
+
+        // Reachable at the door (dashboard.view) but missing the page's gate.
+        $this->actingAs($this->chatUser('dashboard.view'))
+            ->get('/admin/search?q=acme')
+            ->assertForbidden();
+    }
+
+    public function test_the_results_page_route_carries_the_search_permission_and_dedicated_throttle(): void
+    {
+        $route = app('router')->getRoutes()->getByName('admin.search.index');
+
+        $this->assertNotNull($route, 'Route [admin.search.index] must exist.');
+
+        $middleware = app('router')->gatherRouteMiddleware($route);
+
+        $this->assertContains(PermissionMiddleware::class.':search', $middleware);
+        $this->assertContains(ThrottleRequests::class.':search', $middleware);
+        $this->assertNotContains(
+            ThrottleRequests::class.':admin',
+            $middleware,
+            'The results page must opt out of `throttle:admin` so one request is charged to a single bucket.'
+        );
     }
 }
