@@ -212,3 +212,90 @@ wired) plus the static greps in section 4.
 The manifest + the two replaced (D) + two replacement files are staged together,
 because staging the manifest alone would ship dangling asset references. No
 other public/build entry changed.
+
+-------------------------------------------------------------------------
+9. FIX (needs-fix -> resolved) — view-all row used the wrong query param
+-------------------------------------------------------------------------
+VERIFIER DEFECT
+  resources/views/vendor/adminlte/partials/command-palette.blade.php built the
+  "View all results" row as:
+      href: searchUrl + '?search=' + encodeURIComponent(raw)
+  but the destination route admin.search.index reads ONLY `q`:
+      app/Http/Controllers/Admin/SearchController.php:28
+      $q = trim((string) $request->query('q', ''));
+  => the typed term was silently dropped on the full results page.
+  (Plan shared contract line 62 requires confirming the destination param.)
+
+VERIFIER REPRO (raw)
+$ $env:GIT_MASTER='1'; git show d7cc649a:resources/views/vendor/adminlte/partials/command-palette.blade.php | Select-String -Pattern 'searchUrl \+'
+                    href: searchUrl + '?search=' + encodeURIComponent(raw),
+$ Select-String -Path app/Http/Controllers/Admin/SearchController.php -Pattern "query\('q'"
+  app\Http\Controllers\Admin\SearchController.php:28:        $q = trim((string) $request->query('q', ''));
+  app\Http\Controllers\Admin\SearchController.php:58:        $q = trim((string) $request->query('q', ''));
+
+THE CHANGE (one line; todo 11's styles/markup untouched)
+$ $env:GIT_MASTER='1'; git diff -- resources/views/vendor/adminlte/partials/command-palette.blade.php
+-                    href: searchUrl + '?search=' + encodeURIComponent(raw),
++                    href: searchUrl + '?q=' + encodeURIComponent(raw),
+  (1 file changed, 1 insertion(+), 1 deletion(-))
+encodeURIComponent and the server-derived data-search-url are unchanged.
+NOTE: resources/views/admin/search/index.blade.php and the per-group "View all N"
+links to ENTITY index screens keep `search` — those controllers read `search`
+(verified); only this palette row targets admin.search.index.
+
+REGRESSION GUARD (test extended)
+tests/Feature/CommandPaletteRecordsTest.php -> new test
+  test_the_view_all_results_row_targets_the_q_parameter()
+  asserts the exact string  searchUrl + '?q=' + encodeURIComponent(raw)
+  AND asserts  searchUrl + '?search='  is absent from the served page
+  (misleading_success_output: exact-href assertion, not absence-of-error).
+
+RE-VERIFICATION (bounded commands, raw output)
+$ php artisan view:clear   [timeout 30000]  INFO Compiled views cleared successfully. EXIT=0
+$ php artisan config:clear [timeout 30000]  INFO Configuration cache cleared successfully. EXIT=0
+$ php artisan test --without-tty --filter=CommandPaletteRecords   [timeout 120000]  (FINAL GREEN)
+  {"tool":"phpunit","result":"passed","tests":2,"passed":2,"assertions":11,"duration_ms":4868}
+$ php artisan test --without-tty --filter=GlobalSearch            [timeout 120000]
+  {"tool":"phpunit","result":"passed","tests":26,"passed":26,"assertions":398,"duration_ms":12297}
+$ php artisan test --without-tty --filter=AdminSearch             [timeout 120000]
+  {"tool":"phpunit","result":"passed","tests":13,"passed":13,"assertions":34,"duration_ms":9536}
+$ npm run build                                                   [timeout 120000]
+  vite v8.1.5  ✓ 74 modules transformed.  ✓ built in 9.35s
+  BUILD_EXIT=0  (no tracked build asset changed — hashes identical to the
+  prior commit, so no build file is staged)
+$ php artisan view:cache                                           [timeout 120000]
+  INFO Blade templates cached successfully.   VIEWCACHE_EXIT=0
+$ $env:GIT_MASTER='1'; git status --porcelain -- <this task's paths>
+   M resources/views/vendor/adminlte/partials/command-palette.blade.php
+   M tests/Feature/CommandPaletteRecordsTest.php
+  -> only the palette partial + the test are modified; no build renewal.
+
+WRAPPER NOTE: `php artisan test --filter=...` WITHOUT `--without-tty` hung in
+this shell (>115s, killed at its 120s bound — TTY detection in the Collision
+wrapper). The identical suite via `--without-tty` passed, as did the direct
+  php vendor/bin/phpunit --filter=CommandPaletteRecords
+  {"tool":"phpunit","result":"passed","tests":2,"passed":2,"assertions":11,"duration_ms":13079}
+
+ADVERSARIAL PROBES
+- misleading_success_output: the guard asserts the exact construction
+  searchUrl + '?q=' + encodeURIComponent(raw) (a positive, string-level
+  assertion on the served HTML), plus the absence of the exact old
+  construction — not merely "no error".
+- stale_state: view:clear + config:clear immediately before the final green
+  run (above); the suite runs on sqlite :memory: (phpunit.xml L26-27).
+- dirty_worktree: commit stages only the palette partial, the test and this
+  evidence file; `git show --stat` of the fix commit is reported in the
+  worker's final report (the file cannot contain its own in-flight commit).
+- malformed input (<2 chars): not applicable to this one-line href fix — the
+  guard was already proven and asserted in sections 3/4; unchanged here.
+- cancel-resume: not applicable — no request lifecycle touched by this fix.
+- hung commands: only the TTY-detection wrapper hang noted above (bounded and
+  killed); every other command stayed inside its timeout.
+- flaky tests: not applicable — the same 2/2 result reproduced via two runners
+  (artisan test --without-tty and the phpunit binary).
+- repeated interruptions: not applicable — none occurred.
+
+COMMIT
+  fix(search): point the palette view-all row at the q parameter
+  staged: command-palette.blade.php, CommandPaletteRecordsTest.php,
+          task-10-global-search.txt

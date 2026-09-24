@@ -71,4 +71,35 @@ class CommandPaletteRecordsTest extends TestCase
         $this->assertStringContainsString('AbortController', $html);
         $this->assertStringContainsString('term.length < 2', $html);
     }
+
+    /**
+     * The "View all results" row links to admin.search.index, whose controller
+     * reads ONLY the `q` query parameter
+     * (SearchController::index: $q = trim((string) $request->query('q', ''))).
+     * The row is built client-side, so the served page proves the construction
+     * it will use: href = searchUrl + '?q=' + encodeURIComponent(raw).
+     * Regression guard: the earlier '?search=' construction silently dropped
+     * the term on the results page.
+     */
+    public function test_the_view_all_results_row_targets_the_q_parameter(): void
+    {
+        $html = $this->actingAsAdmin()
+            ->get('/admin/search?q=acme')
+            ->assertOk()
+            ->getContent();
+
+        // Exact construction, including encodeURIComponent, against the
+        // server-derived URL the palette root carries.
+        $this->assertStringContainsString(
+            "searchUrl + '?q=' + encodeURIComponent(raw)",
+            $html
+        );
+
+        // The wrong construction must not exist anywhere in the page: the
+        // destination does not read `search`, so this exact expression is a bug.
+        $this->assertStringNotContainsString(
+            "searchUrl + '?search='",
+            $html
+        );
+    }
 }

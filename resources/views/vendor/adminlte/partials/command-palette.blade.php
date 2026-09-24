@@ -224,7 +224,7 @@
             if (rendered > 0 && searchUrl) {
                 rows.push({
                     text: 'View all results',
-                    href: searchUrl + '?search=' + encodeURIComponent(raw),
+                    href: searchUrl + '?q=' + encodeURIComponent(raw),
                     icon: 'bi bi-search',
                     subtitle: '',
                 });
