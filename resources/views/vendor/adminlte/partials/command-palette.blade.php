@@ -48,7 +48,12 @@
             </span>
         </div>
         <ul id="adminlteCommandPaletteResults" class="list-group list-group-flush adminlte-cmdk__results" role="listbox"></ul>
+        {{-- Visible loading/error note for the async Records fetch. aria-hidden
+             because the live region below already announces the same text. --}}
+        <div class="adminlte-cmdk__status small d-none" data-cmdk-status data-state="idle" aria-hidden="true"></div>
         <div class="adminlte-cmdk__empty text-muted small p-3 text-center d-none">{{ __('adminlte.no_results') }}</div>
+        {{-- Result-count announcer: updated by the palette script on every render. --}}
+        <p class="visually-hidden mb-0" role="status" aria-live="polite" data-cmdk-announce></p>
     </div>
 </div>
 
@@ -61,10 +66,33 @@
     .adminlte-cmdk[hidden] { display: none; }
     .adminlte-cmdk__backdrop { position: absolute; inset: 0; background: rgba(0,0,0,.5); backdrop-filter: blur(2px); }
     .adminlte-cmdk__dialog { position: relative; width: min(640px, 94vw); max-height: 70vh; overflow: hidden;
-        display: flex; flex-direction: column; }
-    .adminlte-cmdk__results { overflow-y: auto; }
-    .adminlte-cmdk__results .list-group-item { cursor: pointer; display: flex; align-items: center; gap: .5rem; }
-    .adminlte-cmdk__results .list-group-item small { margin-left: auto; opacity: .65; }
+        display: flex; flex-direction: column; border-radius: var(--radius-lg); }
+    .adminlte-cmdk__dialog:focus-within { box-shadow: var(--shadow-lg), 0 0 0 3px color-mix(in srgb, var(--color-focus-ring) 35%, transparent); }
+
+    /* Scroll containment: the row list is the only scrollable region, so a long
+       record set can never push the input out of the dialog. */
+    .adminlte-cmdk__results { overflow-y: auto; max-height: min(56vh, 460px); overscroll-behavior: contain; scrollbar-gutter: stable; }
+
+    /* Grouped record rows — spacing/type/colour from resources/css/tokens.css. */
+    .adminlte-cmdk__group { font-size: var(--text-xs); font-weight: var(--font-weight-semibold); letter-spacing: var(--tracking-wide);
+        text-transform: uppercase; color: var(--color-text-faint); padding: var(--space-2) var(--space-4) var(--space-1); }
+    .adminlte-cmdk__results .list-group-item { cursor: pointer; display: flex; align-items: center; gap: var(--space-2);
+        padding: var(--space-2) var(--space-4); font-size: var(--text-sm); color: var(--color-text);
+        transition: background-color var(--duration-base) var(--ease-default), color var(--duration-base) var(--ease-default); }
+    .adminlte-cmdk__results .list-group-item > i { flex-shrink: 0; color: var(--color-text-faint); font-size: var(--text-base); }
+    .adminlte-cmdk__results .list-group-item small { margin-left: auto; opacity: .75; font-size: var(--text-xs); }
+    /* Active row: tinted surface + inset accent keeps the label AA in both themes
+       (a solid primary fill would fail AA on the dark theme's light primary). */
+    .adminlte-cmdk__results .list-group-item.active { background-color: color-mix(in srgb, var(--color-primary) 12%, transparent);
+        border-color: transparent; color: var(--color-text); box-shadow: inset 3px 0 0 var(--color-primary); }
+    .adminlte-cmdk__results .list-group-item.active > i { color: var(--color-primary); }
+    .adminlte-cmdk__results .list-group-item.active small { opacity: .9; }
+
+    /* States: loading and error notes are distinct from the empty note. */
+    .adminlte-cmdk__status { padding: var(--space-2) var(--space-4); border-top: 1px solid var(--color-border); }
+    .adminlte-cmdk__status[data-state="loading"] { color: var(--color-info); }
+    .adminlte-cmdk__status[data-state="error"] { color: var(--color-danger); }
+    .adminlte-cmdk__empty { padding: var(--space-4); color: var(--color-text-muted); }
 
     /* Unified search pill in the navbar */
     .adminlte-search-trigger { --bs-btn-border-color: var(--bs-border-color); line-height: 1.6; }
@@ -82,14 +110,38 @@
     const input = document.getElementById('adminlteCommandPaletteInput');
     const list = document.getElementById('adminlteCommandPaletteResults');
     const empty = root.querySelector('.adminlte-cmdk__empty');
+    const status = root.querySelector('[data-cmdk-status]');
+    const announce = root.querySelector('[data-cmdk-announce]');
     const typeaheadUrl = root.dataset.typeaheadUrl;
     const searchUrl = root.dataset.searchUrl;
     let active = 0, filtered = [], options = [];
+
+    // `opener` is the element that opened the palette, so focus can return to
+    // it on close. `recordsState` is the only async state of the palette:
+    // idle | loading | error (it drives the status note and the announcement).
+    let opener = null, recordsState = 'idle';
 
     // Records state. `recordGroups` belongs to `recordsQuery` only: rows fetched
     // for one term are never rendered against another, so a slow response can
     // not put stale rows under a newer query.
     let recordGroups = null, recordsQuery = null, typeaheadTimer = null, typeaheadAbort = null;
+
+    const announceText = () => {
+        if (recordsState === 'loading') return 'Searching…';
+        if (recordsState === 'error') return 'Records unavailable';
+        if (filtered.length === 0) return 'No results';
+        return filtered.length + (filtered.length === 1 ? ' result' : ' results');
+    };
+    const paintStatus = () => {
+        const note = recordsState === 'loading' ? 'Searching…'
+            : (recordsState === 'error' ? 'Records unavailable — showing navigation only' : '');
+        if (status) {
+            status.classList.toggle('d-none', note === '');
+            status.dataset.state = recordsState;
+            status.textContent = note;
+        }
+        if (announce) announce.textContent = announceText();
+    };
 
     const render = () => {
         list.innerHTML = '';
@@ -128,6 +180,7 @@
             options.push(li);
         });
         paint();
+        paintStatus();
     };
     const paint = () => {
         options.forEach((li, i) => {
@@ -193,12 +246,13 @@
     const resetRecords = () => {
         if (typeaheadAbort) { typeaheadAbort.abort(); typeaheadAbort = null; }
         if (typeaheadTimer) { clearTimeout(typeaheadTimer); typeaheadTimer = null; }
-        recordGroups = null; recordsQuery = null;
+        recordGroups = null; recordsQuery = null; recordsState = 'idle';
     };
     const fetchRecords = (term) => {
         if (!typeaheadUrl) return;
         if (typeaheadAbort) typeaheadAbort.abort();
         typeaheadAbort = new AbortController();
+        recordsState = 'loading'; paintStatus();
 
         fetch(typeaheadUrl + '?q=' + encodeURIComponent(term), {
             headers: { Accept: 'application/json' },
@@ -211,12 +265,16 @@
             if (!isOpen() || input.value.trim() !== term) return;
             recordGroups = (data && Array.isArray(data.groups)) ? data.groups : [];
             recordsQuery = term;
+            recordsState = 'idle';
             filter(input.value);
         }).catch(error => {
             if (error && error.name === 'AbortError') return;
             // Silent fallback: 403, a dropped connection or malformed JSON
-            // simply leaves the palette navigation-only, exactly as it was.
+            // simply leaves the palette navigation-only, exactly as it was —
+            // the status note makes that fallback visible without a toast.
             recordGroups = null; recordsQuery = null;
+            recordsState = 'error';
+            paintStatus();
         });
     };
 
@@ -225,11 +283,15 @@
         input.value = ''; resetRecords(); filter('');
         setTimeout(() => input.focus(), 20);
     };
-    const close = () => { root.hidden = true; resetRecords(); };
+    const close = () => {
+        root.hidden = true; resetRecords();
+        const back = opener; opener = null;
+        if (back && document.contains(back) && typeof back.focus === 'function') back.focus();
+    };
     const isOpen = () => !root.hidden;
 
     document.querySelectorAll('[data-adminlte-search]').forEach(el =>
-        el.addEventListener('click', e => { e.preventDefault(); open(); }));
+        el.addEventListener('click', e => { e.preventDefault(); opener = e.currentTarget; open(); }));
     root.querySelectorAll('[data-cmdk-close]').forEach(el => el.addEventListener('click', close));
 
     input.addEventListener('input', () => {
@@ -242,6 +304,7 @@
         // A single character cannot match a record, so it never costs a request.
         if (term.length < 2) {
             recordGroups = null; recordsQuery = null;
+            recordsState = 'idle'; paintStatus();
             return;
         }
 
@@ -254,7 +317,9 @@
             // listener runs first claims the keystroke and the other bails, so
             // exactly one overlay opens in either script order.
             if (window.__mhChatShortcuts || e.defaultPrevented) return;
-            e.preventDefault(); isOpen() ? close() : open(); return;
+            e.preventDefault();
+            if (!isOpen() && document.activeElement !== document.body) opener = document.activeElement;
+            isOpen() ? close() : open(); return;
         }
         if (!isOpen()) return;
         if (e.key === 'Escape') { e.preventDefault(); close(); }

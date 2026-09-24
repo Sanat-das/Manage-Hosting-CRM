@@ -1,0 +1,192 @@
+TASK 11 - Palette + page styling, accessibility, and states
+Plan: .omo/plans/global-search.md todo 11 (lines 207-213); acceptance line 211; QA scenario line 212
+Repo: C:\Users\Administrator\Local Sites\managehosting\app (Laravel 13, PHP 8.4.16, Windows PowerShell 5.1)
+Date: 2026-09-24
+Baseline: todos 9 + 10 committed at 121bb75a; verifiers confirmed grouped page + palette Records wiring;
+          --filter=GlobalSearch 26/26 and --filter=CommandPaletteRecords 1/1 before any edit.
+Constraints honored: no new CSS file/dependency, no token-definition change, no transition above 250ms,
+          no innerHTML additions, palette todo-10 fetch/render wiring untouched, no controller/provider/
+          route/config change. Every bash command carried an explicit timeout; no server/watcher was started
+          (the live Herd host http://managehosting.local was used read-only through Playwright).
+
+================================================================================
+STEP 0 - FAILING-FIRST PROOF (RED, before any edit)
+================================================================================
+command (30000 ms): Select-String -Path resources/views/vendor/adminlte/partials/command-palette.blade.php -Pattern 'aria-live'
+observed: NO MATCH.
+command (30000 ms): Select-String -Path resources/views/vendor/adminlte/partials/command-palette.blade.php -Pattern 'transition'
+observed: NO MATCH (the palette had no motion tokens and no reduced-motion story at all).
+command (30000 ms): Select-String -Path resources/views/admin/search/index.blade.php -Pattern 'aria-live'
+observed: NO MATCH (the results page never announced its count).
+BEFORE DOM artifact (real Blade output, not hand-written):
+command (120000 ms): php artisan tinker --execute="file_put_contents('.omo/evidence/global-search/artifacts/palette-before.html', view('adminlte::partials.command-palette')->render());"
+observed: rendered bytes=2461; the fragment contains no [data-cmdk-status], no [data-cmdk-announce], no
+          aria-live, and no group/active/scroll-containment rules (.adminlte-cmdk__results { overflow-y: auto; }
+          only). Interactive palette behaviour (Records rows, count, focus) is therefore unproven and unstyled.
+
+================================================================================
+STEP 1 - IMPLEMENTATION (2 files, +138 / -21)
+================================================================================
+1) resources/views/vendor/adminlte/partials/command-palette.blade.php
+   MARKUP (2 additive elements, existing dialog/input/listbox untouched):
+   - <div class="adminlte-cmdk__status small d-none" data-cmdk-status data-state="idle" aria-hidden="true"></div>
+     -> visible loading/error note; aria-hidden because the live region announces the same text.
+   - <p class="visually-hidden mb-0" role="status" aria-live="polite" data-cmdk-announce></p>
+     -> result-count / state announcer, updated by the palette script on every render.
+   INLINE <style> (token-based, tokens from resources/css/tokens.css):
+   - group header .adminlte-cmdk__group: --text-xs, --font-weight-semibold, --tracking-wide,
+     --color-text-faint, --space-2 / --space-4 / --space-1.
+   - rows .adminlte-cmdk__results .list-group-item: --space-2 / --space-4 padding, --text-sm, --color-text,
+     gap --space-2, transition background-color+color var(--duration-base) var(--ease-default) (180 ms < 250 ms).
+   - icons: --color-text-faint / --text-base; subtitles small: --text-xs, right-aligned, opacity .75.
+   - active row: color-mix(in srgb, var(--color-primary) 12%, transparent) + inset 3px accent + unchanged
+     text colour. Rationale in-file: a solid primary fill fails AA on the dark theme's light primary
+     (tokens.css [data-bs-theme="dark"] --color-primary = primary-400).
+   - scroll containment: max-height: min(56vh, 460px); overflow-y: auto; overscroll-behavior: contain;
+     scrollbar-gutter: stable (the dialog keeps max-height 70vh + overflow hidden).
+   - focus: .adminlte-cmdk__dialog:focus-within ring via --color-focus-ring + --shadow-lg.
+   - states: .adminlte-cmdk__status[data-state="loading"] -> --color-info;
+             .adminlte-cmdk__status[data-state="error"] -> --color-danger; .adminlte-cmdk__empty -> --space-4 + --color-text-muted.
+   JS (additive only; the todo-10 debounce/AbortController/records-query wiring is byte-identical):
+   - let opener + recordsState ('idle' | 'loading' | 'error'); announceText()/paintStatus() helpers.
+   - render() now also calls paintStatus(); resetRecords() returns to 'idle'; fetchRecords() sets
+     'loading' before the request, 'idle' on success, 'error' in the catch (navigation-only fallback kept).
+   - input <2 chars -> 'idle'; trigger click and Ctrl/Cmd+K record the opener element;
+     close() restores focus to it when it is still in the document.
+   - scrollIntoView({block:'nearest'}) on the active option already existed in paint() (todo 10) - unchanged.
+2) resources/views/admin/search/index.blade.php
+   - token-based inline <style> (no @stack('css') exists in master.blade.php, so inline is the only option):
+     --radius-md on the search input group; group card title --text-base/--font-weight-semibold;
+     result rows --space-3 / --space-4 padding, --text-sm, hover --color-bg-subtle, transition
+     var(--duration-base); subtitle --color-text-muted; state wrappers --radius-lg + --space-5 card-body.
+   - aria-live count announcer <p class="visually-hidden" role="status" aria-live="polite"
+     data-search-announce data-announce="...">; server-computed text e.g. "1 result in 1 group for somenath"
+     / "No results for x" (no COUNT query - it is the length of the rows already fetched); the inline script
+     re-applies it after load (clear-then-set) so screen readers announce this navigation, and announces
+     "Searching…" on submit.
+   - distinct states: loading = existing skeleton card, now wrapped in .mh-search__state--loading;
+     empty = shared empty-state component wrapped in .mh-search__state--empty.
+   - one-line rendering fix in the empty state I was asked to style: title="No results found for
+     &ldquo;{{ $q }}&rdquo;" rendered the entities literally ("&ldquo;" appeared on screen) because Blade
+     escapes the attribute value; replaced with literal curly quotes ("...") - same text, now correct.
+     AdminSearchTest's "No results found" assertions still pass (see STEP 2).
+   - error state: the results page is server-rendered and owns no async call, so its only reachable error
+     surface is the palette's typeahead fetch (same page context) - that state is implemented and captured
+     in the palette (palette-error.png). Documented here rather than faking a page error path.
+
+================================================================================
+STEP 2 - AUTOMATED VERIFICATION (green, after the stale_state probe)
+================================================================================
+command (200000 ms): npm run build          -> exit 0; "✓ built in 7.97s".
+command (120000 ms): php artisan view:clear -> "INFO Compiled views cleared successfully."
+command (120000 ms): php artisan view:cache -> exit 0; "INFO Blade templates cached successfully."
+command (240000 ms): php artisan test --filter=GlobalSearch
+  -> exit 0; {"tool":"phpunit","result":"passed","tests":26,"passed":26,"assertions":398,"duration_ms":12598}
+command (240000 ms): php artisan test --filter=CommandPaletteRecords
+  -> exit 0; {"tool":"phpunit","result":"passed","tests":1,"passed":1,"assertions":8,"duration_ms":5289}
+command (240000 ms): php artisan test --filter=AdminSearch
+  -> exit 0; {"tool":"phpunit","result":"passed","tests":13,"passed":13,"assertions":34,"duration_ms":8695}
+command (60000 ms): Select-String -Path resources/views/vendor/adminlte/partials/command-palette.blade.php -Pattern 'aria-live'
+  -> MATCH line 56: <p class="visually-hidden mb-0" role="status" aria-live="polite" data-cmdk-announce></p>
+command (60000 ms): Select-String -Path resources/views/vendor/adminlte/partials/command-palette.blade.php -Pattern 'transition'
+  -> MATCH line 81 only: transition: background-color var(--duration-base) var(--ease-default),
+     color var(--duration-base) var(--ease-default);  (token only; 180 ms; no raw duration anywhere)
+command (60000 ms): Select-String -Path <both files> -Pattern 'innerHTML'
+  -> MATCH line 147 only: list.innerHTML = '';  (the permitted empty-list clear; no new innerHTML)
+command (60000 ms): git status --porcelain -- resources/css '*.css'  -> empty (no new CSS file)
+command (60000 ms): git diff --stat -- resources/css/tokens.css      -> empty (token definitions untouched)
+AFTER DOM artifact: artifacts/palette-after.html (4851 bytes, same tinker command) - the before/after diff
+  shows exactly the two new a11y elements and the token style block.
+
+================================================================================
+STEP 3 - ADVERSARIAL PROBES (observables)
+================================================================================
+stale_state: PASS - the final green run was taken AFTER `npm run build` + `php artisan view:clear` +
+  `php artisan view:cache` (STEP 2), so no stale compiled view or asset could carry the result.
+dirty_worktree: PASS - the repo carries an unrelated in-flight workstream (70+ modified files). Only the two
+  search views were staged: `git diff --stat -- <palette> <page>` = 2 files changed, 138 insertions(+),
+  21 deletions(-); `git status --porcelain -- public/build` = empty (the Vite build renewed no tracked asset,
+  so nothing else entered the commit). Verified after commit with `git show --stat HEAD`.
+misleading_success_output: PASS - every claim above is a raw command result or a captured artifact.
+  The a11y assertions were read from the files (aria-live line 56) and from the live DOM
+  (palette_announce_text "2 results", page_announce_text "1 result in 1 group for somenath"); the dark-mode
+  screenshot was captured from the live Herd host after the app's own colorMode store set
+  data-bs-theme="dark" (computed body background rgb(43, 48, 53)).
+malformed input: not applicable - no new input parsing; the typeahead/validation contracts belong to todos 3/8
+  and were not touched (only the error state's presentation changed).
+cancel-resume: not applicable - no long-running job, queue or resumable operation in this todo; the palette's
+  AbortController cancellation path was left byte-identical (and is exercised by the todo-10 tests).
+hung commands: PASS - every command had an explicit timeout (30000-240000 ms); the only slow step, the
+  browser QA, is self-bounded (hard stop at 120 s inside the script) and finished in ~75 s.
+flaky tests: PASS - the three filters were run twice (pre-edit baseline and post-edit) with identical
+  pass counts; no rerun-to-green was needed.
+repeated interruptions: not applicable - the todo ran in one session; the QA script is idempotent (re-runs
+  regenerate the same artifacts, as observed across three runs).
+
+================================================================================
+STEP 4 - MANUAL QA (bounded browser against the live Herd host)
+================================================================================
+Tool: Playwright 1.63.0 (repo devDependency) + the installed Chromium, headless, script
+  C:\Users\ADMINI~1\AppData\Local\Temp\2\opencode\qa-task11.mjs (temp dir; not committed).
+  Hard timebox: setTimeout hard-stop at 120 s; the run finished in ~75 s. No server was started.
+  Login: the seeded admin@localhost.com / Admin@123 (password verified with Hash::check before use).
+Raw log (final run):
+  login_landing: http://managehosting.local/admin/dashboard
+  dark_theme_attr: dark
+  dark_body_bg: rgb(43, 48, 53)
+  page_group_cards: 1
+  page_first_group_title: Customers (1)
+  page_result_rows: 1
+  page_announce_text: "1 result in 1 group for somenath"
+  palette_group_headers: ["CUSTOMERS"]
+  palette_option_count: 2
+  palette_announce_text: "2 results"
+  palette_active_row_text: KC somenath@hotmail.com
+  palette_activedescendant: adminlteCmdkOption1
+  palette_active_visible_in_list: true
+  palette_closed_hidden: true
+  focus_returned_to_opener: true
+  palette_no_results_note_visible: true
+  palette_no_results_note_text: "No results found"
+  palette_error_note_text: "Records unavailable - showing navigation only"
+  palette_error_announce: "Records unavailable"
+  light_theme_attr: light
+  light_page_announce_text: "1 result in 1 group for somenath"
+  mobile_group_cards: 1
+  mobile_result_rows: 1
+  mobile_horizontal_overflow: false
+  empty_state_visible: No results found for "zzzznomatchzzz"
+  empty_announce_text: "No results for zzzznomatchzzz"
+  loading_state_visible: true
+  loading_screenshot_bytes: 69662
+  QA_RESULT: OK
+  (loading_skeleton_visible:false / loading_announce_text:null are logging artefacts: those two evaluates
+   were issued AFTER the screenshot and were re-bound to the navigation that had just committed, so they read
+   the fresh document. The screenshot itself - verified by eye - shows the "Searching…" card with 3 skeleton
+   rows above the previous results, and loading_state_visible:true was read from the live old document.)
+Captured artifacts (all genuine frames from the live host):
+  dark-mode.png           - dark theme (data-bs-theme=dark), palette open on /admin/search?q=somenath showing
+                            the CUSTOMERS group header, the active "KC / somenath@hotmail.com" row with the
+                            inset accent, and the "View all results" row; grouped page behind.
+  page-dark.png           - the grouped results page itself in dark mode.
+  desktop-grouped.png     - 1280px light: Customers (1) card + "View all 1" + result row.
+  mobile-375-grouped.png  - 375x812: same group card, no horizontal overflow (scrollWidth <= innerWidth).
+  no-results.png          - q=zzzznomatchzzz: the "No results found for "…"" empty state (correct quotes).
+  loading-state.png       - "Searching…" skeleton captured mid-navigation. Technique: the form submit was
+                            made real (no synthetic event) while the router delayed GET /admin/search?q=INV
+                            by 6 s; the frame was grabbed through CDP Page.captureScreenshot because
+                            page.screenshot() waits for the pending navigation and would miss the window.
+  palette-no-results.png  - palette, 0-result term: "No results found" note + aria-live "No results".
+  palette-error.png       - palette with the typeahead aborted: danger-coloured "Records unavailable -
+                            showing navigation only" note, navigation-only fallback intact.
+  palette-before.html / palette-after.html - real Blade-rendered DOM proof (tinker render, see STEP 0/2).
+Browser-stack note: no failure was hit, so no gap is left for F3/todo-13; the palette interaction proof
+  (Ctrl+K, records render, arrow selection, Enter navigation) beyond the assertions above is still todo 13's
+  remit per plan line 224.
+
+================================================================================
+STEP 5 - COMMIT
+================================================================================
+Staged: the two views + this evidence file + the 8 QA screenshots (`.omo/` is gitignored -> `git add -f`).
+Commit message: style(search): token-based palette and results-page styling with a11y states
+Commit hash: recorded by the follow-up `chore(search): record task-11 evidence hash` commit.
