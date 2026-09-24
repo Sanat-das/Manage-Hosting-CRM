@@ -189,4 +189,4 @@ STEP 5 - COMMIT
 ================================================================================
 Staged: the two views + this evidence file + the 8 QA screenshots (`.omo/` is gitignored -> `git add -f`).
 Commit message: style(search): token-based palette and results-page styling with a11y states
-Commit hash: recorded by the follow-up `chore(search): record task-11 evidence hash` commit.
+Commit hash: 1e7a945e (11 files: 2 views + this file + 8 screenshots; `git show --stat HEAD` shows no other file).
