@@ -296,6 +296,7 @@ staged paths (ONLY these 4):
   tests/Feature/AdminSearchTest.php
   .omo/evidence/global-search/task-9-global-search.txt
 message: fix(search): validate the results-page q parameter
-commit: pending — recorded below in the follow-up bookkeeping commit
+commit: c6c2c768966ca86d052b31f49e6f3deb4094d15f (the hash recorded here in the follow-up
+bookkeeping commit, matching the tasks 7/8/9 pattern)
 No `git commit --amend` was used; the evidence file was force-added (`git add -f`).
 
