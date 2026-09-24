@@ -189,7 +189,7 @@ STEP 6 — ADVERSARIAL PROBES (observables)
 ================================================================================
 STEP 7 — COMMIT
 ================================================================================
-commit: __COMMIT_HASH__
+commit: a992f2249de3c08eacb86c6eb21e72d47d8eb4a7
 subject: feat(search): add permission-aware JSON typeahead endpoint
 staged paths (ONLY these 4):
   app/Http/Controllers/Admin/SearchController.php
@@ -197,3 +197,5 @@ staged paths (ONLY these 4):
   tests/Feature/GlobalSearchTypeaheadTest.php
   .omo/evidence/global-search/task-8-global-search.txt
 No `git commit --amend` was used. Unrelated dirty-worktree files from the other workstream were left untouched.
+Evidence-hash follow-up: this file was then updated with the hash above and committed separately as
+`chore(search): record task-8 evidence hash` (the same bookkeeping pattern as task-7's 3efc48bc).
