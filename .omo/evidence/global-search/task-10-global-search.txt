@@ -172,9 +172,22 @@ $ Select-String palette -Pattern 'createElement|textContent|new AbortController|
 -------------------------------------------------------------------------
 Main commit (exact message required by the task):
   feat(search): wire grouped record results into the command palette
-  Commit hash: <filled by the follow-up evidence-hash commit, repo convention>
+  Commit hash: d7cc649ab5995d94b7ac4d9464eaea5bf82327f9
 Follow-up (matches 1b8aa515 / 6d0af552 convention): chore commit recording this
-file's hash. `git show --stat HEAD` (main commit) is pasted below after commit.
+file's hash.
+dirty_worktree probe — `git show --stat --oneline HEAD`:
+  d7cc649a feat(search): wire grouped record results into the command palette
+   .../global-search/task-10-global-search.txt        | 201 +++++++++++++++++++++
+   public/build/assets/app-D4lCesWK.css               |   2 +
+   public/build/assets/app-dguVjzu5.css               |   2 -
+   .../assets/{chat-Bsbs2ZgT.js => chat-CUbaGjXc.js}  |   4 +-
+   public/build/manifest.json                         |   4 +-
+   resources/js/chat.js                               |  11 ++
+   .../adminlte/partials/command-palette.blade.php    | 137 ++++++++++++--
+   tests/Feature/CommandPaletteRecordsTest.php        |  74 ++++++++
+   8 files changed, 414 insertions(+), 21 deletions(-)
+  -> only this todo's files plus the required build-output renewal; no other
+     worktree lane leaked into the commit.
 
 -------------------------------------------------------------------------
 7. EXPLICIT DEFERRAL
