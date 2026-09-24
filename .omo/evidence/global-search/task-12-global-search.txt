@@ -362,3 +362,86 @@ PS> git diff --stat -- docs/search.md README.md CHANGELOG.md
  2 files changed, 31 insertions(+)
 
 --- PALETTE (todo 10) STATE AT DOC TIME: flag matches in resources/js/chat.js = 0; palette typeahead/Records markers = 0 (both 0: sibling palette work still in flight). Section 8 documents the plan's precedence contract; final verification (F1-F4) runs after todo 10 lands. ---
+
+--- CONSISTENCY CHECKER SCRIPT (for reproduction; run from repo root) ---
+# docs/search.md consistency check (global-search task 12)
+# Compares every provider class name and every route name documented in
+# docs/search.md against the real files, config/search.php and route:list.
+$doc = Get-Content -Raw 'docs\search.md'
+$config = Get-Content -Raw 'config\search.php'
+$iface = Get-Content -Raw 'app\Services\Search\SearchProvider.php'
+$abstract = Get-Content -Raw 'app\Services\Search\AbstractSearchProvider.php'
+$routeList = (php artisan route:list 2>&1 | Out-String)
+$pass = 0; $fail = 0
+
+Write-Output "== provider classes documented in docs/search.md =="
+$classes = [regex]::Matches($doc, '\b[A-Z][A-Za-z]*SearchProvider\b') | ForEach-Object { $_.Value } | Sort-Object -Unique
+foreach ($c in $classes) {
+    $file = "app\Services\Search\Providers\$c.php"
+    $okFile = Test-Path $file
+    $okCfg = [bool]($config -match [regex]::Escape("Providers\$c::class"))
+    if ($c -eq 'AbstractSearchProvider') {
+        # shared machinery base class, not a registry entry
+        $baseFile = Test-Path 'app\Services\Search\AbstractSearchProvider.php'
+        if ($baseFile -and (-not $okCfg)) {
+            Write-Output "PASS provider $c (base machinery at app/Services/Search/AbstractSearchProvider.php; correctly not a registry entry)"; $pass++
+        } else {
+            Write-Output "FAIL provider $c (baseFile=$baseFile config=$okCfg)"; $fail++
+        }
+    } elseif ($c -eq 'LicenseSearchProvider') {
+        # worked example: must NOT be shipped, and the doc must say so
+        $marked = [bool]($doc -match 'not shipped as part of the 17')
+        if ((-not $okFile) -and (-not $okCfg) -and $marked) {
+            Write-Output "PASS provider $c (worked example: correctly absent from code and config; doc marks it 'not shipped as part of the 17')"; $pass++
+        } else {
+            Write-Output "FAIL provider $c (file=$okFile config=$okCfg docMarked=$marked)"; $fail++
+        }
+    } else {
+        if ($okFile -and $okCfg) { Write-Output "PASS provider $c (file + config/search.php)"; $pass++ }
+        else { Write-Output "FAIL provider $c (file=$okFile config=$okCfg)"; $fail++ }
+    }
+}
+
+Write-Output "== route names documented in docs/search.md =="
+$routes = [regex]::Matches($doc, '`(admin\.[a-z0-9.-]+)`') | ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique
+foreach ($r in $routes) {
+    if ($routeList -match [regex]::Escape($r)) { Write-Output "PASS route $r (in route:list)"; $pass++ }
+    else { Write-Output "FAIL route $r (NOT in route:list)"; $fail++ }
+}
+
+Write-Output "== interface methods documented in docs/search.md =="
+foreach ($m in @('key','label','icon','permission','showRoute','listRoute','query','queryFor','toResult')) {
+    if ($doc -notmatch "\b$m\(") { Write-Output "SKIP method $m() not documented"; continue }
+    if ($iface -match "function $m\(") { Write-Output "PASS interface method $m() in SearchProvider.php"; $pass++ }
+    else { Write-Output "FAIL interface method $m()"; $fail++ }
+}
+foreach ($m in @('baseQueryFor','baseQuery','searchableColumns','searchableRelations','rankColumn','whereLikeEscaped','resultRow')) {
+    if ($doc -notmatch "\b$m\(") { Write-Output "SKIP method $m() not documented"; continue }
+    if ($abstract -match "function $m\(") { Write-Output "PASS abstract method $m() in AbstractSearchProvider.php"; $pass++ }
+    else { Write-Output "FAIL abstract method $m()"; $fail++ }
+}
+
+Write-Output "== test files documented in docs/search.md =="
+$testFiles = [regex]::Matches($doc, 'tests/Feature/[A-Za-z0-9_\\/]+\.php') | ForEach-Object { $_.Value } | Sort-Object -Unique
+foreach ($t in $testFiles) {
+    if (Test-Path $t) { Write-Output "PASS test file $t"; $pass++ }
+    else { Write-Output "FAIL test file $t (missing)"; $fail++ }
+}
+
+Write-Output ""
+Write-Output "consistency check: $pass PASS / $fail FAIL / $($classes.Count) provider classes / $($routes.Count) route names / $($testFiles.Count) test files"
+if ($fail -gt 0) { exit 1 } else { exit 0 }
+
+--- COMMIT ---
+PS> git show --stat --format="%H%n%s" HEAD
+75a5a5d61968cc3d5ca813908da50d1ea388f9b3
+docs(search): document the global search system and provider extension path
+
+ .../global-search/task-12-global-search.txt        | 364 +++++++++++++++++++
+ CHANGELOG.md                                       |   9 +
+ README.md                                          |  22 ++
+ docs/search.md                                     | 394 +++++++++++++++++++++
+ 4 files changed, 789 insertions(+)
+
+commit hash: 75a5a5d61968cc3d5ca813908da50d1ea388f9b3
+staged files in the docs commit: docs/search.md, README.md, CHANGELOG.md, .omo/evidence/global-search/task-12-global-search.txt (only; the unrelated in-flight worktree changes were not staged)
