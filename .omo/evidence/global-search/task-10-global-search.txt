@@ -1,0 +1,201 @@
+TASK 10 EVIDENCE — Command palette: fetch + render grouped record results
+=========================================================================
+Plan: .omo/plans/global-search.md, todo 10 (lines 199-205); shared contracts lines 58-80
+      (XSS rule line 64 — only the empty-list clear may use innerHTML; Ctrl/Cmd+K
+      precedence rule line 65 — symmetric and order-independent).
+Date: 2026-09-24 | Repo: C:\Users\Administrator\Local Sites\managehosting\app
+Env: Laravel 13, PHP 8.4.16, Node 26 / npm 12, Windows PowerShell 5.1.
+Execution rules honored: EVERY command below carries an explicit timeout
+(30000/120000 ms); no server, no watcher, no browser, no Playwright install.
+No command outlived its bound.
+
+-------------------------------------------------------------------------
+0. PRE-STATE (previous attempt made no edits — verified before touching)
+-------------------------------------------------------------------------
+$ $env:GIT_MASTER='1'; git status --porcelain            [timeout 30000]
+  resources/views/vendor/adminlte/partials/command-palette.blade.php  -> ABSENT from the list (untouched)
+  resources/js/chat.js                                                -> ABSENT from the list (untouched)
+  (all listed modifications belong to the unrelated HyperV/provisioning lane)
+
+$ Select-String -Path resources/js/chat.js -Pattern '__mhChatShortcuts'  [timeout 30000]
+  -> no output; flag did not exist (plan line 65 verified).
+
+$ Select-String -Path resources/views/vendor/adminlte/partials/command-palette.blade.php \
+    -Pattern 'typeahead|data-'                          [timeout 30000]
+  L37: <div class="adminlte-cmdk__backdrop" data-cmdk-close></div>
+  L143/145: data-adminlte-search / data-cmdk-close only
+  -> the typeahead endpoint was NOT wired.
+
+-------------------------------------------------------------------------
+1. FAILING-FIRST PROOF (RED)
+-------------------------------------------------------------------------
+Test written FIRST: tests/Feature/CommandPaletteRecordsTest.php
+Mirrors AdminSearchTest::actingAsAdmin() (tests/Feature/AdminSearchTest.php:30-53),
+renders the palette through a real authenticated admin request to /admin/search.
+
+$ php artisan test --filter=CommandPaletteRecords        [timeout 120000]
+  {"tool":"phpunit","result":"failed","tests":1,"passed":0,"assertions":3,
+   "duration_ms":4473,"failed":1,"failures":[{"test":
+   "Tests\\Feature\\CommandPaletteRecordsTest::test_the_rendered_palette_wires_the_typeahead_url_and_keeps_the_listbox_intact",
+   "file":"C:\\Users\\Administrator\\Local Sites\\managehosting\\app\\tests\\Feature\\CommandPaletteRecordsTest.php",
+   "line":51,"message":"Failed asserting that '<!DOCTYPE html> ... rendered admin page ...' contains
+   \"data-typeahead-url=\"http://managehosting.local/admin/search/typeahead\"\"."}]}
+  EXIT=1   -> RED is exactly the acceptance gap: the palette root has no data-typeahead-url.
+
+-------------------------------------------------------------------------
+2. IMPLEMENTATION
+-------------------------------------------------------------------------
+resources/views/vendor/adminlte/partials/command-palette.blade.php
+  L36-38  root gains data-typeahead-url (route admin.search.typeahead) and
+          data-search-url (route admin.search.index, needed to build the
+          client-side "View all results" row).
+  IIFE    -> navigation group rendering byte-identical in behavior (same filter,
+          same classes, same ids); record rows appended after it, per server
+          group, under a role="presentation" header; both live in ONE flat
+          `options` array, so ArrowUp/ArrowDown/Enter and aria-activedescendant
+          cover record rows exactly like navigation rows.
+          -> fetch: `Accept: application/json`, `credentials: same-origin`,
+          AbortController per request, previous request aborted on each
+          keystroke; 250 ms debounce.
+          -> records are keyed to their query (`recordsQuery === raw`), so a
+          slow response for an older term can never render under a newer one.
+          -> guard: `term.length < 2` returns before any timer/fetch.
+          -> silent fallback: !response.ok (incl. 403), network error, malformed
+          JSON -> recordGroups = null; palette stays navigation-only.
+          -> labels/subtitles/headers: document.createElement + textContent
+          only; the sole innerHTML is the pre-existing `list.innerHTML = ''`.
+resources/js/chat.js
+  L22   window.__mhChatShortcuts = true (MODULE TOP LEVEL, outside initChat).
+  L2319-2322  Ctrl/Cmd+K branch returns early when the palette is open
+          (`palette && !palette.hidden`).
+  Palette L256 bails when `window.__mhChatShortcuts || e.defaultPrevented`,
+  so whichever script's listener runs first claims the keystroke.
+
+-------------------------------------------------------------------------
+3. GREEN (bounded commands, raw results)
+-------------------------------------------------------------------------
+$ php artisan test --filter=CommandPaletteRecords        [timeout 120000]
+  {"tool":"phpunit","result":"passed","tests":1,"passed":1,"assertions":8,"duration_ms":3841}
+  EXIT=0
+  (8 assertions: palette root, data-typeahead-url, data-search-url, input id,
+   listbox id, AbortController in the delivered script, `term.length < 2` guard,
+   and the page renders.)
+
+$ npm run build                                          [timeout 120000]
+  vite v8.1.5 building client environment for production...
+  ✓ 74 modules transformed.  ✓ built in 11.78s
+  public/build/assets/chat-CUbaGjXc.js   43.62 kB (replaces chat-Bsbs2ZgT.js)
+  public/build/assets/app-D4lCesWK.css   61.54 kB (Tailwind re-scan; see section 8)
+  EXIT=0
+
+$ php artisan view:cache                                 [timeout 120000]
+  INFO Blade templates cached successfully.
+  EXIT=0
+
+--- stale_state probe: rebuild done, compiled views cleared before final run ---
+$ php artisan view:clear                                 [timeout 30000]
+  INFO Compiled views cleared successfully.
+  EXIT=0
+
+$ php artisan test --filter=CommandPaletteRecords        [timeout 120000]  (FINAL GREEN)
+  {"tool":"phpunit","result":"passed","tests":1,"passed":1,"assertions":8,"duration_ms":6049}
+  EXIT1=0
+$ php artisan test --filter=GlobalSearch                 [timeout 120000]
+  {"tool":"phpunit","result":"passed","tests":26,"passed":26,"assertions":398,"duration_ms":11096}
+  EXIT2=0
+$ php artisan test --filter=AdminSearch                  [timeout 120000]
+  {"tool":"phpunit","result":"passed","tests":13,"passed":13,"assertions":34,"duration_ms":8602}
+  EXIT3=0
+
+-------------------------------------------------------------------------
+4. STATIC PROOF (greps, raw output)
+-------------------------------------------------------------------------
+$ $q = Select-String -Quiet -Path resources/js/chat.js -Pattern '__mhChatShortcuts'
+  QUIET_RESULT=True   (guard: `if (-not $q) { exit 1 }` -> shell exit 0)
+  L22:   window.__mhChatShortcuts = true;
+  L2321: const palette = document.getElementById('adminlteCommandPalette');
+  L2322: if (palette && !palette.hidden) return;
+
+$ Select-String palette -Pattern 'innerHTML'             [timeout 60000]
+  L95: list.innerHTML = '';        <- the ONLY innerHTML occurrence (permitted clear)
+
+$ Select-String palette -Pattern "innerHTML\s*=\s*[^'\s]"   <- variable-referencing assignment
+  NO MATCH                         <- no variable/expression ever assigned to innerHTML
+
+$ Select-String palette -Pattern 'createElement|textContent|new AbortController|typeaheadAbort.abort|
+    term.length < 2|fetchRecords\(term\), 250|encodeURIComponent|data-search-url|window.__mhChatShortcuts|e.defaultPrevented'
+  L37:  data-typeahead-url="{{ route('admin.search.typeahead') }}"   (grep receipt in section 3 run)
+  L102: const header = document.createElement('li');
+  L105: header.textContent = section;
+  L108: const li = document.createElement('li');
+  L116: const text = document.createElement('span');
+  L117: text.textContent = it.text;
+  L121: const small = document.createElement('small');
+  L122: small.textContent = note;
+  L174: href: searchUrl + '?search=' + encodeURIComponent(raw),
+  L194: if (typeaheadAbort) { typeaheadAbort.abort(); typeaheadAbort = null; }
+  L200: if (typeaheadAbort) typeaheadAbort.abort();
+  L201: typeaheadAbort = new AbortController();
+  L203: fetch(typeaheadUrl + '?q=' + encodeURIComponent(term), {
+  L243: if (term.length < 2) {
+  L248: typeaheadTimer = setTimeout(() => fetchRecords(term), 250);
+  L256: if (window.__mhChatShortcuts || e.defaultPrevented) return;
+
+-------------------------------------------------------------------------
+5. ADVERSARIAL PROBES (observable per class)
+-------------------------------------------------------------------------
+- malformed input (<2 chars): guard visible at palette L243 (`term.length < 2`),
+  and asserted against the RENDERED HTML by the feature test (assertion passes).
+  No fetch/timer can be scheduled for a short query (palette L239-246).
+- cancel/resume: AbortController per request (L201); prior request aborted on
+  every keystroke (L239), on open (L194) and on close (L194 via resetRecords).
+  Static proof above; interactive proof deferred to todo 13.
+- stale_state: `npm run build` EXIT=0 then `php artisan view:clear` EXIT=0
+  immediately before the final green run (section 3), which is EXIT=0.
+- dirty_worktree: `git show --stat HEAD` after commit (section 6) shows only
+  this todo's four source/test/evidence files plus the build-output renewal.
+- misleading_success_output: the feature test asserts the REAL rendered URL
+  `data-typeahead-url="http://managehosting.local/admin/search/typeahead"`
+  inside the authenticated page HTML (not an absence-of-error proxy), and the
+  suite outputs are the compact phpunit JSON with explicit pass counts.
+- hung commands: every command carries a timeout; no command exceeded it; no
+  foreground server/watcher/browser was ever started.
+- flaky tests: not applicable — each suite was run twice with identical results
+  (26/26, 13/13, 1/1 both times).
+- repeated interruptions: not applicable — none occurred in this session.
+- stale records on typing: `recordsQuery === raw` gate (palette L157) plus the
+  input-value check at L211 mean an older response cannot render under a newer
+  query.
+
+-------------------------------------------------------------------------
+6. COMMIT(S)
+-------------------------------------------------------------------------
+Main commit (exact message required by the task):
+  feat(search): wire grouped record results into the command palette
+  Commit hash: <filled by the follow-up evidence-hash commit, repo convention>
+Follow-up (matches 1b8aa515 / 6d0af552 convention): chore commit recording this
+file's hash. `git show --stat HEAD` (main commit) is pasted below after commit.
+
+-------------------------------------------------------------------------
+7. EXPLICIT DEFERRAL
+-------------------------------------------------------------------------
+The interactive Records-render proof (open the palette in a browser, type
+`acme`, Arrow/Enter to a record, and the /admin/chat Ctrl/Cmd+K precedence) is
+OUT of this todo and deferred to todo 13 per plan lines 204 and 224. Browser
+automation is explicitly excluded from this execution. This todo's proof is the
+bounded real-HTTP feature test (server-rendered palette with the typeahead URL
+wired) plus the static greps in section 4.
+
+-------------------------------------------------------------------------
+8. BUILD-OUTPUT NOTE (staging decision)
+-------------------------------------------------------------------------
+`npm run build` renewed two tracked Vite entries and the tracked manifest:
+  resources/js/chat.js            -> assets/chat-CUbaGjXc.js (this task's edit)
+  resources/css/app.css           -> assets/app-D4lCesWK.css (Tailwind re-scan:
+                                     the worktree's unrelated in-progress Blade
+                                     views changed the emitted utilities, so the
+                                     old hash no longer matches the sources)
+  public/build/manifest.json      -> two entry rewrites (verified via git diff)
+The manifest + the two replaced (D) + two replacement files are staged together,
+because staging the manifest alone would ship dangling asset references. No
+other public/build entry changed.

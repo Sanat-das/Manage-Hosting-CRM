@@ -60,7 +60,7 @@
     ]
   },
   "resources/css/app.css": {
-    "file": "assets/app-dguVjzu5.css",
+    "file": "assets/app-D4lCesWK.css",
     "name": "app",
     "names": [
       "app.css"
@@ -111,7 +111,7 @@
     "isEntry": true
   },
   "resources/js/chat.js": {
-    "file": "assets/chat-Bsbs2ZgT.js",
+    "file": "assets/chat-CUbaGjXc.js",
     "name": "chat",
     "src": "resources/js/chat.js",
     "isEntry": true,

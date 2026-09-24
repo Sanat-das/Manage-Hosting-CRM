@@ -15,6 +15,12 @@
  */
 import { realtime, onConnectionStateChange } from './echo.js';
 
+// The Ctrl/Cmd+K command palette partial renders on every admin page, chat
+// included. Flag chat's ownership of the shortcut at module scope (not inside
+// initChat) so both keydown handlers can see it before either fires, and the
+// palette can bail in whichever order the browser runs the two listeners.
+window.__mhChatShortcuts = true;
+
 const root = document.getElementById('chat-app');
 
 if (root) {
@@ -2310,6 +2316,11 @@ function initChat(root) {
         // you leave the composer for another room, and every chat client binds
         // it that way. Nothing else in this handler runs against a text field.
         if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
+            // An open command palette owns the keystroke: skipping here (rather
+            // than toggling) guarantees one press never opens both overlays.
+            const palette = document.getElementById('adminlteCommandPalette');
+            if (palette && !palette.hidden) return;
+
             event.preventDefault();
             switcherIsOpen() ? closeSwitcher() : openSwitcher();
             return;

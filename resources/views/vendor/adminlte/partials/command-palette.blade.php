@@ -33,7 +33,9 @@
     $paletteItems = $flatten(app('adminlte')->menu('sidebar'));
 @endphp
 
-<div id="adminlteCommandPalette" class="adminlte-cmdk" role="dialog" aria-modal="true" aria-label="{{ __('adminlte.search') }}" hidden>
+<div id="adminlteCommandPalette" class="adminlte-cmdk" role="dialog" aria-modal="true" aria-label="{{ __('adminlte.search') }}"
+     data-typeahead-url="{{ route('admin.search.typeahead') }}"
+     data-search-url="{{ route('admin.search.index') }}" hidden>
     <div class="adminlte-cmdk__backdrop" data-cmdk-close></div>
     <div class="adminlte-cmdk__dialog card shadow-lg">
         <div class="input-group input-group-lg border-bottom">
@@ -80,12 +82,29 @@
     const input = document.getElementById('adminlteCommandPaletteInput');
     const list = document.getElementById('adminlteCommandPaletteResults');
     const empty = root.querySelector('.adminlte-cmdk__empty');
-    let active = 0, filtered = [];
+    const typeaheadUrl = root.dataset.typeaheadUrl;
+    const searchUrl = root.dataset.searchUrl;
+    let active = 0, filtered = [], options = [];
+
+    // Records state. `recordGroups` belongs to `recordsQuery` only: rows fetched
+    // for one term are never rendered against another, so a slow response can
+    // not put stale rows under a newer query.
+    let recordGroups = null, recordsQuery = null, typeaheadTimer = null, typeaheadAbort = null;
 
     const render = () => {
         list.innerHTML = '';
+        options = [];
         empty.classList.toggle('d-none', filtered.length > 0);
+        let section = null;
         filtered.forEach((it, i) => {
+            if (it.section && it.section !== section) {
+                section = it.section;
+                const header = document.createElement('li');
+                header.className = 'adminlte-cmdk__group small text-uppercase text-muted px-3 pt-2 pb-1';
+                header.setAttribute('role', 'presentation');
+                header.textContent = section;
+                list.appendChild(header);
+            }
             const li = document.createElement('li');
             li.className = 'list-group-item list-group-item-action' + (i === active ? ' active' : '');
             li.id = 'adminlteCmdkOption' + i;
@@ -97,23 +116,25 @@
             const text = document.createElement('span');
             text.textContent = it.text;
             li.append(icon, text);
-            if (it.group) {
-                const group = document.createElement('small');
-                group.textContent = it.group;
-                li.append(group);
+            const note = it.group || it.subtitle;
+            if (note) {
+                const small = document.createElement('small');
+                small.textContent = note;
+                li.append(small);
             }
             li.addEventListener('click', () => go(i));
             li.addEventListener('mousemove', () => { active = i; paint(); });
             list.appendChild(li);
+            options.push(li);
         });
         paint();
     };
     const paint = () => {
-        [...list.children].forEach((li, i) => {
+        options.forEach((li, i) => {
             li.classList.toggle('active', i === active);
             li.setAttribute('aria-selected', i === active ? 'true' : 'false');
         });
-        const el = list.children[active];
+        const el = options[active];
         if (el) {
             el.scrollIntoView({ block: 'nearest' });
             input.setAttribute('aria-activedescendant', el.id);
@@ -121,32 +142,118 @@
             input.removeAttribute('aria-activedescendant');
         }
     };
+
+    // Navigation rows keep their historical shape; server records append after
+    // them under a per-group header, and the whole set stays one flat list so
+    // Arrow/Enter navigation and aria-activedescendant treat every row alike.
+    const buildRows = (raw) => {
+        const lower = raw.toLowerCase();
+        const rows = (lower ? items.filter(it =>
+            it.text.toLowerCase().includes(lower) || (it.group && it.group.toLowerCase().includes(lower))
+        ) : items.slice()).map(it => ({
+            text: it.text, href: it.href, icon: it.icon, group: it.group,
+        }));
+
+        if (recordGroups && recordsQuery === raw) {
+            let rendered = 0;
+            recordGroups.forEach(group => {
+                (group.results || []).forEach(result => {
+                    rendered++;
+                    rows.push({
+                        text: result.label,
+                        href: result.url,
+                        icon: group.icon || 'bi bi-arrow-right-short',
+                        subtitle: result.subtitle || '',
+                        section: group.label,
+                    });
+                });
+            });
+            if (rendered > 0 && searchUrl) {
+                rows.push({
+                    text: 'View all results',
+                    href: searchUrl + '?search=' + encodeURIComponent(raw),
+                    icon: 'bi bi-search',
+                    subtitle: '',
+                });
+            }
+        }
+
+        return rows;
+    };
     const filter = (q) => {
-        q = (q || '').trim().toLowerCase();
-        filtered = q ? items.filter(it =>
-            it.text.toLowerCase().includes(q) || (it.group && it.group.toLowerCase().includes(q))
-        ) : items.slice();
+        const raw = (q || '').trim();
+        filtered = buildRows(raw);
         active = 0; render();
     };
     const go = (i) => {
         const it = filtered[i];
         if (it && it.href) window.location.href = it.href;
     };
+
+    const resetRecords = () => {
+        if (typeaheadAbort) { typeaheadAbort.abort(); typeaheadAbort = null; }
+        if (typeaheadTimer) { clearTimeout(typeaheadTimer); typeaheadTimer = null; }
+        recordGroups = null; recordsQuery = null;
+    };
+    const fetchRecords = (term) => {
+        if (!typeaheadUrl) return;
+        if (typeaheadAbort) typeaheadAbort.abort();
+        typeaheadAbort = new AbortController();
+
+        fetch(typeaheadUrl + '?q=' + encodeURIComponent(term), {
+            headers: { Accept: 'application/json' },
+            credentials: 'same-origin',
+            signal: typeaheadAbort.signal,
+        }).then(response => {
+            if (!response.ok) throw new Error('typeahead ' + response.status);
+            return response.json();
+        }).then(data => {
+            if (!isOpen() || input.value.trim() !== term) return;
+            recordGroups = (data && Array.isArray(data.groups)) ? data.groups : [];
+            recordsQuery = term;
+            filter(input.value);
+        }).catch(error => {
+            if (error && error.name === 'AbortError') return;
+            // Silent fallback: 403, a dropped connection or malformed JSON
+            // simply leaves the palette navigation-only, exactly as it was.
+            recordGroups = null; recordsQuery = null;
+        });
+    };
+
     const open = () => {
         root.hidden = false;
-        input.value = ''; filter('');
+        input.value = ''; resetRecords(); filter('');
         setTimeout(() => input.focus(), 20);
     };
-    const close = () => { root.hidden = true; };
+    const close = () => { root.hidden = true; resetRecords(); };
     const isOpen = () => !root.hidden;
 
     document.querySelectorAll('[data-adminlte-search]').forEach(el =>
         el.addEventListener('click', e => { e.preventDefault(); open(); }));
     root.querySelectorAll('[data-cmdk-close]').forEach(el => el.addEventListener('click', close));
-    input.addEventListener('input', () => filter(input.value));
+
+    input.addEventListener('input', () => {
+        const term = input.value.trim();
+        filter(input.value);
+
+        if (typeaheadAbort) { typeaheadAbort.abort(); typeaheadAbort = null; }
+        if (typeaheadTimer) { clearTimeout(typeaheadTimer); typeaheadTimer = null; }
+
+        // A single character cannot match a record, so it never costs a request.
+        if (term.length < 2) {
+            recordGroups = null; recordsQuery = null;
+            return;
+        }
+
+        typeaheadTimer = setTimeout(() => fetchRecords(term), 250);
+    });
 
     document.addEventListener('keydown', (e) => {
         if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+            // The chat workspace owns Ctrl/Cmd+K on /admin/chat*; whichever
+            // listener runs first claims the keystroke and the other bails, so
+            // exactly one overlay opens in either script order.
+            if (window.__mhChatShortcuts || e.defaultPrevented) return;
             e.preventDefault(); isOpen() ? close() : open(); return;
         }
         if (!isOpen()) return;
