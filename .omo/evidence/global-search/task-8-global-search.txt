@@ -1,0 +1,199 @@
+TASK 8 — JSON typeahead endpoint
+Plan: .omo/plans/global-search.md todo 8 (lines 183-189); JSON schema contract line 63; shared contracts lines 58-80
+Repo: C:\Users\Administrator\Local Sites\managehosting\app (Laravel 13, PHP 8.4.16, Windows PowerShell 5.1)
+Date: 2026-09-24
+Baseline before this task: --filter=GlobalSearch 14/14 green (GlobalSearchServiceTest), --filter=AdminSearch 8/8 green;
+  the `search` permission (todo 2), SearchTypeaheadRequest + throttle:search (todo 3) and the queryFor foundation
+  (todo 14) are committed at HEAD 3efc48bc.
+
+================================================================================
+STEP 1 — FAILING-FIRST PROOF (RED), before the controller method and route existed
+================================================================================
+command: php artisan test --filter=GlobalSearchTypeaheadTest
+exit: 2
+result: tests 12, passed 0, errors 12 — every test errored with
+        "Route [admin.search.typeahead] not defined."
+raw (trimmed):
+  {"tool":"phpunit","result":"failed","tests":12,"passed":0,"assertions":0,"duration_ms":5341,"errors":12,
+   "error_details":[{"test":"...test_the_payload_matches_the_exact_json_schema_for_a_seeded_match",
+   "message":"Route [admin.search.typeahead] not defined.", ... 12 entries, one per test ...}]}
+Interpretation: the whole contract (schema, short-query envelope, validation, auth gates, permission
+filtering, wildcard escaping, throttle on the real route) was unprovable before implementation — RED.
+
+================================================================================
+STEP 2 — CONTRACT VERIFICATION (plan names vs real code, before writing)
+================================================================================
+- routes/admin/search.php:14 — group middleware ['web','auth','admin','throttle:admin'], prefix('admin'), name('admin.').
+  `search/typeahead` therefore resolves to GET /admin/search/typeahead.
+- Chat opt-out precedent routes/admin/config.php:154 — Route::middleware('throttle:chat')->withoutMiddleware('throttle:admin')
+  ->group(...). Laravel Router::resolveMiddleware() resolves both the middleware list and the exclusion list through
+  MiddlewareNameResolver, so the alias string 'throttle:admin' is compared as the same resolved string on both sides
+  (vendor/laravel/framework/src/Illuminate/Routing/Router.php:844-869) — confirmed live by route:list -v in STEP 4.
+- app/Http/Requests/SearchTypeaheadRequest.php — authorize(): hasPermission('search'); rules: q nullable|string|max:100
+  (short queries are the controller's 200-empty, never 422).
+- app/Services/Search/GlobalSearchService::groups() — returns per-group key/label/icon/results PLUS internal
+  has_more/list_url; results rows already carry id/label/subtitle/url with `url` server-resolved from showRoute()
+  (AbstractSearchProvider::resultRow). The controller maps explicitly so the two full-page-only keys cannot leak.
+- Permission set resolved ONCE via GlobalSearchService::permissionNames($user) (single pluck) — no hasPermission()
+  call anywhere in the request path.
+
+DEVIATIONS RECORDED: none in the contract. One test-side assumption was corrected (STEP 4 note).
+
+`total` DEFINITION (documented choice, per task): the sum of count(results) across the returned groups — i.e. the
+number of rows the palette is about to render (each group already capped at 5 by the service), NOT a database count.
+Rationale: the typeahead contract carries no counts and must never run a COUNT(*) query; a capped per-group fetch is
+the plan's count strategy (line 60) and `has_more` (which would say "5+") is deliberately a full-page key.
+
+================================================================================
+STEP 3 — IMPLEMENTATION
+================================================================================
+app/Http/Controllers/Admin/SearchController.php
+  - added imports: SearchTypeaheadRequest, User, GlobalSearchService, JsonResponse (3-line import block only).
+  - added public function typeahead(SearchTypeaheadRequest $request): JsonResponse AFTER the untouched search():
+      * $q = trim((string) $request->query('q', '')); mb_strlen($q) < 2 -> 200 {"query":"","groups":[],"total":0};
+      * app(GlobalSearchService::class); permissionNames($request->user()) once; groups($permissionNames, $q, 5);
+      * explicit array_map to {key,label,icon,results[{id,label,subtitle,url}]} (has_more/list_url dropped);
+      * total = array_sum(count(results) per group).
+  - `git diff` confirms search() is byte-identical: the hunk contains only the import block + the appended method.
+routes/admin/search.php
+  - added Route::get('search/typeahead', [SearchController::class,'typeahead'])
+      ->middleware(['permission:search','throttle:search'])->withoutMiddleware('throttle:admin')
+      ->name('search.typeahead'); with a comment citing the chat precedent.
+  - the existing search.index route was NOT touched (todo 9 owns its gate retarget).
+tests/Feature/GlobalSearchTypeaheadTest.php — 12 tests (schema/empty envelope/422s/auth gates/permission
+  filtering/wildcard/injection/throttle), using the CreatesChatUsers trait (exact-permission users, baseline role
+  'marketing' emptied) and RefreshDatabase; setUp clears the limiter cache (Cache::flush + RateLimiter::clear('search')).
+
+================================================================================
+STEP 4 — GREEN (automated verification)
+================================================================================
+command: php artisan test --filter=GlobalSearchTypeaheadTest
+exit: 0
+{"tool":"phpunit","result":"passed","tests":12,"passed":12,"assertions":357,"duration_ms":7956}
+
+NOTE (honest record): the FIRST green attempt was 11/12 — test_a_guest_asking_for_json_receives_401 expected 401,
+observed 302. Root cause: bootstrap/app.php:167-169 scopes `shouldRenderJsonWhen()` to `api/*`, so the framework's
+unauthenticated handler redirects even for a JSON Accept header. The plan contract (line 63) asks for the 302
+redirect; the TEST was corrected (renamed ..._is_still_redirected_to_login) and the product code was left as
+designed. No app exception behavior was changed.
+
+command: php artisan test --filter=test_the_real_typeahead_route_allows_300_requests_and_rejects_the_301st
+exit: 0
+{"tool":"phpunit","result":"passed","tests":1,"passed":1,"assertions":301,"duration_ms":6267}
+(301 assertions = requests #1-300 answered 200 + request #301 answered 429 on the REAL route.)
+
+command: php artisan test --filter=GlobalSearchService
+exit: 0
+{"tool":"phpunit","result":"passed","tests":14,"passed":14,"assertions":41,"duration_ms":5475}
+
+command: php artisan test --filter=AdminSearch
+exit: 0
+{"tool":"phpunit","result":"passed","tests":8,"passed":8,"assertions":16,"duration_ms":6047}
+
+command: php artisan test --filter=GlobalSearch   (plan acceptance line 88, superset: 14 service + 12 typeahead)
+exit: 0
+{"tool":"phpunit","result":"passed","tests":26,"passed":26,"assertions":398,"duration_ms":11191}
+
+command: php -l (each changed/new file)
+app/Http/Controllers/Admin/SearchController.php -> No syntax errors detected
+routes/admin/search.php                        -> No syntax errors detected
+tests/Feature/GlobalSearchTypeaheadTest.php    -> No syntax errors detected
+
+command: php vendor/bin/pint --test <3 files>
+exit: 0 -> {"tool":"pint","result":"passed"}
+
+command: php artisan route:list --name=admin.search -v
+exit: 0
+ GET|HEAD admin/search .. admin.search.index › Admin\SearchController@search
+  ⇂ web
+  ⇂ Illuminate\Auth\Middleware\Authenticate
+  ⇂ App\Http\Middleware\AdminMiddleware
+  ⇂ Illuminate\Routing\Middleware\ThrottleRequests:admin
+  ⇂ App\Http\Middleware\PermissionMiddleware:dashboard.view
+ GET|HEAD admin/search/typeahead .. admin.search.typeahead › Admin\SearchController@typeahead
+  ⇂ web
+  ⇂ Illuminate\Auth\Middleware\Authenticate
+  ⇂ App\Http\Middleware\AdminMiddleware
+  ⇂ App\Http\Middleware\PermissionMiddleware:search
+  ⇂ Illuminate\Routing\Middleware\ThrottleRequests:search
+Showing [2] routes
+(ACCEPTANCE: the typeahead route carries permission:search + throttle:search and NOT ThrottleRequests:admin.
+ search.index still carries permission:dashboard.view — untouched by design; todo 9 retargets it.)
+
+================================================================================
+STEP 5 — MANUAL QA CHANNEL (real surface, live HTTP)
+================================================================================
+Stale-state reset before the live call:
+  php artisan config:clear -> INFO Configuration cache cleared successfully.
+  php artisan route:clear  -> INFO Route cache cleared successfully.
+APP_URL read from .env:5 -> http://managehosting.local ; install.lock exists (True).
+The host was reachable, so no `php artisan serve` fallback was needed and no server process was started.
+
+(a) RAW live call (guest, no JSON Accept):
+  command: curl.exe -i --max-time 15 "http://managehosting.local/admin/search/typeahead?q=acme"
+  raw (status + location lines):
+    HTTP/1.1 302 Found
+    Server: nginx/1.26.1
+    X-Powered-By: PHP/8.4.10
+    Location: http://managehosting.local/admin
+  Interpretation: 302 to `admin.login`, which routes/web.php:18 defines as GET /admin (redirects to the shared
+  Fortify login page). The route is registered on the live host and is auth-gated — exactly the plan contract.
+
+(b) CONTROL PROBE (proves the 302 is route-specific, not a catch-all, and FPM serves current code):
+  command: curl.exe -i --max-time 15 "http://managehosting.local/admin/search/typeahead-nonexistent?q=acme"
+  observed: HTTP/1.1 404 Not Found
+  command: curl.exe -i --max-time 15 "http://managehosting.local/admin/search/typeahead?q=a"
+  observed: HTTP/1.1 302 Found / Location: http://managehosting.local/admin
+
+(c) Live malformed-input probes as a guest (auth runs BEFORE validation, so these all hit the gate first — the
+    422/200-envelope behaviors are proven against the real route in the feature tests above):
+  q[]=a      -> status=302 redirect=http://managehosting.local/admin
+  q=%        -> status=302 redirect=http://managehosting.local/admin
+  q=<101 a>  -> status=302 redirect=http://managehosting.local/admin
+
+================================================================================
+STEP 6 — ADVERSARIAL PROBES (observables)
+================================================================================
+1. Malformed input: covered on the REAL route — test_a_query_shorter_than_two_characters_returns_the_empty_envelope_
+   with_http_200 (q='a','', ' ', missing -> assertExactJson empty envelope, HTTP 200, NOT 422),
+   test_a_query_longer_than_100_characters_returns_422 (101 chars -> 422 + error bag), test_an_array_q_is_rejected_
+   with_422 (q[] -> 422), test_wildcard_characters_are_matched_literally_and_a_lone_percent_is_short_circuited
+   (q='100%' -> only the literal row; q='0_' -> only the literal row; q='%' -> empty envelope, no full-table dump).
+2. Permission leak: test_an_authenticated_panel_user_without_the_search_permission_is_forbidden (403),
+   test_a_customers_only_viewer_gets_no_other_entity_groups (matching ticket + catalog product seeded; groups ===
+   ['customers'] only), test_an_invoices_only_viewer_gets_zero_groups_when_only_non_billing_rows_match (groups === []).
+   The route middleware + FormRequest authorize both gate on `search`; the service skips providers by the once-plucked
+   permission set.
+3. Misleading success: assertions are exact, not "status 200" — array_keys() equality on the payload, each group and
+   each result (so a leaked has_more/list_url key fails), exact labels/subtitles/ids, and URLs compared to
+   route('admin.customers.show', $customer) (server-resolved, absolute) rather than substrings. json_encode of the
+   payload is asserted NOT to contain 'has_more'/'list_url'.
+4. Stale state: config:clear + route:clear executed immediately before the live curl (STEP 5 receipts); tests run on
+   sqlite :memory: with RefreshDatabase so no persistent DB state exists; limiter cache cleared in setUp.
+5. Dirty worktree: the repo carries many unrelated modified/untracked files from another workstream (HyperV/RDP);
+   this task stages ONLY the controller, the route file, the test and this evidence file (evidence force-added).
+   Verified after commit with `git show --stat HEAD`.
+6. Cancel/resume: NOT APPLICABLE — single non-interactive test+implement pass; all state is on disk (files + this
+   evidence file), so an interruption would resume by re-running the same test filter.
+7. Hung commands: NOT APPLICABLE — every command ran with a bounded timeout and exited (longest: the 301-request
+   throttle test, ~6s; no daemon, queue or browser process involved).
+8. Flaky tests: NOT APPLICABLE as a failure class — the typeahead suite was executed 3 times (RED, first green with a
+   test-side assertion defect, final green) with identical deterministic results; no time-, order- or network-
+   dependent behavior is asserted. The throttle test clears its limiter cache in setUp and passed on every run.
+9. Repeated interruptions: NOT APPLICABLE — no interruptions occurred in this session; the work is idempotent
+   (file writes + test reruns) and the evidence file is the recovery anchor.
+10. Deviation (recorded): a JSON-Accept guest receives 302, not 401, because `shouldRenderJsonWhen()` is scoped to
+    `api/*` in bootstrap/app.php:167-169. The plan's contract (line 63: guest redirects 302) is satisfied; no product
+    change was made.
+
+================================================================================
+STEP 7 — COMMIT
+================================================================================
+commit: __COMMIT_HASH__
+subject: feat(search): add permission-aware JSON typeahead endpoint
+staged paths (ONLY these 4):
+  app/Http/Controllers/Admin/SearchController.php
+  routes/admin/search.php
+  tests/Feature/GlobalSearchTypeaheadTest.php
+  .omo/evidence/global-search/task-8-global-search.txt
+No `git commit --amend` was used. Unrelated dirty-worktree files from the other workstream were left untouched.
