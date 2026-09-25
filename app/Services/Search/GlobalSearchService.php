@@ -118,7 +118,8 @@ class GlobalSearchService
     }
 
     /**
-     * Every permission name the user holds, in ONE query.
+     * Every permission name the user holds, in ONE query, with each `x.manage`
+     * expanded into its implied `x.view` twin.
      *
      * Mirrors `HasRoles::hasPermission()`: the permissions of the pivot-assigned
      * roles, plus those of the Role named by the legacy `users.role` column.
@@ -137,7 +138,34 @@ class GlobalSearchService
             })
             ->pluck('name');
 
-        return $names->unique()->values()->all();
+        return $this->withImpliedViewPermissions($names->unique()->values()->all());
+    }
+
+    /**
+     * `x.manage` implies `x.view`, exactly as `PermissionMiddleware::handle()`
+     * enforces for route gates - keep the two in step. A role the app admits to
+     * a screen must also be able to search that screen's records; without this,
+     * a custom role holding only `hosting.manage` (or `service-instances.manage`,
+     * `domains.manage`, `catalog-products.manage`) opened the screens and got
+     * zero search results for them.
+     *
+     * Pure string expansion on the already-plucked set: it must never add a
+     * query, and it only ever widens `manage` -> `view`, never the reverse.
+     *
+     * @param  list<string>  $names
+     * @return list<string>
+     */
+    private function withImpliedViewPermissions(array $names): array
+    {
+        $expanded = $names;
+
+        foreach ($names as $name) {
+            if (str_ends_with($name, '.manage')) {
+                $expanded[] = substr($name, 0, -strlen('.manage')).'.view';
+            }
+        }
+
+        return array_values(array_unique($expanded));
     }
 
     /**

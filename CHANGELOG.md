@@ -6,6 +6,13 @@ All notable user-facing changes to this project are documented in this file.
 
 ### Fixed
 
+- **Global search: roles holding only `x.manage` now find the records their screens already admit them to.**
+  `GlobalSearchService::permissionNames()` expands every held `x.manage` permission into its `x.view` twin,
+  mirroring `PermissionMiddleware`'s existing manage-implies-view fallback. A custom role holding only
+  `service-instances.manage` (or `hosting.manage`, `domains.manage`, `catalog-products.manage`) could already
+  open those screens but got zero search results for them; it now gets the matching groups. The permission
+  resolution stays a single query, and nothing is widened in the other direction.
+
 - **Installer: auto-bootstrap `.env` and `APP_KEY` on first boot.**
   `bootstrap/app.php` now copies `.env.example` → `.env` and generates a
   random `APP_KEY` before Laravel starts, so a fresh `git clone` boots

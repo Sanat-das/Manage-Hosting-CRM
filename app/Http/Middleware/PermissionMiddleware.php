@@ -22,6 +22,8 @@ class PermissionMiddleware
         }
 
         // Fallback: `*.manage` implies `*.view` — e.g. notifications.manage can view inbox.
+        // GlobalSearchService::permissionNames() mirrors this rule for search gating
+        // (withImpliedViewPermissions()); keep the two in step if this ever changes.
         if ($user !== null && str_ends_with($permission, '.view')) {
             $managePermission = substr($permission, 0, -5) . '.manage';
 
