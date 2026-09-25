@@ -1,0 +1,55 @@
+# task-1 — FU-5 record fidelity (plan text amendments)
+
+Todo: `.omo/plans/global-search-followups.md` todo 1 (FU-5). Plan text + one comment-only test docblock fix. No product code.
+
+## Files changed
+
+- `.omo/plans/global-search.md` — 4 plan-text edits (a-d). NOTE: `.omo/` is gitignored (`.gitignore:22`), so these edits leave no git trace; evidence is the greps below plus the file content itself.
+- `tests/Feature/CommandPaletteRecordsTest.php` — edit (e), comment-only docblock fix (1 insertion, 1 deletion; `git diff --stat` = `1 file changed, 1 insertion(+), 1 deletion(-)`).
+- `.omo/drafts/global-search.md` — "Record fidelity (2026-09-25)" note appended.
+
+## Before (from the verification pass read at the start of execution)
+
+- plan line 84: `- Test decision: tests-after + PHPUnit 12 feature tests (`tests/Feature/GlobalSearchTest.php`, `tests/Feature/SearchPermissionLeakTest.php`, plus extensions to `tests/Feature/AdminSearchTest.php`) on sqlite `:memory:`; ...`
+- plan line 91: `- Wildcard (isolated seeded test DB): `GET /admin/search?q=%` as an admin -> 200 with no record rows when no row contains a literal `%`; a seeded row containing a literal `%` IS returned by `q=%`; ...`
+- plan line 200: `... add a "View all results" row linking to `route('admin.search.index', ['search' => q])`; silently fall back ...`
+- plan line 224: `(d) a `support`-role user -> no servers/SSL group;`
+- `tests/Feature/CommandPaletteRecordsTest.php:78`: `* (SearchController::index: $q = trim((string) $request->query('q', ''))).`
+
+## After — acceptance commands and observed output
+
+```
+A) Select-String -Path .omo\plans\global-search.md -Pattern "SearchPermissionLeakTest|GlobalSearchTest\.php"
+   -> 0 matches
+
+B) case-(d) line now reads (L224, excerpt):
+   "(d) a `staff`-role user -> no servers/SSL group (staff deliberately lacks `hosting.view`; the `support`
+    role DOES see them by design - `AdminLteRbacSeeder.php:206` - and the literal-fail/intent-pass resolution
+    of this case is recorded in `qa-global-search.md` case (d));"
+
+C) Select-String -Path .omo\plans\global-search.md -Pattern "short-circuits on the min-2-char"
+   -> L91 (the q=% acceptance line now states the short-circuit and points at q=100% / q=0_)
+
+D) Select-String -Path .omo\plans\global-search.md -Pattern "\['search' => q\]"
+   -> 0 matches
+   Select-String ... -Pattern "searchUrl \+ '\?q=' \+ encodeURIComponent"
+   -> L200 (todo 10's View-all row now records the implemented param and why)
+
+E) Select-String -Path tests\Feature\CommandPaletteRecordsTest.php -Pattern "SearchController::index"
+   -> 0 matches
+   git diff --stat -- tests/Feature/CommandPaletteRecordsTest.php
+   -> 1 file changed, 1 insertion(+), 1 deletion(-)
+```
+
+## Deviations from the written acceptance criteria (recorded, not silently re-scoped)
+
+1. **"`git status --short -- tests` shows ONLY `tests/Feature/CommandPaletteRecordsTest.php`" is not executable as written** — the worktree carries ~99 unrelated modified/untracked files from other workstreams (HyperV/provisioning), including 8 modified + 20 untracked test files. Replaced with the executable equivalent: `git diff --stat` on the one file this todo touched (1 line), plus the fact that no other file was edited by this todo.
+2. **`git status` cannot see the plan/draft edits at all** — `.omo/` is gitignored. Evidence for those is the greps above (before/after text quoted) and the file content.
+
+## Observation left unedited (outside the approved scope)
+
+Todo-13 case (e) in the plan carries the same imprecise `q=%` phrasing as line 91 did. It is already adjudicated by `.omo/evidence/global-search/qa-global-search.md` case (e) ("Contract nuance ... plan line 91's `q=%` phrasing is imprecise on this point"), so it was deliberately left unchanged; the draft note records this.
+
+## Verdict
+
+All five edits applied; all executable acceptance greps at their expected values; no product code, route, config or behaviour touched.

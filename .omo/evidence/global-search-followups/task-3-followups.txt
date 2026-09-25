@@ -1,0 +1,55 @@
+# task-3 — FU-4 results-page `q` validation error slot
+
+Todo: `.omo/plans/global-search-followups.md` todo 3 (FU-4).
+
+## Files changed
+
+- `resources/views/admin/search/index.blade.php` — the search card now renders the flashed `q` error:
+  - `@error('q')` block with `role="alert" data-search-error` (icon + `{{ $message }}`), token/Bootstrap-consistent with the view's existing `mh-search__*` styling
+  - the input carries `@error('q') is-invalid @enderror` so the field itself is flagged
+- `tests/Feature/AdminSearchTest.php` — 2 new tests (the existing 17 contracts untouched):
+  - `test_an_overlong_q_is_rejected_with_a_redirect_and_a_validation_error_for_a_browser_request()`
+  - `test_the_results_page_surfaces_the_q_validation_error_after_a_redirect_back()`
+
+No change to `SearchPageRequest`, routes, throttle, the JSON 422 contract, or the 100-char / short-query boundaries.
+
+## Debugging note (recorded because it shaped the test)
+
+The first version of the rendering test asserted `assertSessionHasErrors('q')` on the 302 and then issued a follow-up `GET` for the page. It failed: **`assertSessionHasErrors()` consumes the flashed bag in this app's test setup**, so the follow-up GET rendered no error slot. Proven with a temporary diagnostic test (deleted afterwards):
+
+```
+R1 status=302   session errors = {"default":{"format":":message","messages":{"q":["The q field must not be greater than 100 characters."]}}}
+R2 status=200   marker=YES   is-invalid=YES          <- no assert between the two requests
+R4 302 + assertSessionHasErrors('q'); R5 status=200  marker=NO   <- assert between them eats the flash
+```
+
+Fix: the rendering test now uses `followingRedirects()` — exactly what a browser does — so the followed page renders the flashed error in the same request cycle, and the session assertion lives in its own separate test.
+
+## Acceptance commands and observed output
+
+```
+php artisan test --without-tty --no-ansi --filter=AdminSearch
+-> Tests: 19 passed (53 assertions)   [55 assertions at HEAD after the F2 fix-up 86ac45ad added the two aria assertions]
+   including: ✓ an overlong q is rejected with a redirect and a validation error for a browser request
+              ✓ the results page surfaces the q validation error after a redirect back
+
+php artisan view:cache
+-> Blade templates cached successfully. exit=0
+
+php artisan test --without-tty --no-ansi --filter=CommandPaletteRecords   -> 2 passed (11 assertions)
+php artisan test --without-tty --no-ansi --filter=SearchThrottle          -> 9 passed (320 assertions)
+```
+
+Assertions in the rendering test: `data-search-error` present, `is-invalid` present, the exact message from
+`__('validation.max.string', ['attribute' => 'q', 'max' => 100])`, and a clean request carries no slot. Per the
+review constraint, it asserts the error text only - never that the input repopulates the rejected value.
+
+## Cleanup receipt
+
+```
+Test-Path tests\Feature\TempDebugQErrorTest.php -> False after delete
+```
+
+## Verdict
+
+The user-visible gap is closed: an overlong (or array) `q` now shows why the page came back, while every existing contract (302 + flashed errors, JSON 422, 100-char boundary 200, short-query 200) is unchanged and green.

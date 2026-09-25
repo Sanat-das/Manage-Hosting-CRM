@@ -1,0 +1,66 @@
+# task-2 — FU-2 registry-wide query-budget test
+
+Todo: `.omo/plans/global-search-followups.md` todo 2 (FU-2). Test-only.
+
+## Files changed
+
+- `tests/Feature/GlobalSearchServiceTest.php`
+  - `use App\Models\CustomerContact;` import
+  - `private const ALL_PROVIDER_PERMISSIONS` (the 12 distinct permissions the 17 providers gate on)
+  - `test_the_full_registry_stays_within_the_query_budget_with_no_matching_rows()`
+  - `test_the_full_registry_stays_within_the_query_budget_with_rows_and_eager_loads()`
+  - `makeContact()` helper (mirrors `IdentitySearchProvidersTest.php:326-335`)
+- No production code changed. The existing single-stub `<= 3` budget test is untouched.
+
+### Commit attribution (corrected 2026-09-25, after independent verification)
+
+Commit `14ec5fce` (FU-2) carries this file's +256 lines, which include the two budget tests **plus** the FU-1 tests,
+fixtures and imports added later in the same run (the file was staged in full at todo 2 while those additions were
+already on disk). See `task-4-followups.txt` -> "Commit attribution" for the full note.
+
+## Measured budgets (MEASURED off `DB::getQueryLog()`, never assumed)
+
+| Scenario | Composition | Measured |
+| --- | --- | --- |
+| zero matching rows, full 17-provider registry, 12-permission viewer | 17 provider data queries + 1 permission pluck; empty result sets fire no eager load | **18** (ceiling 18) |
+| term `acme`, 3 seeded customers + 2 seeded contacts | 15 zero-match providers x 1 + customer data 1 + `with('user')` eager 1 + contact data 1 + `with('customer')` eager 1 + pluck 1 | **20** (ceiling 20) |
+
+Both scenarios assert the captured SQL contains no `count(*)`.
+
+## Mutation probes (non-vacuity receipts)
+
+**M1 — lower the ceiling to 1** (proves the ceiling is actually asserted and the failure is loud):
+
+```
+php artisan test --without-tty --no-ansi --filter="with_rows_and_eager_loads"
+-> FAILED: "Query budget exceeded (15 zero-match providers + 2 data queries + 2 eager loads + 1 pluck): <full SQL dump>"
+   "Failed asserting that 20 is equal to 1 or is less than 1."
+```
+The failure message carries the captured SQL, and the count is exactly the 20 the plan predicted.
+
+**M2 — drop `with('user')` from `CustomerSearchProvider::baseQuery()`** (proves the seeded scenario is non-vacuous — this is the exact regression the Oracle flagged as unprovable with one row):
+
+```
+php artisan test --without-tty --no-ansi --filter="with_rows_and_eager_loads"
+-> FAILED: "Failed asserting that 22 is equal to 20 or is less than 20."
+   The SQL dump shows the eager `select * from "users" where "users"."id" in (2, 3, 4)` replaced by three lazy
+   `select * from "users" where "users"."id" = ? limit 1` queries.
+```
+22 > 20 fails, exactly as the plan's docblock states. Provider restored immediately after the probe:
+`git diff --stat -- app/Services/Search/Providers/CustomerSearchProvider.php` -> empty (back to HEAD).
+
+## Green run after restore
+
+```
+php artisan test --without-tty --no-ansi --filter=GlobalSearch
+-> Tests: 28 passed (408 assertions), Duration 59.53s
+   including: ✓ the full registry stays within the query budget with no matching rows
+              ✓ the full registry stays within the query budget with rows and eager loads
+
+php artisan test --without-tty --no-ansi --filter="full_registry_stays_within_the_query_budget"
+-> Tests: 2 passed (10 assertions)
+```
+
+## Verdict
+
+The registry-wide budget is now enforced: a per-provider permission check, an extra provider query, or a dropped eager load all breach the ceiling with the SQL in the failure message. The plan's predicted numbers (18 / 20 / 22) are confirmed by measurement.

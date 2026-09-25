@@ -1,0 +1,43 @@
+{
+  "i_login_url": "http://managehosting.local/admin/dashboard",
+  "i_acme_status": "rendered:http://managehosting.local/admin/search?q=acme",
+  "i_acme_empty": 1,
+  "i_submit_final_url": "http://managehosting.local/admin/search?q=acme",
+  "i_submit_url_len_param": 4,
+  "i_error_count": 1,
+  "i_error_text": "The q field must not be greater than 100 characters.",
+  "i_error_role": "alert",
+  "i_input_class": "form-control  is-invalid ",
+  "i_input_aria_invalid": "true",
+  "i_input_aria_describedby": "search-q-error",
+  "i_direct_final_url": "http://managehosting.local/admin/search?q=acme",
+  "i_direct_qlen": 4,
+  "i_direct_error_count": 1,
+  "i_direct_error_text": "The q field must not be greater than 100 characters.",
+  "ii_manage_login_url": "http://managehosting.local/admin/dashboard",
+  "ii_manage_status": 200,
+  "ii_manage_url": "http://managehosting.local/admin/search?q=HOST-1",
+  "ii_manage_groups": [
+    " Service Instances (5)"
+  ],
+  "ii_manage_rows": [
+    "HOST-1 — host11",
+    "HOST-19 — host1919",
+    "HOST-18 — host18181818",
+    "HOST-17 — host1717",
+    "HOST-15 — host151515"
+  ],
+  "ii_manage_empty": 0,
+  "ii_search_login_url": "http://managehosting.local/admin/dashboard",
+  "ii_search_status": 200,
+  "ii_search_url": "http://managehosting.local/admin/search?q=HOST-1",
+  "ii_search_groups": [],
+  "ii_search_rows": [],
+  "ii_search_empty": 1,
+  "iii_palette_open": true,
+  "iii_palette_focused": "adminlteCommandPaletteInput",
+  "iii_acme_url": "http://managehosting.local/admin/search?q=acme",
+  "iii_acme_groups": [],
+  "iii_acme_empty": 1,
+  "iii_acme_error": 0
+}

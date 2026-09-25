@@ -1,0 +1,72 @@
+# task-4 — FU-1 search gating honors manage-implies-view
+
+Todo: `.omo/plans/global-search-followups.md` todo 4 (FU-1). Foundation change + re-verification gates.
+
+## Files changed
+
+- `app/Services/Search/GlobalSearchService.php`
+  - `permissionNames()` now returns `withImpliedViewPermissions($names->unique()->values()->all())`
+  - new `private function withImpliedViewPermissions(array $names): array` — appends `substr($name, 0, -strlen('.manage')).'.view'` for every name ending in `.manage`, then `array_values(array_unique(...))`. Pure string work on the already-plucked set; the DB query count is unchanged (asserted).
+- `app/Http/Middleware/PermissionMiddleware.php` — comment ONLY (cross-reference to `GlobalSearchService::permissionNames()`); its logic, signature and behaviour are untouched.
+- `tests/Feature/GlobalSearchServiceTest.php` — 4 new tests + 4 fixture helpers + imports.
+- `docs/search.md` §3.1 — documents the expansion, the one-query guarantee and the direction (`.manage` -> `.view` only).
+- `CHANGELOG.md` — `[Unreleased]` -> `### Fixed` entry.
+
+### Commit attribution (corrected 2026-09-25, after independent verification)
+
+`git show c9b040df --stat` holds **4 files** (`CHANGELOG.md`, `app/Http/Middleware/PermissionMiddleware.php`,
+`app/Services/Search/GlobalSearchService.php`, `docs/search.md`) — NOT 5. The four FU-1 tests, the four fixture
+helpers and the new imports are present at HEAD but were committed inside **14ec5fce** (the FU-2 commit), because
+the shared test file was staged in full for todo 2 while the FU-1 additions were already on disk (staging-order
+slip, the same class of drift the original plan recorded for its wave-2a amend races). Content is verified present
+and green at HEAD; history was deliberately NOT rewritten (no amend). `git log -S "manage_only"` proves the tests
+landed in 14ec5fce.
+
+The acceptance grep `Select-String -Path app\Services\Search\*.php -Pattern "hasPermission\("` returns 3 matches,
+all prose in docblocks (the `User::hasPermission()` cost note, the `HasRoles::hasPermission()` mirror note, and the
+`SearchProvider` contract note). Actual invocations: **0** — verified by the independent verifier with
+`->hasPermission(` / `::hasPermission(` call-pattern searches. The intent of the criterion (no permission checks in
+the search services) holds; the literal "0 matches" wording was unsatisfiable as written because of pre-existing
+prose.
+
+## Tests added (all in the extended foundation suite)
+
+| Test | Proves |
+| --- | --- |
+| `test_a_service_instances_manage_only_viewer_gets_the_service_instances_group` | viewer holding ONLY `service-instances.manage` gets the `service-instances` group |
+| `test_a_hosting_manage_only_viewer_gets_the_hosting_server_and_ssl_groups` | `hosting.manage` alone yields `['hosting', 'servers', 'ssl']` (the multi-provider pair) |
+| `test_the_manage_expansion_does_not_leak_across_domains` | `catalog-products.manage` grants no Customers group; `customers.view` grants no servers group |
+| `test_the_manage_expansion_stays_one_query_and_preserves_exact_names` | `DB::enableQueryLog()` -> exactly 1 query; the set contains `hosting.manage` + `hosting.view` + `customers.view`; a set with no `.manage` name returns unchanged (`['customers.view']`) |
+
+Design note (per the plan): the rule stays service-local with cross-reference comments in both files rather than a shared resolver class — the middleware is an auth path and extracting the rule would change no behaviour. Direction is one-way (`.manage` -> `.view`); nothing widens `.view` -> `.manage`.
+
+## Acceptance commands and observed output
+
+```
+php -l on the 5 changed PHP files                    -> No syntax errors detected (all)
+
+php artisan test --without-tty --no-ansi --filter=GlobalSearch
+-> Tests: 32 passed (419 assertions)   [was 28; +4 FU-1 tests]
+   incl. ✓ a service instances manage only viewer gets the service instances group
+         ✓ a hosting manage only viewer gets the hosting server and ssl groups
+         ✓ the manage expansion does not leak across domains
+         ✓ the manage expansion stays one query and preserves exact names
+
+php artisan test --without-tty --no-ansi --filter=AdminSearch               -> 19 passed (53 assertions)
+php artisan test --without-tty --no-ansi --filter=CommandPaletteRecords     -> 2 passed (11 assertions)
+php artisan test --without-tty --no-ansi --filter=SearchThrottle            -> 9 passed (320 assertions)
+php artisan test --without-tty --no-ansi --filter=IdentitySearchProviders   -> 12 passed (61 assertions)
+php artisan test --without-tty --no-ansi --filter=BillingSearchProviders    -> 12 passed (75 assertions)
+php artisan test --without-tty --no-ansi --filter=HostingSearchProviders    -> 5 passed (26 assertions)
+php artisan test --without-tty --no-ansi --filter=SupportCatalogSearchProviders -> 8 passed (40 assertions)
+```
+
+The todo-1/todo-14 verification gates (`--filter=GlobalSearch`, `--filter=AdminSearch`) were re-run green after the change, as the plan requires.
+
+## Deviations
+
+- The plan's commit strategy says the evidence file is included in the todo's commit; `.omo/` is gitignored, so evidence stays untracked by design (same as the previous global-search run). Recorded in the ledger instead.
+
+## Verdict
+
+A manage-only custom role now gets exactly the groups its screens already admit it to; the permission resolution is still one query; no cross-domain bleed; no `hasPermission()` in `app/Services/Search/`; every pre-existing suite green.
