@@ -75,7 +75,7 @@ class CommandPaletteRecordsTest extends TestCase
     /**
      * The "View all results" row links to admin.search.index, whose controller
      * reads ONLY the `q` query parameter
-     * (SearchController::index: $q = trim((string) $request->query('q', ''))).
+     * (SearchController::search(): $q = trim((string) $request->query('q', ''))).
      * The row is built client-side, so the served page proves the construction
      * it will use: href = searchUrl + '?q=' + encodeURIComponent(raw).
      * Regression guard: the earlier '?search=' construction silently dropped
