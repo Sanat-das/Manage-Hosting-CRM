@@ -227,6 +227,10 @@ class AdminSearchTest extends TestCase
         $page->assertOk();
         $page->assertSee('data-search-error', false);
         $page->assertSee('is-invalid', false);
+        // The field is programmatically tied to the message, so a screen reader
+        // focused in the input hears it too (role="alert" announces on render only).
+        $page->assertSee('aria-describedby="search-q-error"', false);
+        $page->assertSee('aria-invalid="true"', false);
         // The exact message the validator produced, not a copy of it.
         $page->assertSee(__('validation.max.string', ['attribute' => 'q', 'max' => 100]));
 

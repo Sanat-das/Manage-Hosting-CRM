@@ -8,6 +8,7 @@ use App\Models\CatalogProduct;
 use App\Models\Customer;
 use App\Models\CustomerContact;
 use App\Models\HostingAccount;
+use App\Models\Product;
 use App\Models\Server;
 use App\Models\ServiceInstance;
 use App\Models\SslCertificate;
@@ -498,9 +499,17 @@ class GlobalSearchServiceTest extends TestCase
 
     private function makeHostingAccount(Customer $customer, string $hostName, string $username, string $domain): HostingAccount
     {
+        // A real product row: hosting_accounts.product_id carries no FK today,
+        // but a dangling id would break silently the moment one is added.
+        $product = Product::create([
+            'name' => 'Basic Shared Hosting',
+            'type' => 'shared_hosting',
+            'status' => 'active',
+        ]);
+
         return HostingAccount::create([
             'customer_id' => $customer->id,
-            'product_id' => 1,
+            'product_id' => $product->id,
             'username' => $username,
             'domain' => $domain,
             'host_name' => $hostName,

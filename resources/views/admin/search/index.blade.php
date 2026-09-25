@@ -44,7 +44,8 @@
             <div class="input-group">
                 <input type="search" name="q" class="form-control @error('q') is-invalid @enderror"
                        placeholder="Search customers, services, invoices, tickets, products..."
-                       value="{{ $q }}" aria-label="Search records" autofocus>
+                       value="{{ $q }}" aria-label="Search records"
+                       @error('q') aria-invalid="true" aria-describedby="search-q-error" @enderror autofocus>
                 <button type="submit" class="btn btn-primary" aria-label="Search">
                     <i class="bi bi-search" aria-hidden="true"></i>
                 </button>
@@ -55,7 +56,7 @@
              redirects back with the error flashed. Without this slot the user
              saw the previous page unchanged and no reason for the redirect. --}}
         @error('q')
-            <div class="mh-search__error text-danger small mt-2" role="alert" data-search-error>
+            <div class="mh-search__error text-danger small mt-2" role="alert" data-search-error id="search-q-error">
                 <i class="bi bi-exclamation-triangle-fill me-1" aria-hidden="true"></i>{{ $message }}
             </div>
         @enderror

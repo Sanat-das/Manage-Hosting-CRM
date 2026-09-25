@@ -73,11 +73,16 @@ class CommandPaletteRecordsTest extends TestCase
     }
 
     /**
-     * The "View all results" row links to admin.search.index, whose controller
-     * reads ONLY the `q` query parameter
-     * (SearchController::search(): $q = trim((string) $request->query('q', ''))).
-     * The row is built client-side, so the served page proves the construction
-     * it will use: href = searchUrl + '?q=' + encodeURIComponent(raw).
+     * The "View all results" row links to admin.search.index, whose page reads
+     * ONLY the `q` query parameter. The row is built client-side, so the served
+     * page proves the construction it will use:
+     * href = searchUrl + '?q=' + encodeURIComponent(raw).
+     *
+     * Where each surface reads it: the results page uses the validated `q`
+     * (SearchController::search() -> `$validated['q']`), while the palette
+     * endpoint reads `$request->query('q', '')`
+     * (SearchController::typeahead()).
+     *
      * Regression guard: the earlier '?search=' construction silently dropped
      * the term on the results page.
      */
