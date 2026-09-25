@@ -4,12 +4,23 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
+use App\Models\CatalogProduct;
 use App\Models\Customer;
+use App\Models\CustomerContact;
+use App\Models\HostingAccount;
+use App\Models\Server;
+use App\Models\ServiceInstance;
+use App\Models\SslCertificate;
 use App\Models\Ticket;
 use App\Models\User;
 use App\Services\Search\AbstractSearchProvider;
 use App\Services\Search\GlobalSearchService;
 use App\Services\Search\LikePattern;
+use App\Services\Search\Providers\CustomerSearchProvider;
+use App\Services\Search\Providers\HostingAccountSearchProvider;
+use App\Services\Search\Providers\ServerSearchProvider;
+use App\Services\Search\Providers\ServiceInstanceSearchProvider;
+use App\Services\Search\Providers\SslCertificateSearchProvider;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -31,6 +42,27 @@ class GlobalSearchServiceTest extends TestCase
         chatUser as panelUserWith;
     }
     use RefreshDatabase;
+
+    /**
+     * Every distinct permission the 17 providers gate on, so the whole
+     * registry is admitted: transactions and quotes share `invoices.view`,
+     * the hosting trio shares `hosting.view`, and contacts share
+     * `customers.view`.
+     */
+    private const ALL_PROVIDER_PERMISSIONS = [
+        'customers.view',
+        'service-instances.view',
+        'hosting.view',
+        'domains.view',
+        'orders.view',
+        'invoices.view',
+        'payments.view',
+        'tickets.view',
+        'kb.view',
+        'catalog-products.view',
+        'products.view',
+        'users.view',
+    ];
 
     // --- LikePattern ------------------------------------------------------
 
@@ -248,6 +280,167 @@ class GlobalSearchServiceTest extends TestCase
         $this->assertSame('tickets', $groups[0]['key']);
     }
 
+    // --- registry-wide query budget (FU-2) --------------------------------
+
+    /**
+     * The real 17-provider registry, zero matching rows: one data query per
+     * admitted provider + one permission pluck, and nothing else.
+     *
+     * The ceiling is MEASURED off DB::getQueryLog(), never assumed. Empty
+     * result sets fire no eager load, so 17 + 1 = 18 is the whole budget. A
+     * per-provider permission check would add 1-2 queries per provider and
+     * blow this ceiling, which is the regression this test exists to catch.
+     */
+    public function test_the_full_registry_stays_within_the_query_budget_with_no_matching_rows(): void
+    {
+        $user = $this->panelUserWith(...self::ALL_PROVIDER_PERMISSIONS);
+
+        $service = new GlobalSearchService();
+
+        // A shrinking registry must fail loudly here rather than quietly
+        // lowering the budget the assertions below measure.
+        $this->assertCount(17, $service->providers());
+
+        DB::enableQueryLog();
+        $groups = $service->groups($service->permissionNames($user), 'zzz-no-match-zzz', 5);
+        $queries = DB::getQueryLog();
+        DB::disableQueryLog();
+
+        $this->assertSame([], $groups);
+
+        $sql = implode(' | ', array_column($queries, 'query'));
+
+        $this->assertLessThanOrEqual(
+            18,
+            count($queries),
+            'Query budget exceeded (17 provider queries + 1 permission pluck): '.$sql,
+        );
+
+        $this->assertStringNotContainsString('count(*)', strtolower($sql));
+    }
+
+    /**
+     * The same registry with rows in two providers, both of which eager load.
+     *
+     * Budget: 15 zero-match providers x 1 + customer data 1 + `with('user')` 1
+     * + contact data 1 + `with('customer')` 1 + permission pluck 1 = 20.
+     *
+     * Non-vacuity (why the rows matter): a dropped eager load becomes one lazy
+     * query PER ROW inside toResult(), so 3 customers would cost 3 instead of 1
+     * (22 total) and 2 contacts would cost 2 instead of 1 (21 total) - both
+     * above the 20 ceiling. With a single row the count would be identical to
+     * the eager-load budget and the assertion could not fail.
+     */
+    public function test_the_full_registry_stays_within_the_query_budget_with_rows_and_eager_loads(): void
+    {
+        $user = $this->panelUserWith(...self::ALL_PROVIDER_PERMISSIONS);
+
+        $parent = $this->makeCustomer('acme-1@example.com', 'Acme One');
+        $this->makeCustomer('acme-2@example.com', 'Acme Two');
+        $this->makeCustomer('acme-3@example.com', 'Acme Three');
+        $this->makeContact($parent, 'Jane', 'Doe', 'jane.acme@example.com');
+        $this->makeContact($parent, 'John', 'Roe', 'john.acme@example.com');
+
+        $service = new GlobalSearchService();
+
+        $this->assertCount(17, $service->providers());
+
+        DB::enableQueryLog();
+        $groups = $service->groups($service->permissionNames($user), 'acme', 5);
+        $queries = DB::getQueryLog();
+        DB::disableQueryLog();
+
+        // Exactly the two seeded groups: every other provider is row-less.
+        $this->assertSame(['customers', 'contacts'], array_column($groups, 'key'));
+
+        $sql = implode(' | ', array_column($queries, 'query'));
+
+        $this->assertLessThanOrEqual(
+            20,
+            count($queries),
+            'Query budget exceeded (15 zero-match providers + 2 data queries + 2 eager loads + 1 pluck): '.$sql,
+        );
+
+        $this->assertStringNotContainsString('count(*)', strtolower($sql));
+    }
+
+    // --- manage implies view (FU-1) ---------------------------------------
+
+    public function test_a_service_instances_manage_only_viewer_gets_the_service_instances_group(): void
+    {
+        // `service-instances.manage` is a real catalogue permission whose screens
+        // are gated on `service-instances.view`, which PermissionMiddleware
+        // admits via the manage-implies-view fallback.
+        $user = $this->panelUserWith('service-instances.manage');
+        $this->makeServiceInstance('svc-acme-0001', 'acme.com');
+
+        $service = new GlobalSearchService([ServiceInstanceSearchProvider::class]);
+
+        $groups = $service->groups($service->permissionNames($user), 'acme', 5);
+
+        $this->assertCount(1, $groups);
+        $this->assertSame('service-instances', $groups[0]['key']);
+    }
+
+    public function test_a_hosting_manage_only_viewer_gets_the_hosting_server_and_ssl_groups(): void
+    {
+        // `hosting.manage` implies `hosting.view`, which gates three providers.
+        $user = $this->panelUserWith('hosting.manage');
+        $customer = $this->makeCustomer('acme-client@example.com', 'Acme Hosting');
+        $this->makeHostingAccount($customer, 'acme-host', 'acmeuser', 'acme.com');
+        $this->makeServer('Acme Hyper-V', '10.0.0.9');
+        $this->makeSslCertificate($customer, 'acme.com');
+
+        $service = new GlobalSearchService([
+            HostingAccountSearchProvider::class,
+            ServerSearchProvider::class,
+            SslCertificateSearchProvider::class,
+        ]);
+
+        $this->assertSame(
+            ['hosting', 'servers', 'ssl'],
+            array_column($service->groups($service->permissionNames($user), 'acme', 5), 'key'),
+        );
+    }
+
+    public function test_the_manage_expansion_does_not_leak_across_domains(): void
+    {
+        $this->makeCustomer('acme-client@example.com', 'Acme Hosting');
+        $this->makeServer('Acme Hyper-V', '10.0.0.9');
+
+        // A catalog-products manager cannot search customers...
+        $catalogManager = $this->panelUserWith('catalog-products.manage');
+        $customers = new GlobalSearchService([CustomerSearchProvider::class]);
+        $this->assertSame([], $customers->groups($customers->permissionNames($catalogManager), 'acme', 5));
+
+        // ...and a customers viewer gains no hosting group from the expansion.
+        $hostingViewer = $this->panelUserWith('customers.view');
+        $hosting = new GlobalSearchService([ServerSearchProvider::class]);
+        $this->assertSame([], $hosting->groups($hosting->permissionNames($hostingViewer), 'acme', 5));
+    }
+
+    public function test_the_manage_expansion_stays_one_query_and_preserves_exact_names(): void
+    {
+        $user = $this->panelUserWith('hosting.manage', 'customers.view');
+        $service = new GlobalSearchService();
+
+        DB::enableQueryLog();
+        $names = $service->permissionNames($user);
+        $queries = DB::getQueryLog();
+        DB::disableQueryLog();
+
+        // Still ONE query: the expansion is pure string work on the plucked set.
+        $this->assertCount(1, $queries);
+        $this->assertCount(3, $names);
+        $this->assertContains('hosting.manage', $names);
+        $this->assertContains('hosting.view', $names);
+        $this->assertContains('customers.view', $names);
+
+        // A set with no `.manage` name comes back untouched.
+        $viewer = $this->panelUserWith('customers.view');
+        $this->assertSame(['customers.view'], $service->permissionNames($viewer));
+    }
+
     // --- helpers ----------------------------------------------------------
 
     private function makeCustomer(string $email, string $company): Customer
@@ -269,6 +462,69 @@ class GlobalSearchServiceTest extends TestCase
             'priority' => 'medium',
             'status' => $status,
             'department' => 'support',
+        ]);
+    }
+
+    private function makeContact(Customer $customer, string $firstName, string $lastName, string $email): CustomerContact
+    {
+        return CustomerContact::create([
+            'customer_id' => $customer->id,
+            'first_name' => $firstName,
+            'last_name' => $lastName,
+            'email' => $email,
+            'status' => 'active',
+        ]);
+    }
+
+    private function makeServiceInstance(string $serviceTag, string $domain): ServiceInstance
+    {
+        $customer = $this->makeCustomer($serviceTag.'@example.com', 'Acme Hosting');
+        $product = CatalogProduct::create([
+            'name' => 'Basic Shared Hosting',
+            'sku' => 'HOST-'.strtoupper($serviceTag),
+            'status' => 'active',
+        ]);
+
+        return ServiceInstance::create([
+            'customer_id' => $customer->id,
+            'catalog_product_id' => $product->id,
+            'service_tag' => $serviceTag,
+            'service_type' => 'shared',
+            'username' => 'acme',
+            'domain' => $domain,
+            'status' => 'active',
+        ]);
+    }
+
+    private function makeHostingAccount(Customer $customer, string $hostName, string $username, string $domain): HostingAccount
+    {
+        return HostingAccount::create([
+            'customer_id' => $customer->id,
+            'product_id' => 1,
+            'username' => $username,
+            'domain' => $domain,
+            'host_name' => $hostName,
+            'status' => 'active',
+        ]);
+    }
+
+    private function makeServer(string $name, string $ipAddress): Server
+    {
+        return Server::create([
+            'name' => $name,
+            'ip_address' => $ipAddress,
+            'server_type' => 'cpanel',
+            'status' => 'active',
+        ]);
+    }
+
+    private function makeSslCertificate(Customer $customer, string $domainName): SslCertificate
+    {
+        return SslCertificate::create([
+            'customer_id' => $customer->id,
+            'domain_name' => $domainName,
+            'provider' => 'letsencrypt',
+            'status' => 'active',
         ]);
     }
 }
