@@ -33,6 +33,7 @@ use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -160,7 +161,25 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
+        // JSON rendering stays scoped to API routes: guest/403/404 handling
+        // keeps its redirect behaviour for every other caller (the chat
+        // endpoints rely on guests being sent to the login page).
         $exceptions->shouldRenderJsonWhen(
             fn (Request $request) => $request->is('api/*'),
         );
+
+        // Validation is the one exception: the panels submit their forms with
+        // fetch() and need the field errors, not a 302 they cannot read. A
+        // plain browser post (Accept: text/html) still falls through to the
+        // default redirect with the error bag.
+        $exceptions->render(function (ValidationException $e, Request $request) {
+            if (! $request->is('api/*') && ! $request->expectsJson()) {
+                return null;
+            }
+
+            return response()->json([
+                'message' => $e->getMessage(),
+                'errors' => $e->errors(),
+            ], $e->status);
+        });
     })->create();

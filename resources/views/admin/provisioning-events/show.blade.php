@@ -8,11 +8,20 @@
         <table class="table table-sm table-borderless mb-0">
             <tbody>
                 <tr><th class="text-muted w-25">ID</th><td>#{{ $provisioningEvent->id }}</td></tr>
-                <tr><th class="text-muted">Service</th><td><a href="{{ route('admin.service-instances.show', $provisioningEvent->service_instance_id) }}">#{{ $provisioningEvent->service_instance_id }}</a></td></tr>
+                <tr><th class="text-muted">Service</th><td>
+                    @if ($provisioningEvent->service_instance_id)
+                        <a href="{{ route('admin.service-instances.show', $provisioningEvent->service_instance_id) }}">#{{ $provisioningEvent->service_instance_id }}</a>
+                    @else
+                        <span class="text-muted">—</span>
+                    @endif
+                </td></tr>
                 <tr><th class="text-muted">Type</th><td><span class="badge text-bg-info">{{ $provisioningEvent->event_type }}</span></td></tr>
                 <tr><th class="text-muted">Status</th><td><x-adminlte.partials.status-badge :status="$provisioningEvent->event_status" /></td></tr>
                 <tr><th class="text-muted">Triggered By</th><td>{{ $provisioningEvent->triggered_by ?? 'System' }}</td></tr>
                 <tr><th class="text-muted">Created</th><td>{{ $provisioningEvent->created_at?->format('Y-m-d H:i:s') }}</td></tr>
+                @if (! empty($provisioningEvent->last_error))
+                    <tr><th class="text-muted">Error</th><td>{{ $provisioningEvent->last_error }}</td></tr>
+                @endif
             </tbody>
         </table>
     </x-adminlte-card>

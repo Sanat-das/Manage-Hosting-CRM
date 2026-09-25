@@ -90,7 +90,11 @@ class WelcomeMailer
         }
 
         $isHtml = $this->isHtml((string) $template->body);
-        $password = (string) ($credentials['password'] ?? '');
+        // WHY: the redacted value MUST be whatever is actually rendered. Guest
+        // credentials are what the customer logs in with on a Windows VM; the
+        // panel password is a generated secret nobody uses there. deliveredCredentials()
+        // prefers guest_username/guest_password so audit redaction stays in sync.
+        $password = $this->deliveredCredentials($credentials)['password'];
 
         $vars = $this->variables($order, $service, $credentials, $isHtml);
 
@@ -157,8 +161,13 @@ class WelcomeMailer
         }
         $customer = $order->customer;
 
-        $username = (string) ($credentials['username'] ?? $service->username ?? '');
-        $password = (string) ($credentials['password'] ?? '');
+        // WHY: guest credentials are the ones the customer actually logs in with on
+        // a Windows VM. The panel password is a generated secret nobody uses there,
+        // so when guest_username/guest_password are present they must be delivered
+        // instead. Falls back to panel credentials for cPanel/Plesk etc.
+        $delivered = $this->deliveredCredentials($credentials);
+        $username = $delivered['username'] !== '' ? $delivered['username'] : (string) ($service->username ?? '');
+        $password = $delivered['password'];
         $ip = (string) ($credentials['ip'] ?? $service->server?->ip_address ?? '');
         $nameservers = $this->flatten($credentials['nameservers'] ?? null);
         $domain = (string) ($service->domain ?? $order->domain_name ?? '');
@@ -195,12 +204,38 @@ class WelcomeMailer
             'service_password' => $password,
             'service_ip' => $ip,
             'service_nameservers' => $nameservers,
-            'control_panel_url' => $domain !== '' ? 'https://'.$domain.'/cpanel' : '',
+            // WHY: a Windows VM has no cPanel. The control-panel URL is meaningless there
+            // and would confuse the customer, so hyperv omits it entirely — the credentials
+            // block then renders Username / Password / Server IP only.
+            'control_panel_url' => $service->provisioning_method === 'hyperv' ? '' : ($domain !== '' ? 'https://'.$domain.'/cpanel' : ''),
         ];
 
         $vars['service_credentials'] = $this->credentialsBlock($vars, $isHtml);
 
         return $vars;
+    }
+
+    /**
+     * Which credentials the customer actually receives. Guest credentials win
+     * when the module supplied them (Hyper-V VM — Administrator inside the guest
+     * is what the customer logs in with, not the panel username/password). For
+     * every other module the guest keys are absent and the panel credentials are
+     * delivered unchanged. Trimmed so "  " does not count as a credential.
+     *
+     * @param  array<string, mixed>  $credentials
+     * @return array{username: string, password: string}
+     */
+    private function deliveredCredentials(array $credentials): array
+    {
+        $guestUsername = trim((string) ($credentials['guest_username'] ?? ''));
+        $panelUsername = trim((string) ($credentials['username'] ?? ''));
+        $guestPassword = trim((string) ($credentials['guest_password'] ?? ''));
+        $panelPassword = trim((string) ($credentials['password'] ?? ''));
+
+        return [
+            'username' => $guestUsername !== '' ? $guestUsername : $panelUsername,
+            'password' => $guestPassword !== '' ? $guestPassword : $panelPassword,
+        ];
     }
 
     /**

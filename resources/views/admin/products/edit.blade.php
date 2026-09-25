@@ -24,6 +24,12 @@
             $activeTab = 'modules';
         }
     }
+
+    // The Modules tab lists plugin modules only (the provisioning builtins are
+    // configured on the Details tab), so count only the links it displays.
+    $enabledModuleCount = collect($linkableModules ?? [])->filter(
+        fn ($mod) => (bool) ($product->moduleLinks->firstWhere('module_slug', $mod['slug'])?->enabled)
+    )->count();
 @endphp
 
 @section('content_header')
@@ -121,8 +127,8 @@
                         data-bs-toggle="tab" data-bs-target="#edit-pane-modules" type="button" role="tab"
                         aria-controls="edit-pane-modules" aria-selected="{{ $activeTab === 'modules' ? 'true' : 'false' }}">
                     <i class="bi bi-puzzle me-1"></i> Modules
-                    @if ($product->moduleLinks->where('enabled', true)->count() > 0)
-                        <span class="badge text-bg-info ms-1">{{ $product->moduleLinks->where('enabled', true)->count() }}</span>
+                    @if ($enabledModuleCount > 0)
+                        <span class="badge text-bg-info ms-1">{{ $enabledModuleCount }}</span>
                     @endif
                 </button>
             </li>
@@ -261,10 +267,11 @@
             {{-- Modules --}}
             <div class="tab-pane fade {{ $activeTab === 'modules' ? 'show active' : '' }}" id="edit-pane-modules"
                  role="tabpanel" aria-labelledby="edit-tab-modules">
-                {{-- Enable/disable + per-product config for linkable modules (builtins + active plugins).
-                     Lives inside the single update form, so actions run via
-                     fetch (no nested forms) — same pattern as the option
-                     attach picker. --}}
+                {{-- Enable/disable + per-product config for active plugin modules
+                     (provisioning builtins are configured on the Details tab
+                     via provisioning module + server group). Lives inside the
+                     single update form, so actions run via fetch (no nested
+                     forms) — same pattern as the option attach picker. --}}
                 @php $linkableModules = $linkableModules ?? []; $registry = $registry ?? app(\App\Services\Integrations\IntegrationRegistry::class); @endphp
                 @forelse ($linkableModules as $mod)
                     @php
@@ -307,6 +314,46 @@
                 @empty
                     <p class="text-muted mb-0">No modules available.</p>
                 @endforelse
+
+                {{-- Hyper-V templates (this product) — dedicated card with its own merge-save endpoint --}}
+                @php $hypervUnionOptions = $hypervUnionOptions ?? []; $hypervAllowedTemplates = $hypervAllowedTemplates ?? []; $hypervIsHypervProduct = $hypervIsHypervProduct ?? false; $hypervHasLink = $hypervHasLink ?? false; @endphp
+                @if ($hypervIsHypervProduct)
+                    <div class="border rounded p-3 mb-3" id="hyperv-templates-card">
+                        <h6 class="mb-2"><i class="bi bi-hdd-stack me-1"></i> Hyper-V templates (this product)</h6>
+                        @if (! $hypervHasLink)
+                            <p class="text-muted small mb-0">Save the product with the Hyper-V provisioning module first.</p>
+                        @else
+                            @php $isRestricted = ! empty($hypervAllowedTemplates); @endphp
+                            <div class="mb-2">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="radio" name="hyperv_template_mode" id="hyperv-mode-all" value="all" {{ ! $isRestricted ? 'checked' : '' }}>
+                                    <label class="form-check-label" for="hyperv-mode-all">All curated templates</label>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="radio" name="hyperv_template_mode" id="hyperv-mode-restrict" value="restrict" {{ $isRestricted ? 'checked' : '' }}>
+                                    <label class="form-check-label" for="hyperv-mode-restrict">Restrict to selected</label>
+                                </div>
+                            </div>
+                            @if (empty($hypervUnionOptions))
+                                <p class="text-muted small mb-0">No Hyper-V templates are curated on any active server.</p>
+                            @else
+                                <div id="hyperv-templates-checkboxes" class="border rounded p-2 mb-2" style="max-height: 220px; overflow-y: auto;">
+                                    @foreach ($hypervUnionOptions as $opt)
+                                        @php $isChecked = in_array($opt['name'], $hypervAllowedTemplates, true); @endphp
+                                        <div class="form-check">
+                                            <input class="form-check-input hyperv-template-checkbox" type="checkbox" value="{{ $opt['name'] }}" id="hyperv-tpl-{{ $loop->index }}" {{ $isChecked ? 'checked' : '' }}>
+                                            <label class="form-check-label" for="hyperv-tpl-{{ $loop->index }}">{{ $opt['label'] }} <span class="text-muted small">({{ $opt['name'] }})</span></label>
+                                        </div>
+                                    @endforeach
+                                </div>
+                                <div id="hyperv-templates-error" class="text-danger small mb-2" style="display:none;"></div>
+                            @endif
+                            <button type="button" class="btn btn-sm btn-primary" id="hyperv-templates-save" data-url="{{ route('admin.products.modules.templates', [$product, 'hyperv']) }}">
+                                <i class="bi bi-save me-1"></i> Save template restriction
+                            </button>
+                        @endif
+                    </div>
+                @endif
             </div>
         </div>
     </x-adminlte.partials.form-card>
@@ -376,6 +423,7 @@
                 var isActionField = function (target) {
                     if (!target || typeof target.closest !== 'function') return false;
                     return !!target.closest('.module-config-fields')
+                        || !!target.closest('#hyperv-templates-card')
                         || target.id === 'option-group-select'
                         || target.id === 'new-link-customer-editable';
                 };
@@ -464,6 +512,33 @@
                         moduleAction(btn.dataset.url, 'PUT', data);
                     });
                 });
+
+                // Hyper-V per-product template restriction save (own fetch PUT, merge-save)
+                var hypervSaveBtn = document.getElementById('hyperv-templates-save');
+                if (hypervSaveBtn) {
+                    hypervSaveBtn.addEventListener('click', function () {
+                        if (!confirmDiscard()) return;
+                        var modeAll = document.getElementById('hyperv-mode-all');
+                        var isAll = modeAll && modeAll.checked;
+                        var errorEl = document.getElementById('hyperv-templates-error');
+                        if (errorEl) { errorEl.style.display = 'none'; errorEl.textContent = ''; }
+                        if (!isAll) {
+                            var checked = document.querySelectorAll('.hyperv-template-checkbox:checked');
+                            if (checked.length === 0) {
+                                if (errorEl) { errorEl.textContent = 'Select at least one template or choose "All curated templates".'; errorEl.style.display = 'block'; }
+                                return;
+                            }
+                        }
+                        var data = new FormData();
+                        data.append('_token', csrf);
+                        data.append('_method', 'PUT');
+                        if (!isAll) {
+                            document.querySelectorAll('.hyperv-template-checkbox:checked').forEach(function (cb) { data.append('allowed_templates[]', cb.value); });
+                        }
+                        fetch(hypervSaveBtn.dataset.url, { method: 'POST', body: data, redirect: 'manual' })
+                            .finally(function () { window.location.href = '{{ route('admin.products.edit', $product) }}'; });
+                    });
+                }
             });
         </script>
     @endpush

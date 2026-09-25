@@ -37,7 +37,15 @@
         @forelse ($events as $event)
             <tr>
                 <td>{{ $event->created_at?->format('Y-m-d H:i') }}</td>
-                <td><a href="{{ route('admin.service-instances.show', $event->service_instance_id) }}">#{{ $event->service_instance_id }}</a></td>
+                <td>
+                    @if ($event->service_instance_id)
+                        <a href="{{ route('admin.service-instances.show', $event->service_instance_id) }}">#{{ $event->service_instance_id }}</a>
+                    @elseif ($event->hosting_account_id)
+                        <a href="{{ route('admin.hosting.show', $event->hosting_account_id) }}">HOST-{{ $event->hosting_account_id }}</a>
+                    @else
+                        <span class="text-muted">—</span>
+                    @endif
+                </td>
                 <td><span class="badge text-bg-info">{{ $event->event_type }}</span></td>
                 <td><x-adminlte.partials.status-badge :status="$event->event_status" /></td>
             </tr>

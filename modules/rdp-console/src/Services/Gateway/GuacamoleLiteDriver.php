@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Modules\RdpConsole\Services\Gateway;
 
 use Illuminate\Support\Facades\Log;
+use Modules\RdpConsole\Exceptions\GatewayNotConfiguredException;
 use RuntimeException;
 
 /**
@@ -43,25 +44,38 @@ final class GuacamoleLiteDriver implements GatewayDriver
         return rtrim((string) ($this->wsUrl ?? config('rdp-console.ws_url', 'ws://127.0.0.1:8080/')), '/').'/';
     }
 
+    /**
+     * Whether a usable shared secret is present. The console pages call this
+     * to render an honest "gateway not configured" state instead of offering
+     * a Connect button that cannot mint. It deliberately does NOT relax
+     * mint(): a missing secret still throws and every endpoint still fails
+     * closed — no default, fallback or generated secret exists.
+     */
+    public function isConfigured(): bool
+    {
+        try {
+            $this->derivedKey();
+
+            return true;
+        } catch (GatewayNotConfiguredException) {
+            return false;
+        }
+    }
+
     public function mint(RdpConnectionContext $context): string
     {
         $key = $this->derivedKey();
         $expiresAt = $context->expiresAt ?? time() + self::TOKEN_TTL;
 
-        $settings = [
-            'hostname' => $context->hostname,
-            'port' => $context->port,
-            'username' => $context->username,
-            'password' => $context->password,
-            'domain' => $context->domain === '' ? null : $context->domain,
-            'security' => $context->security,
-            'resize-method' => 'display-update',
-            'enable-drive' => true,
-            'drive-path' => 'C:\\guac-transfer',
-        ];
+        $settings = match ($context->mode) {
+            RdpConnectionMode::GuestRdp => $this->guestRdpSettings($context),
+            RdpConnectionMode::HyperVVmConnect => $this->vmConnectSettings($context),
+        };
 
         // Recording parameters are optional to guacd; emitting an empty path
         // would abort session startup, so only send them when configured.
+        // Both modes behave identically here — a configured recording path
+        // records the session regardless of which RDP server answered.
         $recordingPath = trim($this->recordingPath ?? (string) config('rdp-console.recording_path'));
 
         if ($recordingPath !== '') {
@@ -81,13 +95,78 @@ final class GuacamoleLiteDriver implements GatewayDriver
             ],
         ], $key);
 
-        // Audit trail without credential material — never ModuleLog.
+        // Audit trail without credential material — never ModuleLog. The mode
+        // is a routing fact, not a secret; it is what makes a VMConnect mint
+        // distinguishable from a guest-RDP mint after the fact.
         Log::info('rdp.token.minted', [
             'admin' => $context->adminUserId,
             'account' => $context->accountId,
+            'mode' => $context->mode->value,
         ]);
 
         return $token;
+    }
+
+    /**
+     * Guest-RDP settings. This array is a frozen wire contract: existing
+     * tokens are asserted against it, so do not add, drop or reorder keys —
+     * VMConnect differences live in vmConnectSettings() instead.
+     *
+     * @return array<string, mixed>
+     */
+    private function guestRdpSettings(RdpConnectionContext $context): array
+    {
+        return [
+            'hostname' => $context->hostname,
+            'port' => $context->port,
+            'username' => $context->username,
+            'password' => $context->password,
+            'domain' => $context->domain === '' ? null : $context->domain,
+            'security' => $context->security,
+            'resize-method' => 'display-update',
+            'enable-drive' => true,
+            'drive-path' => 'C:\\guac-transfer',
+        ];
+    }
+
+    /**
+     * Hyper-V VMConnect settings. Targets the Hyper-V host's vmrdp listener
+     * with the HOST's administrator credentials and the VM GUID as the
+     * preconnection BLOB, so the console works without guest networking and
+     * at boot / pre-OS screens.
+     *
+     * Deliberately different from guest-RDP beyond security/port:
+     *
+     * - `ignore-cert` is scoped to THIS connection's settings only. Hyper-V may
+     *   present a self-signed certificate, so this session has to tolerate it;
+     *   a global guacd default would silently expose every guest-RDP session
+     *   to MITM, which is why the driver never sets one.
+     * - `preconnection-id` is omitted: the Guacamole manual says to leave it
+     *   blank for Hyper-V (guacd treats blank as "no ID").
+     * - `domain` is omitted: the Server row carries no AD domain for the host
+     *   administrator login, and sending a guest domain would be wrong.
+     * - `enable-drive`/`drive-path` are omitted: drive redirection is an
+     *   RDPDR feature Hyper-V's basic session does not provide, and the old
+     *   `C:\guac-transfer` value is a path on the *guacd* host (a Linux
+     *   container in the documented deployment), not on the target.
+     * - `resize-method` is omitted: guacd 1.5.5 defaults to "none" when the
+     *   argument is blank (settings.c), dynamic resize needs RDPEDISP support
+     *   the basic session may not honour, and the browser canvas already
+     *   scales the display to the panel client-side.
+     *
+     * @return array<string, mixed>
+     */
+    private function vmConnectSettings(RdpConnectionContext $context): array
+    {
+        return [
+            'hostname' => $context->hostname,
+            'port' => $context->port,
+            'username' => $context->username,
+            'password' => $context->password,
+            'security' => 'vmconnect',
+            'preconnection-blob' => (string) $context->preconnectionBlob,
+            'ignore-cert' => true,
+        ];
     }
 
     /**
@@ -146,17 +225,21 @@ final class GuacamoleLiteDriver implements GatewayDriver
     /**
      * The shared secret validated then truncated/NUL-padded to 32 bytes,
      * mirroring guacamole-lite's Buffer.from(secret).slice(0, 32) handling.
+     *
+     * A missing/short secret throws GatewayNotConfiguredException (a distinct
+     * RuntimeException subtype) so the endpoints can answer a graceful 503
+     * while still failing closed.
      */
     private function derivedKey(): string
     {
         $secret = trim((string) ($this->secret ?? config('rdp-console.secret')));
 
         if ($secret === '') {
-            throw new RuntimeException('GUACAMOLE_SECRET is not configured.');
+            throw new GatewayNotConfiguredException('GUACAMOLE_SECRET is not configured.');
         }
 
         if (strlen($secret) < 16) {
-            throw new RuntimeException('GUACAMOLE_SECRET must be at least 16 characters.');
+            throw new GatewayNotConfiguredException('GUACAMOLE_SECRET must be at least 16 characters.');
         }
 
         return str_pad(substr($secret, 0, self::KEY_SIZE), self::KEY_SIZE, "\0");

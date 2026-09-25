@@ -102,109 +102,317 @@
                     $isHyperV = ($mod->slug ?? '') === 'hyperv';
                 @endphp
                 @if ($isHyperV)
-                    {{-- Hyper-V production power actions: Create / Start / Stop / Restart / Delete.
-                         Every action is state-checked on the host (Get-VM first, graceful only,
-                         no blind -Force). Restart + Delete additionally require typing the
-                         host_name — enforced server-side in HostingController::moduleAction. --}}
-                    <div class="d-flex flex-wrap align-items-center gap-2 py-2 {{ ! $loop->last ? 'border-bottom' : '' }}">
-                        <strong>{{ $mod->name }}</strong>
-                        <span class="text-muted small">{{ $mod->slug }}</span>
-                        <span class="badge {{ $mode === 'manual' ? 'text-bg-warning' : 'text-bg-success' }}">{{ ucfirst($mode) }}</span>
-                        <span class="ms-auto d-flex flex-wrap gap-2">
-                            @can('hosting.edit')
-                                <button type="button" class="btn btn-sm btn-outline-success" data-bs-toggle="modal" data-bs-target="#hv-create-{{ $mod->slug }}">Create</button>
-                                <button type="button" class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#hv-start-{{ $mod->slug }}">Start</button>
-                                <button type="button" class="btn btn-sm btn-outline-warning" data-bs-toggle="modal" data-bs-target="#hv-stop-{{ $mod->slug }}">Stop</button>
-                                <button type="button" class="btn btn-sm btn-outline-warning" data-bs-toggle="modal" data-bs-target="#hv-restart-{{ $mod->slug }}">Restart</button>
-                                <button type="button" class="btn btn-sm btn-outline-danger" data-bs-toggle="modal" data-bs-target="#hv-delete-{{ $mod->slug }}">Delete</button>
-                            @endcan
-                        </span>
-                    </div>
-                    @can('hosting.edit')
-                        <x-adminlte.partials.confirm-modal id="hv-create-{{ $mod->slug }}" title="Create Hyper-V VM"
-                            :message="'Provision a new VM on the Hyper-V host with this product CPU / RAM / disk? The host is called for real — a refusal fails loudly, nothing is faked.'"
-                            :action="route('admin.hosting.module-action', $hostingAccount)" method="POST"
-                            confirm-label="Create VM" confirm-theme="success">
-                            <x-slot name="fields">
-                                <input type="hidden" name="module_slug" value="{{ $mod->slug }}">
-                                <input type="hidden" name="action" value="create">
-                            </x-slot>
-                        </x-adminlte.partials.confirm-modal>
-                        <x-adminlte.partials.confirm-modal id="hv-start-{{ $mod->slug }}" title="Start VM"
-                            :message="'Power on this VM? Safe when Off or Saved — already-Running is a no-op.'"
-                            :action="route('admin.hosting.module-action', $hostingAccount)" method="POST"
-                            confirm-label="Start VM" confirm-theme="primary">
-                            <x-slot name="fields">
-                                <input type="hidden" name="module_slug" value="{{ $mod->slug }}">
-                                <input type="hidden" name="action" value="start">
-                            </x-slot>
-                        </x-adminlte.partials.confirm-modal>
-                        <x-adminlte.partials.confirm-modal id="hv-stop-{{ $mod->slug }}" title="Stop VM (graceful shutdown)"
-                            :message="'Ask the guest OS to shut down via integration services? No force is ever sent — an unresponsive guest must be handled on the host itself.'"
-                            :action="route('admin.hosting.module-action', $hostingAccount)" method="POST"
-                            confirm-label="Shut down" confirm-theme="warning">
-                            <x-slot name="fields">
-                                <input type="hidden" name="module_slug" value="{{ $mod->slug }}">
-                                <input type="hidden" name="action" value="stop">
-                            </x-slot>
-                        </x-adminlte.partials.confirm-modal>
-                        <x-adminlte.partials.confirm-modal id="hv-restart-{{ $mod->slug }}" title="Restart VM"
-                            :message="'Reboot this VM? Only a RUNNING VM is rebooted — a stopped VM is refused, never surprise-started. Type ' . $hostingAccount->host_name . ' to confirm.'"
-                            :action="route('admin.hosting.module-action', $hostingAccount)" method="POST"
-                            confirm-label="Restart" confirm-theme="warning">
-                            <x-slot name="fields">
-                                <input type="hidden" name="module_slug" value="{{ $mod->slug }}">
-                                <input type="hidden" name="action" value="restart">
-                                <div class="mt-2">
-                                    <label class="form-label small mb-1" for="hv-restart-confirm-{{ $mod->slug }}">Type <code>{{ $hostingAccount->host_name }}</code> to confirm</label>
-                                    <input id="hv-restart-confirm-{{ $mod->slug }}" name="confirm" aria-label="Type {{ $hostingAccount->host_name }} to confirm restart" class="form-control form-control-sm" autocomplete="off" required placeholder="{{ $hostingAccount->host_name }}">
-                                </div>
-                            </x-slot>
-                        </x-adminlte.partials.confirm-modal>
-                        <x-adminlte.partials.confirm-modal id="hv-delete-{{ $mod->slug }}" title="Delete VM (permanent)"
-                            :message="'PERMANENTLY delete this VM? A RUNNING VM is refused — Stop it first, then Delete. Type ' . $hostingAccount->host_name . ' to confirm.'"
-                            :action="route('admin.hosting.module-action', $hostingAccount)" method="POST"
-                            confirm-label="Delete VM" confirm-theme="danger">
-                            <x-slot name="fields">
-                                <input type="hidden" name="module_slug" value="{{ $mod->slug }}">
-                                <input type="hidden" name="action" value="delete">
-                                <div class="mt-2">
-                                    <label class="form-label small mb-1" for="hv-delete-confirm-{{ $mod->slug }}">Type <code>{{ $hostingAccount->host_name }}</code> to confirm</label>
-                                    <input id="hv-delete-confirm-{{ $mod->slug }}" name="confirm" aria-label="Type {{ $hostingAccount->host_name }} to confirm delete" class="form-control form-control-sm" autocomplete="off" required placeholder="{{ $hostingAccount->host_name }}">
-                                </div>
-                                {{-- Hidden 0 so an UNCHECKED box genuinely orphans the disk:
-                                     unchecked checkboxes submit nothing, which would otherwise
-                                     fall back to the product default (delete). --}}
-                                <input type="hidden" name="delete_vhd" value="0">
-                                <div class="form-check mt-2">
-                                    <input class="form-check-input" type="checkbox" name="delete_vhd" value="1" id="hv-delete-vhd-{{ $mod->slug }}" checked>
-                                    <label class="form-check-label small" for="hv-delete-vhd-{{ $mod->slug }}">Also delete the recorded VHD (uncheck to orphan the disk)</label>
-                                </div>
-                            </x-slot>
-                        </x-adminlte.partials.confirm-modal>
-                    @endcan
+                    @include('admin.hosting.partials._hyperv-actions', [
+                        'mod' => $mod,
+                        'mode' => $mode,
+                        'hostingAccount' => $hostingAccount,
+                        'hvOptions' => $hvOptions ?? ($hypervEffectiveOptions ?? null),
+                        'hvDefault' => $hvDefault ?? ($hypervEffectiveDefault ?? null),
+                        'hvCuratedCount' => $hvCuratedCount ?? ($hypervCuratedCount ?? 0),
+                    ])
                 @else
-                <div class="d-flex flex-wrap align-items-center gap-2 py-2 {{ ! $loop->last ? 'border-bottom' : '' }}">
-                    <strong>{{ $mod->name }}</strong>
-                    <span class="text-muted small">{{ $mod->slug }}</span>
-                    <span class="badge {{ $mode === 'manual' ? 'text-bg-warning' : 'text-bg-success' }}">{{ ucfirst($mode) }}</span>
-                    <span class="ms-auto d-flex flex-wrap gap-2">
+                    @php
+                        // Unique DOM key for this row's inline confirm strip. Slugs are
+                        // unique per enabled module link, and sanitised so they are
+                        // always valid in an id attribute.
+                        $maKey = (string) preg_replace('/[^A-Za-z0-9_-]+/', '-', (string) $mod->slug);
+                        // Mirrors the account-header Terminate guard: a terminated
+                        // account must not be offered termination again.
+                        $maCanTerminate = $hostingAccount->status !== 'terminated';
+                    @endphp
+                    <div class="ma-entry {{ ! $loop->last ? 'border-bottom' : '' }}">
+                        <div class="ma-row d-flex flex-wrap align-items-center gap-2 py-2">
+                            <strong>{{ $mod->name }}</strong>
+                            <span class="text-muted small">{{ $mod->slug }}</span>
+                            <span class="badge {{ $mode === 'manual' ? 'text-bg-warning' : 'text-bg-success' }}">{{ ucfirst($mode) }}</span>
+                            @can('hosting.edit')
+                                <span class="ms-auto d-flex flex-wrap align-items-center gap-2">
+                                    {{-- Routine verbs: cheap and reversible — they run without a confirmation step. --}}
+                                    @foreach (['create' => 'Create', 'suspend' => 'Suspend', 'unsuspend' => 'Unsuspend'] as $act => $label)
+                                        <form method="POST" action="{{ route('admin.hosting.module-action', $hostingAccount) }}" class="d-inline">
+                                            @csrf
+                                            <input type="hidden" name="module_slug" value="{{ $mod->slug }}">
+                                            <input type="hidden" name="action" value="{{ $act }}">
+                                            <button type="submit" class="btn btn-sm {{ $act === 'create' ? 'btn-outline-success' : 'btn-outline-primary' }}">{{ $label }}</button>
+                                        </form>
+                                    @endforeach
+
+                                    {{-- Destructive verb, set apart from the routine group. 'delete' is
+                                         intentionally absent: the controller aliases it to terminate for
+                                         generic modules, so a Delete button would submit the same verb twice. --}}
+                                    @if ($maCanTerminate)
+                                        <span class="ma-danger">
+                                            <button type="button" class="btn btn-sm btn-outline-danger"
+                                                    data-ma-confirm-open
+                                                    aria-expanded="false"
+                                                    aria-controls="ma-strip-{{ $maKey }}">
+                                                <i class="bi bi-trash" aria-hidden="true"></i> Terminate
+                                            </button>
+                                        </span>
+                                    @endif
+                                </span>
+                            @endcan
+                        </div>
+
+                        {{-- Inline confirm strip: in-flow (pushes the following module rows down),
+                             never an overlay. Plain form POST — no AJAX. --}}
                         @can('hosting.edit')
-                            @foreach (['create' => 'Create', 'suspend' => 'Suspend', 'unsuspend' => 'Unsuspend', 'terminate' => 'Terminate', 'delete' => 'Delete'] as $act => $label)
-                                <form method="POST" action="{{ route('admin.hosting.module-action', $hostingAccount) }}" class="d-inline" onsubmit="return confirm('Run {{ $label }} on {{ $mod->name }}?');">
-                                    @csrf
-                                    <input type="hidden" name="module_slug" value="{{ $mod->slug }}">
-                                    <input type="hidden" name="action" value="{{ $act }}">
-                                    <button type="submit" class="btn btn-sm {{ in_array($act, ['terminate', 'delete']) ? 'btn-outline-danger' : ($act === 'create' ? 'btn-outline-success' : 'btn-outline-primary') }}">{{ $label }}</button>
-                                </form>
-                            @endforeach
+                            @if ($maCanTerminate)
+                                <div class="ma-strip" id="ma-strip-{{ $maKey }}" data-ma-confirm-strip hidden
+                                     role="group" aria-labelledby="ma-strip-msg-{{ $maKey }}">
+                                    <span class="ma-strip__icon" aria-hidden="true"><i class="bi bi-exclamation-triangle-fill"></i></span>
+                                    <div class="ma-strip__main">
+                                        <p class="ma-strip__msg" id="ma-strip-msg-{{ $maKey }}">
+                                            Terminate <strong>{{ $mod->name }}</strong> on <strong>{{ $hostingAccount->host_name }}</strong> — the module is called for real, this service is set to terminated, and it cannot be undone.
+                                        </p>
+                                        <form method="POST" action="{{ route('admin.hosting.module-action', $hostingAccount) }}"
+                                              class="ma-strip__form" data-ma-confirm-form>
+                                            @csrf
+                                            <input type="hidden" name="module_slug" value="{{ $mod->slug }}">
+                                            <input type="hidden" name="action" value="terminate">
+                                            <div class="row g-2 align-items-end">
+                                                <div class="col-12 col-md-6 col-lg-4">
+                                                    <label class="ma-strip__label" for="ma-strip-input-{{ $maKey }}">
+                                                        Type <code>{{ $hostingAccount->host_name }}</code> to confirm
+                                                    </label>
+                                                    <input type="text" class="form-control form-control-sm" id="ma-strip-input-{{ $maKey }}"
+                                                           name="confirm" placeholder="{{ $hostingAccount->host_name }}"
+                                                           autocomplete="off" autocapitalize="off" spellcheck="false" required
+                                                           data-ma-confirm-input
+                                                           data-ma-confirm-expected="{{ $hostingAccount->host_name }}"
+                                                           aria-describedby="ma-strip-feedback-{{ $maKey }}">
+                                                </div>
+                                                <div class="col-12 col-md-auto">
+                                                    <div class="d-flex flex-wrap gap-2">
+                                                        <button type="button" class="btn btn-sm btn-outline-secondary" data-ma-confirm-cancel>Cancel</button>
+                                                        <button type="submit" class="btn btn-sm btn-danger" data-ma-confirm-submit
+                                                                data-ma-confirm-label="Confirm terminate" disabled>Confirm terminate</button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </form>
+                                        <p class="ma-strip__feedback" id="ma-strip-feedback-{{ $maKey }}" role="alert" data-ma-feedback></p>
+                                    </div>
+                                </div>
+                            @endif
                         @endcan
-                    </span>
-                </div>
+                    </div>
                 @endif
             @endforeach
             <p class="text-muted small mb-0 mt-2">Calls the enabled module directly from this account. Manual links only run here — never automatically. Hyper-V power actions are state-checked on the host; Restart and Delete require typing the account name.</p>
         </x-adminlte-card>
+
+        {{-- Inline (not @push('css')): this card renders in the body, after the head's
+             @stack('css') — same constraint documented at vendor/adminlte/partials/sidebar.blade.php. --}}
+        @once
+            <style>
+                /* Generic module action row (ma-*) — design tokens only, so dark mode
+                   remaps automatically. The Hyper-V panel next to this block owns the
+                   hv-* prefix; these selectors are scoped to .ma-entry and cannot leak. */
+                .ma-entry .ma-row { row-gap: var(--space-2); }
+                .ma-entry .ma-danger {
+                    display: inline-flex;
+                    align-items: center;
+                    padding: var(--space-1);
+                    border: 1px solid color-mix(in srgb, var(--color-danger) 35%, transparent);
+                    border-radius: var(--radius-md);
+                    background: var(--color-danger-subtle);
+                }
+                .ma-entry .ma-strip {
+                    display: flex;
+                    align-items: flex-start;
+                    gap: var(--space-3);
+                    margin-bottom: var(--space-3);
+                    padding: var(--space-3);
+                    border: 1px solid color-mix(in srgb, var(--color-danger) 40%, transparent);
+                    border-radius: var(--radius-md);
+                    background: var(--color-danger-subtle);
+                    animation: ma-strip-in var(--duration-base) var(--ease-out) both;
+                }
+                .ma-entry .ma-strip[hidden] { display: none; }
+                .ma-entry .ma-strip__icon {
+                    display: inline-flex;
+                    align-items: center;
+                    justify-content: center;
+                    flex-shrink: 0;
+                    inline-size: var(--space-10);
+                    block-size: var(--space-10);
+                    border-radius: var(--radius-full);
+                    background: color-mix(in srgb, var(--color-danger) 14%, transparent);
+                    color: var(--color-danger);
+                    font-size: var(--text-md);
+                }
+                .ma-entry .ma-strip__main { flex: 1 1 auto; min-inline-size: 0; }
+                .ma-entry .ma-strip__msg {
+                    margin-bottom: var(--space-2);
+                    font-size: var(--text-sm);
+                    line-height: var(--leading-normal);
+                    color: var(--color-text);
+                }
+                .ma-entry .ma-strip__label {
+                    display: block;
+                    margin-bottom: var(--space-1);
+                    font-size: var(--text-xs);
+                    font-weight: var(--font-weight-medium);
+                    color: var(--color-text-muted);
+                }
+                .ma-entry .ma-strip__label code { color: var(--color-danger); }
+                .ma-entry .ma-strip__feedback {
+                    margin: var(--space-2) 0 0;
+                    font-size: var(--text-xs);
+                    font-weight: var(--font-weight-medium);
+                    color: var(--color-danger);
+                }
+                .ma-entry .ma-strip__feedback:empty { display: none; }
+                @keyframes ma-strip-in {
+                    from { opacity: 0; transform: translateY(calc(var(--space-1) * -1)); }
+                    to { opacity: 1; transform: none; }
+                }
+                @media (prefers-reduced-motion: reduce) {
+                    .ma-entry .ma-strip { animation: none; }
+                }
+            </style>
+        @endonce
+
+        @once
+            @push('js')
+                <script>
+                    (function () {
+                        'use strict';
+
+                        var strips = document.querySelectorAll('[data-ma-confirm-strip]');
+                        if (!strips.length) {
+                            return;
+                        }
+
+                        // At most one strip is open across the page.
+                        var open = null;
+
+                        function defaultSubmitLabel(submit) {
+                            return submit.getAttribute('data-ma-confirm-label') || submit.textContent;
+                        }
+
+                        function close(returnFocus) {
+                            if (!open) {
+                                return;
+                            }
+                            var state = open;
+                            open = null;
+                            state.strip.hidden = true;
+                            state.input.value = '';
+                            state.submit.disabled = true;
+                            state.submit.textContent = defaultSubmitLabel(state.submit);
+                            state.feedback.textContent = '';
+                            state.trigger.setAttribute('aria-expanded', 'false');
+                            if (returnFocus) {
+                                state.trigger.focus();
+                            }
+                        }
+
+                        function openStrip(trigger) {
+                            var strip = document.getElementById(trigger.getAttribute('aria-controls'));
+                            if (!strip) {
+                                return;
+                            }
+                            if (open && open.strip !== strip) {
+                                close(false);
+                            }
+                            var input = strip.querySelector('[data-ma-confirm-input]');
+                            var submit = strip.querySelector('[data-ma-confirm-submit]');
+                            var feedback = strip.querySelector('[data-ma-feedback]');
+                            if (!input || !submit || !feedback) {
+                                return;
+                            }
+                            input.value = '';
+                            submit.disabled = true;
+                            submit.textContent = defaultSubmitLabel(submit);
+                            feedback.textContent = '';
+                            strip.hidden = false;
+                            trigger.setAttribute('aria-expanded', 'true');
+                            open = {
+                                strip: strip,
+                                trigger: trigger,
+                                input: input,
+                                submit: submit,
+                                feedback: feedback
+                            };
+                            input.focus();
+                        }
+
+                        // The Confirm button enables only on an exact host-name match
+                        // (the same value the controller validates before acting).
+                        function syncMatch(state) {
+                            var expected = state.input.getAttribute('data-ma-confirm-expected') || '';
+                            var matches = state.input.value.trim() === expected;
+                            state.submit.disabled = !matches;
+                            if (matches) {
+                                state.feedback.textContent = '';
+                            }
+                            return matches;
+                        }
+
+                        document.addEventListener('click', function (event) {
+                            var trigger = event.target.closest('[data-ma-confirm-open]');
+                            if (trigger) {
+                                if (open && open.trigger === trigger) {
+                                    close(true);
+                                } else {
+                                    openStrip(trigger);
+                                }
+                                return;
+                            }
+                            var cancel = event.target.closest('[data-ma-confirm-cancel]');
+                            if (cancel && open && open.strip.contains(cancel)) {
+                                close(true);
+                            }
+                        });
+
+                        document.addEventListener('input', function (event) {
+                            var input = event.target.closest('[data-ma-confirm-input]');
+                            if (input && open && open.input === input) {
+                                syncMatch(open);
+                            }
+                        });
+
+                        // Mismatch is surfaced once the operator leaves the field, not on
+                        // every keystroke.
+                        document.addEventListener('focusout', function (event) {
+                            var input = event.target.closest('[data-ma-confirm-input]');
+                            if (!input || !open || open.input !== input) {
+                                return;
+                            }
+                            var expected = input.getAttribute('data-ma-confirm-expected') || '';
+                            var typed = input.value.trim();
+                            if (typed !== '' && typed !== expected) {
+                                open.feedback.textContent = 'Does not match — type the host name exactly as shown, or cancel.';
+                            }
+                        });
+
+                        document.addEventListener('keydown', function (event) {
+                            if (event.key === 'Escape' && open) {
+                                event.preventDefault();
+                                close(true);
+                            }
+                        });
+
+                        // Plain form POST: guard the last instant before navigation
+                        // (Enter key / double submit) and show a busy label.
+                        document.addEventListener('submit', function (event) {
+                            var form = event.target.closest('[data-ma-confirm-form]');
+                            if (!form || !open || open.strip !== form.closest('[data-ma-confirm-strip]')) {
+                                return;
+                            }
+                            if (!syncMatch(open)) {
+                                event.preventDefault();
+                                return;
+                            }
+                            open.submit.disabled = true;
+                            open.submit.textContent = 'Working…';
+                        });
+                    })();
+                </script>
+            @endpush
+        @endonce
     @endif
 
     {{-- Metric row --}}

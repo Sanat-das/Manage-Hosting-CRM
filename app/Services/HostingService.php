@@ -158,7 +158,11 @@ class HostingService
 
         $this->audit($account, 'hosting.created', "Hosting account #{$account->id} created from order {$order->order_number}");
 
-        $this->leaseIpForActivation($account);
+        // Hyper-V manual orders defer IP leasing until the VM is actually built;
+        // the manual provisioner will call leaseIpForActivation() at that time.
+        if (! $this->isHypervManualProduct($product)) {
+            $this->leaseIpForActivation($account);
+        }
 
         return $account;
     }
@@ -218,6 +222,19 @@ class HostingService
             'status' => self::STATUS_TERMINATED,
             'suspended_reason' => $this->normalizeReason($reason) ?? $account->suspended_reason,
         ], ['reason' => $this->normalizeReason($reason)]);
+
+        // Release leased IPs back to the pool (best-effort); terminated
+        // accounts must not retain leases. For Hyper-V manual orders this is
+        // the cleanup for the deferred-lease path if an IP was assigned
+        // manually before termination.
+        try {
+            app(IpAssignmentService::class)->release($account, $reason ?? 'Terminated');
+        } catch (\Throwable $e) {
+            Log::warning('IP release on termination failed', [
+                'hosting_account_id' => $account->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 
     /**
@@ -284,6 +301,21 @@ class HostingService
     }
 
     /**
+     * Whether this product is a Hyper-V manual product whose IP lease is
+     * intentionally deferred until the VM is built.
+     *
+     * Delegates to the single home in ProvisioningDispatcher.
+     */
+    private function isHypervManualProduct(?\App\Models\Product $product): bool
+    {
+        try {
+            return app(\App\Services\Provisioning\ProvisioningDispatcher::class)->isHypervManualProduct($product);
+        } catch (\Throwable) {
+            return trim((string) ($product->provisioning_module ?? '')) === 'hyperv';
+        }
+    }
+
+    /**
      * Lease the IPs the product declares when a fresh (pending -> active)
      * activation needs them. The product's flags drive the leases:
      * require_public_ip pulls a 'public' network_type subnet address and
@@ -294,8 +326,11 @@ class HostingService
      * IP leasing is best-effort: a pool that has no free address is logged
      * and skipped — activation still proceeds, and the admin assigns IPs
      * from the hosting page (pull-ip / assign-ips).
+     *
+     * This method is public so the deferred Hyper-V manual provisioner can
+     * lease IPs at VM-build time when the account moves from pending.
      */
-    private function leaseIpForActivation(HostingAccount $account): void
+    public function leaseIpForActivation(HostingAccount $account): void
     {
         if ($account->status !== self::STATUS_PENDING) {
             return;

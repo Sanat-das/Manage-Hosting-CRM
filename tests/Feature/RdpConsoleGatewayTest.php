@@ -13,8 +13,11 @@ use App\Models\Role;
 use App\Models\User;
 use App\Services\Modules\ModuleManager;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Modules\RdpConsole\Exceptions\GatewayNotConfiguredException;
 use Modules\RdpConsole\Models\RdpConsoleConfig;
+use Modules\RdpConsole\Services\Gateway\GatewayDriver;
 use Modules\RdpConsole\Services\Gateway\GuacamoleLiteDriver;
+use Modules\RdpConsole\Services\Gateway\RdpConnectionContext;
 use Tests\TestCase;
 
 /**
@@ -90,6 +93,47 @@ final class RdpConsoleGatewayTest extends TestCase
     }
 
     // ------------------------------------------------------------------
+    // Regression: the container-bound driver must mint from module config.
+    // ------------------------------------------------------------------
+
+    /**
+     * The real binding (RdpConsole::boot) constructs the driver with NO
+     * arguments, so mint() can only succeed when config('rdp-console.*')
+     * resolves. Resolving through the container — instead of `new
+     * GuacamoleLiteDriver(secret: ...)` like every other gateway test — is the
+     * point: it proves the binding and config resolution work together.
+     */
+    public function test_container_bound_driver_mints_from_module_config(): void
+    {
+        $this->activateRdpConsoleModule();
+
+        config()->set('rdp-console.secret', 'a-16-char-min-secret-value');
+
+        $driver = app(GatewayDriver::class);
+        $this->assertInstanceOf(GuacamoleLiteDriver::class, $driver);
+
+        $before = time();
+        $token = $driver->mint(new RdpConnectionContext(
+            hostname: '203.0.113.90',
+            port: 3392,
+            username: 'administrator',
+            password: 'MINT-FROM-CONFIG-PW',
+            security: 'rdp',
+        ));
+        $after = time();
+
+        $settings = $driver->decryptForTest($token);
+        $connection = $settings['connection']['settings'];
+
+        $this->assertSame('203.0.113.90', $connection['hostname']);
+        $this->assertSame(3392, $connection['port']);
+        $this->assertSame('rdp', $connection['security']);
+        $this->assertIsInt($connection['exp']);
+        $this->assertGreaterThanOrEqual($before + 89, $connection['exp']);
+        $this->assertLessThanOrEqual($after + 90, $connection['exp']);
+    }
+
+    // ------------------------------------------------------------------
     // Failure: blank host / username / password → 404.
     // ------------------------------------------------------------------
 
@@ -114,6 +158,90 @@ final class RdpConsoleGatewayTest extends TestCase
         $this->actingAsAdmin()
             ->get(route('admin.rdp-console.token', $unconfigured))
             ->assertNotFound();
+    }
+
+    // ------------------------------------------------------------------
+    // Gateway not configured: graceful 503 + honest page state.
+    // ------------------------------------------------------------------
+
+    public function test_rdp_token_returns_503_and_leaks_nothing_when_gateway_is_unconfigured(): void
+    {
+        $this->activateRdpConsoleModule();
+
+        // The .env has no GUACAMOLE_SECRET: minting must fail closed, but the
+        // endpoint must answer gracefully instead of escaping as a 500.
+        config()->set('rdp-console.secret', null);
+
+        $product = $this->makeProduct();
+        $account = $this->makeAccount($product);
+
+        RdpConsoleConfig::create([
+            'hosting_account_id' => $account->id,
+            'host' => '203.0.113.99',
+            'username' => 'administrator',
+            'password_encrypted' => 'TOKEN-TARGET-PW',
+        ]);
+
+        $response = $this->actingAsAdmin()
+            ->get(route('admin.rdp-console.token', $account))
+            ->assertStatus(503);
+
+        $body = (string) $response->getContent();
+
+        // Actionable: names the setting to fix.
+        $this->assertStringContainsString('GUACAMOLE_SECRET', $body);
+        $this->assertSame(
+            GatewayNotConfiguredException::OPERATOR_MESSAGE,
+            $response->json('error'),
+            'The endpoint must return the fixed operator message, never the exception message.',
+        );
+        $this->assertArrayNotHasKey('token', $response->json());
+        $this->assertStringNotContainsString('TOKEN-TARGET-PW', $body, 'No credential material may leak.');
+
+        // No exception text, class, file path, trace or config value.
+        foreach ([
+            'GUACAMOLE_SECRET is not configured',
+            'GatewayNotConfiguredException',
+            'RuntimeException',
+            'derivedKey',
+            'GuacamoleLiteDriver',
+            'Stack trace',
+            'vendor',
+            '.php',
+        ] as $needle) {
+            $this->assertStringNotContainsString($needle, $body, "The 503 body must not leak '{$needle}'.");
+        }
+    }
+
+    public function test_rdp_html_page_renders_not_configured_state_without_a_working_connect(): void
+    {
+        $this->activateRdpConsoleModule();
+
+        config()->set('rdp-console.secret', null);
+
+        $product = $this->makeProduct();
+        $account = $this->makeAccount($product);
+
+        RdpConsoleConfig::create([
+            'hosting_account_id' => $account->id,
+            'host' => '203.0.113.98',
+            'username' => 'administrator',
+            'password_encrypted' => 'TOKEN-TARGET-PW',
+        ]);
+
+        $html = (string) $this->actingAsAdmin()
+            ->get(route('admin.rdp-console.html', $account))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('console gateway is not configured', $html);
+        $this->assertStringContainsString('GUACAMOLE_SECRET', $html);
+        $this->assertMatchesRegularExpression(
+            '/id="guac-connect"[^>]*disabled/',
+            $html,
+            'Connect must not be offered as a working action when the gateway cannot mint.',
+        );
+        $this->assertStringNotContainsString('TOKEN-TARGET-PW', $html);
     }
 
     // ------------------------------------------------------------------

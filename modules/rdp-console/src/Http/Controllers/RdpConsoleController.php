@@ -10,9 +10,13 @@ use Illuminate\Contracts\View\View;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
+use Modules\RdpConsole\Exceptions\GatewayNotConfiguredException;
+use Modules\RdpConsole\Exceptions\VmConnectUnavailableException;
 use Modules\RdpConsole\Models\RdpConsoleConfig;
 use Modules\RdpConsole\Services\Gateway\GatewayDriver;
 use Modules\RdpConsole\Services\Gateway\RdpConnectionContext;
+use Modules\RdpConsole\Services\VmConnect\VmConnectTargetResolver;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
@@ -22,6 +26,9 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
  */
 final class RdpConsoleController extends Controller
 {
+    public function __construct(
+        private readonly VmConnectTargetResolver $vmConnectTargetResolver,
+    ) {}
     /**
      * Show RDP configuration for a hosting account. The edit UI lives as a
      * modal on admin/hosting/show, so this endpoint simply redirects there —
@@ -113,12 +120,25 @@ final class RdpConsoleController extends Controller
         $effectivePort = (int) $port;
         $fullAddress = $effectiveHost !== null ? $effectiveHost.':'.$effectivePort : null;
 
+        // The canvas can only connect when a host exists AND the gateway can
+        // mint. The not-configured state is surfaced through the canvas's own
+        // error region (reused, not a new pattern) and disables Connect.
+        $gatewayConfigured = app(GatewayDriver::class)->isConfigured();
+
+        $consoleDisabledReason = ! $gatewayConfigured
+            ? GatewayNotConfiguredException::OPERATOR_MESSAGE
+            : ($effectiveHost === null
+                ? 'No RDP host available. Configure an RDP host or assign an IP to this account, then reload.'
+                : '');
+
         return view('rdp-console::rdp-html', [
             'hostingAccount' => $hostingAccount,
             'rdpConfig' => $rdpConfig,
             'effectiveHost' => $effectiveHost,
             'effectivePort' => $effectivePort,
             'fullAddress' => $fullAddress,
+            'gatewayConfigured' => $gatewayConfigured,
+            'consoleDisabledReason' => $consoleDisabledReason,
         ]);
     }
 
@@ -127,7 +147,9 @@ final class RdpConsoleController extends Controller
      * Returns { ws_url, token } where the AES-encrypted token carries the
      * connection settings to the guacamole-lite sidecar — the plaintext
      * password never appears in the URL, the page, or this JSON body.
-     * Responds 404 when host/username/password are not fully configured.
+     * Responds 404 when host/username/password are not fully configured, 503
+     * when the gateway has no shared secret, and 500 (generic, logged) when
+     * minting fails for any other reason.
      */
     public function rdpToken(HostingAccount $hostingAccount): JsonResponse
     {
@@ -156,20 +178,152 @@ final class RdpConsoleController extends Controller
 
         $driver = app(GatewayDriver::class);
 
-        $token = $driver->mint(new RdpConnectionContext(
-            hostname: $host,
-            port: (int) ($rdpConfig?->port ?? 3389),
-            username: $username,
-            password: $password,
-            domain: $rdpConfig?->domain,
-            adminUserId: (int) auth()->id(),
-            accountId: (int) $hostingAccount->id,
-        ));
+        try {
+            $token = $driver->mint(new RdpConnectionContext(
+                hostname: $host,
+                port: (int) ($rdpConfig?->port ?? 3389),
+                username: $username,
+                password: $password,
+                domain: $rdpConfig?->domain,
+                adminUserId: (int) auth()->id(),
+                accountId: (int) $hostingAccount->id,
+            ));
+        } catch (GatewayNotConfiguredException $e) {
+            return $this->gatewayNotConfiguredResponse($hostingAccount, 'rdp-token', $e);
+        } catch (\Throwable $e) {
+            return $this->tokenMintFailedResponse($hostingAccount, 'rdp-token', $e);
+        }
 
         return response()->json([
             'ws_url' => $driver->wsUrl(),
             'token' => $token,
         ]);
+    }
+
+    /**
+     * Hyper-V VMConnect console page. A second, explicit connection mode that
+     * talks to the Hyper-V host's vmrdp listener (port 2179) with the HOST's
+     * administrator credentials and the VM GUID — not to the guest's RDP
+     * service. Works with no guest network and at boot / pre-OS screens.
+     *
+     * Everything about the target is resolved server-side by the resolver;
+     * only non-secret facts (host, port, GUID) and an operator-safe error are
+     * handed to the view. Credentials never reach the template.
+     */
+    public function vmConsole(HostingAccount $hostingAccount): View
+    {
+        $consoleHost = null;
+        $consoleVmGuid = null;
+        $consoleError = null;
+
+        try {
+            $target = $this->vmConnectTargetResolver->resolve($hostingAccount);
+            $consoleHost = $target->hostname;
+            $consoleVmGuid = $target->vmGuid;
+        } catch (VmConnectUnavailableException $e) {
+            $consoleError = $e->getMessage();
+        }
+
+        // A missing gateway secret blocks Connect entirely, so it is reported
+        // before a target problem: it is the actionable blocker to fix first.
+        // The reason reuses the canvas's existing error region and disables
+        // the Connect control — no new UI pattern.
+        $gatewayConfigured = app(GatewayDriver::class)->isConfigured();
+
+        $consoleDisabledReason = ! $gatewayConfigured
+            ? GatewayNotConfiguredException::OPERATOR_MESSAGE
+            : ($consoleError ?? 'The VM console is not available right now.');
+
+        return view('rdp-console::vm-console', [
+            'hostingAccount' => $hostingAccount,
+            'consoleHost' => $consoleHost,
+            'consolePort' => RdpConnectionContext::VMCONNECT_PORT,
+            'consoleVmGuid' => $consoleVmGuid,
+            'consoleError' => $consoleError,
+            'consoleEnabled' => $consoleError === null && $gatewayConfigured,
+            'consoleDisabledReason' => $consoleDisabledReason,
+        ]);
+    }
+
+    /**
+     * Mint a short-lived gateway token for the Hyper-V VMConnect console.
+     * Returns the same { ws_url, token } shape as rdpToken() so the shared
+     * Guacamole canvas consumes it unchanged.
+     *
+     * No part of the target comes from the request: the host, port, VM GUID,
+     * security mode and HOST credentials are resolved from the account's
+     * PanelAccount and Server rows. Responds 404 — the module's existing
+     * "incomplete configuration" contract — when any of them is missing, 503
+     * when the gateway has no shared secret, and 500 (generic, logged) when
+     * minting fails for any other reason. Never falls back to the guest's
+     * credentials or to another VM.
+     */
+    public function vmConsoleToken(HostingAccount $hostingAccount): JsonResponse
+    {
+        try {
+            $target = $this->vmConnectTargetResolver->resolve($hostingAccount);
+        } catch (VmConnectUnavailableException $e) {
+            return response()->json(['error' => $e->getMessage()], 404);
+        }
+
+        $driver = app(GatewayDriver::class);
+
+        try {
+            $token = $driver->mint(RdpConnectionContext::hyperV(
+                hostname: $target->hostname,
+                vmGuid: $target->vmGuid,
+                username: $target->username,
+                password: $target->password,
+                adminUserId: (int) auth()->id(),
+                accountId: (int) $hostingAccount->id,
+            ));
+        } catch (GatewayNotConfiguredException $e) {
+            return $this->gatewayNotConfiguredResponse($hostingAccount, 'vm-console-token', $e);
+        } catch (\Throwable $e) {
+            return $this->tokenMintFailedResponse($hostingAccount, 'vm-console-token', $e);
+        }
+
+        return response()->json([
+            'ws_url' => $driver->wsUrl(),
+            'token' => $token,
+        ]);
+    }
+
+    /**
+     * Failure surface for "the gateway has no shared secret". The real reason
+     * is logged server-side; the browser gets the fixed OPERATOR_MESSAGE,
+     * which names the setting to fix but carries no exception message, class,
+     * stack trace, file path or config value. The mint already failed closed —
+     * there is no default or fallback secret.
+     */
+    private function gatewayNotConfiguredResponse(HostingAccount $hostingAccount, string $endpoint, GatewayNotConfiguredException $e): JsonResponse
+    {
+        Log::error('rdp.console.gateway_not_configured', [
+            'account' => $hostingAccount->id,
+            'endpoint' => $endpoint,
+            'reason' => $e->getMessage(),
+        ]);
+
+        return response()->json(['error' => GatewayNotConfiguredException::OPERATOR_MESSAGE], 503);
+    }
+
+    /**
+     * Any other mint failure (encryption / serialization). Logged with its
+     * real reason; surfaced generically so no internal detail reaches the
+     * browser.
+     */
+    private function tokenMintFailedResponse(HostingAccount $hostingAccount, string $endpoint, \Throwable $e): JsonResponse
+    {
+        Log::error('rdp.console.token_mint_failed', [
+            'account' => $hostingAccount->id,
+            'endpoint' => $endpoint,
+            'exception' => $e::class,
+            'reason' => $e->getMessage(),
+        ]);
+
+        return response()->json([
+            'error' => 'The console gateway could not issue a token. Check the server logs.',
+        ], 500);
     }
 
     /**

@@ -581,6 +581,12 @@ class EssentialOptionsTest extends TestCase
             'module_slug' => 'hyperv',
             'enabled' => true,
             'config' => $moduleConfig,
+            // Explicit AUTO: hyperv links now default to manual (the VM is
+            // built by an explicit operator action), and a manual link
+            // activates the order instead of running the dispatcher. These
+            // tests exercise the dispatcher's missing-keys guard, so they must
+            // take the auto path.
+            'provisioning_mode' => 'auto',
         ]);
 
         $order = Order::create([

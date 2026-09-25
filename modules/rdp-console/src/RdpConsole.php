@@ -49,6 +49,18 @@ final class RdpConsole extends AbstractModule implements HostingAccountToolsProv
 
                 $router->put('hosting-accounts/{hostingAccount}/rdp-console', [RdpConsoleController::class, 'rdpUpdate'])
                     ->name('update');
+
+                // Hyper-V VMConnect console — the second connection mode. It
+                // opens an interactive session (keyboard, mouse, boot screens)
+                // against the Hyper-V host itself, the same capability class as
+                // the SSH console's terminal, so it is gated at
+                // hosting.manage. The read-only password/html/token endpoints
+                // in the view-gated group below are unchanged.
+                $router->get('hosting-accounts/{hostingAccount}/rdp-console/vm-console', [RdpConsoleController::class, 'vmConsole'])
+                    ->name('vmConsole');
+
+                $router->get('hosting-accounts/{hostingAccount}/rdp-console/vm-console/token', [RdpConsoleController::class, 'vmConsoleToken'])
+                    ->name('vmConsoleToken');
             });
 
         $router->middleware(['web', 'auth', 'admin', 'permission:hosting.view'])

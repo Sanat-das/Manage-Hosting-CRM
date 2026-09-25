@@ -226,6 +226,144 @@ class AdminModuleUiTest extends TestCase
             ->assertSee('Save OK Module config');
     }
 
+    public function test_product_module_sections_list_plugin_modules_only(): void
+    {
+        $this->activatedOkModule();
+        $product = $this->makeProduct();
+
+        // A builtin provisioning link (e.g. hyperv) must stay hidden even
+        // when the pivot row exists and is enabled.
+        ProductModule::create([
+            'product_id' => $product->id,
+            'module_slug' => 'hyperv',
+            'enabled' => true,
+            'config' => [],
+        ]);
+
+        $builtinSlugs = ['cpanel', 'plesk', 'directadmin', 'virtualizor', 'hyperv', 'proxmox'];
+
+        $edit = $this->actingAsAdminWith(['products.edit'])
+            ->get(route('admin.products.edit', $product))
+            ->assertOk()
+            ->assertSee('OK Module')
+            ->assertSee(route('admin.products.modules.toggle', [$product, 'ok-module']), false);
+
+        $show = $this->actingAsAdminWith(['products.view'])
+            ->get(route('admin.products.show', $product))
+            ->assertOk()
+            ->assertSee(route('admin.products.modules.toggle', [$product, 'ok-module']), false);
+
+        foreach ($builtinSlugs as $slug) {
+            $edit->assertDontSee(route('admin.products.modules.toggle', [$product, $slug]), false);
+            $show->assertDontSee(route('admin.products.modules.toggle', [$product, $slug]), false);
+        }
+    }
+
+    public function test_update_config_persists_unchecked_checkboxes_as_false(): void
+    {
+        $product = $this->makeProduct();
+
+        ProductModule::create([
+            'product_id' => $product->id,
+            'module_slug' => 'hyperv',
+            'enabled' => true,
+            'config' => [],
+        ]);
+
+        $url = route('admin.products.modules.config', [$product, 'hyperv']);
+
+        // The browser omits an unchecked checkbox from the payload entirely.
+        $this->actingAsAdminWith(['products.edit'])
+            ->put($url, ['config' => ['plan' => '', 'cpu' => '2', 'ram' => '2048', 'disk' => '50']])
+            ->assertRedirect(route('admin.products.show', [$product, 'tab' => 'modules']))
+            ->assertSessionHas('success');
+
+        $pivot = ProductModule::where('product_id', $product->id)
+            ->where('module_slug', 'hyperv')
+            ->firstOrFail();
+
+        $this->assertArrayHasKey('delete_vhd_on_terminate', $pivot->config);
+        $this->assertFalse($pivot->config['delete_vhd_on_terminate']);
+
+        // A checked box round-trips as true.
+        $this->actingAsAdminWith(['products.edit'])
+            ->put($url, ['config' => ['plan' => '', 'cpu' => '2', 'ram' => '2048', 'disk' => '50', 'delete_vhd_on_terminate' => '1']])
+            ->assertRedirect();
+
+        $this->assertTrue((bool) $pivot->fresh()->config['delete_vhd_on_terminate']);
+    }
+
+    public function test_product_save_auto_enables_the_builtin_provisioning_module_link(): void
+    {
+        $this->actingAsAdminWith(['products.create'])
+            ->post(route('admin.products.store'), [
+                'name' => 'Auto Link VPS',
+                'billing_cycle' => 'monthly',
+                'provisioning_module' => 'hyperv',
+                'status' => 'active',
+                'gst_type' => 'standard',
+                'pricing' => ['monthly' => ['price' => '100.00', 'setup_fee' => '0']],
+            ])
+            ->assertRedirect()
+            ->assertSessionHasNoErrors();
+
+        $product = Product::query()->where('name', 'Auto Link VPS')->firstOrFail();
+
+        $link = ProductModule::query()
+            ->where('product_id', $product->id)
+            ->where('module_slug', 'hyperv')
+            ->firstOrFail();
+
+        $this->assertTrue((bool) $link->enabled);
+        $this->assertSame(ProductModule::PROVISIONING_MODE_MANUAL, $link->provisioning_mode);
+        $this->assertSame(2, $link->config['cpu']);
+        $this->assertSame('Default Switch', $link->config['switch']);
+        $this->assertTrue((bool) $link->config['delete_vhd_on_terminate']);
+    }
+
+    public function test_product_save_switches_the_builtin_link_and_leaves_plugin_links_alone(): void
+    {
+        $this->actingAsAdminWith(['products.create'])
+            ->post(route('admin.products.store'), [
+                'name' => 'Switching VPS',
+                'billing_cycle' => 'monthly',
+                'provisioning_module' => 'hyperv',
+                'status' => 'active',
+                'gst_type' => 'standard',
+                'pricing' => ['monthly' => ['price' => '100.00', 'setup_fee' => '0']],
+            ])
+            ->assertSessionHasNoErrors();
+
+        $product = Product::query()->where('name', 'Switching VPS')->firstOrFail();
+
+        ProductModule::create([
+            'product_id' => $product->id,
+            'module_slug' => 'rdp-console',
+            'enabled' => true,
+            'config' => [],
+        ]);
+
+        $this->actingAsAdminWith(['products.edit'])
+            ->put(route('admin.products.update', $product), [
+                'name' => 'Switching VPS',
+                'billing_cycle' => 'monthly',
+                'provisioning_module' => 'plesk',
+                'status' => 'active',
+                'gst_type' => 'standard',
+                'pricing' => ['monthly' => ['price' => '100.00', 'setup_fee' => '0']],
+            ])
+            ->assertRedirect(route('admin.products.edit', $product))
+            ->assertSessionHasNoErrors();
+
+        $hyperv = ProductModule::query()->where('product_id', $product->id)->where('module_slug', 'hyperv')->firstOrFail();
+        $plesk = ProductModule::query()->where('product_id', $product->id)->where('module_slug', 'plesk')->firstOrFail();
+        $rdp = ProductModule::query()->where('product_id', $product->id)->where('module_slug', 'rdp-console')->firstOrFail();
+
+        $this->assertFalse((bool) $hyperv->enabled);
+        $this->assertTrue((bool) $plesk->enabled);
+        $this->assertTrue((bool) $rdp->enabled);
+    }
+
     public function test_hosting_show_page_info_tab_renders_module_data(): void
     {
         $module = $this->activatedOkModule();

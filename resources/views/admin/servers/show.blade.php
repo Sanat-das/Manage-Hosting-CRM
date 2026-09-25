@@ -100,7 +100,7 @@
             @include('admin.servers.partials._essential-panels', ['server' => $server, 'vm' => ($vm ?? null), 'freshError' => ($freshError ?? null)])
 
             @if ($isHyperv)
-                @include('admin.servers.partials._essential-hyperv', ['server' => $server, 'vm' => ($vm ?? null)])
+                @include('admin.servers.partials._essential-hyperv', ['server' => $server, 'vm' => ($vm ?? null), 'liveVms' => ($liveVms ?? null)])
             @endif
         @endif
     </x-adminlte-card>

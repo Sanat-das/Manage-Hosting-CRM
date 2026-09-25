@@ -64,6 +64,7 @@ class ProvisioningDispatcher
         private readonly HostingService $hosting,
         private readonly ServerAllocator $servers,
         private readonly WelcomeMailer $welcome,
+        private readonly ProvisioningEventRecorder $recorder,
     ) {}
 
     /**
@@ -160,6 +161,20 @@ class ProvisioningDispatcher
             ));
         }
 
+        // The driver call runs behind a durable `running` event so a crash
+        // between the host call and the row write stays visible instead of
+        // vanishing. complete()/fail() flip this same row — one row per attempt.
+        $event = $this->recorder->begin(
+            'provision',
+            ['module' => $slug] + [
+                'order_id' => $order->id,
+                'order_number' => $order->order_number,
+            ],
+            $service->id,
+            $this->hostingAccountIdFor($order),
+            auth()->id(),
+        );
+
         try {
             /** @var ProvisioningResult $result */
             $result = $driver->provision($service, $config);
@@ -172,13 +187,7 @@ class ProvisioningDispatcher
 
             $service->update(['status' => 'pending']);
 
-            return ProvisioningAttempt::failed($e->getMessage(), $this->recordEvent(
-                $order,
-                $service,
-                'failed',
-                ['module' => $slug],
-                ['error' => $e->getMessage()],
-            ));
+            return ProvisioningAttempt::failed($e->getMessage(), $this->failRunning($event, $e->getMessage()));
         }
 
         if (! $result->success) {
@@ -186,9 +195,7 @@ class ProvisioningDispatcher
 
             return ProvisioningAttempt::failed(
                 $result->message ?? 'Provisioning failed',
-                $this->recordEvent($order, $service, 'failed', ['module' => $slug], [
-                    'error' => $result->message,
-                ]),
+                $this->failRunning($event, $result->message ?? 'Provisioning failed'),
             );
         }
 
@@ -201,13 +208,18 @@ class ProvisioningDispatcher
             'username' => $result->data['username'] ?? null,
         ], static fn ($value) => $value !== null));
 
-        $event = $this->recordEvent(
-            $order,
-            $service,
-            'completed',
-            ['module' => $slug],
-            ['message' => $result->message] + $this->redact($result->data),
-        );
+        $event = $this->completeRunning($event, $result->message ?? 'Provisioned', $result->data, $order);
+
+        // A successful auto provision also settles any stale manual-VM queue
+        // entries still pending for this order.
+        try {
+            $this->recorder->resolveAwaiting($order, 'Provisioning completed');
+        } catch (Throwable $e) {
+            Log::warning('Could not resolve awaiting provisioning events', [
+                'order_id' => $order->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
 
         // Deliver the credentials the module just generated. This is the only
         // point they exist in plaintext - they are redacted out of the event
@@ -215,6 +227,69 @@ class ProvisioningDispatcher
         $this->welcome->send($order, $service->refresh(), $result->data);
 
         return ProvisioningAttempt::provisioned($result->message, $event);
+    }
+
+    /**
+     * Record that a Hyper-V manual order is awaiting explicit VM build.
+     * Writes a pending provisioning_events row with reason awaiting_manual_vm
+     * and creates no ServiceInstance. Used by OrderService::advanceAfterPayment
+     * for the paid hyperv+manual ACTIVE path.
+     */
+    public function noteAwaitingManualVm(Order $order): ?ProvisioningEvent
+    {
+        return $this->recorder->record(
+            'provision',
+            'pending',
+            [
+                'reason' => 'awaiting_manual_vm',
+                'module' => 'hyperv',
+                'provisioning_module' => $order->product?->provisioning_module,
+                'order_id' => $order->id,
+                'order_number' => $order->order_number,
+            ],
+            null,
+            [],
+            null,
+            $this->hostingAccountIdFor($order),
+            auth()->id(),
+        );
+    }
+
+    /**
+     * Whether this Hyper-V order has no active PanelAccount (VM never built).
+     * Used to guard lifecycle driver calls so an unprovisioned VM never
+     * triggers host HTTP.
+     */
+    private function isHypervUnprovisioned(Order $order): bool
+    {
+        $product = $order->product;
+
+        if ($product === null) {
+            return false;
+        }
+
+        if (! $this->isManual($product)) {
+            return false;
+        }
+
+        $slug = $this->moduleFor($product);
+        $rawSlug = trim((string) ($product->provisioning_module ?? ''));
+
+        $isHyperv = $slug === 'hyperv' || $rawSlug === 'hyperv';
+
+        if (! $isHyperv) {
+            return false;
+        }
+
+        $service = ServiceInstance::where('order_id', $order->id)->first();
+
+        if ($service === null) {
+            return true;
+        }
+
+        return ! \App\Models\PanelAccount::where('service_instance_id', $service->id)
+            ->where('status', \App\Models\PanelAccount::STATUS_ACTIVE)
+            ->exists();
     }
 
     /**
@@ -227,6 +302,15 @@ class ProvisioningDispatcher
      */
     public function suspend(Order $order, ?string $reason = null): ProvisioningAttempt
     {
+        if ($this->isHypervUnprovisioned($order)) {
+            $service = ServiceInstance::where('order_id', $order->id)->first();
+            if ($service !== null) {
+                $service->update(['status' => 'suspended']);
+            }
+
+            return ProvisioningAttempt::noModule(null);
+        }
+
         return $this->lifecycle($order, 'suspend', 'suspended', $reason);
     }
 
@@ -235,6 +319,15 @@ class ProvisioningDispatcher
      */
     public function unsuspend(Order $order, ?string $reason = null): ProvisioningAttempt
     {
+        if ($this->isHypervUnprovisioned($order)) {
+            $service = ServiceInstance::where('order_id', $order->id)->first();
+            if ($service !== null) {
+                $service->update(['status' => 'active']);
+            }
+
+            return ProvisioningAttempt::noModule(null);
+        }
+
         return $this->lifecycle($order, 'unsuspend', 'active', $reason);
     }
 
@@ -244,6 +337,31 @@ class ProvisioningDispatcher
      */
     public function terminate(Order $order, ?string $reason = null): ProvisioningAttempt
     {
+        if ($this->isHypervUnprovisioned($order)) {
+            $service = ServiceInstance::where('order_id', $order->id)->first();
+            if ($service !== null) {
+                $service->update(['status' => 'terminated', 'terminated_at' => now()]);
+            }
+
+            // Release any leased IPs on the linked hosting account (best-effort).
+            $hosting = $order->hostingAccount()->first();
+            if ($hosting === null) {
+                $hosting = \App\Models\HostingAccount::where('order_id', $order->id)->first();
+            }
+            if ($hosting !== null) {
+                try {
+                    app(\App\Services\IpAssignmentService::class)->release($hosting, $reason ?? 'Terminated (hyperv unprovisioned)');
+                } catch (\Throwable $e) {
+                    Log::warning('IP release on hyperv unprovisioned terminate failed', [
+                        'order_id' => $order->id,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
+            }
+
+            return ProvisioningAttempt::noModule(null);
+        }
+
         return $this->lifecycle($order, 'terminate', 'terminated', $reason);
     }
 
@@ -466,6 +584,32 @@ class ProvisioningDispatcher
     }
 
     /**
+     * Whether this product is a Hyper-V manual product whose IP lease is
+     * intentionally deferred until the VM is built.
+     *
+     * Single home for the hyperv-manual check previously duplicated in
+     * OrderService and HostingService.
+     */
+    public function isHypervManualProduct(?Product $product): bool
+    {
+        if ($product === null) {
+            return false;
+        }
+
+        if (! $this->isManual($product)) {
+            return false;
+        }
+
+        $resolved = $this->moduleFor($product);
+
+        if ($resolved === 'hyperv') {
+            return true;
+        }
+
+        return trim((string) ($product->provisioning_module ?? '')) === 'hyperv';
+    }
+
+    /**
      * Whether the order's service is already live on the remote side: an
      * active ServiceInstance with an active PanelAccount behind it.
      *
@@ -591,8 +735,19 @@ class ProvisioningDispatcher
             $normalizedModuleConfig[$ck] = $v;
         }
 
-        // Snapshot UNDER module config: module config wins on collision.
-        return array_merge($snapshotConfig, $normalizedModuleConfig);
+        // Snapshot UNDER module config: module config wins on collision,
+        // except for module-required resource keys where the order's
+        // Configuration Options snapshot is authoritative (the customer chose
+        // concrete resources at order time; the link only holds fallbacks).
+        $merged = array_merge($snapshotConfig, $normalizedModuleConfig);
+
+        foreach (ModuleRequiredOptions::requiredFor($slug) as $key) {
+            if (array_key_exists($key, $snapshotConfig)) {
+                $merged[$key] = $snapshotConfig[$key];
+            }
+        }
+
+        return $merged;
     }
 
     /**
@@ -748,7 +903,7 @@ class ProvisioningDispatcher
 
     /**
      * @param  array<string, mixed>  $payload
-     * @param  array<string, mixed>|null  $result
+     * @param  array<string, mixed>|null  $result  pre-shaped terminal result (kept for call-site compatibility)
      * @param  string  $eventType  'provision' | 'suspend' | 'unsuspend' | 'terminate'
      */
     private function recordEvent(
@@ -759,28 +914,84 @@ class ProvisioningDispatcher
         ?array $result,
         string $eventType = 'provision',
     ): ?ProvisioningEvent {
+        // Unpack the pre-shaped result back into the recorder's
+        // (message, data) pair so every row is written through the single
+        // writer with identical shapes to before.
+        $message = null;
+        $data = [];
+
+        if (is_array($result)) {
+            if ($status === 'completed') {
+                $message = $result['message'] ?? null;
+                $data = array_diff_key($result, ['message' => true]);
+            } elseif ($status === 'failed') {
+                $message = $result['error'] ?? null;
+                $data = array_diff_key($result, ['error' => true]);
+            }
+        }
+
+        return $this->recorder->record(
+            $eventType,
+            $status,
+            $payload + [
+                'order_id' => $order->id,
+                'order_number' => $order->order_number,
+            ],
+            is_string($message) ? $message : null,
+            $data,
+            $service?->id,
+            $this->hostingAccountIdFor($order),
+            auth()->id(),
+        );
+    }
+
+    /**
+     * Best-effort link from an order to its hosting account for the
+     * hosting_account_id event column. Null when the row does not exist yet
+     * (first auto-provision pass) — the column is nullable.
+     */
+    private function hostingAccountIdFor(Order $order): ?int
+    {
         try {
-            return ProvisioningEvent::create([
-                'service_instance_id' => $service?->id,
-                'event_type' => $eventType,
-                'event_status' => $status,
-                'status' => $status === 'completed' ? 'completed' : ($status === 'failed' ? 'failed' : 'pending'),
-                'triggered_by' => auth()->id(),
-                'payload' => $payload + [
-                    'order_id' => $order->id,
-                    'order_number' => $order->order_number,
-                ],
-                'result' => $result,
-                'completed_at' => $status === 'completed' ? now() : null,
-            ]);
+            return $order->hostingAccount()->first()?->id;
+        } catch (Throwable) {
+            return null;
+        }
+    }
+
+    /**
+     * Flip a running event to failed without ever masking the verdict it describes.
+     */
+    private function failRunning(ProvisioningEvent $event, string $message): ProvisioningEvent
+    {
+        try {
+            return $this->recorder->fail($event, $message);
         } catch (Throwable $e) {
-            // The audit row must never be the reason an order fails to advance.
-            Log::warning('Could not record provisioning event', [
+            Log::warning('Could not record failed provisioning event', [
+                'event_id' => $event->id,
+                'error' => $e->getMessage(),
+            ]);
+
+            return $event;
+        }
+    }
+
+    /**
+     * Flip a running event to completed without ever masking the success it describes.
+     *
+     * @param  array<string, mixed>  $data
+     */
+    private function completeRunning(ProvisioningEvent $event, string $message, array $data, Order $order): ProvisioningEvent
+    {
+        try {
+            return $this->recorder->complete($event, $message, $data);
+        } catch (Throwable $e) {
+            Log::warning('Could not record completed provisioning event', [
                 'order_id' => $order->id,
                 'error' => $e->getMessage(),
             ]);
 
-            return null;
+            return $event;
         }
     }
 }

@@ -45,6 +45,10 @@ Route::middleware(['web', 'auth', 'client', 'customer.record'])->prefix('client'
     // Hosting
     Route::get('hosting', [HostingController::class, 'index'])->name('hosting.index');
     Route::get('hosting/{id}', [HostingController::class, 'show'])->name('hosting.show');
+    Route::post('hosting/{hostingAccount}/provision', [HostingController::class, 'provision'])->middleware('throttle:10,1')->name('hosting.provision');
+    Route::get('hosting/{hostingAccount}/vm-status', [HostingController::class, 'vmStatus'])->name('hosting.vm-status');
+    Route::post('hosting/{hostingAccount}/reset-vm-password', [HostingController::class, 'resetVmPassword'])->middleware('throttle:10,1')->name('hosting.reset-vm-password');
+    Route::post('hosting/{hostingAccount}/vm-power', [HostingController::class, 'vmPower'])->middleware('throttle:10,1')->name('hosting.vm-power');
 
     // Domains
     Route::get('domains', [DomainController::class, 'index'])->name('domains.index');

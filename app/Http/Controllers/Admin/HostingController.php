@@ -16,22 +16,33 @@ use App\Models\InventoryAsset;
 use App\Models\IpAddress;
 use App\Models\IpSubnet;
 use App\Models\Order;
+use App\Models\PanelAccount;
 use App\Models\Product;
+use App\Models\ProductModule;
+use App\Models\ProvisioningEvent;
 use App\Models\Rack;
 use App\Models\ResourcePool;
 use App\Models\Server;
+use App\Models\ServiceInstance;
 use App\Models\SslCertificate;
 use App\Models\Vlan;
 use App\Services\HostingService;
 use App\Services\Integrations\IntegrationRegistry;
 use App\Services\IpAssignmentService;
 use App\Services\Modules\ModuleManager;
+use App\Services\Provisioning\HypervDriver;
+use App\Services\Provisioning\HypervVmBuildDispatcher;
+use App\Services\Provisioning\ManualProvisioner;
+use App\Services\Provisioning\ProvisioningEventRecorder;
+use App\Services\Provisioning\VmStatusPresenter;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 use RuntimeException;
@@ -82,6 +93,10 @@ class HostingController extends Controller
     public function __construct(
         private readonly HostingService $hostingService,
         private readonly IpAssignmentService $ipAssignmentService,
+        private readonly ManualProvisioner $manualProvisioner,
+        private readonly ProvisioningEventRecorder $provisioningEvents,
+        private readonly VmStatusPresenter $vmStatusPresenter,
+        private readonly HypervVmBuildDispatcher $vmBuildDispatcher,
     ) {}
 
     public function index(Request $request): View
@@ -90,7 +105,7 @@ class HostingController extends Controller
         $status = $request->query('status');
 
         $accounts = HostingAccount::query()
-            ->with(['customer.user:id,email,first_name,last_name', 'product:id,name,billing_cycle,price', 'product.group:id,name', 'product.pricing', 'server:id,name,ip_address', 'ipAddresses:id,assigned_to_type,assigned_to_id,ip_address,type', 'order:id,next_billing_date,billing_cycle'])
+            ->with(['customer.user:id,email,first_name,last_name', 'product:id,name,billing_cycle,price', 'product.group:id,name', 'product.pricing', 'product.moduleLinks', 'server:id,name,ip_address', 'ipAddresses:id,assigned_to_type,assigned_to_id,ip_address,type', 'order:id,next_billing_date,billing_cycle'])
             ->when($search !== '', function ($query) use ($search) {
                 $query->where(function ($q) use ($search) {
                     $q->where('domain', 'like', "%{$search}%")
@@ -105,6 +120,14 @@ class HostingController extends Controller
             })
             ->when(in_array($status, HostingService::STATUSES, true), function ($query) use ($status) {
                 $query->where('status', $status);
+            })
+            ->when($status === 'awaiting_manual', function ($query) {
+                $query->where('status', HostingService::STATUS_PENDING)
+                    ->whereHas('product.moduleLinks', function ($q) {
+                        $q->where('module_slug', 'hyperv')
+                            ->where('enabled', true)
+                            ->where('provisioning_mode', 'manual');
+                    });
             })
             ->gridSort([
                 'id' => 'id',
@@ -124,7 +147,14 @@ class HostingController extends Controller
 
         $amounts = $accounts->mapWithKeys(fn ($a) => [$a->id => (float) $this->recurringAmountFor($a)])->all();
 
-        return view('admin.hosting.index', compact('accounts', 'search', 'status', 'amounts'));
+        $awaitingManualMap = $accounts->getCollection()->mapWithKeys(function ($account) {
+            $isAwaiting = $account->status === HostingService::STATUS_PENDING
+                && $account->product?->moduleLinks?->contains(fn ($link) => $link->module_slug === 'hyperv' && (bool) $link->enabled && $link->provisioning_mode === 'manual') === true;
+
+            return [$account->id => $isAwaiting];
+        })->all();
+
+        return view('admin.hosting.index', compact('accounts', 'search', 'status', 'amounts', 'awaitingManualMap'));
     }
 
     public function create(): View
@@ -350,6 +380,49 @@ class HostingController extends Controller
             ];
         }
 
+        // Hyper-V effective templates for the admin Create modal (per-product restriction)
+        $hypervEffectiveOptions = [];
+        $hypervEffectiveDefault = null;
+        $hypervCuratedCount = 0;
+        if ($hostingAccount->server && method_exists($hostingAccount->server, 'hypervTemplateVms')) {
+            $hypervCuratedCount = count($hostingAccount->server->hypervTemplateVms());
+            $productAllowed = [];
+            try {
+                $hypervLinkForEffective = $hostingAccount->product?->moduleLinks?->firstWhere('module_slug', 'hyperv')
+                    ?? ($hostingAccount->product ? $hostingAccount->product->moduleLinks()->where('module_slug', 'hyperv')->first() : null);
+                if ($hypervLinkForEffective) {
+                    $rawCfg = is_array($hypervLinkForEffective->config) ? $hypervLinkForEffective->config : [];
+                    $dec = app(\App\Services\Integrations\IntegrationRegistry::class)->decryptConfigFor('hyperv', $rawCfg);
+                    $rawAllowed = $dec['allowed_templates'] ?? [];
+                    $productAllowed = \App\Services\Provisioning\HypervTemplateCatalog::sanitizeAllowed(is_array($rawAllowed) ? $rawAllowed : []);
+                }
+            } catch (\Throwable) {
+                $productAllowed = [];
+            }
+            $hypervEffectiveOptions = \App\Services\Provisioning\HypervTemplateCatalog::effectiveOptions($hostingAccount->server, $productAllowed);
+            $def = $hostingAccount->server->hypervDefaultTemplate();
+            if ($def !== null && $def !== '' && in_array($def, array_column($hypervEffectiveOptions, 'name'), true)) {
+                $hypervEffectiveDefault = $def;
+            } elseif ($def !== null && $def !== '' && $productAllowed !== [] && ! in_array($def, array_column($hypervEffectiveOptions, 'name'), true)) {
+                $hypervEffectiveDefault = null;
+            } else {
+                $hypervEffectiveDefault = $def;
+                if ($hypervEffectiveDefault !== null && ! in_array($hypervEffectiveDefault, array_column($hypervEffectiveOptions, 'name'), true)) {
+                    $hypervEffectiveDefault = $hypervEffectiveOptions[0]['name'] ?? null;
+                }
+            }
+            // If effective empty but curated non-empty, keep default null so view shows empty-state
+            if ($hypervEffectiveOptions === [] && $hypervCuratedCount > 0) {
+                $hypervEffectiveDefault = null;
+            }
+        }
+
+        $vmStatus = $this->vmStatusPresenter->build($hostingAccount);
+        // Credential hint for the UI (never the password itself): the status
+        // presenter already resolved the stored guest credentials.
+        $vmGuestUsername = $vmStatus['credentials']['username'] ?? 'Administrator';
+        $vmHasStoredPassword = (bool) ($vmStatus['credentials']['stored'] ?? false);
+
         return view('admin.hosting.show', [
             'hostingAccount' => $hostingAccount,
             'modules' => $modules,
@@ -371,6 +444,13 @@ class HostingController extends Controller
             'assetKinds' => AssetRelationship::ASSET_KINDS,
             'relationshipTypes' => AssetRelationship::RELATIONSHIP_TYPES,
             'notes' => $notes,
+            'hypervEffectiveOptions' => $hypervEffectiveOptions,
+            'hypervEffectiveDefault' => $hypervEffectiveDefault,
+            'hypervCuratedCount' => $hypervCuratedCount,
+            'latestProvisioningEvent' => ProvisioningEvent::where('hosting_account_id', $hostingAccount->id)->orderByDesc('id')->first(),
+            'vmStatus' => $vmStatus,
+            'vmGuestUsername' => $vmGuestUsername,
+            'vmHasStoredPassword' => $vmHasStoredPassword,
         ]);
     }
 
@@ -491,6 +571,8 @@ class HostingController extends Controller
             + ['status' => ['sometimes', Rule::in(HostingService::STATUSES)]]
         );
 
+        $originalHostName = $hostingAccount->getRawOriginal('host_name') ?? $hostingAccount->getOriginal('host_name');
+
         try {
             DB::transaction(function () use ($hostingAccount, $validated, $request) {
                 $hostingAccount->update($validated);
@@ -506,9 +588,167 @@ class HostingController extends Controller
             return back()->withInput()->withErrors(['error' => 'Could not update product/service: '.$e->getMessage()]);
         }
 
-        return redirect()
-            ->route('admin.hosting.show', $hostingAccount)
-            ->with('success', "Product/Service #{$hostingAccount->id} updated.");
+        $redirect = redirect()->route('admin.hosting.show', $hostingAccount);
+
+        $renameOutcome = $this->syncHypervRenameOnHostNameChange($hostingAccount, $originalHostName);
+
+        if ($renameOutcome === null) {
+            return $redirect->with('success', "Product/Service #{$hostingAccount->id} updated.");
+        }
+
+        if ($renameOutcome['success']) {
+            return $redirect->with(
+                'success',
+                "Product/Service #{$hostingAccount->id} updated. Hyper-V VM renamed from '{$renameOutcome['old']}' to '{$renameOutcome['new']}'."
+            );
+        }
+
+        // The account keeps the new host_name (the VM GUID linkage makes that
+        // safe) — the failed rename is surfaced loudly next to the success.
+        return $redirect
+            ->with('success', "Product/Service #{$hostingAccount->id} updated.")
+            ->with('error', 'VM rename failed: '.$renameOutcome['message']);
+    }
+
+    /**
+     * Rename the Hyper-V VM on the host after the admin changed the hosting
+     * account's host_name.
+     *
+     * Returns null when there is nothing to do (name unchanged, no enabled
+     * hyperv product link, or no mirrored ServiceInstance/PanelAccount — a
+     * host_name change on a non-provisioned service still saves cleanly).
+     * Otherwise returns ['success' => bool, 'old'/'new'/'message'] and records
+     * the attempt as an `update` provisioning event (action=rename).
+     *
+     * @return array{success:bool,old:string,new:string,message:string}|null
+     */
+    private function syncHypervRenameOnHostNameChange(HostingAccount $hostingAccount, mixed $originalHostName): ?array
+    {
+        $old = trim((string) ($originalHostName ?? ''));
+        $newRaw = $hostingAccount->getAttributes()['host_name'] ?? null;
+        $new = trim((string) ($newRaw ?? ''));
+
+        if ($old === '' || $new === '' || $old === $new) {
+            return null;
+        }
+
+        $link = ProductModule::where('product_id', $hostingAccount->product_id)
+            ->where('module_slug', 'hyperv')
+            ->where('enabled', true)
+            ->first();
+
+        if ($link === null) {
+            return null;
+        }
+
+        // Mirrored service only — never create one here.
+        $service = null;
+        if ($hostingAccount->order_id !== null) {
+            $service = ServiceInstance::where('order_id', $hostingAccount->order_id)->first();
+        }
+        if ($service === null) {
+            $service = ServiceInstance::where('service_tag', 'HOST-'.$hostingAccount->id)->first();
+        }
+
+        if ($service === null) {
+            return null;
+        }
+
+        $panelAccount = PanelAccount::where('service_instance_id', $service->id)
+            ->where('panel', 'hyperv')
+            ->first();
+
+        if ($panelAccount === null) {
+            return null;
+        }
+
+        $driver = $this->hypervRenameDriver();
+
+        if ($driver === null) {
+            return null;
+        }
+
+        $payload = [
+            'module' => 'hyperv',
+            'action' => 'rename',
+            'hosting_account_id' => $hostingAccount->id,
+            'order_id' => $hostingAccount->order_id,
+            'order_number' => $hostingAccount->order?->order_number,
+            'old_name' => $old,
+            'new_name' => $new,
+        ];
+
+        try {
+            $event = $this->provisioningEvents->begin('update', $payload, $service->id, $hostingAccount->id);
+        } catch (\Throwable $e) {
+            Log::error('Hyper-V rename event could not be opened', [
+                'hosting_account_id' => $hostingAccount->id,
+                'error' => $e->getMessage(),
+            ]);
+
+            return ['success' => false, 'old' => $old, 'new' => $new, 'message' => $e->getMessage()];
+        }
+
+        try {
+            $result = $driver->rename($service, $new);
+        } catch (\Throwable $e) {
+            Log::error('Hyper-V rename threw', [
+                'hosting_account_id' => $hostingAccount->id,
+                'old_name' => $old,
+                'new_name' => $new,
+                'error' => $e->getMessage(),
+            ]);
+            $this->provisioningEvents->fail($event, $e->getMessage());
+
+            return ['success' => false, 'old' => $old, 'new' => $new, 'message' => $e->getMessage()];
+        }
+
+        if (! $result->success) {
+            $message = $result->message ?? 'VM rename failed.';
+            $this->provisioningEvents->fail($event, $message);
+
+            return ['success' => false, 'old' => $old, 'new' => $new, 'message' => $message];
+        }
+
+        $this->provisioningEvents->complete(
+            $event,
+            $result->message ?? "Hyper-V VM renamed to '{$new}'",
+            is_array($result->data ?? null) ? $result->data : []
+        );
+
+        return ['success' => true, 'old' => $old, 'new' => $new, 'message' => $result->message ?? 'renamed'];
+    }
+
+    /**
+     * Resolve the Hyper-V driver when it exposes rename(), else null (skip
+     * silently). Mirrors the moduleAction() resolution order (registry first,
+     * ModuleManager fallback).
+     */
+    private function hypervRenameDriver(): ?object
+    {
+        try {
+            $registry = app(IntegrationRegistry::class);
+
+            if ($registry->has('hyperv')) {
+                $candidate = $registry->instanceFor('hyperv');
+
+                return $candidate !== null && method_exists($candidate, 'rename') ? $candidate : null;
+            }
+
+            $module = app(ModuleManager::class)->find('hyperv');
+
+            if ($module === null || $module->status !== \App\Models\Module::STATUS_ACTIVE) {
+                return null;
+            }
+
+            $driver = app(ModuleManager::class)->capabilityInstance($module, 'provisioning');
+
+            return $driver !== null && method_exists($driver, 'rename') ? $driver : null;
+        } catch (\Throwable $e) {
+            Log::error('Hyper-V rename driver resolution failed', ['error' => $e->getMessage()]);
+
+            return null;
+        }
     }
 
     /**
@@ -672,18 +912,81 @@ class HostingController extends Controller
      * Running VM (stop first — never stop-and-delete in one click); the
      * power actions are state-checked on the host (no blind -Force).
      */
-    public function moduleAction(Request $request, HostingAccount $hostingAccount): RedirectResponse
+    public function moduleAction(Request $request, HostingAccount $hostingAccount): RedirectResponse|JsonResponse
     {
         $validated = $request->validate([
             'module_slug' => ['required', 'string', 'max:100'],
             'action' => ['required', 'string', 'in:create,start,stop,restart,delete,suspend,unsuspend,terminate'],
             'confirm' => ['nullable', 'string', 'max:255'],
             'delete_vhd' => ['nullable', 'boolean'],
+            'template_vm' => ['nullable', 'string', 'max:64'],
+            'start_after_create' => ['nullable', 'boolean'],
+            'guest_username' => ['nullable', 'string', 'max:64'],
+            // The opt-in rotation must authenticate inside the guest with the
+            // template's CURRENT password before it can set a new one.
+            'guest_password' => ['nullable', 'string', 'max:128', Rule::requiredIf(fn () => $request->boolean('apply_password'))],
+            'apply_password' => ['nullable', 'boolean'],
+        ], [
+            'guest_password.required' => "Enter the template's current Administrator password so the panel can set a new one.",
         ]);
 
         $slug = trim((string) $validated['module_slug']);
         $registry = app(IntegrationRegistry::class);
         $manager = app(ModuleManager::class);
+
+        // Hyper-V create → async queued job (host-verified)
+        if ($validated['action'] === 'create' && $slug === 'hyperv') {
+            $templateVm = isset($validated['template_vm']) ? trim((string) $validated['template_vm']) : null;
+            if ($templateVm === '') {
+                $templateVm = null;
+            }
+            $guestUsername = isset($validated['guest_username']) ? trim((string) $validated['guest_username']) : null;
+            if ($guestUsername === '') {
+                $guestUsername = null;
+            }
+            $guestPassword = isset($validated['guest_password']) ? trim((string) $validated['guest_password']) : null;
+            if ($guestPassword === '') {
+                $guestPassword = null;
+            }
+            $startAfterCreate = (bool) $request->boolean('start_after_create');
+
+            // Guard: a build already queued/running for this account (shared
+            // with the client portal through the dispatcher service).
+            if ($this->vmBuildDispatcher->isBuildRunning($hostingAccount)) {
+                $msg = 'A VM build is already running for this service.';
+                if ($request->expectsJson() || $request->ajax()) {
+                    return response()->json(['ok' => false, 'message' => $msg], 409);
+                }
+                return back()->with('error', $msg);
+            }
+
+            try {
+                $event = $this->vmBuildDispatcher->dispatch(
+                    $hostingAccount,
+                    $templateVm,
+                    $startAfterCreate,
+                    $guestUsername,
+                    $guestPassword,
+                    (bool) $request->boolean('apply_password'),
+                );
+
+                if ($request->expectsJson() || $request->ajax()) {
+                    return response()->json(['ok' => true, 'started' => true, 'event_id' => $event->id, 'action' => 'create', 'message' => 'VM build started.'], 202);
+                }
+
+                return back()->with('info', 'VM build started.');
+            } catch (\Throwable $e) {
+                Log::error('Hyper-V queued create failed', [
+                    'hosting_account_id' => $hostingAccount->id,
+                    'error' => $e->getMessage(),
+                ]);
+                $msg = $e->getMessage();
+                if ($request->expectsJson() || $request->ajax()) {
+                    return response()->json(['ok' => false, 'message' => $msg], 422);
+                }
+                return back()->with('error', $msg);
+            }
+        }
 
         $driver = null;
         $displayName = $registry->nameFor($slug);
@@ -738,7 +1041,11 @@ class HostingController extends Controller
         // Create (re-provision) and Delete (cleanup) stay allowed.
         if ($hostingAccount->status === HostingService::STATUS_TERMINATED
             && in_array($validated['action'], ['start', 'stop', 'restart'], true)) {
-            return back()->with('error', "Service is terminated — {$validated['action']} is refused. Create re-provisions, Delete cleans up.");
+            $msg = "Service is terminated — {$validated['action']} is refused. Create re-provisions, Delete cleans up.";
+            if ($request->expectsJson() || $request->ajax()) {
+                return response()->json(['ok' => false, 'message' => $msg], 422);
+            }
+            return back()->with('error', $msg);
         }
 
         // Typed confirmation for disruptive actions: the operator must type
@@ -746,7 +1053,11 @@ class HostingController extends Controller
         if (in_array($validated['action'], ['restart', 'delete'], true)) {
             $expected = (string) $hostingAccount->host_name;
             if (trim((string) ($validated['confirm'] ?? '')) !== $expected) {
-                return back()->with('error', "Type '{$expected}' to confirm {$validated['action']}. Action cancelled — nothing was touched.");
+                $msg = "Type '{$expected}' to confirm {$validated['action']}. Action cancelled — nothing was touched.";
+                if ($request->expectsJson() || $request->ajax()) {
+                    return response()->json(['ok' => false, 'message' => $msg], 422);
+                }
+                return back()->with('error', $msg);
             }
         }
 
@@ -758,8 +1069,37 @@ class HostingController extends Controller
         }
 
         if ($verb === 'restart' && ! method_exists($driver, 'restart')) {
-            return back()->with('error', "Module {$displayName} does not support restart.");
+            $msg = "Module {$displayName} does not support restart.";
+            if ($request->expectsJson() || $request->ajax()) {
+                return response()->json(['ok' => false, 'message' => $msg], 422);
+            }
+            return back()->with('error', $msg);
         }
+
+        $moduleActionEventTypes = [
+            'create' => 'provision',
+            'start' => 'unsuspend',
+            'stop' => 'suspend',
+            'restart' => 'restart',
+            'delete' => 'terminate',
+            'suspend' => 'suspend',
+            'unsuspend' => 'unsuspend',
+            'terminate' => 'terminate',
+        ];
+        $moduleActionEventType = $moduleActionEventTypes[$validated['action']] ?? $validated['action'];
+
+        $event = $this->provisioningEvents->begin(
+            $moduleActionEventType,
+            [
+                'module' => $slug,
+                'action' => $validated['action'],
+                'hosting_account_id' => $hostingAccount->id,
+                'order_id' => $hostingAccount->order_id,
+                'order_number' => $hostingAccount->order?->order_number,
+            ],
+            $service->id,
+            $hostingAccount->id,
+        );
 
         try {
             /** @var \App\Contracts\Integrations\ProvisioningResult $result */
@@ -772,12 +1112,26 @@ class HostingController extends Controller
                 'error' => $e->getMessage(),
             ]);
 
-            return back()->with('error', "Module action failed: {$e->getMessage()}");
+            $this->provisioningEvents->fail($event, $e->getMessage());
+
+            $msg = "Module action failed: {$e->getMessage()}";
+            if ($request->expectsJson() || $request->ajax()) {
+                return response()->json(['ok' => false, 'message' => $msg], 422);
+            }
+            return back()->with('error', $msg);
         }
 
         if (! $result->success) {
-            return back()->with('error', $result->message ?? 'Module action failed.');
+            $this->provisioningEvents->fail($event, $result->message ?? 'Module action failed.');
+
+            $msg = $result->message ?? 'Module action failed.';
+            if ($request->expectsJson() || $request->ajax()) {
+                return response()->json(['ok' => false, 'message' => $msg], 422);
+            }
+            return back()->with('error', $msg);
         }
+
+        $this->provisioningEvents->complete($event, $result->message ?? 'ok', is_array($result->data ?? null) ? $result->data : []);
 
         try {
             $hostingAccount->refresh();
@@ -798,6 +1152,11 @@ class HostingController extends Controller
 
         $this->hostingService->audit($hostingAccount, 'hosting.module_action', "Module {$slug} {$verb}: ".($result->message ?? 'ok'), ['module' => $slug, 'action' => $verb]);
 
+        if ($request->expectsJson() || $request->ajax()) {
+            $state = $result->data['state'] ?? null;
+            return response()->json(['ok' => true, 'action' => $validated['action'], 'message' => $result->message ?? 'done.', 'state' => $state]);
+        }
+
         if ($verb === 'terminate') {
             return redirect()->route('admin.hosting.index')->with('success', "Module {$displayName} {$validated['action']}: ".($result->message ?? 'done.'));
         }
@@ -806,35 +1165,190 @@ class HostingController extends Controller
     }
 
     /**
-     * ServiceInstance the module operates on: the hosting account's order
-     * service when one exists, otherwise a minimal mirror of the hosting row
-     * (same customer/server/domain/identity) so the module has a server.
+     * ServiceInstance the module operates on: delegated to the shared
+     * ManualProvisioner factory so the mirror logic lives in one place.
      */
     private function serviceForHosting(HostingAccount $hostingAccount, string $slug): \App\Models\ServiceInstance
     {
-        if ($hostingAccount->order_id !== null) {
-            $existing = \App\Models\ServiceInstance::where('order_id', $hostingAccount->order_id)->first();
+        return $this->manualProvisioner->serviceForHosting($hostingAccount, $slug);
+    }
 
-            if ($existing !== null) {
-                return $existing;
+    /**
+     * JSON status/progress API for the admin VM panel. Always 200, never throws.
+     */
+    public function vmStatus(Request $request, HostingAccount $hostingAccount): JsonResponse
+    {
+        try {
+            $data = $this->vmStatusPresenter->build($hostingAccount, $request->boolean('refresh'));
+            return response()->json($data);
+        } catch (\Throwable $e) {
+            Log::warning('vmStatus failed', ['hosting_account_id' => $hostingAccount->id, 'error' => $e->getMessage()]);
+            return response()->json(['ok' => true, 'action' => null, 'vm' => ['exists' => false, 'state' => null, 'name' => null, 'vmId' => null, 'probe_error' => null], 'account' => ['status' => $hostingAccount->status], 'credentials' => ['stored' => false, 'username' => 'Administrator'], 'can' => ['create' => true, 'start' => false, 'stop' => false, 'restart' => false, 'delete' => false, 'reset_password' => false], 'reasons' => []]);
+        }
+    }
+
+    /**
+     * Reveal the stored guest Administrator credentials for a VM.
+     *
+     * WHY on-demand + audited: the password lives encrypted on the
+     * PanelAccount and must never be server-rendered into the page HTML —
+     * the Credentials modal fetches it here only when the operator clicks
+     * Show/Copy. Every successful reveal is audited (best-effort so the
+     * audit never blocks the response). Never 500s — unknown states return
+     * the 422 {ok:false, stored:false} shape.
+     */
+    public function vmCredentials(Request $request, HostingAccount $hostingAccount): JsonResponse
+    {
+        $notStored = static fn (?string $message = null): JsonResponse => response()->json([
+            'ok' => false,
+            'stored' => false,
+            'message' => $message ?? 'No Administrator credentials are stored for this VM.',
+        ], 422);
+
+        try {
+            // Lookup only — a GET must never create a ServiceInstance row
+            // (same approach as VmStatusPresenter::panelAccountFor).
+            $service = null;
+            try {
+                if ($hostingAccount->order_id !== null) {
+                    $service = ServiceInstance::where('order_id', $hostingAccount->order_id)->first();
+                }
+                if ($service === null) {
+                    $service = ServiceInstance::where('service_tag', 'HOST-'.$hostingAccount->id)->first();
+                }
+            } catch (\Throwable) {
+                $service = null;
             }
+
+            $panel = $service !== null
+                ? PanelAccount::where('service_instance_id', $service->id)->where('panel', 'hyperv')->first()
+                : null;
+
+            if ($panel === null) {
+                return $notStored();
+            }
+
+            $stored = app(\App\Services\Provisioning\VmGuestCredentialStore::class)->read($panel);
+
+            if (($stored['password'] ?? null) === null || $stored['password'] === '') {
+                return $notStored();
+            }
+
+            $username = ($stored['username'] ?? null) !== null && trim((string) $stored['username']) !== ''
+                ? trim((string) $stored['username'])
+                : 'Administrator';
+
+            try {
+                $this->hostingService->audit($hostingAccount, 'hosting.module_action', 'Administrator credentials revealed', ['module' => 'hyperv', 'action' => 'reveal_credentials']);
+            } catch (\Throwable) {
+                // Audit must never block the response.
+            }
+
+            return response()->json([
+                'ok' => true,
+                'stored' => true,
+                'username' => $username,
+                'password' => $stored['password'],
+            ]);
+        } catch (\Throwable $e) {
+            Log::warning('vmCredentials failed', ['hosting_account_id' => $hostingAccount->id, 'error' => $e->getMessage()]);
+
+            return $notStored();
+        }
+    }
+
+    public function resetVmPassword(Request $request, HostingAccount $hostingAccount): JsonResponse|RedirectResponse
+    {
+        $validated = $request->validate([
+            'password' => ['required', 'string', 'min:8', 'confirmed'],
+            'password_confirmation' => ['required', 'string'],
+            'current_password' => ['nullable', 'string', 'max:128'],
+            'username' => ['nullable', 'string', 'max:64'],
+        ]);
+
+        $newPassword = $validated['password'];
+        $username = isset($validated['username']) ? trim((string) $validated['username']) : null;
+        if ($username === '') {
+            $username = null;
+        }
+        $currentPassword = $validated['current_password'] ?? null;
+
+        // Resolve service + driver for reset
+        $service = $this->serviceForHosting($hostingAccount, 'hyperv');
+        $driver = HypervDriver::resolve();
+
+        if ($driver === null || ! method_exists($driver, 'resetGuestAdminPassword')) {
+            $msg = 'Hyper-V module does not support password reset.';
+            if ($request->expectsJson() || $request->ajax()) {
+                return response()->json(['ok' => false, 'message' => $msg], 422);
+            }
+            return back()->with('error', $msg);
         }
 
-        return \App\Models\ServiceInstance::firstOrCreate(
-            [
-                'customer_id' => $hostingAccount->customer_id,
+        // Check stored credentials requirement
+        try {
+            $panel = PanelAccount::where('service_instance_id', $service->id)->where('panel', 'hyperv')->first();
+            $store = app(\App\Services\Provisioning\VmGuestCredentialStore::class);
+            $stored = $panel !== null ? $store->read($panel) : ['username' => null, 'password' => null];
+            if (($stored['password'] ?? null) === null && ($currentPassword === null || trim($currentPassword) === '')) {
+                $msg = 'No Administrator credentials are stored for this VM — enter the current password.';
+                if ($request->expectsJson() || $request->ajax()) {
+                    return response()->json(['ok' => false, 'message' => $msg], 422);
+                }
+                return back()->with('error', $msg);
+            }
+        } catch (\Throwable) {
+        }
+
+        // Record attempt as provisioning event
+        try {
+            $event = $this->provisioningEvents->begin('update', [
+                'module' => 'hyperv',
+                'action' => 'reset_password',
+                'hosting_account_id' => $hostingAccount->id,
                 'order_id' => $hostingAccount->order_id,
-                'server_id' => $hostingAccount->server_id,
-                'domain' => $hostingAccount->domain,
-            ],
-            [
-                'catalog_product_id' => null,
-                'service_tag' => 'HOST-'.$hostingAccount->id,
-                'username' => $hostingAccount->username ?: 'host'.$hostingAccount->id,
-                'provisioning_method' => $slug,
-                'status' => 'pending',
-            ],
-        );
+            ], $service->id, $hostingAccount->id);
+        } catch (\Throwable $e) {
+            Log::error('resetVmPassword event begin failed', ['error' => $e->getMessage()]);
+            $event = null;
+        }
+
+        try {
+            $result = $driver->resetGuestAdminPassword($service, $newPassword, $username, $currentPassword);
+        } catch (\Throwable $e) {
+            if ($event !== null) {
+                try { $this->provisioningEvents->fail($event, $e->getMessage()); } catch (\Throwable) {}
+            }
+            $msg = $e->getMessage();
+            if ($request->expectsJson() || $request->ajax()) {
+                return response()->json(['ok' => false, 'message' => $msg], 422);
+            }
+            return back()->with('error', $msg);
+        }
+
+        if (! $result->success) {
+            if ($event !== null) {
+                try { $this->provisioningEvents->fail($event, $result->message ?? 'Password reset failed'); } catch (\Throwable) {}
+            }
+            $msg = $result->message ?? 'Password reset failed';
+            if ($request->expectsJson() || $request->ajax()) {
+                return response()->json(['ok' => false, 'message' => $msg], 422);
+            }
+            return back()->with('error', $msg);
+        }
+
+        if ($event !== null) {
+            try { $this->provisioningEvents->complete($event, $result->message ?? 'Administrator password reset', is_array($result->data ?? null) ? $result->data : []); } catch (\Throwable) {}
+        }
+        try { $this->hostingService->audit($hostingAccount, 'hosting.module_action', $result->message ?? 'Password reset', ['module' => 'hyperv', 'action' => 'reset_password']); } catch (\Throwable) {}
+
+        $resolvedUsername = $result->data['username'] ?? $username ?? 'Administrator';
+
+        if ($request->expectsJson() || $request->ajax()) {
+            return response()->json(['ok' => true, 'password' => $newPassword, 'username' => $resolvedUsername, 'message' => 'Administrator password reset']);
+        }
+
+        return back()->with('success', 'Administrator password reset');
     }
 
     /**

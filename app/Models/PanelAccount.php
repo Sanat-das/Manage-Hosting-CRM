@@ -24,7 +24,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  */
 #[Fillable([
     'service_instance_id', 'server_id', 'panel', 'username', 'domain',
-    'password_encrypted', 'plan', 'external_id', 'meta', 'status',
+    'password_encrypted', 'guest_username', 'guest_password_encrypted', 'plan', 'external_id', 'meta', 'status',
     'provisioned_at', 'suspended_at', 'terminated_at',
 ])]
 #[Hidden(['password_encrypted'])]
@@ -44,6 +44,7 @@ class PanelAccount extends Model
     {
         return [
             'password_encrypted' => 'encrypted',
+            'guest_password_encrypted' => 'encrypted',
             'meta' => 'array',
             'provisioned_at' => 'datetime',
             'suspended_at' => 'datetime',

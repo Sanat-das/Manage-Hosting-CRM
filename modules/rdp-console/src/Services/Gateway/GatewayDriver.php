@@ -14,10 +14,21 @@ interface GatewayDriver
     /**
      * Mint an encrypted, TTL'd token authorizing exactly one RDP connection.
      *
-     * @throws \RuntimeException when the gateway is not usable (missing or
-     *                           too-short shared secret, encryption failure).
+     * @throws \Modules\RdpConsole\Exceptions\GatewayNotConfiguredException
+     *         when the shared secret is missing or too short — fail closed,
+     *         never default the secret
+     * @throws \RuntimeException when minting fails for any other reason
+     *                           (encryption / serialization failure)
      */
     public function mint(RdpConnectionContext $context): string;
+
+    /**
+     * Whether the gateway has a usable shared secret and can mint at all.
+     * The console pages use this to render an honest "not configured" state
+     * instead of offering a Connect button that cannot work; the endpoints
+     * still fail closed through mint() regardless.
+     */
+    public function isConfigured(): bool;
 
     /**
      * The websocket URL of the gateway sidecar (guacamole-lite), as

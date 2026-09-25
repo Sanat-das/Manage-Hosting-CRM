@@ -200,6 +200,7 @@
             {{-- Config help: WinRM guide for hyperv --}}
             @if(($serverType ?? '') === 'hyperv')
                 @include('admin.servers.partials._winrm-guide')
+                <div class="form-text mt-2">After saving, you can choose a provisioning template VM on the Edit page.</div>
             @endif
 
             {{-- Connection preview area + actions --}}

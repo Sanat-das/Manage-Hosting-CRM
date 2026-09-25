@@ -7,6 +7,7 @@ use App\Models\Product;
 use App\Models\ProductModule;
 use App\Services\Integrations\IntegrationRegistry;
 use App\Services\Modules\ModuleManager;
+use App\Services\Provisioning\HypervTemplateCatalog;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 
@@ -88,6 +89,20 @@ class ProductModuleController extends Controller
                 }
             }
 
+            $attachedKeys = $product->optionLinks()->with('group')->get()
+                ->map(fn ($link) => strtolower(trim((string) ($link->group?->key ?? ''))))
+                ->filter()
+                ->values()
+                ->all();
+
+            $missing = \App\Services\Provisioning\ModuleRequiredOptions::missingKeysFor($moduleSlug, $attachedKeys);
+
+            if ($missing !== []) {
+                return back()->withErrors([
+                    'module' => "Cannot enable {$target['name']}: the product is missing required Configuration Options (".implode(', ', $missing)."). Attach option groups with those keys on the Options tab first.",
+                ]);
+            }
+
             $pivot->fill([
                 'enabled' => true,
                 'provisioning_mode' => $pivot->provisioning_mode ?? ProductModule::PROVISIONING_MODE_AUTO,
@@ -167,12 +182,84 @@ class ProductModuleController extends Controller
 
         $request->validate($rules);
 
-        $encrypted = $this->registry->encryptConfigFor($moduleSlug, $request->input('config', []));
+        $raw = $request->input('config', []);
+
+        // Unchecked checkboxes send no payload; persist them explicitly so
+        // the stored config always reflects the current form state (mirrors
+        // ModuleController::updateConfig).
+        foreach ($schema['fields'] as $field) {
+            if (($field['type'] ?? '') === 'checkbox' && ! array_key_exists($field['key'], $raw)) {
+                $raw[$field['key']] = false;
+            }
+        }
+
+        $encrypted = $this->registry->encryptConfigFor($moduleSlug, $raw);
 
         $pivot->update(['config' => $encrypted]);
 
         return redirect()
             ->route('admin.products.show', [$product, 'tab' => 'modules'])
             ->with('success', "Configuration saved for module {$target['name']}.");
+    }
+
+    public function updateAllowedTemplates(Product $product, string $moduleSlug, Request $request): RedirectResponse
+    {
+        abort_unless($moduleSlug === 'hyperv', 404, 'Only hyperv supports template restrictions.');
+
+        $target = $this->resolveTarget($moduleSlug);
+        abort_unless($target['exists'], 404, 'Module not found.');
+
+        $pivot = ProductModule::query()
+            ->where('product_id', $product->id)
+            ->where('module_slug', $moduleSlug)
+            ->first();
+
+        abort_unless($pivot, 404, 'Module is not enabled on this product.');
+
+        $validated = $request->validate([
+            'allowed_templates' => ['nullable', 'array', 'max:50'],
+            'allowed_templates.*' => ['string', 'max:64'],
+        ]);
+
+        $rawAllowed = $validated['allowed_templates'] ?? $request->input('allowed_templates');
+
+        if ($rawAllowed === null) {
+            $rawAllowed = [];
+        }
+
+        $sanitized = HypervTemplateCatalog::sanitizeAllowed($rawAllowed);
+
+        if ($sanitized !== []) {
+            $unionNames = HypervTemplateCatalog::unionNames();
+            $unionSet = array_flip($unionNames);
+            $unknown = [];
+            foreach ($sanitized as $name) {
+                if (! isset($unionSet[$name])) {
+                    $unknown[] = $name;
+                }
+            }
+            if ($unknown !== []) {
+                return back()
+                    ->withInput()
+                    ->withErrors(['allowed_templates' => 'Unknown templates: '.implode(', ', $unknown).'. Allowed: '.implode(', ', $unionNames)]);
+            }
+        }
+
+        $existingRaw = is_array($pivot->config) ? $pivot->config : [];
+        $decrypted = $this->registry->decryptConfigFor($moduleSlug, $existingRaw);
+
+        if ($sanitized === []) {
+            unset($decrypted['allowed_templates']);
+        } else {
+            $decrypted['allowed_templates'] = $sanitized;
+        }
+
+        $encrypted = $this->registry->encryptConfigFor($moduleSlug, $decrypted);
+        $pivot->update(['config' => $encrypted]);
+
+        return redirect()
+            ->route('admin.products.edit', [$product, 'tab' => 'modules'])
+            ->with('success', 'Hyper-V template restriction saved.')
+            ->with('active_tab', 'modules');
     }
 }

@@ -66,6 +66,16 @@ Route::middleware(['web', 'auth', 'admin', 'throttle:admin'])->prefix('admin')->
         ->middleware('permission:hosting.edit')
         ->name('hosting.module-action');
 
+    Route::get('hosting/{hostingAccount}/vm-status', [HostingController::class, 'vmStatus'])
+        ->middleware('permission:hosting.view')
+        ->name('hosting.vm-status');
+    Route::post('hosting/{hostingAccount}/reset-vm-password', [HostingController::class, 'resetVmPassword'])
+        ->middleware('permission:hosting.edit')
+        ->name('hosting.reset-vm-password');
+    Route::get('hosting/{hostingAccount}/vm-credentials', [HostingController::class, 'vmCredentials'])
+        ->middleware('permission:hosting.edit')
+        ->name('hosting.vm-credentials');
+
     // Billing
     Route::put('hosting/{hostingAccount}/billing', [HostingController::class, 'updateBilling'])
         ->middleware('permission:hosting.edit')
@@ -118,6 +128,9 @@ Route::middleware(['web', 'auth', 'admin', 'throttle:admin'])->prefix('admin')->
     Route::post('servers/{server}/test-connection', [ServerController::class, 'testConnection'])
         ->middleware('permission:hosting.manage')
         ->name('servers.test-connection');
+    Route::get('servers/{server}/vms', [ServerController::class, 'vms'])
+        ->middleware('permission:hosting.manage')
+        ->name('servers.vms');
     Route::post('servers/test-connection-dry', [ServerController::class, 'testConnectionDry'])
         ->middleware('permission:hosting.manage')
         ->name('servers.test-connection-dry');

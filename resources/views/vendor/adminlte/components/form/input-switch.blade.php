@@ -7,7 +7,7 @@
                @checked($isChecked())
                {{ $attributes->merge(['class' => 'form-check-input'.($hasError() ? ' is-invalid' : '')]) }}>
         @isset($label)
-            <label class="form-check-label" for="{{ $id }}">{{ $label }}@if($attributes->has('required')) <span class="mh-required" aria-hidden="true">*</span>@endif</label>
+            <label class="form-check-label" for="{{ $id }}">{{ $label }}@if($attributes->get('required')) <span class="mh-required" aria-hidden="true">*</span>@endif</label>
         @endisset
         @if ($hasError())
             <div class="invalid-feedback d-block">{{ $errorMessage() }}</div>

@@ -298,10 +298,10 @@ final class HyperVClient
      *
      * @return array{data:array<string,mixed>}|array{error:string}
      */
-    private function invokeRemote(string $ps, int $timeout = 60): array
+    private function invokeRemote(string $ps, int $timeout = 60, bool $boundNativePath = false): array
     {
         if ($this->windowsRemotingAvailable()) {
-            $viaPs = $this->invokeViaPowerShell($ps);
+            $viaPs = $this->invokeViaPowerShell($ps, $boundNativePath ? $timeout : null);
 
             if ($viaPs !== null) {
                 return $viaPs;
@@ -330,7 +330,24 @@ final class HyperVClient
      *
      * @return array{data:array<string,mixed>}|array{error:string}|null
      */
-    private function invokeViaPowerShell(string $innerPs): array|null
+    private function invokeViaPowerShell(string $innerPs, ?int $timeoutSeconds = null): ?array
+    {
+        return $this->runScriptViaPowerShell($innerPs, $timeoutSeconds);
+    }
+
+    /**
+     * Shared helper: run an arbitrary PowerShell script body on the remote
+     * Hyper-V host via native WinRM/PowerShell remoting (New-PSSession +
+     * Invoke-Command). Used by both createVm and cloneFromTemplate native paths.
+     *
+     * The native path has no client-side timeout by design (a multi-GB disk
+     * copy must not be killed); the SOAP fallback enforces Http::timeout().
+     * Returns null ONLY when the local exec path is unavailable (fall back
+     * to SOAP). Any executed answer — data or host error — is final.
+     *
+     * @return array{data:array<string,mixed>}|array{error:string}|null
+     */
+    private function runScriptViaPowerShell(string $innerPs, ?int $timeoutSeconds = null): ?array
     {
         if (PHP_OS_FAMILY !== 'Windows' || ! function_exists('exec')) {
             return null;
@@ -384,14 +401,35 @@ PS;
             return null;
         }
 
-        $psFile = $tmp . '.ps1';
+        $psFile = $tmp.'.ps1';
         @rename($tmp, $psFile);
 
         try {
             file_put_contents($psFile, $ps);
+
+            if ($timeoutSeconds !== null && $timeoutSeconds > 0) {
+                $bounded = $this->runPowerShellFileWithTimeout($psFile, $timeoutSeconds);
+
+                if (isset($bounded['error'])) {
+                    return $bounded;
+                }
+
+                $decoded = $this->extractJson(trim((string) ($bounded['output'] ?? '')));
+
+                if (is_array($decoded) && isset($decoded['error'])) {
+                    return ['error' => $this->flattenError($decoded['error'])];
+                }
+
+                if (is_array($decoded)) {
+                    return ['data' => $decoded];
+                }
+
+                return ['error' => 'PowerShell remoting returned no data.'];
+            }
+
             $outLines = [];
             $ret = 0;
-            @exec('powershell -NoProfile -ExecutionPolicy Bypass -File "' . str_replace('"', '""', $psFile) . '" 2>&1', $outLines, $ret);
+            @exec('powershell -NoProfile -ExecutionPolicy Bypass -File "'.str_replace('"', '""', $psFile).'" 2>&1', $outLines, $ret);
 
             $decoded = $this->extractJson(trim(implode("\n", $outLines)));
 
@@ -406,6 +444,133 @@ PS;
             return ['error' => 'PowerShell remoting returned no data.'];
         } catch (Throwable $e) {
             return ['error' => $this->sanitizeMessage($e->getMessage(), $conn['host'], $conn['port'], $conn['useSsl'])];
+        } finally {
+            // $tmp was renamed onto $psFile; only delete what still exists so
+            // a failed rename cannot leave the temp file behind (and no
+            // "No such file or directory" warning on every native call).
+            if (is_file($psFile)) {
+                @unlink($psFile);
+            }
+            if (is_file($tmp)) {
+                @unlink($tmp);
+            }
+        }
+    }
+
+    /**
+     * Low-level bounded runner: execute the given .ps1 file via PowerShell with a hard deadline.
+     * Preserves merged-output semantics equivalent to `2>&1` and same exit-code/JSON parsing
+     * contract. On deadline kills the whole process tree and returns a timeout error.
+     *
+     * @return array{output:string}|array{error:string}
+     */
+    private function runPowerShellFileWithTimeout(string $psFile, int $timeoutSeconds): array
+    {
+        $cmd = 'powershell -NoProfile -ExecutionPolicy Bypass -File "'.str_replace('"', '""', $psFile).'"';
+
+        $descriptors = [
+            0 => ['pipe', 'r'],
+            1 => ['pipe', 'w'],
+            2 => ['pipe', 'w'],
+        ];
+
+        $process = @proc_open($cmd, $descriptors, $pipes);
+
+        if (! is_resource($process)) {
+            return ['error' => 'PowerShell remoting returned no data.'];
+        }
+
+        $deadline = microtime(true) + $timeoutSeconds;
+        $stdout = '';
+        $stderr = '';
+
+        while (true) {
+            $status = proc_get_status($process);
+
+            if (! $status['running']) {
+                // Drain remaining without blocking loop (process already ended).
+                if (isset($pipes[1]) && is_resource($pipes[1])) {
+                    stream_set_blocking($pipes[1], false);
+                    $stdout .= (string) stream_get_contents($pipes[1]);
+                }
+                if (isset($pipes[2]) && is_resource($pipes[2])) {
+                    stream_set_blocking($pipes[2], false);
+                    $stderr .= (string) stream_get_contents($pipes[2]);
+                }
+                foreach ($pipes as $pipe) {
+                    if (is_resource($pipe)) {
+                        @fclose($pipe);
+                    }
+                }
+                proc_close($process);
+                $combined = trim($stdout . "\n" . $stderr);
+                return ['output' => $combined];
+            }
+
+            if (microtime(true) >= $deadline) {
+                $pid = (int) ($status['pid'] ?? 0);
+                // Close stdin to unblock any waiting read.
+                if (isset($pipes[0]) && is_resource($pipes[0])) {
+                    @fclose($pipes[0]);
+                    $pipes[0] = null;
+                }
+                // Aggressively kill the tree; poll until dead or give up.
+                for ($k = 0; $k < 10; $k++) {
+                    if (PHP_OS_FAMILY === 'Windows' && $pid > 0) {
+                        @exec('taskkill /T /F /PID '.$pid.' 2>&1');
+                    }
+                    @proc_terminate($process);
+                    @proc_terminate($process, 9);
+                    usleep(200000);
+                    $st = proc_get_status($process);
+                    if (! ($st['running'] ?? false)) {
+                        break;
+                    }
+                }
+                // Drain any remaining output (non-blocking) and close.
+                if (isset($pipes[1]) && is_resource($pipes[1])) {
+                    stream_set_blocking($pipes[1], false);
+                    $stdout .= (string) stream_get_contents($pipes[1]);
+                }
+                if (isset($pipes[2]) && is_resource($pipes[2])) {
+                    stream_set_blocking($pipes[2], false);
+                    $stderr .= (string) stream_get_contents($pipes[2]);
+                }
+                foreach ($pipes as $pipe) {
+                    if (is_resource($pipe)) {
+                        @fclose($pipe);
+                    }
+                }
+                @proc_close($process);
+
+                return ['error' => 'PowerShell remoting timed out after '.$timeoutSeconds.'s.'];
+            }
+
+            usleep(100000);
+        }
+    }
+
+    /**
+     * Testable bounded runner entry-point for arbitrary PowerShell script content.
+     * Writes the script to a temp .ps1, runs it bounded, cleans up, returns error on timeout.
+     * Used by HypervGuestProbeTimeoutTest to prove the deadline kills Start-Sleep quickly.
+     *
+     * @return array{output:string}|array{error:string}
+     */
+    protected function runPowerShellScriptWithTimeout(string $scriptContent, int $timeoutSeconds): array
+    {
+        $tmp = tempnam(sys_get_temp_dir(), 'hv_test_');
+        if ($tmp === false) {
+            return ['error' => 'PowerShell remoting returned no data.'];
+        }
+        $psFile = $tmp.'.ps1';
+        @rename($tmp, $psFile);
+        try {
+            file_put_contents($psFile, $scriptContent);
+            if ($timeoutSeconds <= 0) {
+                return ['error' => 'PowerShell remoting returned no data.'];
+            }
+            return $this->runPowerShellFileWithTimeout($psFile, $timeoutSeconds);
         } finally {
             @unlink($psFile);
             @unlink($tmp);
@@ -426,7 +591,7 @@ PS;
         }
 
         $json = json_decode($trimmed, true);
-        if (is_array($json) && (isset($json['vmId']) || isset($json['state']) || isset($json['error']) || isset($json['exists']) || isset($json['vms']))) {
+        if (is_array($json) && (isset($json['vmId']) || isset($json['state']) || isset($json['error']) || isset($json['exists']) || isset($json['vms']) || isset($json['name']) || isset($json['renamed']) || isset($json['ok']) || isset($json['verified']) || isset($json['guest']))) {
             return $json;
         }
 
@@ -531,11 +696,12 @@ PS;
     }
 
     /**
-     * Get-VM state for one VM by name. Graceful (no -Force anywhere).
+     * Get-VM state for one VM, resolved ID-first (GUID) with a name fallback
+     * so a VM renamed on the host no longer breaks the app.
      *
-     * @return array{exists:bool,state:string}|array{error:string}
+     * @return array{exists:bool,state:string,name:string,vmId:string}|array{error:string}
      */
-    public function getVmState(string $vmName): array
+    public function getVmState(string $vmName, ?string $vmId = null): array
     {
         $vmName = substr(trim($vmName), 0, 64);
 
@@ -543,11 +709,12 @@ PS;
             return ['error' => 'VM name is blank.'];
         }
 
+        $lookup = $this->vmLookup($vmName, $vmId);
+
         $ps = <<<PS
 \$ErrorActionPreference = 'Stop';
-\$vm = Get-VM -Name {$this->psName($vmName)} -ErrorAction SilentlyContinue;
-if (-not \$vm) { Write-Output (@{ exists = \$false } | ConvertTo-Json -Compress); exit 0 }
-Write-Output (@{ exists = \$true; name = \$vm.Name; state = \$vm.State.ToString(); vmId = \$vm.VMId.ToString() } | ConvertTo-Json -Compress);
+{$lookup}
+if (-not \$vm) { Write-Output (@{ exists = \$false } | ConvertTo-Json -Compress); return } else { Write-Output (@{ exists = \$true; name = \$vm.Name; state = \$vm.State.ToString(); vmId = \$vm.VMId.ToString() } | ConvertTo-Json -Compress); }
 PS;
 
         $result = $this->invokeRemote($ps);
@@ -563,7 +730,12 @@ PS;
         }
 
         if (isset($data['state']) || ($data['exists'] ?? null) === true) {
-            return ['exists' => true, 'state' => (string) ($data['state'] ?? 'Unknown')];
+            return [
+                'exists' => true,
+                'state' => (string) ($data['state'] ?? 'Unknown'),
+                'name' => (string) ($data['name'] ?? ''),
+                'vmId' => (string) ($data['vmId'] ?? ''),
+            ];
         }
 
         return ['error' => 'Host returned no VM state.'];
@@ -572,11 +744,11 @@ PS;
     /**
      * Start-VM (graceful). Idempotent: already-Running returns ok.
      *
-     * @return array{state:string,already:bool}|array{error:string}
+     * @return array{state:string,already:bool}|array{state:string,already:bool,name:string,vmId:string}|array{error:string}
      */
-    public function startVm(string $vmName): array
+    public function startVm(string $vmName, ?string $vmId = null): array
     {
-        $state = $this->getVmState($vmName);
+        $state = $this->getVmState($vmName, $vmId);
 
         if (isset($state['error'])) {
             return $state;
@@ -590,12 +762,19 @@ PS;
             return ['state' => $state['state'], 'already' => true];
         }
 
+        $lookup = $this->vmLookup($vmName, $vmId);
+        $missingError = $this->psName("VM '{$vmName}' does not exist on the host.");
+        $refresh = $this->vmRefresh($vmName, $vmId);
+
         $ps = <<<PS
 \$ErrorActionPreference = 'Stop';
-\$vm = Get-VM -Name {$this->psName($vmName)} -ErrorAction Stop;
+{$lookup}
+if (-not \$vm) { Write-Output (@{ error = {$missingError} } | ConvertTo-Json -Compress); return } else {
 Start-VM -VM \$vm -ErrorAction Stop;
-\$now = (Get-VM -Name {$this->psName($vmName)} -ErrorAction Stop).State.ToString();
-Write-Output (@{ state = \$now } | ConvertTo-Json -Compress);
+{$refresh}
+\$now = \$vm.State.ToString();
+Write-Output (@{ state = \$now; name = \$vm.Name; vmId = \$vm.VMId.ToString() } | ConvertTo-Json -Compress);
+}
 PS;
 
         $result = $this->invokeRemote($ps, 60);
@@ -604,7 +783,12 @@ PS;
             return $result;
         }
 
-        return ['state' => (string) ($result['data']['state'] ?? 'Running'), 'already' => false];
+        return [
+            'state' => (string) ($result['data']['state'] ?? 'Running'),
+            'already' => false,
+            'name' => (string) ($result['data']['name'] ?? $state['name'] ?? ''),
+            'vmId' => (string) ($result['data']['vmId'] ?? $state['vmId'] ?? $this->validGuid($vmId) ?? ''),
+        ];
     }
 
     /**
@@ -612,11 +796,11 @@ PS;
      * here: an unresponsive guest must be handled on the host, not by pulling
      * power from the billing panel. Idempotent when already Off/Saved.
      *
-     * @return array{state:string,already:bool}|array{error:string}
+     * @return array{state:string,already:bool}|array{state:string,already:bool,name:string,vmId:string}|array{error:string}
      */
-    public function stopVm(string $vmName): array
+    public function stopVm(string $vmName, ?string $vmId = null): array
     {
-        $state = $this->getVmState($vmName);
+        $state = $this->getVmState($vmName, $vmId);
 
         if (isset($state['error'])) {
             return $state;
@@ -630,12 +814,19 @@ PS;
             return ['state' => $state['state'], 'already' => true];
         }
 
+        $lookup = $this->vmLookup($vmName, $vmId);
+        $missingError = $this->psName("VM '{$vmName}' does not exist on the host.");
+        $refresh = $this->vmRefresh($vmName, $vmId);
+
         $ps = <<<PS
 \$ErrorActionPreference = 'Stop';
-\$vm = Get-VM -Name {$this->psName($vmName)} -ErrorAction Stop;
+{$lookup}
+if (-not \$vm) { Write-Output (@{ error = {$missingError} } | ConvertTo-Json -Compress); return } else {
 Stop-VM -VM \$vm -ErrorAction Stop;
-\$now = (Get-VM -Name {$this->psName($vmName)} -ErrorAction Stop).State.ToString();
-Write-Output (@{ state = \$now } | ConvertTo-Json -Compress);
+{$refresh}
+\$now = \$vm.State.ToString();
+Write-Output (@{ state = \$now; name = \$vm.Name; vmId = \$vm.VMId.ToString() } | ConvertTo-Json -Compress);
+}
 PS;
 
         $result = $this->invokeRemote($ps, 120);
@@ -644,18 +835,23 @@ PS;
             return $result;
         }
 
-        return ['state' => (string) ($result['data']['state'] ?? 'Off'), 'already' => false];
+        return [
+            'state' => (string) ($result['data']['state'] ?? 'Off'),
+            'already' => false,
+            'name' => (string) ($result['data']['name'] ?? $state['name'] ?? ''),
+            'vmId' => (string) ($result['data']['vmId'] ?? $state['vmId'] ?? $this->validGuid($vmId) ?? ''),
+        ];
     }
 
     /**
      * Restart-VM graceful (no -Force). Refuses when the VM is not Running so a
      * stopped machine can never be surprise-started by the reboot button.
      *
-     * @return array{state:string}|array{error:string}
+     * @return array{state:string}|array{state:string,name:string,vmId:string}|array{error:string}
      */
-    public function restartVm(string $vmName): array
+    public function restartVm(string $vmName, ?string $vmId = null): array
     {
-        $state = $this->getVmState($vmName);
+        $state = $this->getVmState($vmName, $vmId);
 
         if (isset($state['error'])) {
             return $state;
@@ -669,12 +865,19 @@ PS;
             return ['error' => "VM '{$vmName}' is {$state['state']}, not Running — start it instead of restarting."];
         }
 
+        $lookup = $this->vmLookup($vmName, $vmId);
+        $missingError = $this->psName("VM '{$vmName}' does not exist on the host.");
+        $refresh = $this->vmRefresh($vmName, $vmId);
+
         $ps = <<<PS
 \$ErrorActionPreference = 'Stop';
-\$vm = Get-VM -Name {$this->psName($vmName)} -ErrorAction Stop;
+{$lookup}
+if (-not \$vm) { Write-Output (@{ error = {$missingError} } | ConvertTo-Json -Compress); return } else {
 Restart-VM -VM \$vm -ErrorAction Stop;
-\$now = (Get-VM -Name {$this->psName($vmName)} -ErrorAction Stop).State.ToString();
-Write-Output (@{ state = \$now } | ConvertTo-Json -Compress);
+{$refresh}
+\$now = \$vm.State.ToString();
+Write-Output (@{ state = \$now; name = \$vm.Name; vmId = \$vm.VMId.ToString() } | ConvertTo-Json -Compress);
+}
 PS;
 
         $result = $this->invokeRemote($ps, 120);
@@ -683,7 +886,186 @@ PS;
             return $result;
         }
 
-        return ['state' => (string) ($result['data']['state'] ?? 'Running')];
+        return [
+            'state' => (string) ($result['data']['state'] ?? 'Running'),
+            'name' => (string) ($result['data']['name'] ?? $state['name'] ?? ''),
+            'vmId' => (string) ($result['data']['vmId'] ?? $state['vmId'] ?? $this->validGuid($vmId) ?? ''),
+        ];
+    }
+
+    /**
+     * Reset the Windows Administrator password inside the guest via PowerShell
+     * Direct (Invoke-Command -VMName). Hyper-V has no host-side API for guest
+     * passwords; PowerShell Direct requires the VM running and credentials
+     * valid inside the guest; failure is loud, never silent.
+     *
+     * @return array{ok:bool,vmName:string,state:string}|array{error:string}
+     */
+    public function resetGuestAdminPassword(string $vmName, ?string $vmId, string $username, string $currentPassword, string $newPassword): array
+    {
+        $vmName = substr(trim($vmName), 0, 64);
+        if ($vmName === '') {
+            return ['error' => 'VM name is blank.'];
+        }
+
+        $state = $this->getVmState($vmName, $vmId);
+        if (isset($state['error'])) {
+            return $state;
+        }
+        if (! ($state['exists'] ?? false)) {
+            return ['error' => "VM '{$vmName}' does not exist on the host."];
+        }
+        $currentState = (string) ($state['state'] ?? '');
+        if (strtolower($currentState) !== 'running') {
+            return ['error' => "VM '{$vmName}' is {$currentState}, not Running — start it before resetting the Administrator password."];
+        }
+
+        $userQ = self::psQuote($username);
+        $currentQ = self::psQuote($currentPassword);
+        $newQ = self::psQuote($newPassword);
+        $lookup = $this->vmLookup($vmName, $vmId);
+        $missingError = $this->psName("VM '{$vmName}' does not exist on the host.");
+
+        $ps = <<<PS
+\$ErrorActionPreference = 'Stop';
+{$lookup}
+if (-not \$vm) { Write-Output (@{ error = {$missingError} } | ConvertTo-Json -Compress); return } else {
+try {
+  \$secCurrent = ConvertTo-SecureString {$currentQ} -AsPlainText -Force;
+  \$cred = New-Object PSCredential({$userQ}, \$secCurrent);
+  Invoke-Command -VMName \$vm.Name -Credential \$cred -ErrorAction Stop -ScriptBlock { param(\$u,\$p) \$sec = ConvertTo-SecureString \$p -AsPlainText -Force; try { Set-LocalUser -Name \$u -Password \$sec -ErrorAction Stop } catch { net user \$u \$p | Out-Null; if (\$LASTEXITCODE -ne 0) { throw "net user failed (\$LASTEXITCODE)" } } } -ArgumentList {$userQ}, {$newQ}
+  Write-Output (@{ ok = \$true; vmName = \$vm.Name } | ConvertTo-Json -Compress);
+} catch {
+  \$msg = \$_.Exception.Message; if(\$_.ErrorDetails){ \$msg = \$_.ErrorDetails.Message + " " + \$msg }
+  Write-Output (@{ error = \$msg } | ConvertTo-Json -Compress);
+}
+}
+PS;
+
+        $result = $this->invokeRemote($ps, 300, true);
+
+        if (isset($result['error'])) {
+            return $result;
+        }
+
+        $data = $result['data'] ?? null;
+        if (is_array($data) && isset($data['error'])) {
+            return ['error' => $this->flattenError($data['error'])];
+        }
+        if (is_array($data) && ($data['ok'] ?? null) === true) {
+            return ['ok' => true, 'vmName' => (string) ($data['vmName'] ?? $vmName), 'state' => 'Running'];
+        }
+
+        return ['error' => $this->flattenError($data) ?: 'Host returned no data.'];
+    }
+
+    /**
+     * Read-only probe: verify that the recorded Administrator credentials
+     * actually authenticate inside the guest via PowerShell Direct
+     * (Invoke-Command -VMName). NOTHING is changed in the guest — the probe
+     * authenticates and reads one value back ($env:COMPUTERNAME).
+     *
+     * WHY the bounded retry loop: PowerShell Direct needs the guest booted
+     * with Hyper-V integration services up; the first boot of a cloned image
+     * (sysprep/OOBE) can take minutes, so an immediate single attempt would
+     * false-negative on a correct password. Failures stay warnings at the
+     * caller — this method only reports, never throws.
+     *
+     * @return array{verified:bool,guest:string,attempts:int}|array{error:string}
+     */
+    public function verifyGuestAdminCredentials(string $vmName, ?string $vmId, string $username, string $password, int $attempts = 12, int $delaySeconds = 15): array
+    {
+        $vmName = substr(trim($vmName), 0, 64);
+
+        if ($vmName === '') {
+            return ['error' => 'VM name is blank.'];
+        }
+
+        $attempts = max(1, min(60, $attempts));
+        $delaySeconds = max(0, min(60, $delaySeconds));
+
+        $state = $this->getVmState($vmName, $vmId);
+
+        if (isset($state['error'])) {
+            return $state;
+        }
+
+        if (! ($state['exists'] ?? false)) {
+            return ['error' => "VM '{$vmName}' does not exist on the host."];
+        }
+
+        $currentState = (string) ($state['state'] ?? '');
+
+        if (strtolower($currentState) !== 'running') {
+            return ['error' => "VM '{$vmName}' is {$currentState}, not Running — credentials can only be verified on a running guest."];
+        }
+
+        $userQ = self::psQuote($username);
+        $passQ = self::psQuote($password);
+        $lookup = $this->vmLookup($vmName, $vmId);
+        $missingError = $this->psName("VM '{$vmName}' does not exist on the host.");
+
+        $lastError = 'no reason given';
+
+        for ($attempt = 1; $attempt <= $attempts; $attempt++) {
+            if ($attempt > 1) {
+                $recheck = $this->getVmState($vmName, $vmId);
+
+                if (isset($recheck['error'])) {
+                    return $recheck;
+                }
+
+                if (! ($recheck['exists'] ?? false)) {
+                    return ['error' => "VM '{$vmName}' does not exist on the host."];
+                }
+
+                $reState = (string) ($recheck['state'] ?? '');
+
+                if (strtolower($reState) !== 'running') {
+                    return ['error' => "VM '{$vmName}' is {$reState}, not Running — credentials can only be verified on a running guest."];
+                }
+            }
+
+            $ps = <<<PS
+\$ErrorActionPreference = 'Stop';
+{$lookup}
+if (-not \$vm) { Write-Output (@{ error = {$missingError} } | ConvertTo-Json -Compress); return } else {
+try {
+  \$sec = ConvertTo-SecureString {$passQ} -AsPlainText -Force;
+  \$cred = New-Object PSCredential({$userQ}, \$sec);
+  \$out = Invoke-Command -VMName \$vm.Name -Credential \$cred -ErrorAction Stop -ScriptBlock { param(\$u) "\$env:COMPUTERNAME" } -ArgumentList {$userQ};
+  Write-Output (@{ verified = \$true; guest = [string]\$out } | ConvertTo-Json -Compress);
+} catch {
+  \$msg = \$_.Exception.Message; if(\$_.ErrorDetails){ \$msg = \$_.ErrorDetails.Message + " " + \$msg }
+  Write-Output (@{ error = \$msg } | ConvertTo-Json -Compress);
+}
+}
+PS;
+
+            $result = $this->invokeRemote($ps, 120, true);
+
+            if (isset($result['error'])) {
+                $lastError = (string) $result['error'];
+            } else {
+                $data = $result['data'] ?? null;
+
+                if (is_array($data) && ($data['verified'] ?? null) === true) {
+                    return ['verified' => true, 'guest' => (string) ($data['guest'] ?? ''), 'attempts' => $attempt];
+                }
+
+                if (is_array($data) && isset($data['error'])) {
+                    $lastError = $this->flattenError($data['error']);
+                } else {
+                    $lastError = $this->flattenError($data) ?: 'Host returned no data.';
+                }
+            }
+
+            if ($attempt < $attempts && $delaySeconds > 0) {
+                sleep($delaySeconds);
+            }
+        }
+
+        return ['error' => 'Administrator credentials did not authenticate: '.$lastError];
     }
 
     /**
@@ -693,11 +1075,11 @@ PS;
      * exact path recorded at creation, validated to a .vhd(s) file whose name
      * contains the VM name. Never globs a directory.
      *
-     * @return array{deletedVhd:bool}|array{error:string}
+     * @return array{deletedVhd:bool}|array{deletedVhd:bool,name:string,vmId:string}|array{error:string}
      */
-    public function removeVm(string $vmName, ?string $recordedVhdPath, bool $deleteVhd): array
+    public function removeVm(string $vmName, ?string $recordedVhdPath, bool $deleteVhd, ?string $vmId = null): array
     {
-        $state = $this->getVmState($vmName);
+        $state = $this->getVmState($vmName, $vmId);
 
         if (isset($state['error'])) {
             return $state;
@@ -734,10 +1116,12 @@ PS;
 
         $ps = <<<PS
 \$ErrorActionPreference = 'Stop';
-\$vm = Get-VM -Name {$this->psName($vmName)} -ErrorAction Stop;
+{$this->vmLookup($vmName, $vmId)}
+if (-not \$vm) { Write-Output (@{ error = {$this->psName("VM '{$vmName}' does not exist on the host — nothing to delete.")} } | ConvertTo-Json -Compress); return } else {
 Remove-VM -VM \$vm -Force -ErrorAction Stop;
 {$vhdBlock}
-Write-Output (@{ deletedVhd = \$deletedVhd } | ConvertTo-Json -Compress);
+Write-Output (@{ deletedVhd = \$deletedVhd; name = \$vm.Name; vmId = \$vm.VMId.ToString() } | ConvertTo-Json -Compress);
+}
 PS;
 
         $result = $this->invokeRemote($ps, 120);
@@ -746,13 +1130,139 @@ PS;
             return $result;
         }
 
-        return ['deletedVhd' => (bool) ($result['data']['deletedVhd'] ?? false)];
+        return [
+            'deletedVhd' => (bool) ($result['data']['deletedVhd'] ?? false),
+            'name' => (string) ($result['data']['name'] ?? $state['name'] ?? ''),
+            'vmId' => (string) ($result['data']['vmId'] ?? $state['vmId'] ?? $this->validGuid($vmId) ?? ''),
+        ];
+    }
+
+    /**
+     * Rename-VM, resolved ID-first so a stale recorded name still finds the VM.
+     * Refuses when another VM already uses the new name. The new name is
+     * sanitized exactly like cloneFromTemplate().
+     *
+     * @return array{name:string,vmId:string,renamed:bool}|array{error:string}
+     */
+    public function renameVm(string $vmName, string $newName, ?string $vmId = null): array
+    {
+        $vmName = substr(trim($vmName), 0, 64);
+
+        if ($vmName === '') {
+            return ['error' => 'VM name is blank.'];
+        }
+
+        $newName = preg_replace('/[^A-Za-z0-9_\-]/', '-', trim($newName)) ?? '';
+        $newName = substr($newName, 0, 64);
+
+        if ($newName === '') {
+            return ['error' => 'New VM name is blank.'];
+        }
+
+        $state = $this->getVmState($vmName, $vmId);
+
+        if (isset($state['error'])) {
+            return $state;
+        }
+
+        if (! $state['exists']) {
+            return ['error' => "VM '{$vmName}' does not exist on the host."];
+        }
+
+        $lookup = $this->vmLookup($vmName, $vmId);
+        $missingError = $this->psName("VM '{$vmName}' does not exist on the host.");
+        $newNameQ = $this->psName($newName);
+        $clashError = $this->psName("Another VM already uses the name '{$newName}'.");
+
+        $ps = <<<PS
+\$ErrorActionPreference = 'Stop';
+{$lookup}
+if (-not \$vm) { Write-Output (@{ error = {$missingError} } | ConvertTo-Json -Compress); return } else {
+\$newName = {$newNameQ};
+\$clash = Get-VM -Name \$newName -ErrorAction SilentlyContinue;
+if (\$clash -and \$clash.VMId.ToString() -ne \$vm.VMId.ToString()) { Write-Output (@{ error = {$clashError} } | ConvertTo-Json -Compress); return } else {
+Rename-VM -VM \$vm -NewName \$newName -ErrorAction Stop;
+\$renamed = Get-VM -Id \$vm.VMId -ErrorAction Stop;
+Write-Output (@{ name = \$renamed.Name; vmId = \$renamed.VMId.ToString(); renamed = \$true } | ConvertTo-Json -Compress);
+}}
+PS;
+
+        $result = $this->invokeRemote($ps, 60);
+
+        if (isset($result['error'])) {
+            return $result;
+        }
+
+        if (($result['data']['renamed'] ?? null) !== true && ! isset($result['data']['name'])) {
+            return ['error' => 'Host returned no rename result.'];
+        }
+
+        return [
+            'name' => (string) ($result['data']['name'] ?? $newName),
+            'vmId' => (string) ($result['data']['vmId'] ?? $state['vmId'] ?? $this->validGuid($vmId) ?? ''),
+            'renamed' => true,
+        ];
+    }
+
+    /**
+     * ID-first VM lookup shared by every VM-targeted script: resolve by GUID
+     * when one is recorded, fall back to the recorded name (which still covers
+     * every existing assertion on `Get-VM -Name`). A non-GUID id is ignored
+     * (name-only, current behavior).
+     */
+    private function vmLookup(string $vmName, ?string $vmId): string
+    {
+        $nameQ = $this->psName($vmName);
+        $guid = $this->validGuid($vmId);
+
+        if ($guid === null) {
+            return "\$vm = Get-VM -Name {$nameQ} -ErrorAction SilentlyContinue;";
+        }
+
+        $guidQ = self::psQuote($guid);
+
+        return "\$vm = \$null; if ({$guidQ} -ne '') { \$vm = Get-VM -Id {$guidQ} -ErrorAction SilentlyContinue }; if (-not \$vm) { \$vm = Get-VM -Name {$nameQ} -ErrorAction SilentlyContinue }";
+    }
+
+    /**
+     * Re-resolve $vm after a power verb so the emitted name/vmId are the
+     * host's ACTUAL values. ID-first when a GUID is recorded, plain
+     * name lookup otherwise (no Get-VM -Id in name-only scripts).
+     */
+    private function vmRefresh(string $vmName, ?string $vmId): string
+    {
+        $nameQ = $this->psName($vmName);
+
+        if ($this->validGuid($vmId) === null) {
+            return "\$vm = Get-VM -Name {$nameQ} -ErrorAction Stop;";
+        }
+
+        return "\$vm = Get-VM -Id \$vm.VMId -ErrorAction SilentlyContinue;\nif (-not \$vm) { \$vm = Get-VM -Name {$nameQ} -ErrorAction SilentlyContinue }";
+    }
+
+    /**
+     * Return the id only when it is a VM GUID; otherwise null (name-only).
+     */
+    private function validGuid(?string $vmId): ?string
+    {
+        if (! is_string($vmId)) {
+            return null;
+        }
+
+        $vmId = trim($vmId);
+
+        if (preg_match('/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/', $vmId) !== 1) {
+            return null;
+        }
+
+        return $vmId;
     }
 
     private function psName(string $value): string
     {
         return self::psQuote(substr($value, 0, 260));
     }
+
     public function createVm(string $vmName, int $cpu, int $ramMb, int $diskGb, string $switch, int $generation): array
     {
         if (! self::isConfigured($this->server)) {
@@ -760,13 +1270,6 @@ PS;
         }
 
         $host = $this->host();
-        $port = $this->port();
-        $useSsl = $this->useSsl($port);
-        $verifyTls = $this->verifyTls();
-        $username = trim((string) $this->server->api_username);
-        $password = $this->password();
-        $scheme = $useSsl ? 'https' : 'http';
-        $baseUrl = sprintf('%s://%s:%d/wsman', $scheme, $host, $port);
 
         // Sanitize VM name for PowerShell (allow A-Za-z0-9-_ only, fall back)
         $vmName = preg_replace('/[^A-Za-z0-9_\-]/', '-', $vmName) ?? $vmName;
@@ -782,7 +1285,7 @@ PS;
         // than raw WS-Management SOAP for New-VM. Falls back to HTTP SOAP on Linux.
         // Skipped under phpunit so tests pin the SOAP path via Http::fake().
         if ($this->windowsRemotingAvailable()) {
-            $winResult = $this->createVmViaPowerShell($host, $port, $username, $password, $vmName, $cpu, $ramBytes, $diskBytes, $switch, $generation, $useSsl);
+            $winResult = $this->createVmViaPowerShell($host, $vmName, $cpu, $ramBytes, $diskBytes, $switch, $generation);
             if ($winResult !== null) {
                 return $winResult;
             }
@@ -803,8 +1306,8 @@ try {
   \$existing = Get-VM -Name \$vmName -ErrorAction SilentlyContinue;
   if (\$existing) {
     \$out = @{ vmId = \$existing.VMId.ToString(); name = \$existing.Name; state = \$existing.State.ToString(); exists = \$true } | ConvertTo-Json -Compress;
-    Write-Output \$out; exit 0
-  }
+    Write-Output \$out;
+  } else {
   \$vhPath = (Get-VMHost).VirtualHardDiskPath; if (-not \$vhPath -or -not (Test-Path \$vhPath)) { \$vhPath = "C:\\VMs"; }
   if (-not (Test-Path \$vhPath)) { New-Item -ItemType Directory -Path \$vhPath -Force | Out-Null }
   \$vhdPath = Join-Path \$vhPath ("\$vmName.vhdx");
@@ -823,42 +1326,55 @@ try {
   \$swName = ""; if(\$sw){ \$swName = \$sw.Name }
   \$out = @{ vmId = \$created.VMId.ToString(); name = \$created.Name; state = \$created.State.ToString(); vhdPath = \$vhdPath; switchName = \$swName; generation = \$generation } | ConvertTo-Json -Compress;
   Write-Output \$out;
+  }
 } catch {
   \$msg = \$_.Exception.Message; if (\$_.ErrorDetails) { \$msg = \$_.ErrorDetails.Message + " " + \$msg }
-  Write-Output (@{ error = \$msg } | ConvertTo-Json -Compress); exit 1
+  Write-Output (@{ error = \$msg } | ConvertTo-Json -Compress); return
 }
 PS;
 
+        return $this->postVmScript($ps, 30, ['host' => $host, 'vmName' => $vmName, 'cpu' => $cpu, 'ramMb' => $ramMb, 'diskGb' => $diskGb], 'VM creation returned no data.');
+    }
+
+    /**
+     * POST a VM-creating PowerShell script via the WinRM SOAP shell and
+     * normalize the reply into the provider payload shape.
+     *
+     * Shared by createVm() and cloneViaSoap() so the HTTP post, failed()
+     * mapping, JSON extraction and vmId/error normalization stay identical.
+     * Emits the same shapes: ['external_id'=>..., 'ip'=>..., 'meta'=>...] on
+     * success, ['error'=>...] on failure (fail loud — empty / non-JSON body
+     * is NEVER success so billing never marks a phantom VM active).
+     *
+     * @param  array<string,mixed>  $extraMeta  merged into meta on success (host/vmName/cpu/ramMb/diskGb)
+     * @return array{external_id:string,ip:string|null,meta:array<string,mixed>}|array{error:string}
+     */
+    private function postVmScript(string $ps, int $timeoutSeconds, array $extraMeta, string $emptyErrorMessage): array
+    {
+        $conn = $this->connection();
+
+        if (isset($conn['error'])) {
+            return ['error' => $conn['error']];
+        }
+
         try {
-            $response = Http::withOptions(['verify' => $verifyTls])
-                ->timeout(30)
+            $response = Http::withOptions(['verify' => $conn['verifyTls']])
+                ->timeout($timeoutSeconds)
                 ->withHeaders([
                     'Content-Type' => 'application/soap+xml;charset=UTF-8',
                     'User-Agent' => 'ManageHosting-HyperVClient/1.0',
                 ])
-                ->withBasicAuth($username, $this->password())
+                ->withBasicAuth($conn['username'], $this->password())
                 ->withBody($this->invokeEnvelope($ps), 'application/soap+xml;charset=UTF-8')
-                ->post($baseUrl);
+                ->post($conn['baseUrl']);
 
             $body = (string) $response->body();
 
             if ($response->failed()) {
-                return ['error' => $this->httpErrorMessage($response->status(), $host, $port, $useSsl) . ' ' . $this->flattenError($body)];
+                return ['error' => $this->httpErrorMessage($response->status(), $conn['host'], $conn['port'], $conn['useSsl']).' '.$this->flattenError($body)];
             }
 
-            // Extract JSON from SOAP or plain JSON (Http::fake friendly)
-            $decoded = null;
-            $trimmed = trim($body);
-            if ($trimmed !== '') {
-                $json = json_decode($trimmed, true);
-                if (is_array($json) && (isset($json['vmId']) || isset($json['error']) || isset($json['exists']))) {
-                    $decoded = $json;
-                } elseif (str_contains($trimmed, '{')) {
-                    if (preg_match('/\{.*\}/s', $trimmed, $m) === 1) {
-                        $decoded = json_decode($m[0], true);
-                    }
-                }
-            }
+            $decoded = $this->extractJson($body);
 
             if (is_array($decoded) && isset($decoded['error'])) {
                 return ['error' => $this->flattenError($decoded['error'])];
@@ -875,15 +1391,15 @@ PS;
                 return [
                     'external_id' => $vmId,
                     'ip' => $this->server->ip_address,
-                    'meta' => array_merge($decoded, ['host'=>$host,'vmName'=>$vmName,'cpu'=>$cpu,'ramMb'=>$ramMb,'diskGb'=>$diskGb]),
+                    'meta' => array_merge($decoded, $extraMeta),
                 ];
             }
 
             // Empty / non-JSON body is NEVER success — fail loud so billing
             // never marks a phantom VM active.
-            return ['error' => $this->flattenError($body) ?: 'VM creation returned no data.'];
+            return ['error' => $this->flattenError($body) ?: $emptyErrorMessage];
         } catch (Throwable $e) {
-            return ['error' => $this->sanitizeMessage($e->getMessage(), $host, $port, $useSsl)];
+            return ['error' => $this->sanitizeMessage($e->getMessage(), $conn['host'], $conn['port'], $conn['useSsl'])];
         }
     }
 
@@ -893,131 +1409,87 @@ PS;
      * full New-VM pipeline. Returns decoded result array or null to fall back
      * to the raw WS-Management SOAP path.
      *
-     * @return array<string,mixed>|null  null = not on Windows or exec unavailable, fall back
+     * Refactored to use the shared runScriptViaPowerShell helper for the
+     * remoting preamble; the VM creation logic stays identical to the SOAP
+     * path to keep byte-compatibility for tests (New-VM + $vmName assignment).
+     *
+     * @return array<string,mixed>|null null = not on Windows or exec unavailable, fall back
      */
-    private function createVmViaPowerShell(string $host, int $port, string $username, string $password, string $vmName, int $cpu, int $ramBytes, int $diskBytes, string $switch, int $generation, bool $useSsl): ?array
+    private function createVmViaPowerShell(string $host, string $vmName, int $cpu, int $ramBytes, int $diskBytes, string $switch, int $generation): ?array
     {
-        if (PHP_OS_FAMILY !== 'Windows') {
+        if (PHP_OS_FAMILY !== 'Windows' || ! function_exists('exec')) {
             return null;
         }
 
-        if (!function_exists('exec')) {
-            return null;
-        }
+        $vmQ = self::psQuote($vmName);
+        $switchQ = self::psQuote(substr(trim($switch), 0, 128));
 
-        $hostEsc = str_replace("'", "''", $host);
-        $userEsc = str_replace("'", "''", $username);
-        $passEsc = str_replace("'", "''", $password);
-        $vmEsc = str_replace("'", "''", $vmName);
-        $switchEsc = str_replace("'", "''", $switch);
-        $portInt = (int) $port;
-        $useSslStr = $useSsl ? '$true' : '$false';
-
-        $ps = <<<PS
+        $innerPs = <<<PS
 \$ErrorActionPreference = 'Stop';
-\$hostName = '{$hostEsc}';
-\$port = {$portInt};
-\$user = '{$userEsc}';
-\$pass = '{$passEsc}';
-\$vmName = '{$vmEsc}';
+\$vmName = {$vmQ};
 \$cpu = {$cpu};
 \$ram = {$ramBytes};
 \$diskBytes = {$diskBytes};
 \$generation = {$generation};
-\$wantedSwitch = '{$switchEsc}';
-\$useSsl = {$useSslStr};
-\$sec = ConvertTo-SecureString \$pass -AsPlainText -Force;
-\$cred = New-Object PSCredential(\$user, \$sec);
-# ensure client allows unencrypted for 5985 lab
-try { Set-Item WSMan:\\localhost\\Client\\AllowUnencrypted -Value \$true -Force -ErrorAction SilentlyContinue } catch {}
-try { Set-Item WSMan:\\localhost\\Client\\Auth\\Basic -Value \$true -Force -ErrorAction SilentlyContinue } catch {}
-# ensure TrustedHosts
-try {
-  \$cur = (Get-Item WSMan:\\localhost\\Client\\TrustedHosts -ErrorAction SilentlyContinue).Value
-  if (-not \$cur -or \$cur -notlike "*\$hostName*") {
-    if (\$cur) { Set-Item WSMan:\\localhost\\Client\\TrustedHosts -Value "\$cur,\$hostName" -Force }
-    else { Set-Item WSMan:\\localhost\\Client\\TrustedHosts -Value \$hostName -Force }
-  }
-} catch {}
-\$so = New-PSSessionOption -SkipCACheck -SkipCNCheck -SkipRevocationCheck;
-\$sess = \$null;
-try {
-  \$sessParams = @{ ComputerName=\$hostName; Credential=\$cred; Port=\$port; SessionOption=\$so; Authentication='Basic'; ErrorAction='Stop' };
-  if (\$useSsl) { \$sessParams.UseSSL = \$true }
-  \$sess = New-PSSession @sessParams;
-} catch {
-  \$msg = \$_.Exception.Message; if(\$_.ErrorDetails){ \$msg = \$_.ErrorDetails.Message + " " + \$msg }
-  Write-Output (@{ error = \$msg } | ConvertTo-Json -Compress); exit 1
+\$wantedSwitch = {$switchQ};
+\$existing = Get-VM -Name \$vmName -ErrorAction SilentlyContinue;
+if(\$existing){
+  \$out = @{ vmId=\$existing.VMId.ToString(); name=\$existing.Name; state=\$existing.State.ToString(); exists=\$true } | ConvertTo-Json -Compress;
+  Write-Output \$out; return
 }
-try {
-  \$sb = {
-    param(\$vmName,\$cpu,\$ram,\$diskBytes,\$generation,\$wantedSwitch)
-    \$ErrorActionPreference='Stop';
-    \$existing = Get-VM -Name \$vmName -ErrorAction SilentlyContinue;
-    if(\$existing){
-      \$out = @{ vmId=\$existing.VMId.ToString(); name=\$existing.Name; state=\$existing.State.ToString(); exists=\$true } | ConvertTo-Json -Compress;
-      Write-Output \$out; return
-    }
-    \$vhPath = (Get-VMHost).VirtualHardDiskPath; if(-not \$vhPath -or -not (Test-Path \$vhPath)){ \$vhPath = "C:\\VMs"; }
-    if(-not (Test-Path \$vhPath)){ New-Item -ItemType Directory -Path \$vhPath -Force | Out-Null }
-    \$vhdPath = Join-Path \$vhPath ("\$vmName.vhdx");
-    \$sw = \$null; if(\$wantedSwitch){ \$sw = Get-VMSwitch -Name \$wantedSwitch -ErrorAction SilentlyContinue }
-    if(-not \$sw){ \$sw = Get-VMSwitch | Select-Object -First 1 }
-    \$vmParams = @{ Name=\$vmName; MemoryStartupBytes=\$ram; Generation=\$generation; NoVHD=\$true }
-    if(\$sw){ \$vmParams.SwitchName = \$sw.Name }
-    \$vm = New-VM @vmParams -ErrorAction Stop;
-    Set-VM -Name \$vmName -ProcessorCount \$cpu -ErrorAction Stop | Out-Null;
-    try { Set-VMMemory -VMName \$vmName -DynamicMemoryEnabled \$true -MinimumBytes 512MB -StartupBytes \$ram -MaximumBytes \$ram | Out-Null } catch {}
-    if(-not (Test-Path \$vhdPath)){ New-VHD -Path \$vhdPath -SizeBytes \$diskBytes -Dynamic -ErrorAction Stop | Out-Null }
-    Add-VMHardDiskDrive -VMName \$vmName -Path \$vhdPath -ErrorAction Stop | Out-Null;
-    \$created = Get-VM -Name \$vmName;
-    \$swName = ""; if(\$sw){ \$swName = \$sw.Name }
-    \$out = @{ vmId=\$created.VMId.ToString(); name=\$created.Name; state=\$created.State.ToString(); vhdPath=\$vhdPath; switchName=\$swName; generation=\$generation } | ConvertTo-Json -Compress;
-    Write-Output \$out;
-  }
-  \$out = Invoke-Command -Session \$sess -ScriptBlock \$sb -ArgumentList \$vmName,\$cpu,\$ram,\$diskBytes,\$generation,\$wantedSwitch -ErrorAction Stop;
-  Write-Output \$out;
-} catch {
-  \$msg = \$_.Exception.Message; if(\$_.ErrorDetails){ \$msg = \$_.ErrorDetails.Message + " " + \$msg }
-  Write-Output (@{ error = \$msg } | ConvertTo-Json -Compress);
-} finally {
-  if(\$sess){ Remove-PSSession \$sess -ErrorAction SilentlyContinue }
-}
+\$vhPath = (Get-VMHost).VirtualHardDiskPath; if(-not \$vhPath -or -not (Test-Path \$vhPath)){ \$vhPath = "C:\\VMs"; }
+if(-not (Test-Path \$vhPath)){ New-Item -ItemType Directory -Path \$vhPath -Force | Out-Null }
+\$vhdPath = Join-Path \$vhPath ("\$vmName.vhdx");
+\$sw = \$null; if(\$wantedSwitch){ \$sw = Get-VMSwitch -Name \$wantedSwitch -ErrorAction SilentlyContinue }
+if(-not \$sw){ \$sw = Get-VMSwitch | Select-Object -First 1 }
+\$vmParams = @{ Name=\$vmName; MemoryStartupBytes=\$ram; Generation=\$generation; NoVHD=\$true }
+if(\$sw){ \$vmParams.SwitchName = \$sw.Name }
+\$vm = New-VM @vmParams -ErrorAction Stop;
+Set-VM -Name \$vmName -ProcessorCount \$cpu -ErrorAction Stop | Out-Null;
+try { Set-VMMemory -VMName \$vmName -DynamicMemoryEnabled \$true -MinimumBytes 512MB -StartupBytes \$ram -MaximumBytes \$ram | Out-Null } catch {}
+if(-not (Test-Path \$vhdPath)){ New-VHD -Path \$vhdPath -SizeBytes \$diskBytes -Dynamic -ErrorAction Stop | Out-Null }
+Add-VMHardDiskDrive -VMName \$vmName -Path \$vhdPath -ErrorAction Stop | Out-Null;
+\$created = Get-VM -Name \$vmName;
+\$swName = ""; if(\$sw){ \$swName = \$sw.Name }
+\$out = @{ vmId=\$created.VMId.ToString(); name=\$created.Name; state=\$created.State.ToString(); vhdPath=\$vhdPath; switchName=\$swName; generation=\$generation } | ConvertTo-Json -Compress;
+Write-Output \$out;
 PS;
-        $tmp = tempnam(sys_get_temp_dir(), 'hv_vm_');
-        if ($tmp === false) {
-            return null;
-        }
-        $psFile = $tmp . '.ps1';
-        @rename($tmp, $psFile);
-        file_put_contents($psFile, $ps);
-        $cmd = 'powershell -NoProfile -ExecutionPolicy Bypass -File "' . str_replace('"', '""', $psFile) . '" 2>&1';
-        $outLines = [];
-        $ret = 0;
-        @exec($cmd, $outLines, $ret);
-        @unlink($psFile);
-        @unlink($tmp);
 
-        $out = trim(implode("\n", $outLines));
-        if ($out === '') {
+        $result = $this->runScriptViaPowerShell($innerPs);
+
+        if ($result === null) {
             return null;
         }
 
-        // Extract JSON (last line may be JSON)
-        $decoded = null;
-        $trimmed = trim($out);
-        $json = json_decode($trimmed, true);
-        if (is_array($json) && (isset($json['vmId']) || isset($json['error']) || isset($json['exists']))) {
-            $decoded = $json;
-        } elseif (preg_match('/\{.*\}/s', $trimmed, $m) === 1) {
-            $decoded = json_decode($m[0], true);
+        if (isset($result['error'])) {
+            return $result;
         }
 
-        if (is_array($decoded) && isset($decoded['error'])) {
+        $decoded = $result['data'] ?? null;
+
+        if (! is_array($decoded) || (! isset($decoded['vmId']) && ! isset($decoded['name']) && ! isset($decoded['exists']))) {
+            return ['error' => 'PowerShell VM creation returned no data.'];
+        }
+
+        if (isset($decoded['error'])) {
             return ['error' => $this->flattenError($decoded['error'])];
         }
 
-        if (is_array($decoded) && (isset($decoded['vmId']) || isset($decoded['name']))) {
+        // Idempotent path: existing VM returns exists=true
+        if (($decoded['exists'] ?? null) === true && isset($decoded['vmId'])) {
+            $vmId = (string) ($decoded['vmId'] ?? '');
+            if ($vmId === '') {
+                return ['error' => 'Host created no VM id — VM not created.'];
+            }
+
+            return [
+                'external_id' => $vmId,
+                'ip' => $this->server->ip_address,
+                'meta' => array_merge($decoded, ['host' => $host, 'vmName' => $vmName, 'cpu' => $cpu, 'ramMb' => (int) ($ramBytes / 1024 / 1024), 'diskGb' => (int) ($diskBytes / 1024 / 1024 / 1024), 'via' => 'powershell']),
+            ];
+        }
+
+        if (isset($decoded['vmId']) || isset($decoded['name'])) {
             $vmId = (string) ($decoded['vmId'] ?? '');
 
             if ($vmId === '') {
@@ -1027,36 +1499,334 @@ PS;
             return [
                 'external_id' => $vmId,
                 'ip' => $this->server->ip_address,
-                'meta' => array_merge($decoded, ['host'=>$host,'vmName'=>$vmName,'cpu'=>$cpu,'ramMb'=>(int)($ramBytes/1024/1024),'diskGb'=>(int)($diskBytes/1024/1024/1024),'via'=>'powershell']),
+                'meta' => array_merge($decoded, ['host' => $host, 'vmName' => $vmName, 'cpu' => $cpu, 'ramMb' => (int) ($ramBytes / 1024 / 1024), 'diskGb' => (int) ($diskBytes / 1024 / 1024 / 1024), 'via' => 'powershell']),
             ];
         }
 
-        // If output contains no JSON but ret ==0, treat as logical success
-        if ($ret === 0 && $this->looksLikeWsManSuccess($out)) {
-            // Try to see if VM now exists via a second check? For now return logical
-            return null; // fall back to SOAP path
-        }
-
-        return ['error' => $this->flattenError($out) ?: 'PowerShell VM creation returned no data.'];
+        return ['error' => $this->flattenError(json_encode($decoded)) ?: 'PowerShell VM creation returned no data.'];
     }
 
-     /**
-      * Fetch rich host inventory via a single WinRM command.
-      *
-      * Sends one PowerShell snippet that gathers Get-VMHost, the host OS
-      * (Win32_OperatingSystem), CPU load (Win32_Processor), VM state counts
-      * (Get-VM), virtual switches (Get-VMSwitch) and filesystem volumes
-      * (Get-PSDrive), then emits a single object via ConvertTo-Json -Compress.
-      * Keys emitted: vmHost/hostOS/hypervVersion/logicalCpu/ramTotal/ramFree/
-      * vms/switches/storageFree plus uptime/bootTime, per-drive storage
-      * totals/used (storageTotal/storageUsed/volumes[]), osBuild and
-      * cpuLoadPercent.
-      *
-      * The live WinRM SOAP reply embeds that JSON as command output text, so
-      * parseInfoBody() can extract the {...} fragment. On parse failure
-      * returns null so testConnection can still succeed with just the
-      * Test-WSMan proof (degraded mode).
-      */
+    /**
+     * Clone a VM from a template VM (gold image) on the Hyper-V host.
+     *
+     * Mirrors createVm structure, sanitization/clamping, idempotency, error
+     * shape and transport strategy. Generation follows the TEMPLATE; the plan's
+     * generation config is ignored when a template is used.
+     *
+     * @return array{external_id:string,ip:string|null,meta:array<string,mixed>}|array{error:string}
+     */
+    public function cloneFromTemplate(string $vmName, string $templateName, int $cpu, int $ramMb, int $diskGb, string $switch): array
+    {
+        if (! self::isConfigured($this->server)) {
+            return ['error' => 'Hyper-V server is not configured: set host, port, username and password.'];
+        }
+
+        $host = $this->host();
+        $port = $this->port();
+        $useSsl = $this->useSsl($port);
+        $verifyTls = $this->verifyTls();
+
+        $vmName = preg_replace('/[^A-Za-z0-9_\-]/', '-', $vmName) ?? $vmName;
+        $vmName = substr($vmName, 0, 64);
+        $templateName = trim($templateName);
+        if ($vmName === '' || $templateName === '') {
+            return ['error' => $templateName === '' ? 'Template VM name is blank.' : 'VM name is blank.'];
+        }
+        $cpu = max(1, min(32, $cpu));
+        $ramMb = max(512, min(65536, $ramMb));
+        $diskGb = max(10, min(2000, $diskGb));
+        $ramBytes = $ramMb * 1024 * 1024;
+        $diskBytes = $diskGb * 1024 * 1024 * 1024;
+
+        if ($this->windowsRemotingAvailable()) {
+            $native = $this->cloneVmViaPowerShell($host, $vmName, $templateName, $cpu, $ramBytes, $diskBytes, $switch);
+            if ($native !== null) {
+                return $native;
+            }
+        }
+
+        // SOAP path — sequential checks with long timeout for the copy.
+        return $this->cloneViaSoap($host, $port, $useSsl, $verifyTls, $vmName, $templateName, $cpu, $ramBytes, $diskBytes, $diskGb, $ramMb, $switch);
+    }
+
+    /**
+     * SOAP transport for cloneFromTemplate — sequential fail-loud checks.
+     *
+     * @return array<string,mixed>
+     */
+    private function cloneViaSoap(string $host, int $port, bool $useSsl, bool $verifyTls, string $vmName, string $templateName, int $cpu, int $ramBytes, int $diskBytes, int $diskGb, int $ramMb, string $switch): array
+    {
+        $switchQuoted = self::psQuote(substr(trim($switch), 0, 128));
+        $vmNameQ = $this->psName($vmName);
+        $templateQ = $this->psName($templateName);
+
+        // 1) Idempotency: new VM already exists?
+        $psExists = <<<PS
+\$ErrorActionPreference = 'Stop';
+\$vmName = {$vmNameQ};
+try {
+  \$existing = Get-VM -Name \$vmName -ErrorAction SilentlyContinue;
+  if (\$existing) {
+    \$out = @{ vmId = \$existing.VMId.ToString(); name = \$existing.Name; state = \$existing.State.ToString(); exists = \$true } | ConvertTo-Json -Compress;
+    Write-Output \$out;
+  } else {
+  Write-Output (@{ exists = \$false } | ConvertTo-Json -Compress);
+  }
+} catch {
+  \$msg = \$_.Exception.Message; if (\$_.ErrorDetails) { \$msg = \$_.ErrorDetails.Message + " " + \$msg }
+  Write-Output (@{ error = \$msg } | ConvertTo-Json -Compress); return
+}
+PS;
+        $existsResult = $this->runScript($psExists, 30);
+        if (isset($existsResult['error'])) {
+            return ['error' => $existsResult['error']];
+        }
+        $existsData = $existsResult['data'] ?? null;
+        if (is_array($existsData) && ($existsData['exists'] ?? null) === true) {
+            $vmId = (string) ($existsData['vmId'] ?? '');
+            if ($vmId === '') {
+                return ['error' => 'Host returned no VM id.'];
+            }
+
+            return [
+                'external_id' => $vmId,
+                'ip' => $this->server->ip_address,
+                'meta' => array_merge($existsData, ['host' => $host, 'vmName' => $vmName, 'cpu' => $cpu, 'ramMb' => $ramMb, 'diskGb' => $diskGb, 'templateVm' => $templateName]),
+            ];
+        }
+
+        // 2) Template probe: existence, state, generation, disk path, source file existence
+        $psTemplate = <<<PS
+\$ErrorActionPreference = 'Stop';
+\$templateName = {$templateQ};
+try {
+  \$tmpl = Get-VM -Name \$templateName -ErrorAction SilentlyContinue;
+  if (-not \$tmpl) { Write-Output (@{ error = "Template VM '\$templateName' not found." } | ConvertTo-Json -Compress); return }
+  if (\$tmpl.State.ToString() -eq 'Running') { Write-Output (@{ error = "Template VM '\$templateName' is Running - shut it down first." } | ConvertTo-Json -Compress); return }
+  \$generation = \$tmpl.Generation
+  \$sourceVhd = [string]((Get-VMHardDiskDrive -VMName \$templateName -ErrorAction SilentlyContinue | Select-Object -First 1).Path)
+  if (-not \$sourceVhd) { Write-Output (@{ error = "Template VM '\$templateName' has no disk." } | ConvertTo-Json -Compress); return }
+  if (-not (Test-Path \$sourceVhd)) { Write-Output (@{ error = "Source disk file '\$sourceVhd' missing on host." } | ConvertTo-Json -Compress); return }
+  \$out = @{ generation = \$generation; sourceVhd = \$sourceVhd } | ConvertTo-Json -Compress;
+  Write-Output \$out;
+} catch {
+  \$msg = \$_.Exception.Message; if (\$_.ErrorDetails) { \$msg = \$_.ErrorDetails.Message + " " + \$msg }
+  Write-Output (@{ error = \$msg } | ConvertTo-Json -Compress); return
+}
+PS;
+        $tmplResult = $this->runScript($psTemplate, 30);
+        if (isset($tmplResult['error'])) {
+            return ['error' => $tmplResult['error']];
+        }
+        $tmplData = $tmplResult['data'] ?? null;
+        if (! is_array($tmplData) || ! isset($tmplData['sourceVhd']) || ! isset($tmplData['generation'])) {
+            $maybeError = is_array($tmplData) && isset($tmplData['error']) ? $this->flattenError($tmplData['error']) : null;
+            if ($maybeError !== null) {
+                return ['error' => $maybeError];
+            }
+
+            return ['error' => 'Template probe returned no data.'];
+        }
+        $generation = (int) $tmplData['generation'];
+        $generation = $generation === 1 ? 1 : 2;
+        $sourceVhd = (string) $tmplData['sourceVhd'];
+
+        // 3) Destination must not exist
+        $psDest = <<<PS
+\$ErrorActionPreference = 'Stop';
+\$vmName = {$vmNameQ};
+try {
+  \$vhPath = (Get-VMHost).VirtualHardDiskPath; if (-not \$vhPath -or -not (Test-Path \$vhPath)) { \$vhPath = "C:\\VMs"; }
+  \$vhdPath = Join-Path \$vhPath ("\$vmName.vhdx");
+  if (Test-Path \$vhdPath) { Write-Output (@{ error = "Destination disk already exists: \$vhdPath" } | ConvertTo-Json -Compress); return }
+  Write-Output (@{ vhdPath = \$vhdPath } | ConvertTo-Json -Compress);
+} catch {
+  \$msg = \$_.Exception.Message; if (\$_.ErrorDetails) { \$msg = \$_.ErrorDetails.Message + " " + \$msg }
+  Write-Output (@{ error = \$msg } | ConvertTo-Json -Compress); return
+}
+PS;
+        $destResult = $this->runScript($psDest, 30);
+        if (isset($destResult['error'])) {
+            return ['error' => $destResult['error']];
+        }
+        $destData = $destResult['data'] ?? null;
+        if (is_array($destData) && isset($destData['error'])) {
+            return ['error' => $this->flattenError($destData['error'])];
+        }
+        if (! is_array($destData) || ! isset($destData['vhdPath'])) {
+            return ['error' => 'Destination check returned no data.'];
+        }
+
+        // 4) Final copy + New-VM with LONG timeout (1800s)
+        $sourceVhdQ = self::psQuote($sourceVhd);
+        // Use literal generation from template probe so script contains `$generation = 1` when appropriate
+        $psClone = <<<PS
+\$ErrorActionPreference = 'Stop';
+\$vmName = {$vmNameQ};
+\$templateName = {$templateQ};
+\$cpu = {$cpu};
+\$ram = {$ramBytes};
+\$diskBytes = {$diskBytes};
+\$generation = {$generation};
+\$wantedSwitch = {$switchQuoted};
+\$sourceVhd = {$sourceVhdQ};
+try {
+  \$vhPath = (Get-VMHost).VirtualHardDiskPath; if (-not \$vhPath -or -not (Test-Path \$vhPath)) { \$vhPath = "C:\\VMs"; }
+  if (-not (Test-Path \$vhPath)) { New-Item -ItemType Directory -Path \$vhPath -Force | Out-Null }
+  \$vhdPath = Join-Path \$vhPath ("\$vmName.vhdx");
+  if (Test-Path \$vhdPath) { throw "Destination disk already exists: \$vhdPath" }
+  Copy-Item -LiteralPath \$sourceVhd -Destination \$vhdPath -ErrorAction Stop
+  \$currentSize = (Get-VHD -Path \$vhdPath -ErrorAction Stop).Size
+  if (\$diskBytes -gt \$currentSize) { Resize-VHD -Path \$vhdPath -SizeBytes \$diskBytes -ErrorAction Stop }
+  \$sw = \$null; if (\$wantedSwitch) { \$sw = Get-VMSwitch -Name \$wantedSwitch -ErrorAction SilentlyContinue }
+  if (-not \$sw) { \$sw = Get-VMSwitch | Select-Object -First 1 }
+  \$vmParams = @{ Name=\$vmName; MemoryStartupBytes=\$ram; Generation=\$generation; NoVHD=\$true }
+  if (\$sw) { \$vmParams.SwitchName = \$sw.Name }
+  \$vm = New-VM @vmParams -ErrorAction Stop;
+  Set-VM -Name \$vmName -ProcessorCount \$cpu -ErrorAction Stop | Out-Null;
+  try { Set-VMMemory -VMName \$vmName -DynamicMemoryEnabled \$true -MinimumBytes 512MB -StartupBytes \$ram -MaximumBytes \$ram | Out-Null } catch {}
+  Add-VMHardDiskDrive -VMName \$vmName -Path \$vhdPath -ErrorAction Stop | Out-Null;
+  \$created = Get-VM -Name \$vmName;
+  \$swName = ""; if(\$sw){ \$swName = \$sw.Name }
+  \$out = @{ vmId = \$created.VMId.ToString(); name = \$created.Name; state = \$created.State.ToString(); vhdPath = \$vhdPath; switchName = \$swName; generation = \$generation; cloned = \$true; templateVm = \$templateName } | ConvertTo-Json -Compress;
+  Write-Output \$out;
+} catch {
+  \$msg = \$_.Exception.Message; if (\$_.ErrorDetails) { \$msg = \$_.ErrorDetails.Message + " " + \$msg }
+  Write-Output (@{ error = \$msg } | ConvertTo-Json -Compress); return
+}
+PS;
+
+        return $this->postVmScript($psClone, 1800, ['host' => $host, 'vmName' => $vmName, 'cpu' => $cpu, 'ramMb' => $ramMb, 'diskGb' => $diskGb], 'VM clone returned no data.');
+    }
+
+    /**
+     * Native PowerShell path for cloneFromTemplate (Windows host).
+     *
+     * @return array<string,mixed>|null
+     */
+    private function cloneVmViaPowerShell(string $host, string $vmName, string $templateName, int $cpu, int $ramBytes, int $diskBytes, string $switch): ?array
+    {
+        if (PHP_OS_FAMILY !== 'Windows' || ! function_exists('exec')) {
+            return null;
+        }
+
+        $vmQ = self::psQuote($vmName);
+        $templateQ = self::psQuote($templateName);
+        $switchQ = self::psQuote(substr(trim($switch), 0, 128));
+
+        // Single-script clone for native path (long timeout)
+        $innerPs = <<<PS
+\$ErrorActionPreference = 'Stop';
+\$vmName = {$vmQ};
+\$templateName = {$templateQ};
+\$cpu = {$cpu};
+\$ram = {$ramBytes};
+\$diskBytes = {$diskBytes};
+\$wantedSwitch = {$switchQ};
+try {
+  \$existing = Get-VM -Name \$vmName -ErrorAction SilentlyContinue;
+  if (\$existing) {
+    \$out = @{ vmId = \$existing.VMId.ToString(); name = \$existing.Name; state = \$existing.State.ToString(); exists = \$true } | ConvertTo-Json -Compress;
+    Write-Output \$out; return
+  }
+  \$tmpl = Get-VM -Name \$templateName -ErrorAction SilentlyContinue;
+  if (-not \$tmpl) { Write-Output (@{ error = "Template VM '\$templateName' not found." } | ConvertTo-Json -Compress); return }
+  if (\$tmpl.State.ToString() -eq 'Running') { Write-Output (@{ error = "Template VM '\$templateName' is Running - shut it down first." } | ConvertTo-Json -Compress); return }
+  \$generation = \$tmpl.Generation
+  \$sourceVhd = [string]((Get-VMHardDiskDrive -VMName \$templateName -ErrorAction SilentlyContinue | Select-Object -First 1).Path)
+  if (-not \$sourceVhd) { Write-Output (@{ error = "Template VM '\$templateName' has no disk." } | ConvertTo-Json -Compress); return }
+  if (-not (Test-Path \$sourceVhd)) { Write-Output (@{ error = "Source disk file '\$sourceVhd' missing on host." } | ConvertTo-Json -Compress); return }
+  \$vhPath = (Get-VMHost).VirtualHardDiskPath; if (-not \$vhPath -or -not (Test-Path \$vhPath)) { \$vhPath = "C:\\VMs"; }
+  if (-not (Test-Path \$vhPath)) { New-Item -ItemType Directory -Path \$vhPath -Force | Out-Null }
+  \$vhdPath = Join-Path \$vhPath ("\$vmName.vhdx");
+  if (Test-Path \$vhdPath) { Write-Output (@{ error = "Destination disk already exists: \$vhdPath" } | ConvertTo-Json -Compress); return }
+  Copy-Item -LiteralPath \$sourceVhd -Destination \$vhdPath -ErrorAction Stop
+  \$currentSize = (Get-VHD -Path \$vhdPath -ErrorAction Stop).Size
+  if (\$diskBytes -gt \$currentSize) { Resize-VHD -Path \$vhdPath -SizeBytes \$diskBytes -ErrorAction Stop }
+  \$sw = \$null; if (\$wantedSwitch) { \$sw = Get-VMSwitch -Name \$wantedSwitch -ErrorAction SilentlyContinue }
+  if (-not \$sw) { \$sw = Get-VMSwitch | Select-Object -First 1 }
+  \$vmParams = @{ Name=\$vmName; MemoryStartupBytes=\$ram; Generation=\$generation; NoVHD=\$true }
+  if (\$sw) { \$vmParams.SwitchName = \$sw.Name }
+  \$vm = New-VM @vmParams -ErrorAction Stop;
+  Set-VM -Name \$vmName -ProcessorCount \$cpu -ErrorAction Stop | Out-Null;
+  try { Set-VMMemory -VMName \$vmName -DynamicMemoryEnabled \$true -MinimumBytes 512MB -StartupBytes \$ram -MaximumBytes \$ram | Out-Null } catch {}
+  Add-VMHardDiskDrive -VMName \$vmName -Path \$vhdPath -ErrorAction Stop | Out-Null;
+  \$created = Get-VM -Name \$vmName;
+  \$swName = ""; if(\$sw){ \$swName = \$sw.Name }
+  \$out = @{ vmId = \$created.VMId.ToString(); name = \$created.Name; state = \$created.State.ToString(); vhdPath = \$vhdPath; switchName = \$swName; generation = \$generation; cloned = \$true; templateVm = \$templateName } | ConvertTo-Json -Compress;
+  Write-Output \$out;
+} catch {
+  \$msg = \$_.Exception.Message; if (\$_.ErrorDetails) { \$msg = \$_.ErrorDetails.Message + " " + \$msg }
+  Write-Output (@{ error = \$msg } | ConvertTo-Json -Compress);
+}
+PS;
+
+        $result = $this->runScriptViaPowerShell($innerPs);
+
+        if ($result === null) {
+            return null;
+        }
+
+        if (isset($result['error'])) {
+            return $result;
+        }
+
+        $decoded = $result['data'] ?? null;
+
+        if (! is_array($decoded)) {
+            return ['error' => 'PowerShell VM clone returned no data.'];
+        }
+
+        if (isset($decoded['error'])) {
+            return ['error' => $this->flattenError($decoded['error'])];
+        }
+
+        if (($decoded['exists'] ?? null) === true && isset($decoded['vmId'])) {
+            $vmId = (string) ($decoded['vmId'] ?? '');
+            if ($vmId === '') {
+                return ['error' => 'Host created no VM id — VM not created.'];
+            }
+
+            return [
+                'external_id' => $vmId,
+                'ip' => $this->server->ip_address,
+                'meta' => array_merge($decoded, ['host' => $host, 'vmName' => $vmName, 'cpu' => $cpu, 'ramMb' => (int) ($ramBytes / 1024 / 1024), 'diskGb' => (int) ($diskBytes / 1024 / 1024 / 1024), 'templateVm' => $templateName, 'via' => 'powershell']),
+            ];
+        }
+
+        if (isset($decoded['vmId']) || isset($decoded['name'])) {
+            $vmId = (string) ($decoded['vmId'] ?? '');
+            if ($vmId === '') {
+                return ['error' => 'Host created no VM id — VM not created.'];
+            }
+
+            return [
+                'external_id' => $vmId,
+                'ip' => $this->server->ip_address,
+                'meta' => array_merge($decoded, ['host' => $host, 'vmName' => $vmName, 'cpu' => $cpu, 'ramMb' => (int) ($ramBytes / 1024 / 1024), 'diskGb' => (int) ($diskBytes / 1024 / 1024 / 1024), 'via' => 'powershell']),
+            ];
+        }
+
+        return ['error' => $this->flattenError(json_encode($decoded)) ?: 'PowerShell VM clone returned no data.'];
+    }
+
+    /**
+     * Fetch rich host inventory via a single WinRM command.
+     *
+     * Sends one PowerShell snippet that gathers Get-VMHost, the host OS
+     * (Win32_OperatingSystem), CPU load (Win32_Processor), VM state counts
+     * (Get-VM), virtual switches (Get-VMSwitch) and filesystem volumes
+     * (Get-PSDrive), then emits a single object via ConvertTo-Json -Compress.
+     * Keys emitted: vmHost/hostOS/hypervVersion/logicalCpu/ramTotal/ramFree/
+     * vms/switches/storageFree plus uptime/bootTime, per-drive storage
+     * totals/used (storageTotal/storageUsed/volumes[]), osBuild and
+     * cpuLoadPercent.
+     *
+     * The live WinRM SOAP reply embeds that JSON as command output text, so
+     * parseInfoBody() can extract the {...} fragment. On parse failure
+     * returns null so testConnection can still succeed with just the
+     * Test-WSMan proof (degraded mode).
+     */
     private function fetchInfo(string $baseUrl, string $username, bool $verifyTls, string $host, int $port, bool $useSsl): ?ServerInfoDTO
     {
         try {

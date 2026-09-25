@@ -851,6 +851,11 @@ class ServerController extends Controller
     {
         $validated = $request->validate($this->rules($registry, $request->input('server_type')));
 
+        // Empty curated list UX: multi-select sends nothing when empty; JS injects sentinel.
+        if ($request->has('template_vms_empty_sentinel') && ! array_key_exists('template_vms', $validated)) {
+            $validated['template_vms'] = [];
+        }
+
         $serverType = (string) $validated['server_type'];
 
         // Server group compatibility
@@ -984,6 +989,11 @@ class ServerController extends Controller
         $rules['password'] = ['nullable', 'string', 'max:2000'];
 
         $validated = $request->validate($rules);
+
+        // Empty curated list UX: multi-select sends nothing when empty; JS injects sentinel.
+        if ($request->has('template_vms_empty_sentinel') && ! array_key_exists('template_vms', $validated)) {
+            $validated['template_vms'] = [];
+        }
 
         $newType = (string) $validated['server_type'];
 
@@ -1217,6 +1227,74 @@ class ServerController extends Controller
         ]);
     }
 
+    public function vms(Request $request, Server $server, IntegrationRegistry $registry): JsonResponse
+    {
+        $serverType = (string) ($server->server_type ?? $server->panel_type ?? '');
+
+        if ($serverType !== 'hyperv') {
+            return response()->json([
+                'ok' => false,
+                'vms' => [],
+                'error' => 'This endpoint is available only for Hyper-V servers.',
+            ], 422);
+        }
+
+        if ($request->boolean('refresh')) {
+            try {
+                \Illuminate\Support\Facades\Cache::forget("hyperv:server:{$server->id}:vms");
+            } catch (\Throwable) {
+                // cache forget failure must not break endpoint
+            }
+        }
+
+        try {
+            $driver = $registry->resolveForServer($server);
+
+            if ($driver === null || ! method_exists($driver, 'listVms')) {
+                return response()->json([
+                    'ok' => false,
+                    'vms' => [],
+                    'error' => 'Hyper-V driver not available.',
+                ]);
+            }
+
+            $rows = \Illuminate\Support\Facades\Cache::remember(
+                "hyperv:server:{$server->id}:vms",
+                60,
+                fn () => $driver->listVms($server)
+            );
+
+            if (! is_array($rows)) {
+                $rows = [];
+            }
+
+            $vms = [];
+            foreach ($rows as $row) {
+                if (! is_array($row)) {
+                    continue;
+                }
+                $vms[] = [
+                    'name' => (string) ($row['name'] ?? $row['Name'] ?? ''),
+                    'state' => (string) ($row['state'] ?? $row['State'] ?? 'Unknown'),
+                    'vmId' => (string) ($row['vmId'] ?? $row['vm_id'] ?? $row['VMId'] ?? $row['vmid'] ?? ''),
+                    'switchName' => (string) ($row['switchName'] ?? $row['switch_name'] ?? $row['SwitchName'] ?? ''),
+                ];
+            }
+
+            return response()->json([
+                'ok' => true,
+                'vms' => $vms,
+                'error' => null,
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'ok' => false,
+                'vms' => [],
+                'error' => \Illuminate\Support\Str::limit(trim((string) $e->getMessage()) !== '' ? trim((string) $e->getMessage()) : 'Failed to fetch VMs.', 200),
+            ]);
+        }
+    }
+
     /**
      * @return array<string, mixed>
      */
@@ -1265,6 +1343,14 @@ class ServerController extends Controller
             $base['port'] = ['required', 'integer', 'min:1', 'max:65535'];
             $base['use_ssl'] = ['nullable', 'boolean'];
             $base['verify_tls'] = ['nullable', 'boolean'];
+            // Hyper-V client truncates VM names to 64 chars (psName/substr(...,0,64)); longer stored names could never match a host VM and must be rejected at boundary.
+            $base['template_vm'] = ['nullable', 'string', 'max:64'];
+            $base['template_vms'] = ['nullable', 'array', 'max:50'];
+            $base['template_vms.*'] = ['nullable', 'string', 'max:64'];
+            $base['template_label_for'] = ['nullable', 'array', 'max:50'];
+            $base['template_label_for.*'] = ['nullable', 'string', 'max:64'];
+            $base['template_label'] = ['nullable', 'array', 'max:50'];
+            $base['template_label.*'] = ['nullable', 'string', 'max:80'];
             // HyperV schema uses `username`/`password` keys — validate those, keep api_username as nullable alias
             $base['username'] = ['required', 'string', 'max:255'];
             $base['password'] = ['required', 'string', 'max:2000'];
@@ -1393,9 +1479,15 @@ class ServerController extends Controller
     }
 
     /**
-     * Transport prefs for Hyper-V (port/use_ssl/verify_tls) have no columns —
-     * they persist inside connection_meta. Returns the merged meta, or null
-     * when the request carries none of the three keys.
+     * Transport prefs for Hyper-V (port/use_ssl/verify_tls) plus curated
+     * provisioning templates have no columns — they persist inside connection_meta.
+     * Returns the merged meta, or null when the request carries none of the
+     * transport/template keys.
+     *
+     * - template_vms: curated allow-list, sanitized (trim/blanks/dedup/cap 50, each max 64). Absent preserves, [] clears (sets to []), non-empty replaces.
+     * - template_vm: default template, trimmed; empty/absent = no default. When non-empty it MUST be in template_vms (post-sanitize) — otherwise dropped. Absent preserves, empty clears.
+     * - Persistence of both keys mirrors existing single-template semantics: absent preserves, empty clears, non-empty replaces.
+     * - When hasTemplateVms is true, the resulting template_vms in base is authoritative; default consistency is enforced against it (not legacy fallback).
      *
      * @param  array<string, mixed>  $validated
      * @param  array<string, mixed>|null  $existing  existing meta to merge into (update); null seeds fresh (store)
@@ -1404,6 +1496,9 @@ class ServerController extends Controller
     private function hypervConnectionMeta(array $validated, ?array $existing = null): ?array
     {
         $transport = [];
+        $hasTemplateVm = array_key_exists('template_vm', $validated);
+        $hasTemplateVms = array_key_exists('template_vms', $validated);
+        $hasLabelPayload = array_key_exists('template_label_for', $validated) || array_key_exists('template_label', $validated);
 
         if (array_key_exists('port', $validated) && $validated['port'] !== null && $validated['port'] !== '') {
             $transport['port'] = (int) $validated['port'];
@@ -1415,11 +1510,180 @@ class ServerController extends Controller
             $transport['verify_tls'] = filter_var($validated['verify_tls'], FILTER_VALIDATE_BOOLEAN);
         }
 
-        if ($transport === []) {
+        $templateVmHandled = false;
+        $templateVmValue = null;
+        $templateVmShouldUnset = false;
+        $sanitizedList = null; // null means not handled, [] means cleared, [...] means replaced
+
+        if ($hasTemplateVm) {
+            $raw = $validated['template_vm'];
+            $trimmed = trim((string) ($raw ?? ''));
+            if ($trimmed !== '') {
+                $trimmed = mb_substr($trimmed, 0, 64);
+            }
+            $templateVmHandled = true;
+            if ($trimmed === '') {
+                $templateVmShouldUnset = true;
+            } else {
+                $templateVmValue = $trimmed;
+            }
+        }
+
+        if ($hasTemplateVms) {
+            $raw = $validated['template_vms'];
+            if ($raw === null) {
+                $sanitizedList = [];
+            } elseif (is_array($raw)) {
+                $sanitizedList = \App\Models\Server::sanitizeTemplateVms($raw);
+            } else {
+                // Defensive: non-array (should be blocked by validation) treat as empty clear if explicitly present
+                $sanitizedList = [];
+            }
+        }
+
+        if ($transport === [] && ! $templateVmHandled && $sanitizedList === null && ! $hasLabelPayload) {
             return null;
         }
 
-        return $existing !== null ? array_merge($existing, $transport) : $transport;
+        $base = $existing !== null ? $existing : [];
+
+        if ($transport !== []) {
+            $base = array_merge($base, $transport);
+        }
+
+        // Apply curated list first — it determines default consistency.
+        if ($sanitizedList !== null) {
+            // Persist as [] when cleared so hypervTemplateVms() returns [] (key exists) not legacy fallback.
+            $base['template_vms'] = $sanitizedList;
+            // If list was cleared, default must also drop regardless of submitted default.
+            if ($sanitizedList === []) {
+                unset($base['template_vm']);
+                // If default was also handled, don't re-apply it after clear.
+                $templateVmHandled = false;
+                $templateVmShouldUnset = false;
+                $templateVmValue = null;
+            }
+        }
+
+        if ($templateVmHandled) {
+            if ($templateVmShouldUnset) {
+                unset($base['template_vm']);
+            } else {
+                // Enforce: default MUST be in the effective curated list — unless we are in legacy mode (no curated key yet).
+                $effectiveList = null;
+                $isLegacyMode = ! array_key_exists('template_vms', $base) && $sanitizedList === null;
+                if ($sanitizedList !== null) {
+                    $effectiveList = $sanitizedList;
+                } elseif ($isLegacyMode) {
+                    // Legacy single-template: allow any default (it becomes the fallback list).
+                    $effectiveList = [$templateVmValue];
+                } else {
+                    $tmpServer = new \App\Models\Server(['connection_meta' => $base]);
+                    $effectiveList = $tmpServer->hypervTemplateVms();
+                    if (array_key_exists('template_vms', $base) && is_array($base['template_vms'])) {
+                        $effectiveList = \App\Models\Server::sanitizeTemplateVms($base['template_vms']);
+                    }
+                }
+                if (in_array($templateVmValue, $effectiveList, true)) {
+                    $base['template_vm'] = $templateVmValue;
+                } else {
+                    // Crafted default not in list — drop (do not persist inconsistent pair).
+                    unset($base['template_vm']);
+                }
+            }
+        } else {
+            // Even when default not in this request, if we just replaced the list, ensure existing default is still in new list.
+            if ($sanitizedList !== null && $sanitizedList !== [] && array_key_exists('template_vm', $base)) {
+                $existingDefault = trim((string) $base['template_vm']);
+                if ($existingDefault !== '') {
+                    $existingDefault = mb_substr($existingDefault, 0, 64);
+                    if (! in_array($existingDefault, $sanitizedList, true)) {
+                        unset($base['template_vm']);
+                    }
+                } else {
+                    unset($base['template_vm']);
+                }
+            }
+        }
+
+        // ── Template labels: parallel arrays template_label_for[] → template_label[] ──
+        $effectiveCurated = null;
+        if ($sanitizedList !== null) {
+            $effectiveCurated = $sanitizedList;
+        } elseif (array_key_exists('template_vms', $base)) {
+            $effectiveCurated = \App\Models\Server::sanitizeTemplateVms($base['template_vms']);
+        } else {
+            $effectiveCurated = (new \App\Models\Server(['connection_meta' => $base]))->hypervTemplateVms();
+        }
+        $allowedCurated = [];
+        foreach ($effectiveCurated as $n) {
+            $allowedCurated[trim((string) $n)] = true;
+        }
+
+        if ($hasLabelPayload) {
+            $forRaw = $validated['template_label_for'] ?? [];
+            $labelRaw = $validated['template_label'] ?? [];
+            if (! is_array($forRaw)) { $forRaw = []; }
+            if (! is_array($labelRaw)) { $labelRaw = []; }
+            $incoming = [];
+            $incomingBlank = [];
+            $count = count($forRaw);
+            for ($i = 0; $i < $count; $i++) {
+                $vmName = trim((string) ($forRaw[$i] ?? ''));
+                if ($vmName === '') { continue; }
+                if (! isset($allowedCurated[$vmName])) { continue; }
+                $lbl = isset($labelRaw[$i]) ? trim((string) $labelRaw[$i]) : '';
+                if ($lbl === '') {
+                    $incomingBlank[$vmName] = true;
+                } else {
+                    $lbl = mb_substr($lbl, 0, 80);
+                    $lbl = trim($lbl);
+                    if ($lbl === '') {
+                        $incomingBlank[$vmName] = true;
+                    } else {
+                        $incoming[$vmName] = $lbl;
+                    }
+                }
+            }
+            $existingLabelsRaw = $base['template_labels'] ?? null;
+            $prunedExisting = \App\Models\Server::sanitizeTemplateLabels(is_array($existingLabelsRaw) ? $existingLabelsRaw : [], $effectiveCurated);
+            $final = $prunedExisting;
+            foreach ($incomingBlank as $k => $_) {
+                unset($final[$k]);
+            }
+            foreach ($incoming as $k => $lbl) {
+                $final[$k] = $lbl;
+            }
+            // Prune stale that may remain if curated shrank and not covered above (sanitize already did)
+            $final = \App\Models\Server::sanitizeTemplateLabels($final, $effectiveCurated);
+            if ($final === []) {
+                unset($base['template_labels']);
+            } else {
+                $base['template_labels'] = $final;
+            }
+        } else {
+            if ($sanitizedList !== null) {
+                $existingLabelsRaw = $base['template_labels'] ?? null;
+                if (is_array($existingLabelsRaw)) {
+                    $pruned = \App\Models\Server::sanitizeTemplateLabels($existingLabelsRaw, $effectiveCurated);
+                    if ($pruned === []) {
+                        unset($base['template_labels']);
+                    } elseif ($pruned !== $existingLabelsRaw) {
+                        // Normalize: if pruning changed the map, persist pruned
+                        // Check if pruned differs by stale removal
+                        $normalized = $pruned !== $existingLabelsRaw;
+                        $base['template_labels'] = $pruned;
+                        // But if original had stale keys, we just updated; if unchanged, leave as is
+                        if ($pruned === [] && ! array_key_exists('template_labels', $base)) {
+                            unset($base['template_labels']);
+                        }
+                    }
+                    // When sanitizedList changed but existing was already empty/absent, nothing to do
+                }
+            }
+        }
+
+        return $base;
     }
 
     /**

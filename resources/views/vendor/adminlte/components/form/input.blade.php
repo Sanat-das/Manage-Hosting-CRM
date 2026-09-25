@@ -1,6 +1,6 @@
 <div class="mb-3 {{ $fgroupClass }}">
     @isset($label)
-        <label for="{{ $id }}" class="form-label">{{ $label }}@if($attributes->has('required')) <span class="mh-required" aria-hidden="true">*</span><span class="visually-hidden"> (required)</span>@endif</label>
+        <label for="{{ $id }}" class="form-label">{{ $label }}@if($attributes->get('required')) <span class="mh-required" aria-hidden="true">*</span><span class="visually-hidden"> (required)</span>@endif</label>
     @endisset
 
     @isset($prepend)

@@ -47,6 +47,29 @@ final class ModuleRequiredOptions
     }
 
     /**
+     * Module slugs (lowercase) whose required keys include the given option key.
+     *
+     * @return list<string>
+     */
+    public static function modulesRequiringKey(string $key): array
+    {
+        $canonical = strtolower(trim($key));
+
+        if ($canonical === '') {
+            return [];
+        }
+
+        $slugs = [];
+        foreach (self::MAP as $slug => $keys) {
+            if (in_array($canonical, $keys, true)) {
+                $slugs[] = $slug;
+            }
+        }
+
+        return array_values($slugs);
+    }
+
+    /**
      * Required keys for a product (union over provisioning_module + enabled moduleLinks).
      *
      * @return list<string>

@@ -74,6 +74,14 @@ class ProductOptionLinkController extends Controller
 
     public function destroy(Product $product, ProductOptionGroupProduct $link): RedirectResponse
     {
+        $link->loadMissing('group');
+
+        $key = strtolower(trim((string) ($link->group?->key ?? '')));
+
+        if ($key !== '' && in_array($key, \App\Services\Provisioning\ModuleRequiredOptions::requiredForProduct($product), true)) {
+            return back()->withErrors(['error' => "Option group '".($link->group?->name ?? $key)."' is required by this product's provisioning module(s) and cannot be detached. Disable the module first."]);
+        }
+
         $link->delete(); // FK cascade removes link values + pricing
 
         $this->logActivity('option_group_detached', "Option group detached from product {$product->name}", [

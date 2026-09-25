@@ -265,6 +265,17 @@ class ProductOptionController extends Controller
 
     public function destroy(Request $request, ProductOptionGroup $productOption): RedirectResponse
     {
+        $requiredBy = \App\Services\Provisioning\ModuleRequiredOptions::modulesRequiringKey((string) $productOption->key);
+
+        if ($requiredBy !== []) {
+            $names = array_map(
+                fn (string $slug): string => app(\App\Services\Integrations\IntegrationRegistry::class)->nameFor($slug),
+                $requiredBy
+            );
+
+            return back()->withErrors(['error' => "Option group {$productOption->name} (key '{$productOption->key}') is required by ".implode(', ', $names).' and cannot be deleted — the server type needs it to provision.']);
+        }
+
         // Deleting the group cascades all the way down: values, their pricing,
         // every product link and the per-product pricing on it. Refuse while a
         // product still prices this feature — detach it there first.

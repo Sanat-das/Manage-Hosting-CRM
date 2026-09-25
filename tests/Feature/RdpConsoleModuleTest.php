@@ -107,6 +107,8 @@ class RdpConsoleModuleTest extends TestCase
             'admin.rdp-console.password',
             'admin.rdp-console.token',
             'admin.rdp-console.update',
+            'admin.rdp-console.vmConsole',
+            'admin.rdp-console.vmConsoleToken',
         ], $names, 'rdp-console must register ONLY the RDP-scoped routes — no refresh/SNMP leftovers.');
     }
 

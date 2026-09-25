@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
+use App\Jobs\ProvisionHypervVm;
 use App\Services\Modules\ModuleManager;
 use FreeDSx\Snmp\Oid;
 use Illuminate\Console\Scheduling\Schedule;
@@ -597,15 +598,24 @@ final class SnmpPollingPipelineTest extends TestCase
 
     public function test_queue_retry_after_exceeds_job_timeouts(): void
     {
-        $this->assertSame(180, config('queue.connections.database.retry_after'));
+        // 1900s default: the database queue must never re-deliver a job that is
+        // still running. The longest job in the estate is now the Hyper-V VM
+        // build (a multi-GB clone may run for up to 30 minutes), so retry_after
+        // must clear that timeout too — otherwise a second worker tick would
+        // re-reserve the build and clone the same VM twice.
+        $this->assertSame(1900, config('queue.connections.database.retry_after'));
 
         $batch = new PollHostBatch([1]);
         $rollup = new RollupHourlyAggregates;
+        $vmBuild = new ProvisionHypervVm(1, 1, null, false, null, null);
 
         $this->assertSame('snmp-poll', $batch->queue);
         $this->assertSame(1, $batch->tries);
         $this->assertSame(120, $batch->timeout);
         $this->assertSame(300, $rollup->timeout);
+        $this->assertSame(1800, $vmBuild->timeout);
         $this->assertGreaterThan($batch->timeout, config('queue.connections.database.retry_after'));
+        $this->assertGreaterThan($rollup->timeout, config('queue.connections.database.retry_after'));
+        $this->assertGreaterThan($vmBuild->timeout, config('queue.connections.database.retry_after'));
     }
 }

@@ -298,7 +298,7 @@ class HyperVModuleActionsTest extends TestCase
             ->assertOk()
             ->assertSee('hv-create-', false)
             ->assertSee('hv-start-', false)
-            ->assertSee('hv-stop-', false)
+            ->assertSee('data-hv-action="stop"', false)
             ->assertSee('hv-restart-', false)
             ->assertSee('hv-delete-', false)
             ->assertSee('>Start<', false)
@@ -347,9 +347,16 @@ class HyperVModuleActionsTest extends TestCase
     public function test_provision_names_the_vm_after_the_product_hostname(): void
     {
         $server = $this->hypervServer();
-        Http::fake(fn ($r) => str_contains($r->body(), 'New-VM')
-            ? Http::response(['vmId' => self::GUID, 'name' => 'web-01', 'state' => 'Off'])
-            : Http::response(['error' => 'unexpected host call'], 500));
+        Http::fake(function ($request) {
+            $body = (string) $request->body();
+            if (str_contains($body, 'New-VM')) {
+                return Http::response(['vmId' => self::GUID, 'name' => 'web-01', 'state' => 'Off']);
+            }
+            if (str_contains($body, 'Get-VM')) {
+                return Http::response(['exists' => true, 'name' => 'web-01', 'state' => 'Off', 'vmId' => self::GUID]);
+            }
+            return Http::response(['error' => 'unexpected host call'], 500);
+        });
 
         $service = $this->service($server);
         $result = app(HyperV::class)->provision($service, $this->vmConfig() + ['host_name' => 'web-01']);
@@ -362,9 +369,16 @@ class HyperVModuleActionsTest extends TestCase
     public function test_provision_falls_back_to_hosting_account_hostname(): void
     {
         $server = $this->hypervServer();
-        Http::fake(fn ($r) => str_contains($r->body(), 'New-VM')
-            ? Http::response(['vmId' => self::GUID, 'name' => 'hv-web-01', 'state' => 'Off'])
-            : Http::response(['error' => 'unexpected host call'], 500));
+        Http::fake(function ($request) {
+            $body = (string) $request->body();
+            if (str_contains($body, 'New-VM')) {
+                return Http::response(['vmId' => self::GUID, 'name' => 'hv-web-01', 'state' => 'Off']);
+            }
+            if (str_contains($body, 'Get-VM')) {
+                return Http::response(['exists' => true, 'name' => 'hv-web-01', 'state' => 'Off', 'vmId' => self::GUID]);
+            }
+            return Http::response(['error' => 'unexpected host call'], 500);
+        });
 
         $customer = $this->makeCustomer();
         $product = Product::create(['name' => 'HV', 'price' => 50]);
@@ -390,9 +404,16 @@ class HyperVModuleActionsTest extends TestCase
     public function test_provision_falls_back_to_username_without_any_hostname(): void
     {
         $server = $this->hypervServer();
-        Http::fake(fn ($r) => str_contains($r->body(), 'New-VM')
-            ? Http::response(['vmId' => self::GUID, 'name' => self::VM, 'state' => 'Off'])
-            : Http::response(['error' => 'unexpected host call'], 500));
+        Http::fake(function ($request) {
+            $body = (string) $request->body();
+            if (str_contains($body, 'New-VM')) {
+                return Http::response(['vmId' => self::GUID, 'name' => self::VM, 'state' => 'Off']);
+            }
+            if (str_contains($body, 'Get-VM')) {
+                return Http::response(['exists' => true, 'name' => self::VM, 'state' => 'Off', 'vmId' => self::GUID]);
+            }
+            return Http::response(['error' => 'unexpected host call'], 500);
+        });
 
         $service = $this->service($server);
         $result = app(HyperV::class)->provision($service, $this->vmConfig());
@@ -464,9 +485,17 @@ class HyperVModuleActionsTest extends TestCase
     public function test_module_action_create_provisions_a_new_vm(): void
     {
         [$account] = $this->hostingWithHyperV(hostingStatus: 'suspended');
-        Http::fake(fn ($r) => str_contains($r->body(), 'New-VM')
-            ? Http::response(['vmId' => self::GUID, 'name' => 'newvm', 'state' => 'Off'])
-            : Http::response(['error' => 'unexpected host call'], 500));
+        // Async create (sync queue runs inline): New-VM + host-verify Get-VM probe.
+        Http::fake(function ($request) {
+            $body = (string) $request->body();
+            if (str_contains($body, 'New-VM')) {
+                return Http::response(['vmId' => self::GUID, 'name' => 'newvm', 'state' => 'Off']);
+            }
+            if (str_contains($body, 'Get-VM')) {
+                return Http::response(['exists' => true, 'name' => 'newvm', 'state' => 'Off', 'vmId' => self::GUID]);
+            }
+            return Http::response(['error' => 'unexpected host call'], 500);
+        });
 
         $this->actingAsAdminWith(['hosting.edit'])
             ->post(route('admin.hosting.module-action', $account), [
@@ -474,7 +503,7 @@ class HyperVModuleActionsTest extends TestCase
                 'action' => 'create',
             ])
             ->assertRedirect()
-            ->assertSessionHas('success');
+            ->assertSessionHas('info');
 
         $panelAccount = PanelAccount::sole();
         $this->assertSame('hyperv', $panelAccount->panel);

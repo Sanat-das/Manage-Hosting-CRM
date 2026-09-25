@@ -16,10 +16,17 @@
     /* Compact navbar rows: stepped type scale, 38px monogram, pill never wraps. */
     [data-chat-nav-menu] .chat-nav-avatar { width: 2.375rem; height: 2.375rem; font-size: .8rem; }
     [data-chat-nav-menu] .chat-nav-name { font-size: .875rem; font-weight: 600; line-height: 1.25; }
-    [data-chat-nav-menu] .chat-nav-text { font-size: .78rem; line-height: 1.3; color: var(--bs-secondary-color); }
+    /* Single-line preview: AdminLTE's `.dropdown-menu-lg p { white-space: normal }`
+       (0-1-1) beats Bootstrap's `.text-truncate` (0-1-0), so the scoped rule
+       (0-2-0) must own the truncation itself. */
+    [data-chat-nav-menu] .chat-nav-text { font-size: .78rem; line-height: 1.3; color: var(--bs-secondary-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     [data-chat-nav-menu] .chat-nav-time { font-size: .72rem; line-height: 1.3; color: var(--bs-secondary-color); }
     [data-chat-nav-menu] .chat-nav-pill { font-size: .66rem; white-space: nowrap; }
     [data-chat-nav-menu] .dropdown-item-title { margin-bottom: .125rem; }
+    /* The truncating column must be allowed to shrink: the global `.min-w-0`
+       utility lives in app.css, which admin pages never load, so without this
+       the nowrap preview overflows the menu padding instead of ellipsizing. */
+    [data-chat-nav-menu] .chat-nav-body { min-width: 0; }
 </style>
 @endonce
 <li class="nav-item dropdown" data-chat-nav>
@@ -35,7 +42,7 @@
             <a href="{{ $msg['url'] ?? $messagesUrl }}" class="dropdown-item">
                 <div class="d-flex align-items-center gap-2">
                     <span class="chat-nav-avatar flex-shrink-0 d-inline-flex align-items-center justify-content-center rounded-circle bg-{{ $monogram }}-subtle text-{{ $monogram }}-emphasis fw-semibold" aria-hidden="true">{{ $msg['initials'] ?? '?' }}</span>
-                    <div class="flex-grow-1 min-w-0">
+                    <div class="flex-grow-1 min-w-0 chat-nav-body">
                         <h3 class="dropdown-item-title d-flex align-items-center gap-2">
                             <span class="chat-nav-name text-truncate">{{ $msg['name'] }}</span>
                             @if (!empty($msg['waiting']))
@@ -100,7 +107,7 @@
         return '<a href="' + esc(m.url || footerHref) + '" class="dropdown-item">'
             + '<div class="d-flex align-items-center gap-2">'
             + '<span class="chat-nav-avatar flex-shrink-0 d-inline-flex align-items-center justify-content-center rounded-circle bg-' + color + '-subtle text-' + color + '-emphasis fw-semibold" aria-hidden="true">' + esc(m.initials || '?') + '</span>'
-            + '<div class="flex-grow-1 min-w-0">'
+            + '<div class="flex-grow-1 min-w-0 chat-nav-body">'
             + '<h3 class="dropdown-item-title d-flex align-items-center gap-2">'
             + '<span class="chat-nav-name text-truncate">' + esc(m.name) + '</span>' + pill(m)
             + '</h3>'

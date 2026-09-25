@@ -2,14 +2,17 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Contracts\Integrations\Capabilities\ProvisioningModule;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\ProductRequest;
 use App\Models\EmailTemplate;
 use App\Models\Order;
 use App\Models\Product;
 use App\Models\ProductGroup;
+use App\Models\ProductModule;
 use App\Models\ProductOptionGroup;
 use App\Models\ServerGroup;
+use App\Services\Integrations\IntegrationRegistry;
 use App\Services\ProductOptionLinkService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -85,6 +88,7 @@ class ProductController extends Controller
         try {
             $product = DB::transaction(function () use ($validated) {
                 $product = Product::create($this->productData($validated));
+                $this->ensureProvisioningModuleLink($product);
                 $this->savePricing($product, $validated['pricing'] ?? []);
                 $this->attachOptionGroups($product, $validated['option_groups'] ?? []);
 
@@ -113,8 +117,8 @@ class ProductController extends Controller
             'moduleLinks',
         ]);
 
-        $registry = app(\App\Services\Integrations\IntegrationRegistry::class);
-        $linkableModules = $registry->linkableModules();
+        $registry = app(IntegrationRegistry::class);
+        $linkableModules = $this->linkablePluginModules();
 
         return view('admin.products.show', compact('product', 'linkableModules', 'registry'));
     }
@@ -124,9 +128,25 @@ class ProductController extends Controller
         $product->load(['group', 'pricing', 'optionLinks.linkValues.pricing', 'optionLinks.unitPricing', 'options', 'moduleLinks', 'optionLinks.group']);
 
         $availableGroups = ProductOptionGroup::query()->orderBy('name')->get();
-        $registry = app(\App\Services\Integrations\IntegrationRegistry::class);
-        $linkableModules = $registry->linkableModules();
+        $registry = app(IntegrationRegistry::class);
+        $linkableModules = $this->linkablePluginModules();
         $missingRequiredOptionKeys = $this->missingRequiredOptionKeys($product);
+
+        // Hyper-V per-product template restriction data (additive, isolated from WIP)
+        $hypervUnionOptions = \App\Services\Provisioning\HypervTemplateCatalog::unionOptions();
+        $hypervLink = $product->moduleLinks->firstWhere('module_slug', 'hyperv');
+        $hypervAllowedTemplates = [];
+        if ($hypervLink) {
+            try {
+                $decrypted = $registry->decryptConfigFor('hyperv', is_array($hypervLink->config) ? $hypervLink->config : []);
+                $raw = $decrypted['allowed_templates'] ?? [];
+                $hypervAllowedTemplates = \App\Services\Provisioning\HypervTemplateCatalog::sanitizeAllowed(is_array($raw) ? $raw : []);
+            } catch (\Throwable) {
+                $hypervAllowedTemplates = [];
+            }
+        }
+        $hypervIsHypervProduct = trim((string) ($product->provisioning_module ?? '')) === 'hyperv' || ($hypervLink && (bool) $hypervLink->enabled);
+        $hypervHasLink = $hypervLink !== null;
 
         return view('admin.products.edit', array_merge([
             'product' => $product,
@@ -134,6 +154,11 @@ class ProductController extends Controller
             'linkableModules' => $linkableModules,
             'registry' => $registry,
             'missingRequiredOptionKeys' => $missingRequiredOptionKeys,
+            'hypervUnionOptions' => $hypervUnionOptions,
+            'hypervAllowedTemplates' => $hypervAllowedTemplates,
+            'hypervIsHypervProduct' => $hypervIsHypervProduct,
+            'hypervHasLink' => $hypervHasLink,
+            'hypervLink' => $hypervLink,
         ], $this->formData()));
     }
 
@@ -144,6 +169,7 @@ class ProductController extends Controller
         try {
             DB::transaction(function () use ($validated, $request, $product) {
                 $product->update($this->productData($validated));
+                $this->ensureProvisioningModuleLink($product);
                 $this->savePricing($product, $validated['pricing'] ?? []);
                 $this->updateOptionLinks($request, $product, $validated['option_links'] ?? []);
             });
@@ -176,6 +202,79 @@ class ProductController extends Controller
         return redirect()
             ->route('admin.products.index')
             ->with('success', "Product {$product->name} deleted.");
+    }
+
+    /**
+     * Modules linkable in the product UI. The six provisioning integrations
+     * are builtins configured on the Details tab (provisioning module +
+     * server group), so the product Modules sections only manage plugins.
+     *
+     * @return array<int, array{slug: string, name: string, group: string, builtin: bool}>
+     */
+    private function linkablePluginModules(): array
+    {
+        return array_values(array_filter(
+            app(IntegrationRegistry::class)->linkableModules(),
+            static fn (array $module): bool => ! ($module['builtin'] ?? false),
+        ));
+    }
+
+    /**
+     * The Details selection (provisioning module) is the single switch for a
+     * builtin provisioning module: keep its product_module link in step so the
+     * hosting actions and module syncs that resolve through enabled links keep
+     * working, and only the selected builtin stays active. Plugin modules are
+     * linked explicitly via the product Modules section.
+     */
+    private function ensureProvisioningModuleLink(Product $product): void
+    {
+        $registry = app(IntegrationRegistry::class);
+        $slug = trim((string) $product->provisioning_module);
+
+        if ($slug === '' || ! $registry->has($slug)) {
+            return;
+        }
+
+        if (! $registry->instanceFor($slug) instanceof ProvisioningModule) {
+            return;
+        }
+
+        ProductModule::query()
+            ->where('product_id', $product->id)
+            ->where('enabled', true)
+            ->whereIn('module_slug', $registry->slugs())
+            ->where('module_slug', '!=', $slug)
+            ->get()
+            ->each(function (ProductModule $link): void {
+                $link->update(['enabled' => false]);
+            });
+
+        $link = ProductModule::query()->firstOrNew([
+            'product_id' => $product->id,
+            'module_slug' => $slug,
+        ]);
+
+        if ($link->exists) {
+            if (! $link->enabled) {
+                $link->update(['enabled' => true]);
+            }
+
+            return;
+        }
+
+        $config = [];
+
+        foreach ($registry->configSchemaFor($slug)['fields'] as $field) {
+            if (array_key_exists('default', $field) && ! array_key_exists($field['key'], $config)) {
+                $config[$field['key']] = $field['default'];
+            }
+        }
+
+        $link->fill([
+            'enabled' => true,
+            'provisioning_mode' => $slug === 'hyperv' ? ProductModule::PROVISIONING_MODE_MANUAL : ProductModule::PROVISIONING_MODE_AUTO,
+            'config' => $config,
+        ])->save();
     }
 
     /**

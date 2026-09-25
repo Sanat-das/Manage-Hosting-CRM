@@ -291,31 +291,77 @@ abstract class AbstractPanelModule implements ProvisioningModule
             ));
         }
 
+        $metaData = $data;
+        $guestUsername = null;
+        $guestPassword = null;
+        $warning = null;
+        $notice = null;
+        if (is_array($metaData)) {
+            // Guest credentials are persisted to their own encrypted columns —
+            // never in `meta`, which is a plain array and would leak the
+            // password. `warning`/`notice` belong in the human message, not
+            // the meta.
+            if (array_key_exists('guest_username', $metaData)) {
+                $guestUsername = $metaData['guest_username'];
+                unset($metaData['guest_username']);
+            }
+            if (array_key_exists('guest_password', $metaData)) {
+                $guestPassword = $metaData['guest_password'];
+                unset($metaData['guest_password']);
+            }
+            if (array_key_exists('warning', $metaData)) {
+                $warning = $metaData['warning'];
+                unset($metaData['warning']);
+            }
+            if (array_key_exists('notice', $metaData)) {
+                $notice = $metaData['notice'];
+                unset($metaData['notice']);
+            }
+        }
+
+        $panelData = [
+            'server_id' => $service->server_id,
+            'panel' => $this->panel(),
+            'username' => $request->username,
+            'domain' => $domain !== '' ? $domain : null,
+            'password_encrypted' => $request->password,
+            'plan' => $request->plan !== '' ? $request->plan : null,
+            'external_id' => isset($data['external_id']) ? (string) $data['external_id'] : null,
+            'meta' => $metaData === [] || $metaData === null ? null : $metaData,
+            'status' => PanelAccount::STATUS_ACTIVE,
+            'provisioned_at' => now(),
+            'suspended_at' => null,
+            'terminated_at' => null,
+        ];
+        if (is_string($guestUsername) && trim($guestUsername) !== '') {
+            $panelData['guest_username'] = trim($guestUsername);
+        }
+        if (is_string($guestPassword) && trim($guestPassword) !== '') {
+            $panelData['guest_password_encrypted'] = trim($guestPassword);
+        }
+
         PanelAccount::updateOrCreate(
             ['service_instance_id' => $service->id],
-            [
-                'server_id' => $service->server_id,
-                'panel' => $this->panel(),
-                'username' => $request->username,
-                'domain' => $domain !== '' ? $domain : null,
-                'password_encrypted' => $request->password,
-                'plan' => $request->plan !== '' ? $request->plan : null,
-                'external_id' => isset($data['external_id']) ? (string) $data['external_id'] : null,
-                'meta' => $data === [] ? null : $data,
-                'status' => PanelAccount::STATUS_ACTIVE,
-                'provisioned_at' => now(),
-                'suspended_at' => null,
-                'terminated_at' => null,
-            ],
+            $panelData,
         );
+
+        $message = ucfirst($this->panel()).' account created';
+        if (is_string($warning) && trim($warning) !== '') {
+            $message .= ' — '.trim($warning);
+        }
+        if (is_string($notice) && trim($notice) !== '') {
+            $message .= ' — '.trim($notice);
+        }
 
         // The password is returned so the caller can deliver it to the
         // customer. ProvisioningDispatcher redacts it before the audit row is
         // written, so it is never persisted to provisioning_events.
-        return ProvisioningResult::ok(ucfirst($this->panel()).' account created', array_filter([
+        return ProvisioningResult::ok($message, array_filter([
             'username' => $request->username,
             'external_id' => $data['external_id'] ?? $request->username,
             'password' => $request->password,
+            'guest_username' => $guestUsername,
+            'guest_password' => $guestPassword,
             'ip' => $data['ip'] ?? $service->server?->ip_address,
             'nameservers' => $data['nameservers'] ?? null,
         ], static fn ($v) => $v !== null));

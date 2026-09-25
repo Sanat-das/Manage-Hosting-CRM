@@ -5,12 +5,18 @@
 @php
     $cycleLabels = \App\Models\Product::BILLING_CYCLES;
     $activeTab = (string) request()->query('tab', 'overview');
+    // The Modules tab lists plugin modules only (the provisioning builtins are
+    // configured on the Details tab), so count only the links it displays.
+    $enabledModuleCount = collect($linkableModules ?? [])->filter(
+        fn ($mod) => (bool) ($product->moduleLinks->firstWhere('module_slug', $mod['slug'])?->enabled)
+    )->count();
+
     $tabs = [
         ['id' => 'overview', 'label' => 'Overview', 'icon' => 'bi bi-info-circle'],
         ['id' => 'pricing', 'label' => 'Pricing', 'icon' => 'bi bi-currency-rupee', 'badge' => $product->pricing->count()],
         ['id' => 'options', 'label' => 'Options', 'icon' => 'bi bi-sliders', 'badge' => $product->options->count()],
         ['id' => 'addons', 'label' => 'Add-ons', 'icon' => 'bi bi-plus-square', 'badge' => $product->addons->count()],
-        ['id' => 'modules', 'label' => 'Modules', 'icon' => 'bi bi-puzzle', 'badge' => $product->moduleLinks->where('enabled', true)->count()],
+        ['id' => 'modules', 'label' => 'Modules', 'icon' => 'bi bi-puzzle', 'badge' => $enabledModuleCount],
     ];
 @endphp
 
@@ -260,7 +266,9 @@
                 </div>
             </div>
 
-            {{-- Modules — per-product enable + per-link Auto/Manual provisioning mode --}}
+            {{-- Modules — plugin modules only (the provisioning builtins are
+                 configured on the Details tab): per-product enable + per-link
+                 Auto/Manual mode --}}
             <div class="tab-pane fade {{ $activeTab === 'modules' ? 'show active' : '' }}" id="modules" role="tabpanel" aria-labelledby="modules-tab">
                 @php $linkableModules = $linkableModules ?? []; @endphp
                 @if (empty($linkableModules))

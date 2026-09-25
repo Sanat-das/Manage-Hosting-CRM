@@ -27,6 +27,7 @@
             'active' => 'Active',
             'suspended' => 'Suspended',
             'terminated' => 'Terminated',
+            'awaiting_manual' => 'Awaiting manual provisioning',
         ]"
         :status-value="$status"
         :columns="[
@@ -89,6 +90,9 @@
                 </td>
                 <td>
                     <x-adminlte.partials.status-badge :status="$account->status" />
+                    @if(($awaitingManualMap[$account->id] ?? false))
+                        <span class="badge rounded-pill text-bg-warning ms-1" title="Awaiting manual VM provisioning">Awaiting VM</span>
+                    @endif
                 </td>
                 <td class="text-end">
                     <div class="table-actions">

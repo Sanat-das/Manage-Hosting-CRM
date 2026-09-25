@@ -47,7 +47,7 @@ class OrderService
      */
     private const TRANSITIONS = [
         Order::STATUS_PENDING => [Order::STATUS_PAID, Order::STATUS_ACTIVE, Order::STATUS_CANCELLED],
-        Order::STATUS_PAID => [Order::STATUS_PROVISIONING, Order::STATUS_CANCELLED],
+        Order::STATUS_PAID => [Order::STATUS_PROVISIONING, Order::STATUS_ACTIVE, Order::STATUS_CANCELLED],
         Order::STATUS_PROVISIONING => [Order::STATUS_ACTIVE, Order::STATUS_FAILED, Order::STATUS_CANCELLED],
         Order::STATUS_FAILED => [Order::STATUS_ACTIVE, Order::STATUS_CANCELLED],
         Order::STATUS_ACTIVE => [Order::STATUS_SUSPENDED, Order::STATUS_CANCELLED, Order::STATUS_TERMINATED],
@@ -106,7 +106,7 @@ class OrderService
         DB::transaction(function () use ($order, $from, $to, $notes) {
             $order->status = $to;
 
-            if (in_array($from, [Order::STATUS_PENDING, Order::STATUS_PROVISIONING, Order::STATUS_FAILED], true) && $to === Order::STATUS_ACTIVE) {
+            if (in_array($from, [Order::STATUS_PENDING, Order::STATUS_PAID, Order::STATUS_PROVISIONING, Order::STATUS_FAILED], true) && $to === Order::STATUS_ACTIVE) {
                 // Per-service recurring schedule (WHMCS model): each order item
                 // (the purchased product/service) renews on ITS OWN billing
                 // cycle, so activation seeds every recurring item's next
@@ -532,6 +532,17 @@ class OrderService
             }
         }
 
+        // Hyper-V manual: paid orders activate immediately with a pending hosting
+        // account (billing starts at payment). The VM itself is built later via
+        // an explicit manual action, so no ServiceInstance is created now and
+        // no host is contacted. This branch must NOT call provisioning->run().
+        if ($this->isHypervManualProduct($order->product)) {
+            $order = $this->transition($order, Order::STATUS_ACTIVE, 'Awaiting manual VM provisioning');
+            $this->provisioning->noteAwaitingManualVm($order->fresh());
+
+            return $order->refresh();
+        }
+
         $order = $this->transition($order, Order::STATUS_PROVISIONING, 'Awaiting manual provisioning after invoice payment');
 
         // Manual products get an event row too, so the provisioning queue in
@@ -540,5 +551,10 @@ class OrderService
         $this->provisioning->run($order);
 
         return $order;
+    }
+
+    private function isHypervManualProduct(?\App\Models\Product $product): bool
+    {
+        return $this->provisioning->isHypervManualProduct($product);
     }
 }
