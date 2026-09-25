@@ -204,6 +204,38 @@ class AdminSearchTest extends TestCase
             ->assertStatus(200);
     }
 
+    public function test_an_overlong_q_is_rejected_with_a_redirect_and_a_validation_error_for_a_browser_request(): void
+    {
+        $response = $this->actingAsAdmin()
+            ->from('/admin/search?q=acme')
+            ->get('/admin/search?q='.str_repeat('a', 101));
+
+        $response->assertStatus(302);
+        $response->assertSessionHasErrors('q');
+    }
+
+    public function test_the_results_page_surfaces_the_q_validation_error_after_a_redirect_back(): void
+    {
+        // Exactly what a browser does: the rejected request 302s back to the
+        // results page and the followed page renders the flashed error. This is
+        // the user-visible proof; without the slot the page looked unchanged.
+        $page = $this->actingAsAdmin()
+            ->followingRedirects()
+            ->from('/admin/search?q=acme')
+            ->get('/admin/search?q='.str_repeat('a', 101));
+
+        $page->assertOk();
+        $page->assertSee('data-search-error', false);
+        $page->assertSee('is-invalid', false);
+        // The exact message the validator produced, not a copy of it.
+        $page->assertSee(__('validation.max.string', ['attribute' => 'q', 'max' => 100]));
+
+        // A clean request (no flashed error) carries no error slot at all.
+        $this->get('/admin/search?q=acme')
+            ->assertOk()
+            ->assertDontSee('data-search-error', false);
+    }
+
     // --- grouped results page (todo 9) -------------------------------------
 
     private function makeCustomer(string $email, string $company): Customer

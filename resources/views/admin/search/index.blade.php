@@ -42,7 +42,7 @@
     <x-adminlte-card icon="bi bi-search" title="Search" class="mh-search__form">
         <form method="GET" action="{{ route('admin.search.index') }}" role="search" data-search-form>
             <div class="input-group">
-                <input type="search" name="q" class="form-control"
+                <input type="search" name="q" class="form-control @error('q') is-invalid @enderror"
                        placeholder="Search customers, services, invoices, tickets, products..."
                        value="{{ $q }}" aria-label="Search records" autofocus>
                 <button type="submit" class="btn btn-primary" aria-label="Search">
@@ -50,6 +50,15 @@
                 </button>
             </div>
         </form>
+
+        {{-- A malformed or overlong `q` is rejected by SearchPageRequest, which
+             redirects back with the error flashed. Without this slot the user
+             saw the previous page unchanged and no reason for the redirect. --}}
+        @error('q')
+            <div class="mh-search__error text-danger small mt-2" role="alert" data-search-error>
+                <i class="bi bi-exclamation-triangle-fill me-1" aria-hidden="true"></i>{{ $message }}
+            </div>
+        @enderror
     </x-adminlte-card>
 
     {{-- Result-count announcer. Empty when the query is too short to search. --}}
