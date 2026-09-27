@@ -35,6 +35,24 @@ final class ProvisioningEventRecorder
      */
     private const SECRET_KEYS = ['password', 'secret', 'token', 'api_key', 'apikey', 'private_key'];
 
+    /** Verdict written when the process dies before the action finished. */
+    public const INTERRUPTED_MESSAGE = 'Interrupted — the process ended before the action finished.';
+
+    /**
+     * Event ids opened by begin() and not yet closed in this process.
+     *
+     * A fatal error (PHP max_execution_time) or a worker being stopped never
+     * reaches complete()/fail(), so the shutdown guard flips whatever is
+     * still open to `failed`. Without it the row stays `running` and the
+     * compute card locks until the 35-minute stale threshold. Hard kills
+     * (SIGKILL) still fall back to ProvisioningEvent::isStaleRunning().
+     *
+     * @var array<int, true>
+     */
+    private static array $openEvents = [];
+
+    private static bool $shutdownGuardRegistered = false;
+
     /**
      * Open a durable `running` row before the driver call.
      */
@@ -45,7 +63,7 @@ final class ProvisioningEventRecorder
         ?int $hostingAccountId = null,
         ?int $triggeredBy = null,
     ): ProvisioningEvent {
-        return ProvisioningEvent::create([
+        $event = ProvisioningEvent::create([
             'service_instance_id' => $serviceInstanceId,
             'hosting_account_id' => $hostingAccountId,
             'event_type' => $eventType,
@@ -54,6 +72,62 @@ final class ProvisioningEventRecorder
             'triggered_by' => $triggeredBy ?? auth()->id(),
             'payload' => $payload,
         ]);
+
+        self::trackOpenEvent((int) $event->id);
+
+        return $event;
+    }
+
+    /**
+     * Remember an open event and install the process-wide shutdown guard on
+     * first use (one registration per process, not per event).
+     */
+    private static function trackOpenEvent(int $eventId): void
+    {
+        self::$openEvents[$eventId] = true;
+
+        if (self::$shutdownGuardRegistered) {
+            return;
+        }
+
+        self::$shutdownGuardRegistered = true;
+
+        register_shutdown_function(static function (): void {
+            foreach (array_keys(self::$openEvents) as $eventId) {
+                self::markInterrupted((int) $eventId);
+            }
+        });
+    }
+
+    private static function untrackOpenEvent(int $eventId): void
+    {
+        unset(self::$openEvents[$eventId]);
+    }
+
+    /**
+     * Flip a still-running row to `failed`. Shared by the shutdown guard and
+     * the tests; never throws, because shutdown functions must not.
+     */
+    public static function markInterrupted(int $eventId): void
+    {
+        try {
+            ProvisioningEvent::query()
+                ->whereKey($eventId)
+                ->where('status', 'running')
+                ->update([
+                    'status' => 'failed',
+                    'event_status' => 'failed',
+                    'last_error' => self::INTERRUPTED_MESSAGE,
+                    'result' => json_encode(['error' => self::INTERRUPTED_MESSAGE]),
+                    'completed_at' => null,
+                ]);
+
+            // Close the id out so a long-running worker does not accumulate
+            // interrupted events until the process exits.
+            unset(self::$openEvents[$eventId]);
+        } catch (Throwable) {
+            // Nothing left to do — the stale-running fallback covers hard kills.
+        }
     }
 
     /**
@@ -70,6 +144,10 @@ final class ProvisioningEventRecorder
         $event->completed_at = now();
         $event->last_error = null;
         $event->save();
+
+        // Untrack only once the verdict is durable: if the save throws, the
+        // shutdown guard must still be able to fail the row.
+        self::untrackOpenEvent((int) $event->id);
 
         return $event;
     }
@@ -88,6 +166,9 @@ final class ProvisioningEventRecorder
         $event->last_error = $message;
         $event->completed_at = null;
         $event->save();
+
+        // Untrack only once the verdict is durable (see complete()).
+        self::untrackOpenEvent((int) $event->id);
 
         return $event;
     }
@@ -153,7 +234,7 @@ final class ProvisioningEventRecorder
      * payload is decoded and filtered in PHP (no JSON path queries) and
      * anything else for the order is left alone.
      *
-     * @return int  number of rows flipped to completed
+     * @return int number of rows flipped to completed
      */
     public function resolveAwaiting(Order $order, string $message): int
     {
@@ -210,7 +291,7 @@ final class ProvisioningEventRecorder
             }
             $event->payload = $payload;
             $event->save();
-        } catch (\Throwable $e) {
+        } catch (Throwable $e) {
             Log::warning('Could not record provisioning progress', [
                 'event_id' => $event->id,
                 'stage' => $stage,

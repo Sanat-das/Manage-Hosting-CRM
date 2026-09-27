@@ -65,7 +65,7 @@ final class ProxmoxUnrecordedVmDestroyTest extends TestCase
             '*/api2/json/nodes/pve1/qemu/105/status/current' => Http::response(['data' => ['status' => 'stopped']]),
             '*/api2/json/nodes/pve1/qemu/105/config' => Http::response(['data' => ['scsi0' => 'local-lvm:32,size=32G']]),
             '*/api2/json/nodes/pve1/tasks/*' => Http::response(['data' => ['status' => 'stopped', 'exitstatus' => 'OK']]),
-            '*/api2/json/nodes/pve1/qemu/105' => Http::response(['data' => 'UPID:pve1:0000:destroy']),
+            '*/api2/json/nodes/pve1/qemu/105?*' => Http::response(['data' => 'UPID:pve1:0000:destroy']),
         ]);
     }
 
@@ -85,7 +85,7 @@ final class ProxmoxUnrecordedVmDestroyTest extends TestCase
 
         Http::assertSent(fn (Request $r): bool => $r->method() === 'DELETE'
             && str_contains($r->url(), '/nodes/pve1/qemu/105')
-            && $r['purge'] === 1);
+            && str_contains($r->url(), 'purge=1'));
     }
 
     public function test_a_vm_that_belongs_to_a_service_is_refused(): void
@@ -133,7 +133,7 @@ final class ProxmoxUnrecordedVmDestroyTest extends TestCase
             '*/api2/json/nodes/pve1/qemu/105/status/current' => Http::response(['data' => ['status' => 'stopped']]),
             '*/api2/json/nodes/pve1/qemu/105/config' => Http::response(['data' => ['template' => 1, 'scsi0' => 'local-lvm:32,size=32G']]),
             '*/api2/json/nodes/pve1/tasks/*' => Http::response(['data' => ['status' => 'stopped', 'exitstatus' => 'OK']]),
-            '*/api2/json/nodes/pve1/qemu/105' => Http::response(['data' => 'UPID:pve1:0000:destroy']),
+            '*/api2/json/nodes/pve1/qemu/105?*' => Http::response(['data' => 'UPID:pve1:0000:destroy']),
         ]);
 
         $this->actingAs($this->adminWith(['hosting.manage']))

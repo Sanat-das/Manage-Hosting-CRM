@@ -105,6 +105,31 @@ final class VmStatusPresenter
     }
 
     /**
+     * Drop the cached live state for a hosting account after a module action.
+     *
+     * The action's own page reload renders immediately, so without this the
+     * presenter can replay the pre-action state for the rest of the 10s TTL
+     * (a stopped VM shown after Start, for example). Never throws.
+     */
+    public function forgetVmState(string $slug, int $hostingAccountId): void
+    {
+        try {
+            Cache::forget(self::vmStateCacheKey($slug, $hostingAccountId));
+        } catch (\Throwable) {
+            // Invalidation must never break the action that just ran.
+        }
+    }
+
+    /**
+     * The short-lived live VM-state probe cache. One place owns the key so
+     * post-action invalidation can never drift from the read path.
+     */
+    private static function vmStateCacheKey(string $slug, int $hostingAccountId): string
+    {
+        return "{$slug}:vm-state:{$hostingAccountId}";
+    }
+
+    /**
      * Latest operator-visible action, preferring a still-running row so a
      * queued build always wins over an older terminal one.
      *
@@ -241,7 +266,7 @@ final class VmStatusPresenter
                 return ['exists' => true, 'state' => null] + $identityFallback;
             }
 
-            $cacheKey = "{$slug}:vm-state:{$hostingAccount->id}";
+            $cacheKey = self::vmStateCacheKey($slug, $hostingAccount->id);
             if ($refresh) {
                 // Operator asked to re-check: drop the short TTL so the next
                 // probe talks to the host again instead of replaying the error.

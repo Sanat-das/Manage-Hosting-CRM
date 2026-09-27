@@ -16,10 +16,12 @@ use App\Models\Server;
 use App\Models\ServiceInstance;
 use App\Models\User;
 use App\Modules\Proxmox\Proxmox;
+use App\Modules\Proxmox\Services\ProxmoxClient;
 use App\Services\Provisioning\ManualProvisioner;
 use App\Services\Provisioning\VmStatusPresenter;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Tests\TestCase;
@@ -296,5 +298,99 @@ final class ProxmoxVmLifecycleTest extends TestCase
         $this->assertTrue($result->success, (string) $result->message);
         Http::assertSent(fn (Request $request): bool => $request->method() === 'POST'
             && str_contains($request->url(), '/nodes/pve1/qemu/901/status/reboot'));
+    }
+
+    /**
+     * Regression (found on live PVE 9.1): write bodies must be form-encoded.
+     * A parameter-less POST carried Laravel's default JSON body, which
+     * serialises an empty array as `[]` — PVE answers HTTP 500 "Not a HASH
+     * reference", so every start/reboot failed on a real cluster. DELETE is
+     * stricter still: ANY body gets HTTP 501 "Unexpected content for method
+     * 'DELETE'", so its parameters must travel in the query string. The
+     * faked suite stayed green because it never inspected the body.
+     */
+    public function test_write_verbs_send_form_encoded_bodies(): void
+    {
+        $this->fakePve('stopped');
+        Http::fake(['*qemu/901?*' => Http::response(['data' => 'UPID:pve1:0000:destroy'])]);
+
+        $client = new ProxmoxClient($this->proxmoxServer());
+
+        $client->startVm('pve1', 901);
+        $client->rebootVm('pve1', 901);
+        $client->destroyVm('pve1', 901);
+
+        $assertFormEncoded = function (string $pathFragment): void {
+            Http::assertSent(function (Request $request) use ($pathFragment): bool {
+                if ($request->method() !== 'POST' || ! str_contains($request->url(), $pathFragment)) {
+                    return false;
+                }
+
+                $contentType = (string) ($request->header('Content-Type')[0] ?? '');
+
+                return ! str_contains($contentType, 'application/json')
+                    && trim((string) $request->body()) !== '[]';
+            });
+        };
+
+        $assertFormEncoded('/status/start');
+        $assertFormEncoded('/status/reboot');
+
+        // DELETE: no body at all; purge flags in the query string.
+        Http::assertSent(function (Request $request): bool {
+            return $request->method() === 'DELETE'
+                && str_contains($request->url(), '/qemu/901')
+                && str_contains($request->url(), 'purge=1')
+                && trim((string) $request->body()) === '';
+        });
+    }
+
+    /**
+     * A module action's page reload renders immediately; the presenter's 10s
+     * live-state probe cache must be dropped first or the card replays the
+     * pre-action state (a stopped VM shown after Start).
+     */
+    public function test_module_action_forgets_the_cached_vm_state(): void
+    {
+        $this->fakePve('stopped');
+
+        $server = $this->proxmoxServer();
+        $product = $this->productWithProxmoxLink($this->linkConfig());
+        $account = $this->hostingAccount($this->customer(), $product, $server, 'pvevm-cache');
+
+        // The same shape ManualProvisioner::serviceForHosting() resolves.
+        $service = ServiceInstance::create([
+            'customer_id' => $account->customer_id,
+            'server_id' => $server->id,
+            'domain' => $account->domain,
+            'service_tag' => 'SVC-CACHE',
+            'username' => 'pvevm-cache',
+            'provisioning_method' => 'proxmox',
+            'status' => 'active',
+        ]);
+
+        PanelAccount::create([
+            'service_instance_id' => $service->id,
+            'server_id' => $server->id,
+            'panel' => 'proxmox',
+            'username' => 'pvevm-cache',
+            'external_id' => '901',
+            'meta' => ['meta' => ['node' => 'pve1', 'vmid' => 901]],
+            'status' => PanelAccount::STATUS_ACTIVE,
+        ]);
+
+        // Simulate a page render that cached the live state a moment ago.
+        $key = "proxmox:vm-state:{$account->id}";
+        Cache::put($key, ['exists' => true, 'state' => 'stopped'], 10);
+        $this->assertTrue(Cache::has($key));
+
+        $this->actingAs($this->adminWith(['hosting.edit']))
+            ->post(route('admin.hosting.module-action', $account), [
+                'module_slug' => 'proxmox',
+                'action' => 'start',
+            ])
+            ->assertRedirect();
+
+        $this->assertFalse(Cache::has($key), 'The post-action render must not replay the pre-action VM state.');
     }
 }

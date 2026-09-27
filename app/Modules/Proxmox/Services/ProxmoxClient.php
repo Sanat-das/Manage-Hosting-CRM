@@ -296,11 +296,34 @@ final class ProxmoxClient
         $request = $this->request();
 
         try {
-            return match (strtoupper($method)) {
+            $method = strtoupper($method);
+
+            // PVE rejects ANY request body on DELETE ("Unexpected content for
+            // method 'DELETE'", HTTP 501) — purge flags must travel in the
+            // query string instead.
+            if ($method === 'DELETE') {
+                $url = $this->url($path);
+                if ($params !== []) {
+                    $url .= '?'.http_build_query($params);
+                }
+
+                return $request->delete($url);
+            }
+
+            return match ($method) {
                 'GET' => $request->get($this->url($path), $params),
-                'PUT' => $request->put($this->url($path), $params),
-                'DELETE' => $request->delete($this->url($path), $params),
-                default => $request->post($this->url($path), $params),
+                // PVE's API server reads write bodies as form data. Under
+                // Laravel's default JSON body format a parameter-less write
+                // serialises as an empty JSON *array* (`[]`), which PVE 9.1
+                // answers with HTTP 500 "Not a HASH reference" — every start
+                // and reboot failed on a live cluster because of it. Form
+                // encoding keeps the body empty instead.
+                'PUT' => $params === []
+                    ? $request->asForm()->put($this->url($path))
+                    : $request->put($this->url($path), $params),
+                default => $params === []
+                    ? $request->asForm()->post($this->url($path))
+                    : $request->post($this->url($path), $params),
             };
         } catch (Throwable $e) {
             throw new PanelException(sprintf(
@@ -1304,6 +1327,14 @@ final class ProxmoxClient
         if (trim($upid) === '') {
             return;
         }
+
+        // A graceful shutdown runs for up to 90s and a destroy for 180s, but
+        // web SAPIs default to max_execution_time = 30s: without headroom PHP
+        // kills the request mid-wait, the action's provisioning event is left
+        // `running`, and the compute card locks for RUNNING_STALE_AFTER_SECONDS.
+        // The wait is bounded by $timeoutSeconds below, so lifting the script
+        // limit cannot hang the request. CLI (queue worker) runs unlimited.
+        @set_time_limit(0);
 
         $deadline = microtime(true) + $timeoutSeconds;
 

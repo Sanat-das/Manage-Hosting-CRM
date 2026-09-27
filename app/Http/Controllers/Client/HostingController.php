@@ -14,6 +14,7 @@ use App\Services\Provisioning\ComputeDriver;
 use App\Services\Provisioning\ComputeTemplateCatalog;
 use App\Services\Provisioning\HypervDriver;
 use App\Services\Provisioning\ManualProvisioner;
+use App\Services\Provisioning\ProvisioningDispatcher;
 use App\Services\Provisioning\ProvisioningEventRecorder;
 use App\Services\Provisioning\VmBuildDispatcher;
 use App\Services\Provisioning\VmGuestCredentialStore;
@@ -147,8 +148,6 @@ class HostingController extends Controller
      * event is opened and the queued job does the multi-minute clone, so the
      * web request returns in milliseconds (202/info) while the page polls
      * vm-status for progress. Client builds always start the VM afterwards.
-     *
-     * @return JsonResponse|RedirectResponse
      */
     public function provision(Request $request, HostingAccount $hostingAccount): JsonResponse|RedirectResponse
     {
@@ -275,8 +274,6 @@ class HostingController extends Controller
      * NEW password — the panel authenticates into the running guest with the
      * credentials it already has stored. Mirrors the admin reset flow
      * (update event + audit) without ever echoing the password back.
-     *
-     * @return JsonResponse|RedirectResponse
      */
     public function resetVmPassword(Request $request, HostingAccount $hostingAccount): JsonResponse|RedirectResponse
     {
@@ -395,8 +392,6 @@ class HostingController extends Controller
      * touches hosting_accounts.status — a customer powering off their VM is
      * not a billing suspension (only the PanelAccount mirror set by the
      * driver changes).
-     *
-     * @return JsonResponse|RedirectResponse
      */
     public function vmPower(Request $request, HostingAccount $hostingAccount): JsonResponse|RedirectResponse
     {
@@ -522,6 +517,8 @@ class HostingController extends Controller
                 } catch (\Throwable) {
                 }
             }
+            // The host may have changed state even when the call failed.
+            $this->vmStatusPresenter->forgetVmState($slug, $account->id);
             // Driver messages are already sanitized — pass through verbatim.
             $msg = $e->getMessage();
             if ($this->wantsJson($request)) {
@@ -530,6 +527,10 @@ class HostingController extends Controller
 
             return back()->with('error', $msg);
         }
+
+        // Any module call can change the live VM state; drop the presenter's
+        // short probe cache so the post-action render cannot replay it.
+        $this->vmStatusPresenter->forgetVmState($slug, $account->id);
 
         if (! $result->success) {
             if (isset($event) && $event !== null) {
@@ -613,7 +614,7 @@ class HostingController extends Controller
         }
 
         try {
-            $dispatcher = app(\App\Services\Provisioning\ProvisioningDispatcher::class);
+            $dispatcher = app(ProvisioningDispatcher::class);
             $resolved = strtolower(trim((string) ($dispatcher->moduleFor($product) ?? '')));
             if (ComputeTemplateCatalog::supports($resolved)) {
                 return $resolved;
@@ -647,7 +648,7 @@ class HostingController extends Controller
                     ?? ($account->product ? $account->product->moduleLinks()->where('module_slug', $slug)->first() : null);
                 if ($link) {
                     $rawCfg = is_array($link->config) ? $link->config : [];
-                    $dec = app(\App\Services\Integrations\IntegrationRegistry::class)->decryptConfigFor($slug, $rawCfg);
+                    $dec = app(IntegrationRegistry::class)->decryptConfigFor($slug, $rawCfg);
                     $rawAllowed = $dec['allowed_templates'] ?? [];
                     $productAllowed = ComputeTemplateCatalog::sanitizeAllowed($slug, is_array($rawAllowed) ? $rawAllowed : []);
                 }

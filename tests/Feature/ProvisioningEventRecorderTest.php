@@ -7,7 +7,9 @@ namespace Tests\Feature;
 use App\Contracts\Integrations\ProvisioningResult;
 use App\Models\Customer;
 use App\Models\HostingAccount;
+use App\Models\Module;
 use App\Models\Order;
+use App\Models\OrderItem;
 use App\Models\Product;
 use App\Models\ProductModule;
 use App\Models\ProvisioningEvent;
@@ -78,6 +80,41 @@ class ProvisioningEventRecorderTest extends TestCase
         $this->assertNull($failed->completed_at);
         $this->assertSame('boom exploded', $failed->result['error']);
         $this->assertSame(1, ProvisioningEvent::count());
+    }
+
+    public function test_interrupted_guard_fails_a_still_running_row(): void
+    {
+        $recorder = app(ProvisioningEventRecorder::class);
+
+        $event = $recorder->begin('suspend', ['module' => 'proxmox']);
+
+        // Simulates the shutdown guard firing after a fatal error: the row
+        // never reached complete()/fail(), so it is flipped with a verdict
+        // instead of staying `running` until the stale threshold.
+        ProvisioningEventRecorder::markInterrupted((int) $event->id);
+
+        $row = $event->fresh();
+        $this->assertSame('failed', $row->status);
+        $this->assertSame('failed', $row->event_status);
+        $this->assertSame(ProvisioningEventRecorder::INTERRUPTED_MESSAGE, $row->last_error);
+        $this->assertSame(ProvisioningEventRecorder::INTERRUPTED_MESSAGE, $row->result['error']);
+        $this->assertNull($row->completed_at);
+        $this->assertSame(1, ProvisioningEvent::count());
+    }
+
+    public function test_interrupted_guard_never_touches_a_terminal_row(): void
+    {
+        $recorder = app(ProvisioningEventRecorder::class);
+
+        $event = $recorder->begin('suspend', ['module' => 'proxmox']);
+        $recorder->complete($event, 'VM stopped');
+
+        ProvisioningEventRecorder::markInterrupted((int) $event->id);
+
+        $row = $event->fresh();
+        $this->assertSame('completed', $row->status);
+        $this->assertSame('VM stopped', $row->result['message']);
+        $this->assertNull($row->last_error);
     }
 
     // ── b. hosting_account_id link ──
@@ -251,7 +288,7 @@ class ProvisioningEventRecorderTest extends TestCase
 
     // ── helpers ──
 
-    private function ensureOkModule(): \App\Models\Module
+    private function ensureOkModule(): Module
     {
         config(['modules.path' => base_path('tests/Fixtures/modules')]);
         $manager = app(ModuleManager::class);
@@ -331,9 +368,9 @@ class ProvisioningEventRecorderTest extends TestCase
     /**
      * @param  list<array{key: string, selected: mixed}>  $options
      */
-    private function orderItem(Order $order, Product $product, array $options): \App\Models\OrderItem
+    private function orderItem(Order $order, Product $product, array $options): OrderItem
     {
-        return \App\Models\OrderItem::create([
+        return OrderItem::create([
             'order_id' => $order->id,
             'product_id' => $product->id,
             'product_name' => $product->name,

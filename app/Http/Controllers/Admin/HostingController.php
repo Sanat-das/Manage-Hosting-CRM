@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Contracts\Integrations\Capabilities\HostingAccountInfoProvider;
 use App\Contracts\Integrations\Capabilities\HostingAccountToolsProvider;
+use App\Contracts\Integrations\ProvisioningResult;
 use App\Exceptions\NoAvailableIpException;
 use App\Http\Controllers\Controller;
 use App\Models\AssetRelationship;
@@ -15,6 +16,7 @@ use App\Models\HostingNote;
 use App\Models\InventoryAsset;
 use App\Models\IpAddress;
 use App\Models\IpSubnet;
+use App\Models\Module;
 use App\Models\Order;
 use App\Models\PanelAccount;
 use App\Models\Product;
@@ -32,9 +34,11 @@ use App\Services\IpAssignmentService;
 use App\Services\Modules\ModuleManager;
 use App\Services\Provisioning\ComputeTemplateCatalog;
 use App\Services\Provisioning\HypervDriver;
+use App\Services\Provisioning\HypervTemplateCatalog;
 use App\Services\Provisioning\ManualProvisioner;
 use App\Services\Provisioning\ProvisioningEventRecorder;
 use App\Services\Provisioning\VmBuildDispatcher;
+use App\Services\Provisioning\VmGuestCredentialStore;
 use App\Services\Provisioning\VmStatusPresenter;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
@@ -361,7 +365,7 @@ class HostingController extends Controller
                 }
             } else {
                 $mod = $manager->find($slug);
-                if ($mod !== null && $mod->status === \App\Models\Module::STATUS_ACTIVE) {
+                if ($mod !== null && $mod->status === Module::STATUS_ACTIVE) {
                     $driver = $manager->capabilityInstance($mod, 'provisioning');
                     $name = $mod->name ?? $name;
                 }
@@ -430,14 +434,14 @@ class HostingController extends Controller
                     ?? ($hostingAccount->product ? $hostingAccount->product->moduleLinks()->where('module_slug', 'hyperv')->first() : null);
                 if ($hypervLinkForEffective) {
                     $rawCfg = is_array($hypervLinkForEffective->config) ? $hypervLinkForEffective->config : [];
-                    $dec = app(\App\Services\Integrations\IntegrationRegistry::class)->decryptConfigFor('hyperv', $rawCfg);
+                    $dec = app(IntegrationRegistry::class)->decryptConfigFor('hyperv', $rawCfg);
                     $rawAllowed = $dec['allowed_templates'] ?? [];
-                    $productAllowed = \App\Services\Provisioning\HypervTemplateCatalog::sanitizeAllowed(is_array($rawAllowed) ? $rawAllowed : []);
+                    $productAllowed = HypervTemplateCatalog::sanitizeAllowed(is_array($rawAllowed) ? $rawAllowed : []);
                 }
             } catch (\Throwable) {
                 $productAllowed = [];
             }
-            $hypervEffectiveOptions = \App\Services\Provisioning\HypervTemplateCatalog::effectiveOptions($hostingAccount->server, $productAllowed);
+            $hypervEffectiveOptions = HypervTemplateCatalog::effectiveOptions($hostingAccount->server, $productAllowed);
             $def = $hostingAccount->server->hypervDefaultTemplate();
             if ($def !== null && $def !== '' && in_array($def, array_column($hypervEffectiveOptions, 'name'), true)) {
                 $hypervEffectiveDefault = $def;
@@ -776,7 +780,7 @@ class HostingController extends Controller
 
             $module = app(ModuleManager::class)->find('hyperv');
 
-            if ($module === null || $module->status !== \App\Models\Module::STATUS_ACTIVE) {
+            if ($module === null || $module->status !== Module::STATUS_ACTIVE) {
                 return null;
             }
 
@@ -845,7 +849,7 @@ class HostingController extends Controller
                     }
                 } else {
                     $module = $manager->find($slug);
-                    if ($module === null || $module->status !== \App\Models\Module::STATUS_ACTIVE) {
+                    if ($module === null || $module->status !== Module::STATUS_ACTIVE) {
                         continue;
                     }
                     $driver = $manager->capabilityInstance($module, 'provisioning');
@@ -868,7 +872,7 @@ class HostingController extends Controller
                         $errors[] = "{$name}: ".($result->message ?? "{$verb} failed");
                     }
                 } catch (\Throwable $e) {
-                    \Illuminate\Support\Facades\Log::error('Hosting lifecycle module sync threw', [
+                    Log::error('Hosting lifecycle module sync threw', [
                         'hosting_account_id' => $hostingAccount->id,
                         'module' => $slug,
                         'action' => $verb,
@@ -876,6 +880,10 @@ class HostingController extends Controller
                     ]);
                     $errors[] = "{$name}: {$e->getMessage()}";
                 }
+
+                // The host may have changed state even when the call failed;
+                // never let the next render replay the pre-action probe.
+                $this->vmStatusPresenter->forgetVmState($slug, $hostingAccount->id);
             }
 
             if ($errors !== []) {
@@ -884,7 +892,7 @@ class HostingController extends Controller
 
             return null;
         } catch (\Throwable $e) {
-            \Illuminate\Support\Facades\Log::error('Hosting lifecycle module sync failed', [
+            Log::error('Hosting lifecycle module sync failed', [
                 'hosting_account_id' => $hostingAccount->id,
                 'action' => $verb,
                 'error' => $e->getMessage(),
@@ -1002,6 +1010,7 @@ class HostingController extends Controller
                 if ($request->expectsJson() || $request->ajax()) {
                     return response()->json(['ok' => false, 'message' => $msg], 409);
                 }
+
                 return back()->with('error', $msg);
             }
 
@@ -1031,6 +1040,7 @@ class HostingController extends Controller
                 if ($request->expectsJson() || $request->ajax()) {
                     return response()->json(['ok' => false, 'message' => $msg], 422);
                 }
+
                 return back()->with('error', $msg);
             }
         }
@@ -1050,7 +1060,7 @@ class HostingController extends Controller
             }
         } else {
             $module = $manager->find($slug);
-            if ($module === null || $module->status !== \App\Models\Module::STATUS_ACTIVE) {
+            if ($module === null || $module->status !== Module::STATUS_ACTIVE) {
                 return back()->with('error', 'Module is not active.');
             }
             $displayName = $module->name ?? $displayName;
@@ -1092,6 +1102,7 @@ class HostingController extends Controller
             if ($request->expectsJson() || $request->ajax()) {
                 return response()->json(['ok' => false, 'message' => $msg], 422);
             }
+
             return back()->with('error', $msg);
         }
 
@@ -1104,6 +1115,7 @@ class HostingController extends Controller
                 if ($request->expectsJson() || $request->ajax()) {
                     return response()->json(['ok' => false, 'message' => $msg], 422);
                 }
+
                 return back()->with('error', $msg);
             }
         }
@@ -1120,6 +1132,7 @@ class HostingController extends Controller
             if ($request->expectsJson() || $request->ajax()) {
                 return response()->json(['ok' => false, 'message' => $msg], 422);
             }
+
             return back()->with('error', $msg);
         }
 
@@ -1149,10 +1162,10 @@ class HostingController extends Controller
         );
 
         try {
-            /** @var \App\Contracts\Integrations\ProvisioningResult $result */
+            /** @var ProvisioningResult $result */
             $result = $driver->{$verb}($service, $config);
         } catch (\Throwable $e) {
-            \Illuminate\Support\Facades\Log::error('Hosting module action threw', [
+            Log::error('Hosting module action threw', [
                 'hosting_account_id' => $hostingAccount->id,
                 'module' => $slug,
                 'action' => $verb,
@@ -1161,12 +1174,21 @@ class HostingController extends Controller
 
             $this->provisioningEvents->fail($event, $e->getMessage());
 
+            // A thrown driver call may still have changed the host; never let
+            // the next render replay the pre-action probe.
+            $this->vmStatusPresenter->forgetVmState($slug, $hostingAccount->id);
+
             $msg = "Module action failed: {$e->getMessage()}";
             if ($request->expectsJson() || $request->ajax()) {
                 return response()->json(['ok' => false, 'message' => $msg], 422);
             }
+
             return back()->with('error', $msg);
         }
+
+        // Any module call can change the live VM state; drop the presenter's
+        // short probe cache so the post-action render cannot replay it.
+        $this->vmStatusPresenter->forgetVmState($slug, $hostingAccount->id);
 
         if (! $result->success) {
             $this->provisioningEvents->fail($event, $result->message ?? 'Module action failed.');
@@ -1175,6 +1197,7 @@ class HostingController extends Controller
             if ($request->expectsJson() || $request->ajax()) {
                 return response()->json(['ok' => false, 'message' => $msg], 422);
             }
+
             return back()->with('error', $msg);
         }
 
@@ -1201,6 +1224,7 @@ class HostingController extends Controller
 
         if ($request->expectsJson() || $request->ajax()) {
             $state = $result->data['state'] ?? null;
+
             return response()->json(['ok' => true, 'action' => $validated['action'], 'message' => $result->message ?? 'done.', 'state' => $state]);
         }
 
@@ -1215,7 +1239,7 @@ class HostingController extends Controller
      * ServiceInstance the module operates on: delegated to the shared
      * ManualProvisioner factory so the mirror logic lives in one place.
      */
-    private function serviceForHosting(HostingAccount $hostingAccount, string $slug): \App\Models\ServiceInstance
+    private function serviceForHosting(HostingAccount $hostingAccount, string $slug): ServiceInstance
     {
         return $this->manualProvisioner->serviceForHosting($hostingAccount, $slug);
     }
@@ -1227,9 +1251,11 @@ class HostingController extends Controller
     {
         try {
             $data = $this->vmStatusPresenter->build($hostingAccount, $request->boolean('refresh'));
+
             return response()->json($data);
         } catch (\Throwable $e) {
             Log::warning('vmStatus failed', ['hosting_account_id' => $hostingAccount->id, 'error' => $e->getMessage()]);
+
             return response()->json(['ok' => true, 'action' => null, 'vm' => ['exists' => false, 'state' => null, 'name' => null, 'vmId' => null, 'probe_error' => null], 'account' => ['status' => $hostingAccount->status], 'credentials' => ['stored' => false, 'username' => 'Administrator'], 'can' => ['create' => true, 'start' => false, 'stop' => false, 'restart' => false, 'delete' => false, 'reset_password' => false], 'reasons' => []]);
         }
     }
@@ -1275,7 +1301,7 @@ class HostingController extends Controller
                 return $notStored();
             }
 
-            $stored = app(\App\Services\Provisioning\VmGuestCredentialStore::class)->read($panel);
+            $stored = app(VmGuestCredentialStore::class)->read($panel);
 
             if (($stored['password'] ?? null) === null || $stored['password'] === '') {
                 return $notStored();
@@ -1329,19 +1355,21 @@ class HostingController extends Controller
             if ($request->expectsJson() || $request->ajax()) {
                 return response()->json(['ok' => false, 'message' => $msg], 422);
             }
+
             return back()->with('error', $msg);
         }
 
         // Check stored credentials requirement
         try {
             $panel = PanelAccount::where('service_instance_id', $service->id)->where('panel', 'hyperv')->first();
-            $store = app(\App\Services\Provisioning\VmGuestCredentialStore::class);
+            $store = app(VmGuestCredentialStore::class);
             $stored = $panel !== null ? $store->read($panel) : ['username' => null, 'password' => null];
             if (($stored['password'] ?? null) === null && ($currentPassword === null || trim($currentPassword) === '')) {
                 $msg = 'No Administrator credentials are stored for this VM — enter the current password.';
                 if ($request->expectsJson() || $request->ajax()) {
                     return response()->json(['ok' => false, 'message' => $msg], 422);
                 }
+
                 return back()->with('error', $msg);
             }
         } catch (\Throwable) {
@@ -1364,30 +1392,44 @@ class HostingController extends Controller
             $result = $driver->resetGuestAdminPassword($service, $newPassword, $username, $currentPassword);
         } catch (\Throwable $e) {
             if ($event !== null) {
-                try { $this->provisioningEvents->fail($event, $e->getMessage()); } catch (\Throwable) {}
+                try {
+                    $this->provisioningEvents->fail($event, $e->getMessage());
+                } catch (\Throwable) {
+                }
             }
             $msg = $e->getMessage();
             if ($request->expectsJson() || $request->ajax()) {
                 return response()->json(['ok' => false, 'message' => $msg], 422);
             }
+
             return back()->with('error', $msg);
         }
 
         if (! $result->success) {
             if ($event !== null) {
-                try { $this->provisioningEvents->fail($event, $result->message ?? 'Password reset failed'); } catch (\Throwable) {}
+                try {
+                    $this->provisioningEvents->fail($event, $result->message ?? 'Password reset failed');
+                } catch (\Throwable) {
+                }
             }
             $msg = $result->message ?? 'Password reset failed';
             if ($request->expectsJson() || $request->ajax()) {
                 return response()->json(['ok' => false, 'message' => $msg], 422);
             }
+
             return back()->with('error', $msg);
         }
 
         if ($event !== null) {
-            try { $this->provisioningEvents->complete($event, $result->message ?? 'Administrator password reset', is_array($result->data ?? null) ? $result->data : []); } catch (\Throwable) {}
+            try {
+                $this->provisioningEvents->complete($event, $result->message ?? 'Administrator password reset', is_array($result->data ?? null) ? $result->data : []);
+            } catch (\Throwable) {
+            }
         }
-        try { $this->hostingService->audit($hostingAccount, 'hosting.module_action', $result->message ?? 'Password reset', ['module' => 'hyperv', 'action' => 'reset_password']); } catch (\Throwable) {}
+        try {
+            $this->hostingService->audit($hostingAccount, 'hosting.module_action', $result->message ?? 'Password reset', ['module' => 'hyperv', 'action' => 'reset_password']);
+        } catch (\Throwable) {
+        }
 
         $resolvedUsername = $result->data['username'] ?? $username ?? 'Administrator';
 

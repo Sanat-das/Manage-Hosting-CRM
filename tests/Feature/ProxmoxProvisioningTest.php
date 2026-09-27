@@ -933,7 +933,7 @@ final class ProxmoxProvisioningTest extends TestCase
         $proxmox->provision($service, ['cpu' => 2, 'ram' => 2048, 'disk' => 50, 'template_vmid' => 900, 'node' => 'pve1']);
 
         $this->fakePve([
-            '*/api2/json/nodes/pve1/qemu/901' => Http::response(['data' => 'UPID:pve1:0000:destroy']),
+            '*/api2/json/nodes/pve1/qemu/901?*' => Http::response(['data' => 'UPID:pve1:0000:destroy']),
         ]);
 
         $result = $proxmox->terminate($service->fresh(), []);
@@ -941,7 +941,7 @@ final class ProxmoxProvisioningTest extends TestCase
         $this->assertTrue($result->success, $result->message);
         Http::assertSent(fn (Request $r): bool => str_contains($r->url(), '/nodes/pve1/qemu/901')
             && $r->method() === 'DELETE'
-            && $r['purge'] === 1);
+            && str_contains($r->url(), 'purge=1'));
         $this->assertSame(PanelAccount::STATUS_TERMINATED, PanelAccount::sole()->status);
     }
 
@@ -975,7 +975,7 @@ final class ProxmoxProvisioningTest extends TestCase
         $proxmox->provision($service, ['cpu' => 2, 'ram' => 2048, 'disk' => 50, 'template_vmid' => 900, 'node' => 'pve1']);
 
         $this->fakePve([
-            '*/api2/json/nodes/pve1/qemu/901' => Http::response(['message' => 'Configuration file does not exist'], 500),
+            '*/api2/json/nodes/pve1/qemu/901?*' => Http::response(['message' => 'Configuration file does not exist'], 500),
         ]);
 
         $result = $proxmox->terminate($service->fresh(), []);
@@ -1733,7 +1733,7 @@ final class ProxmoxProvisioningTest extends TestCase
             '*/api2/json/nodes/pve1/qemu/105/status/shutdown' => Http::response(['data' => 'UPID:pve1:0000:shutdown']),
             '*/api2/json/nodes/pve1/qemu/105/status/stop' => Http::response(['data' => 'UPID:pve1:0000:stop']),
             '*/api2/json/nodes/pve1/tasks/*' => Http::response(['data' => ['status' => 'stopped', 'exitstatus' => 'OK']]),
-            '*/api2/json/nodes/pve1/qemu/105' => Http::response(['data' => 'UPID:pve1:0000:destroy']),
+            '*/api2/json/nodes/pve1/qemu/105?*' => Http::response(['data' => 'UPID:pve1:0000:destroy']),
         ]);
 
         $client->destroyVm('pve1', 105);
