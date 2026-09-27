@@ -604,6 +604,7 @@ final class ProxmoxTemplateCatalogTest extends TestCase
         Http::preventStrayRequests();
         Http::fake([
             '*/api2/json/nodes' => Http::response(['data' => [['node' => 'pve1', 'status' => 'online']]]),
+            '*/api2/json/access/permissions' => Http::response(['data' => ['/vms' => ['VM.Audit' => 1]]]),
             '*/api2/json/nodes/pve1/qemu' => Http::response(['data' => [
                 ['vmid' => 110, 'name' => 'Alma9Template', 'status' => 'stopped', 'template' => 1],
                 ['vmid' => 900, 'name' => 'not-a-template', 'status' => 'running', 'template' => 0],
@@ -621,5 +622,31 @@ final class ProxmoxTemplateCatalogTest extends TestCase
             ->assertSee('proxmox_templates_selected[]', false)
             // A non-template guest must never be offered as a clone source.
             ->assertDontSee('not-a-template', false);
+    }
+
+    /**
+     * The false-green: a privilege-separated token with no ACL sees zero VMs on
+     * every node, which used to render as "No templates were discovered" — the
+     * same page as a healthy cluster with no templates. It must say why instead.
+     */
+    public function test_the_server_edit_page_reports_a_discovery_failure_instead_of_no_templates(): void
+    {
+        Http::preventStrayRequests();
+        Http::fake([
+            '*/api2/json/nodes' => Http::response(['data' => [['node' => 'pve1', 'status' => 'online']]]),
+            '*/api2/json/nodes/pve1/qemu' => Http::response(['data' => []]),
+            // Exactly what a privilege-separated token with no ACL returns.
+            '*/api2/json/access/permissions' => Http::response(['data' => []]),
+            '*/api2/json/cluster/resources*' => Http::response(['data' => []]),
+        ]);
+
+        $server = $this->server();
+
+        $this->actingAs($this->adminWith(['hosting.manage']))
+            ->get(route('admin.servers.edit', $server))
+            ->assertOk()
+            ->assertSee('no effective privileges', false)
+            ->assertSee('PVEVMAdmin', false)
+            ->assertDontSee('No templates were discovered', false);
     }
 }

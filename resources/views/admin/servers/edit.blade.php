@@ -342,7 +342,11 @@
             <hr class="my-3">
             <h6 class="fw-semibold mb-3">Clone templates</h6>
 
-            @if (empty($proxmoxDiscoveredTemplates ?? []))
+            @if (($proxmoxDiscoveryError ?? '') !== '')
+                <x-adminlte-alert theme="danger" class="small mb-3">
+                    {{ $proxmoxDiscoveryError }}
+                </x-adminlte-alert>
+            @elseif (empty($proxmoxDiscoveredTemplates ?? []))
                 <x-adminlte-alert theme="warning" class="small mb-3">
                     No templates were discovered on this cluster. Create one in Proxmox (right-click a VM →
                     <em>Convert to template</em>), make sure the credential can read the node, then

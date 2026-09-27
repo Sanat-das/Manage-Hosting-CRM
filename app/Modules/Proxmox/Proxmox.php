@@ -135,14 +135,36 @@ final class Proxmox extends AbstractComputeModule
      * guest is not the supported path, and offering it invites mid-clone
      * failures.
      *
+     * Failure is NOT "no templates". A credential with no effective privileges
+     * sees zero VMs on every node, and a cluster where every node errors is a
+     * discovery failure; both throw so the admin picker can say why instead of
+     * showing a false "nothing to curate". A cluster that answers but genuinely
+     * has no templates still returns [].
+     *
      * @return list<array{vmid: int, name: string, node: string, status: string, template: bool}>
+     *
+     * @throws PanelException
      */
     public function discoverTemplates(Server $server): array
     {
         $client = new ProxmoxClient($server);
-        $out = [];
 
-        foreach ($client->cachedNodes() as $node) {
+        // A privilege-separated API token with no ACL authenticates and answers
+        // /nodes, but every VM listing comes back empty — indistinguishable
+        // from "this cluster has no templates" unless probed, which is exactly
+        // the false-green testConnection() refuses to report.
+        if ($client->effectivePrivileges() === []) {
+            throw new PanelException(
+                'This Proxmox VE credential has no effective privileges (/access/permissions is empty), '
+                .'so template discovery cannot see any VM. Grant the token an ACL with a role such as PVEVMAdmin.',
+            );
+        }
+
+        $nodes = $client->cachedNodes();
+        $out = [];
+        $failed = [];
+
+        foreach ($nodes as $node) {
             try {
                 foreach ($client->listTemplates($node) as $template) {
                     if ($template['template'] === true) {
@@ -153,12 +175,20 @@ final class Proxmox extends AbstractComputeModule
                 // Offline or unreachable node: skip it, keep discovering the
                 // rest — but leave a trace, otherwise an auth failure looks
                 // exactly like "this node has no templates".
+                $failed[] = $node;
                 Log::warning('Proxmox template discovery skipped a node', [
                     'server_id' => $server->id,
                     'node' => $node,
                     'error' => $e->getMessage(),
                 ]);
             }
+        }
+
+        if ($out === [] && $failed !== [] && count($failed) === count($nodes)) {
+            throw new PanelException(sprintf(
+                'Proxmox VE template discovery failed on every node (%s). Check the API credential and node health.',
+                implode(', ', $failed),
+            ));
         }
 
         usort($out, static fn (array $a, array $b): int => $a['vmid'] <=> $b['vmid']);

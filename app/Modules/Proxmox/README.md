@@ -72,8 +72,10 @@ Only entries PVE marks as a **template** are offered. Convert a VM in Proxmox
 with right-click → *Convert to template*.
 
 Note: discovery needs a credential that can read the cluster — a
-privilege-separated API token with no ACL sees zero templates (and
-`testConnection()` now fails loudly in that case rather than reporting success).
+privilege-separated API token with no ACL sees zero templates. `testConnection()`
+fails loudly for that credential, and the *Clone templates* panel shows the
+discovery error instead of an empty picker (a cluster that genuinely has no
+templates still reads as empty).
 
 **Restricting (product → Modules tab).** Either *All curated templates* (the
 default, unrestricted) or *Restrict to selected*, which limits that product to a

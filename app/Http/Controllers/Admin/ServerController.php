@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Contracts\Integrations\PanelException;
 use App\Contracts\Integrations\ServerConnectionResult;
 use App\Http\Controllers\Controller;
 use App\Models\HostingAccount;
@@ -1002,9 +1003,10 @@ class ServerController extends Controller
 
         // Proxmox VE curation needs the cluster's actual templates, because a
         // VMID is not something an operator should have to memorise. Bounded and
-        // cached; any failure degrades to an empty picker (the curated list the
-        // operator already saved is still rendered from connection_meta).
+        // cached; a discovery failure is surfaced as an error rather than an
+        // empty picker, which would read as "this cluster has no templates".
         $proxmoxDiscoveredTemplates = [];
+        $proxmoxDiscoveryError = '';
         if ($type === 'proxmox' && \App\Modules\Proxmox\Services\ProxmoxClient::isConfigured($server)) {
             try {
                 $proxmoxDiscoveredTemplates = \Illuminate\Support\Facades\Cache::remember(
@@ -1018,8 +1020,11 @@ class ServerController extends Controller
                             : [];
                     },
                 );
-            } catch (\Throwable) {
+            } catch (\Throwable $e) {
                 $proxmoxDiscoveredTemplates = [];
+                $proxmoxDiscoveryError = $e instanceof PanelException
+                    ? $e->getMessage()
+                    : 'Template discovery failed unexpectedly — check the logs.';
             }
         }
 
@@ -1053,6 +1058,7 @@ class ServerController extends Controller
             'selectedGroupId' => $selectedGroupId,
             'typeLocked' => true,
             'proxmoxDiscoveredTemplates' => $proxmoxDiscoveredTemplates,
+            'proxmoxDiscoveryError' => $proxmoxDiscoveryError,
             'virtualizorDiscoveredOs' => $virtualizorDiscoveredOs,
         ]);
     }
