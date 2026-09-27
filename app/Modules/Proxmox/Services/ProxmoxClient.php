@@ -263,6 +263,51 @@ final class ProxmoxClient
         return $port === self::DEFAULT_PORT ? $host : sprintf('%s:%d', $host, $port);
     }
 
+    /**
+     * The resolved API host (same host resolution `url()` uses): whatever
+     * address the server row carries with scheme, path and port stripped.
+     * The console sidecar dials the PVE VNC websocket at this host.
+     */
+    public function apiHost(): string
+    {
+        return self::host($this->server);
+    }
+
+    /**
+     * Open a VNC proxy for one QEMU VM and return the one-shot ticket the
+     * node's VNC websocket accepts.
+     *
+     * PVE answers `{"data": {"port": …, "ticket": "PVEVNC:…", …}}`;
+     * `websocket => 1` selects the websocket form of the proxy.
+     *
+     * @return array{port: int, ticket: string}
+     *
+     * @throws PanelException on transport/API failure or when the response
+     *                        carries no usable port/ticket
+     */
+    public function createVncProxy(string $node, int $vmid): array
+    {
+        $data = $this->call('POST', sprintf(
+            '/nodes/%s/qemu/%d/vncproxy',
+            rawurlencode($node),
+            $vmid,
+        ), ['websocket' => 1]);
+
+        $data = is_array($data) ? $data : [];
+        $port = (int) ($data['port'] ?? 0);
+        $ticket = trim((string) ($data['ticket'] ?? ''));
+
+        if ($port <= 0 || $ticket === '') {
+            throw new PanelException(sprintf(
+                'Proxmox VE returned no VNC proxy ticket for VM %d on node "%s".',
+                $vmid,
+                $node,
+            ));
+        }
+
+        return ['port' => $port, 'ticket' => $ticket];
+    }
+
     // ─────────────────────────────── transport ───────────────────────────────
 
     /**

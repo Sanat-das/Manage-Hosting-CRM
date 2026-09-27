@@ -67,9 +67,40 @@ final class GuacamoleLiteDriver implements GatewayDriver
         $key = $this->derivedKey();
         $expiresAt = $context->expiresAt ?? time() + self::TOKEN_TTL;
 
+        // The Proxmox VNC mode carries PVE relay facts instead of RDP
+        // settings: the sidecar opens the node's VNC websocket with them,
+        // rewrites connection.settings to its 127.0.0.1 relay address and
+        // drops `pve` before guacd sees the token. `type` stays `vnc` (a
+        // guacd-known type) so guacamole-lite never rejects it.
+        if ($context->mode === RdpConnectionMode::ProxmoxVnc) {
+            $pve = $context->pve ?? [];
+
+            $token = $this->encrypt([
+                'connection' => [
+                    'type' => 'vnc',
+                    'settings' => [
+                        'hostname' => '127.0.0.1',
+                        'port' => 0,
+                        'password' => '',
+                        'exp' => $expiresAt,
+                    ],
+                ],
+                'pve' => $pve,
+            ], $key);
+
+            Log::info('rdp.token.minted', [
+                'admin' => $context->adminUserId,
+                'account' => $context->accountId,
+                'mode' => $context->mode->value,
+            ]);
+
+            return $token;
+        }
+
         $settings = match ($context->mode) {
             RdpConnectionMode::GuestRdp => $this->guestRdpSettings($context),
             RdpConnectionMode::HyperVVmConnect => $this->vmConnectSettings($context),
+            RdpConnectionMode::ProxmoxVnc => throw new RuntimeException('Proxmox VNC tokens are minted through the dedicated pve branch above.'),
         };
 
         // Recording parameters are optional to guacd; emitting an empty path

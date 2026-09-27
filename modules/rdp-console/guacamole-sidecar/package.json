@@ -12,6 +12,7 @@
     "node": ">=18"
   },
   "dependencies": {
-    "guacamole-lite": "^1.2.0"
+    "guacamole-lite": "^1.2.0",
+    "ws": "^8.15.1"
   }
 }

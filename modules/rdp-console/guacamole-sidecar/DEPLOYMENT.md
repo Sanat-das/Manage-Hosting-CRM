@@ -178,3 +178,28 @@ See `.env.example.sidecar` for a copy-paste template.
 | Browser client (`guacamole-common-js`, vendored at `modules/rdp-console/resources/assets/guacamole-common.min.js`) | **1.5.0** | UMD build from `npm pack guacamole-common-js`; negotiates down to guacamole-lite's `VERSION_1_1_0` handshake — safe with the sidecar below. |
 | Sidecar (`guacamole-lite`)         | `^1.2.0`       | Locked in this directory's `package-lock.json`.                                            |
 | Protocol daemon (`guacd`)          | `1.5.5` pinned | Do NOT use 1.6.0 (regression affecting guacamole-lite clients, upstream issue #72) — see step 3. |
+| PVE upstream (`ws`)                | `^8.15.1`      | Direct dependency of this sidecar for the PVE VNC relay below.                             |
+
+## 8. PVE VNC relay (`pve-vnc-relay.js`)
+
+Proxmox VE exposes the QEMU VNC proxy port loopback-only on the node, so
+`guacd` cannot dial it directly. For PVE console tokens (decrypted payloads
+carrying a `pve` block alongside `connection`), `server.js` opens the PVE
+`GET /nodes/{node}/qemu/{vmid}/vncwebsocket` endpoint over `wss://<apiHost>:8006`
+with `Authorization: PVEAPIToken=…` and bridges the raw RFB byte stream to a
+short-lived loopback TCP listener (`127.0.0.1:<relayPort>`). `guacd` then dials
+that relay port as a plain VNC target (`password` = the PVE `vncTicket`); the
+`pve` block is deleted before the settings reach `guacd`, and the token/ticket
+are never written to logs.
+
+- Dependency: [`ws`](https://github.com/websockets/ws) (`^8.15.1`, declared in
+  this directory's `package.json` alongside `guacamole-lite`; install with
+  `npm ci`).
+- Network: the PVE node address (`pve.apiHost`, e.g. `10.100.1.30`) must be
+  reachable from the sidecar host — it is on the same cluster network. The
+  relay listener itself stays loopback-only (`127.0.0.1`) next to `guacd`.
+- TLS: `rejectUnauthorized` follows `pve.verifyTls` (`false` disables
+  verification for cluster self-signed certs); the `wss` URL and auth header
+  are built per connection from the decrypted `pve` block.
+- Non-PVE sessions (RDP, VMConnect) carry no `pve` block and behave exactly as
+  before.

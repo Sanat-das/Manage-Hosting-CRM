@@ -73,6 +73,33 @@
     $computeCredsTitle = $computeIsRunning
         ? 'An action is already running — please wait.'
         : (! $computeCredsStored ? 'No credentials are stored for this VM.' : '');
+
+    // ── VM Console gate (presentation only, Proxmox only — mirrors the
+    // Hyper-V card). The PVE console needs a VM id (the presenter's
+    // live-probe vmId), a configured Proxmox server on the account, and a
+    // configured console gateway. The token endpoint re-resolves all of
+    // these server-side and fails closed regardless — this only decides
+    // whether the link is offered, and the visible reason when it is not.
+    $computeConsoleIsProxmox = $computeSlug === 'proxmox';
+    $computeConsoleRouteExists = \Illuminate\Support\Facades\Route::has('admin.rdp-console.pveConsole');
+    $computeConsoleGatewayConfigured = strlen(trim((string) config('rdp-console.secret'))) >= 16;
+    $computeConsoleServer = $hostingAccount->server ?? null;
+    $computeConsoleServerConfigured = $computeConsoleServer !== null
+        && \App\Modules\Proxmox\Services\ProxmoxClient::isConfigured($computeConsoleServer);
+    $computeConsoleVmId = trim((string) ($computeVmStatus['vm']['vmId'] ?? ''));
+    $computeConsoleReason = null;
+    if (! $computeConsoleRouteExists) {
+        $computeConsoleReason = 'The VM console is unavailable — the rdp-console module is not active.';
+    } elseif (! $computeConsoleGatewayConfigured) {
+        $computeConsoleReason = 'The console gateway is not configured — set GUACAMOLE_SECRET.';
+    } elseif (! $computeConsoleServerConfigured) {
+        $computeConsoleReason = 'No Proxmox server credentials are configured for this service.';
+    } elseif ($computeConsoleVmId === '') {
+        $computeConsoleReason = 'No VM ID is recorded for this VM yet.';
+    } elseif ($computeIsRunning) {
+        $computeConsoleReason = 'An action is already running — please wait.';
+    }
+    $computeConsoleAvailable = $computeConsoleIsProxmox && $computeConsoleReason === null;
 @endphp
 <div class="ma-entry" id="compute-panel-{{ $computeSlug }}">
     <div class="d-flex flex-wrap align-items-center gap-2 py-2">
@@ -110,6 +137,23 @@
                 <button type="button" class="btn btn-sm btn-outline-secondary" data-compute-action="credentials"
                         @if(! $computeCredsStored || $computeIsRunning) disabled @endif
                         @if($computeCredsTitle !== '') title="{{ $computeCredsTitle }}" @endif>Credentials</button>
+                {{-- VM Console: opens the Proxmox VNC console owned by the
+                     rdp-console module (route only exists while that module is
+                     active). Manage-gated because it is interactive control —
+                     the same capability class as the Hyper-V VMConnect console.
+                     A disabled button is not focusable, so the reason is
+                     rendered as visible text, not only a title. --}}
+                @if ($computeConsoleIsProxmox)
+                    @can('hosting.manage')
+                        @if ($computeConsoleAvailable)
+                            <a href="{{ route('admin.rdp-console.pveConsole', $hostingAccount) }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-display me-1"></i> VM Console</a>
+                        @else
+                            <button type="button" class="btn btn-sm btn-outline-secondary" disabled
+                                    title="{{ $computeConsoleReason }}"><i class="bi bi-display me-1"></i> VM Console</button>
+                            <span class="text-muted small">{{ $computeConsoleReason }}</span>
+                        @endif
+                    @endcan
+                @endif
             @endcan
             @if ($computeProbeError !== '')
                 <button type="button" class="btn btn-sm btn-outline-secondary" data-compute-retry>Retry</button>

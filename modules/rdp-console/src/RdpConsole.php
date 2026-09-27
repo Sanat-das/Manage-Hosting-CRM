@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace Modules\RdpConsole;
 
-use App\Contracts\Module\AbstractModule;
 use App\Contracts\Integrations\Capabilities\HostingAccountToolsProvider;
+use App\Contracts\Module\AbstractModule;
 use App\Contracts\Module\ModuleContext;
 use App\Models\HostingAccount;
 use App\Models\IpAddress;
@@ -61,6 +61,17 @@ final class RdpConsole extends AbstractModule implements HostingAccountToolsProv
 
                 $router->get('hosting-accounts/{hostingAccount}/rdp-console/vm-console/token', [RdpConsoleController::class, 'vmConsoleToken'])
                     ->name('vmConsoleToken');
+
+                // Proxmox VE VNC console — the third connection mode. The PVE
+                // VNC proxy port is loopback-only on the node, so the sidecar
+                // opens the node's VNC websocket with a one-shot ticket and
+                // bridges it to guacd. Same manage gate as the VMConnect
+                // pair: an interactive console, not a read-only detail.
+                $router->get('hosting-accounts/{hostingAccount}/pve-console', [RdpConsoleController::class, 'pveConsole'])
+                    ->name('pveConsole');
+
+                $router->get('hosting-accounts/{hostingAccount}/pve-console/token', [RdpConsoleController::class, 'pveConsoleToken'])
+                    ->name('pveConsoleToken');
             });
 
         $router->middleware(['web', 'auth', 'admin', 'permission:hosting.view'])

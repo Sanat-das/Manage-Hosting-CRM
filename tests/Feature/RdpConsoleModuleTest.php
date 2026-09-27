@@ -16,9 +16,9 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Routing\Route;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
-use Tests\Concerns\CreatesPanelUsers;
 use Modules\RdpConsole\Models\RdpConsoleConfig;
 use Modules\RdpConsole\RdpConsole;
+use Tests\Concerns\CreatesPanelUsers;
 use Tests\TestCase;
 
 /**
@@ -105,6 +105,8 @@ class RdpConsoleModuleTest extends TestCase
             'admin.rdp-console.edit',
             'admin.rdp-console.html',
             'admin.rdp-console.password',
+            'admin.rdp-console.pveConsole',
+            'admin.rdp-console.pveConsoleToken',
             'admin.rdp-console.token',
             'admin.rdp-console.update',
             'admin.rdp-console.vmConsole',

@@ -321,4 +321,97 @@ final class GuacamoleLiteDriverTest extends TestCase
         $this->expectException(GatewayNotConfiguredException::class);
         (new GuacamoleLiteDriver)->mint(new RdpConnectionContext(hostname: 'h', port: 3389, username: 'u', password: 'p'));
     }
+
+    // ==================================================================
+    // Proxmox VNC: the sidecar relay mode. The token carries inert VNC
+    // placeholders plus the PVE relay facts; the sidecar rewrites the
+    // settings to its 127.0.0.1 relay and drops `pve` before guacd.
+    // ==================================================================
+
+    public function test_pve_vnc_mint_emits_the_sidecar_relay_contract(): void
+    {
+        $driver = new GuacamoleLiteDriver(secret: self::SECRET);
+
+        $before = time();
+        $token = $driver->mint(RdpConnectionContext::pveVnc(
+            [
+                'apiHost' => 'pve1.example.internal',
+                'apiPort' => 8006,
+                'verifyTls' => false,
+                'tokenId' => 'root@pam!automation',
+                'tokenSecret' => 'PVE-TOKEN-SECRET',
+                'node' => 'pve1',
+                'vmid' => 901,
+                'vncPort' => 5900,
+                'vncTicket' => 'PVEVNC:abcdef1234',
+            ],
+            adminUserId: 7,
+            accountId: 42,
+        ));
+        $after = time();
+
+        $payload = $driver->decryptForTest($token);
+
+        $this->assertSame('vnc', $payload['connection']['type']);
+
+        $this->assertSame([
+            'hostname',
+            'port',
+            'password',
+            'exp',
+        ], array_keys($payload['connection']['settings']), 'PVE settings must be exactly the relay placeholders plus exp.');
+
+        $this->assertSame('127.0.0.1', $payload['connection']['settings']['hostname']);
+        $this->assertSame(0, $payload['connection']['settings']['port']);
+        $this->assertSame('', $payload['connection']['settings']['password']);
+        $this->assertIsInt($payload['connection']['settings']['exp']);
+        $this->assertGreaterThanOrEqual($before + 89, $payload['connection']['settings']['exp']);
+        $this->assertLessThanOrEqual($after + 90, $payload['connection']['settings']['exp']);
+
+        $this->assertSame([
+            'apiHost',
+            'apiPort',
+            'verifyTls',
+            'tokenId',
+            'tokenSecret',
+            'node',
+            'vmid',
+            'vncPort',
+            'vncTicket',
+        ], array_keys($payload['pve']), 'The pve block must carry exactly the relay facts.');
+
+        $this->assertSame('pve1.example.internal', $payload['pve']['apiHost']);
+        $this->assertSame(8006, $payload['pve']['apiPort']);
+        $this->assertFalse($payload['pve']['verifyTls']);
+        $this->assertSame('root@pam!automation', $payload['pve']['tokenId']);
+        $this->assertSame('PVE-TOKEN-SECRET', $payload['pve']['tokenSecret']);
+        $this->assertSame('pve1', $payload['pve']['node']);
+        $this->assertSame(901, $payload['pve']['vmid']);
+        $this->assertSame(5900, $payload['pve']['vncPort']);
+        $this->assertSame('PVEVNC:abcdef1234', $payload['pve']['vncTicket']);
+    }
+
+    public function test_pve_vnc_context_fails_closed_without_complete_pve_facts(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+
+        RdpConnectionContext::pveVnc(['node' => 'pve1']);
+    }
+
+    public function test_pve_vnc_context_rejects_an_empty_ticket(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+
+        RdpConnectionContext::pveVnc([
+            'apiHost' => 'pve1.example.internal',
+            'apiPort' => 8006,
+            'verifyTls' => false,
+            'tokenId' => 'root@pam!automation',
+            'tokenSecret' => 'PVE-TOKEN-SECRET',
+            'node' => 'pve1',
+            'vmid' => 901,
+            'vncPort' => 5900,
+            'vncTicket' => '   ',
+        ]);
+    }
 }

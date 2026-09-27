@@ -12,10 +12,12 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Modules\RdpConsole\Exceptions\GatewayNotConfiguredException;
+use Modules\RdpConsole\Exceptions\PveVncUnavailableException;
 use Modules\RdpConsole\Exceptions\VmConnectUnavailableException;
 use Modules\RdpConsole\Models\RdpConsoleConfig;
 use Modules\RdpConsole\Services\Gateway\GatewayDriver;
 use Modules\RdpConsole\Services\Gateway\RdpConnectionContext;
+use Modules\RdpConsole\Services\PveVnc\PveVncTargetResolver;
 use Modules\RdpConsole\Services\VmConnect\VmConnectTargetResolver;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -28,7 +30,9 @@ final class RdpConsoleController extends Controller
 {
     public function __construct(
         private readonly VmConnectTargetResolver $vmConnectTargetResolver,
+        private readonly PveVncTargetResolver $pveVncTargetResolver,
     ) {}
+
     /**
      * Show RDP configuration for a hosting account. The edit UI lives as a
      * modal on admin/hosting/show, so this endpoint simply redirects there —
@@ -290,8 +294,92 @@ final class RdpConsoleController extends Controller
     }
 
     /**
-     * Failure surface for "the gateway has no shared secret". The real reason
-     * is logged server-side; the browser gets the fixed OPERATOR_MESSAGE,
+     * Proxmox VE VNC console page. The PVE VNC proxy port is loopback-only on
+     * the node, so the browser never dials it directly: the controller
+     * resolves the node and VMID strictly server-side (PanelAccount + Server
+     * rows) in facts-only mode — no vncproxy ticket is minted here — and only
+     * non-secret facts plus an operator-safe error reach the view. The
+     * one-shot ticket is minted by the token endpoint below when the console
+     * connects, and travels only inside the encrypted token — it is never
+     * rendered into the page.
+     */
+    public function pveConsole(HostingAccount $hostingAccount): View
+    {
+        $consoleNode = null;
+        $consoleVmid = null;
+        $consoleVncPort = null;
+        $consoleError = null;
+
+        try {
+            $pve = $this->pveVncTargetResolver->resolve($hostingAccount, false);
+            $consoleNode = $pve['node'];
+            $consoleVmid = $pve['vmid'];
+            $consoleVncPort = $pve['vncPort'];
+        } catch (PveVncUnavailableException $e) {
+            $consoleError = $e->getMessage();
+        }
+
+        // A missing gateway secret blocks Connect entirely, so it is reported
+        // before a target problem: it is the actionable blocker to fix first.
+        $gatewayConfigured = app(GatewayDriver::class)->isConfigured();
+
+        $consoleDisabledReason = ! $gatewayConfigured
+            ? GatewayNotConfiguredException::OPERATOR_MESSAGE
+            : ($consoleError ?? 'The Proxmox VE console is not available right now.');
+
+        return view('rdp-console::pve-console', [
+            'hostingAccount' => $hostingAccount,
+            'consoleNode' => $consoleNode,
+            'consoleVmid' => $consoleVmid,
+            'consoleVncPort' => $consoleVncPort,
+            'consoleError' => $consoleError,
+            'consoleEnabled' => $consoleError === null && $gatewayConfigured,
+            'consoleDisabledReason' => $consoleDisabledReason,
+        ]);
+    }
+
+    /**
+     * Mint a short-lived gateway token for the Proxmox VE VNC console.
+     * Returns the same { ws_url, token } shape as vmConsoleToken() so the
+     * shared Guacamole canvas consumes it unchanged.
+     *
+     * No part of the target comes from the request: the API host, node, VMID
+     * and one-shot VNC ticket are resolved from the account's PanelAccount
+     * and Server rows. Responds 404 — the module's existing "incomplete
+     * configuration" contract — when any of them is missing, 503 when the
+     * gateway has no shared secret, and 500 (generic, logged) when minting
+     * fails for any other reason.
+     */
+    public function pveConsoleToken(HostingAccount $hostingAccount): JsonResponse
+    {
+        try {
+            $pve = $this->pveVncTargetResolver->resolve($hostingAccount);
+        } catch (PveVncUnavailableException $e) {
+            return response()->json(['error' => $e->getMessage()], 404);
+        }
+
+        $driver = app(GatewayDriver::class);
+
+        try {
+            $token = $driver->mint(RdpConnectionContext::pveVnc(
+                $pve,
+                adminUserId: (int) auth()->id(),
+                accountId: (int) $hostingAccount->id,
+            ));
+        } catch (GatewayNotConfiguredException $e) {
+            return $this->gatewayNotConfiguredResponse($hostingAccount, 'pve-console-token', $e);
+        } catch (\Throwable $e) {
+            return $this->tokenMintFailedResponse($hostingAccount, 'pve-console-token', $e);
+        }
+
+        return response()->json([
+            'ws_url' => $driver->wsUrl(),
+            'token' => $token,
+        ]);
+    }
+
+    /**
+     * Failure surface for "the gateway has no shared secret". The real reason* is logged server-side; the browser gets the fixed OPERATOR_MESSAGE,
      * which names the setting to fix but carries no exception message, class,
      * stack trace, file path or config value. The mint already failed closed —
      * there is no default or fallback secret.
