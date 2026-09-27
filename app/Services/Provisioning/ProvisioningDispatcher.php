@@ -230,19 +230,22 @@ class ProvisioningDispatcher
     }
 
     /**
-     * Record that a Hyper-V manual order is awaiting explicit VM build.
+     * Record that a manual compute order is awaiting an explicit VM build.
      * Writes a pending provisioning_events row with reason awaiting_manual_vm
      * and creates no ServiceInstance. Used by OrderService::advanceAfterPayment
-     * for the paid hyperv+manual ACTIVE path.
+     * for the paid manual-compute ACTIVE path (Hyper-V, Proxmox VE,
+     * Virtualizor).
      */
     public function noteAwaitingManualVm(Order $order): ?ProvisioningEvent
     {
+        $slug = $this->moduleFor($order->product) ?? trim((string) ($order->product?->provisioning_module ?? ''));
+
         return $this->recorder->record(
             'provision',
             'pending',
             [
                 'reason' => 'awaiting_manual_vm',
-                'module' => 'hyperv',
+                'module' => $slug,
                 'provisioning_module' => $order->product?->provisioning_module,
                 'order_id' => $order->id,
                 'order_number' => $order->order_number,
@@ -256,11 +259,11 @@ class ProvisioningDispatcher
     }
 
     /**
-     * Whether this Hyper-V order has no active PanelAccount (VM never built).
-     * Used to guard lifecycle driver calls so an unprovisioned VM never
-     * triggers host HTTP.
+     * Whether this manual compute order has no active PanelAccount (VM never
+     * built). Used to guard lifecycle driver calls so an unprovisioned VM never
+     * triggers host HTTP — for every VM driver, not just Hyper-V.
      */
-    private function isHypervUnprovisioned(Order $order): bool
+    private function isManualComputeUnprovisioned(Order $order): bool
     {
         $product = $order->product;
 
@@ -272,12 +275,9 @@ class ProvisioningDispatcher
             return false;
         }
 
-        $slug = $this->moduleFor($product);
-        $rawSlug = trim((string) ($product->provisioning_module ?? ''));
+        $slug = $this->moduleFor($product) ?? trim((string) ($product->provisioning_module ?? ''));
 
-        $isHyperv = $slug === 'hyperv' || $rawSlug === 'hyperv';
-
-        if (! $isHyperv) {
+        if (! ComputeTemplateCatalog::supports($slug)) {
             return false;
         }
 
@@ -302,7 +302,7 @@ class ProvisioningDispatcher
      */
     public function suspend(Order $order, ?string $reason = null): ProvisioningAttempt
     {
-        if ($this->isHypervUnprovisioned($order)) {
+        if ($this->isManualComputeUnprovisioned($order)) {
             $service = ServiceInstance::where('order_id', $order->id)->first();
             if ($service !== null) {
                 $service->update(['status' => 'suspended']);
@@ -319,7 +319,7 @@ class ProvisioningDispatcher
      */
     public function unsuspend(Order $order, ?string $reason = null): ProvisioningAttempt
     {
-        if ($this->isHypervUnprovisioned($order)) {
+        if ($this->isManualComputeUnprovisioned($order)) {
             $service = ServiceInstance::where('order_id', $order->id)->first();
             if ($service !== null) {
                 $service->update(['status' => 'active']);
@@ -337,7 +337,7 @@ class ProvisioningDispatcher
      */
     public function terminate(Order $order, ?string $reason = null): ProvisioningAttempt
     {
-        if ($this->isHypervUnprovisioned($order)) {
+        if ($this->isManualComputeUnprovisioned($order)) {
             $service = ServiceInstance::where('order_id', $order->id)->first();
             if ($service !== null) {
                 $service->update(['status' => 'terminated', 'terminated_at' => now()]);
@@ -350,9 +350,9 @@ class ProvisioningDispatcher
             }
             if ($hosting !== null) {
                 try {
-                    app(\App\Services\IpAssignmentService::class)->release($hosting, $reason ?? 'Terminated (hyperv unprovisioned)');
+                    app(\App\Services\IpAssignmentService::class)->release($hosting, $reason ?? 'Terminated (manual compute unprovisioned)');
                 } catch (\Throwable $e) {
-                    Log::warning('IP release on hyperv unprovisioned terminate failed', [
+                    Log::warning('IP release on manual compute unprovisioned terminate failed', [
                         'order_id' => $order->id,
                         'error' => $e->getMessage(),
                     ]);
@@ -584,13 +584,14 @@ class ProvisioningDispatcher
     }
 
     /**
-     * Whether this product is a Hyper-V manual product whose IP lease is
+     * Whether this product is a manual compute product whose IP lease is
      * intentionally deferred until the VM is built.
      *
-     * Single home for the hyperv-manual check previously duplicated in
-     * OrderService and HostingService.
+     * Single home for the manual-compute check previously duplicated in
+     * OrderService and HostingService. Hyper-V, Proxmox VE and Virtualizor
+     * all build a machine later from the hosting page.
      */
-    public function isHypervManualProduct(?Product $product): bool
+    public function isManualComputeProduct(?Product $product): bool
     {
         if ($product === null) {
             return false;
@@ -600,13 +601,9 @@ class ProvisioningDispatcher
             return false;
         }
 
-        $resolved = $this->moduleFor($product);
+        $resolved = $this->moduleFor($product) ?? trim((string) ($product->provisioning_module ?? ''));
 
-        if ($resolved === 'hyperv') {
-            return true;
-        }
-
-        return trim((string) ($product->provisioning_module ?? '')) === 'hyperv';
+        return ComputeTemplateCatalog::supports($resolved);
     }
 
     /**

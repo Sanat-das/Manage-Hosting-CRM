@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\ProductRequest;
 use App\Models\Order;
 use App\Models\Product;
+use App\Services\Provisioning\ProvisioningModuleLinker;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -23,6 +24,8 @@ use Illuminate\Support\Facades\DB;
 class ProductController extends Controller
 {
     private const PER_PAGE = 20;
+
+    public function __construct(private readonly ProvisioningModuleLinker $moduleLinker) {}
 
     public function index(Request $request): JsonResponse
     {
@@ -56,6 +59,7 @@ class ProductController extends Controller
 
         $product = DB::transaction(function () use ($validated) {
             $product = Product::create($this->productData($validated));
+            $this->moduleLinker->sync($product, $validated['provisioning_mode'] ?? null);
             $this->savePricing($product, $validated['pricing'] ?? []);
 
             return $product;
@@ -86,6 +90,7 @@ class ProductController extends Controller
 
         DB::transaction(function () use ($validated, $product) {
             $product->update($this->productData($validated));
+            $this->moduleLinker->sync($product, $validated['provisioning_mode'] ?? null);
             $this->savePricing($product, $validated['pricing'] ?? []);
         });
 

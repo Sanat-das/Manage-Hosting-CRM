@@ -3,6 +3,7 @@
 namespace App\Http\Requests;
 
 use App\Models\Product;
+use App\Models\ProductModule;
 use App\Models\ProductOptionGroup;
 use App\Models\ProductOptionGroupProduct;
 use App\Models\ServerGroup;
@@ -22,6 +23,28 @@ class ProductRequest extends FormRequest
         $permission = $this->isMethod('POST') ? 'products.create' : 'products.edit';
 
         return $this->user()?->hasPermission($permission) ?? false;
+    }
+
+    /**
+     * The Details dropdown submits `proxmox|manual` (module + mode in one
+     * option). Split it so the product row keeps the plain slug and the mode
+     * rides along as its own validated field; a legacy plain slug is left
+     * untouched and preserves the link's stored mode.
+     */
+    protected function prepareForValidation(): void
+    {
+        $selection = $this->input('provisioning_module');
+
+        if (! is_string($selection) || ! str_contains($selection, '|')) {
+            return;
+        }
+
+        $parsed = ProductModule::parseSelection($selection);
+
+        $this->merge([
+            'provisioning_module' => $parsed['slug'],
+            'provisioning_mode' => $parsed['mode'],
+        ]);
     }
 
     /**
@@ -46,6 +69,7 @@ class ProductRequest extends FormRequest
             'early_renewal_days' => ['nullable', 'array'],
             'early_renewal_days.*' => ['nullable', 'integer', 'between:0,365'],
             'provisioning_module' => ['required', Rule::in(array_merge(app(\App\Services\Integrations\IntegrationRegistry::class)->slugs(), ['manual', 'custom']))],
+            'provisioning_mode' => ['nullable', Rule::in(ProductModule::PROVISIONING_MODES)],
             'server_group_id' => ['nullable', 'integer', 'exists:server_groups,id'],
             'welcome_email_template_id' => ['nullable', 'integer', 'exists:email_templates,id'],
             'require_domain' => ['sometimes', 'boolean'],

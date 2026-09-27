@@ -167,9 +167,10 @@
                     <div class="col-md-6">
                         <x-adminlte-select name="provisioning_module" label="Provisioning module" required>
                             @foreach ($provisioningModules as $value => $label)
-                                <option value="{{ $value }}" @selected(old('provisioning_module', $product->provisioning_module) === $value)>{{ $label }}</option>
+                                <option value="{{ $value }}" @selected(old('provisioning_module', $product->provisioningSelection()) === $value)>{{ $label }}</option>
                             @endforeach
                         </x-adminlte-select>
+                        <div class="form-text">Auto provisions when the order is paid; Manual never touches the host — you build the account/VM from the service page, with the product's template selection.</div>
                     </div>
                     <div class="col-md-6">
                         <x-adminlte-select name="server_group_id" label="Server group">

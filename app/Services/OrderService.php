@@ -532,11 +532,12 @@ class OrderService
             }
         }
 
-        // Hyper-V manual: paid orders activate immediately with a pending hosting
-        // account (billing starts at payment). The VM itself is built later via
-        // an explicit manual action, so no ServiceInstance is created now and
-        // no host is contacted. This branch must NOT call provisioning->run().
-        if ($this->isHypervManualProduct($order->product)) {
+        // Manual compute (Hyper-V, Proxmox VE, Virtualizor): paid orders
+        // activate immediately with a pending hosting account (billing starts at
+        // payment). The VM itself is built later via an explicit manual action,
+        // so no ServiceInstance is created now and no host is contacted. This
+        // branch must NOT call provisioning->run().
+        if ($this->isManualComputeProduct($order->product)) {
             $order = $this->transition($order, Order::STATUS_ACTIVE, 'Awaiting manual VM provisioning');
             $this->provisioning->noteAwaitingManualVm($order->fresh());
 
@@ -553,8 +554,8 @@ class OrderService
         return $order;
     }
 
-    private function isHypervManualProduct(?\App\Models\Product $product): bool
+    private function isManualComputeProduct(?\App\Models\Product $product): bool
     {
-        return $this->provisioning->isHypervManualProduct($product);
+        return $this->provisioning->isManualComputeProduct($product);
     }
 }

@@ -106,7 +106,24 @@
                                 <tr><th class="text-muted">Default cycle</th><td>{{ $cycleLabels[$product->billing_cycle] ?? $product->billing_cycle }}</td></tr>
                                 <tr><th class="text-muted">Price</th><td>{{ number_format($product->price, 2) }}</td></tr>
                                 <tr><th class="text-muted">Setup fee</th><td>{{ number_format($product->setup_fee, 2) }}</td></tr>
-                                <tr><th class="text-muted">Provisioning</th><td>{{ ucfirst(str_replace('_', ' ', $product->provisioning_module)) }}</td></tr>
+                                @php
+                                    $provSelection = $product->provisioningSelection();
+                                    $provParts = explode('|', $provSelection, 2);
+                                    $provSlug = $provParts[0];
+                                    $provMode = $provParts[1] ?? null;
+                                    $provName = in_array($provSlug, ['manual', 'custom'], true)
+                                        ? ucfirst($provSlug)
+                                        : app(\App\Services\Integrations\IntegrationRegistry::class)->nameFor($provSlug);
+                                @endphp
+                                <tr>
+                                    <th class="text-muted">Provisioning</th>
+                                    <td>
+                                        {{ $provName }}
+                                        @if($provMode !== null)
+                                            <span class="badge text-bg-{{ $provMode === 'manual' ? 'warning' : 'success' }} ms-1">{{ ucfirst($provMode) }}</span>
+                                        @endif
+                                    </td>
+                                </tr>
                             </tbody>
                         </table>
                     </div>

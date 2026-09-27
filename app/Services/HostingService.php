@@ -158,9 +158,10 @@ class HostingService
 
         $this->audit($account, 'hosting.created', "Hosting account #{$account->id} created from order {$order->order_number}");
 
-        // Hyper-V manual orders defer IP leasing until the VM is actually built;
-        // the manual provisioner will call leaseIpForActivation() at that time.
-        if (! $this->isHypervManualProduct($product)) {
+        // Manual compute orders defer IP leasing until the VM is actually
+        // built; the manual provisioner will call leaseIpForActivation() at
+        // that time.
+        if (! $this->isManualComputeProduct($product)) {
             $this->leaseIpForActivation($account);
         }
 
@@ -301,17 +302,19 @@ class HostingService
     }
 
     /**
-     * Whether this product is a Hyper-V manual product whose IP lease is
+     * Whether this product is a manual compute product whose IP lease is
      * intentionally deferred until the VM is built.
      *
      * Delegates to the single home in ProvisioningDispatcher.
      */
-    private function isHypervManualProduct(?\App\Models\Product $product): bool
+    private function isManualComputeProduct(?\App\Models\Product $product): bool
     {
         try {
-            return app(\App\Services\Provisioning\ProvisioningDispatcher::class)->isHypervManualProduct($product);
+            return app(\App\Services\Provisioning\ProvisioningDispatcher::class)->isManualComputeProduct($product);
         } catch (\Throwable) {
-            return trim((string) ($product->provisioning_module ?? '')) === 'hyperv';
+            return \App\Services\Provisioning\ComputeTemplateCatalog::supports(
+                trim((string) ($product?->provisioning_module ?? '')),
+            );
         }
     }
 

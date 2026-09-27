@@ -45,14 +45,46 @@ class ProductModule extends Model
 
             $slug = trim((string) ($model->module_slug ?? ''));
 
-            if ($slug === 'hyperv') {
-                $model->provisioning_mode = self::PROVISIONING_MODE_MANUAL;
-            } elseif ($slug !== '' && ($attrs['provisioning_mode'] ?? null) === null) {
-                // Non-hyperv links keep the historical default; fill explicitly
-                // so the in-memory model matches the DB default after save.
-                $model->provisioning_mode = self::PROVISIONING_MODE_AUTO;
+            if ($slug !== '') {
+                $model->provisioning_mode = self::defaultModeFor($slug);
             }
         });
+    }
+
+    /**
+     * The mode a link gets when the operator has not chosen one.
+     *
+     * Hyper-V links historically defaulted to manual (a Windows VM needs guest
+     * credentials before it is useful); every other module defaults to auto.
+     */
+    public static function defaultModeFor(string $slug): string
+    {
+        return trim($slug) === 'hyperv'
+            ? self::PROVISIONING_MODE_MANUAL
+            : self::PROVISIONING_MODE_AUTO;
+    }
+
+    /**
+     * Split a Details-tab selection into its module slug and mode.
+     *
+     * The form submits `proxmox|manual`; a legacy plain slug (`cpanel`) keeps a
+     * null mode so callers preserve whatever the link already stores instead of
+     * resetting it to the default. The mode is returned as-is (lowercased) so
+     * the request layer can reject an invalid one instead of silently falling
+     * back to the default.
+     *
+     * @return array{slug: string, mode: string|null}
+     */
+    public static function parseSelection(string $selection): array
+    {
+        $parts = explode('|', trim($selection), 2);
+        $slug = trim($parts[0]);
+        $mode = isset($parts[1]) ? strtolower(trim($parts[1])) : '';
+
+        return [
+            'slug' => $slug,
+            'mode' => $mode !== '' ? $mode : null,
+        ];
     }
 
     public function isManual(): bool

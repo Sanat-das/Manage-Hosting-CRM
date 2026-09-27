@@ -199,6 +199,28 @@ class Product extends Model
         return $this->hasMany(ProductModule::class);
     }
 
+    /**
+     * The Details-tab selection for this product: `proxmox|manual`.
+     *
+     * The module slug lives on `products.provisioning_module`; the mode lives
+     * on the module link (falling back to the module's default when no link
+     * exists yet). `manual`/`custom` are not modules and carry no mode.
+     */
+    public function provisioningSelection(): string
+    {
+        $slug = trim((string) ($this->provisioning_module ?? ''));
+
+        if ($slug === '' || in_array($slug, ['manual', 'custom'], true)) {
+            return $slug;
+        }
+
+        $mode = $this->relationLoaded('moduleLinks')
+            ? $this->moduleLinks->firstWhere('module_slug', $slug)?->provisioning_mode
+            : $this->moduleLinks()->where('module_slug', $slug)->value('provisioning_mode');
+
+        return $slug.'|'.($mode ?: ProductModule::defaultModeFor($slug));
+    }
+
     public function meta(): HasMany
     {
         return $this->hasMany(ProductMeta::class);

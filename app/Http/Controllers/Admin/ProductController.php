@@ -15,6 +15,7 @@ use App\Models\ServerGroup;
 use App\Services\Integrations\IntegrationRegistry;
 use App\Services\ProductOptionLinkService;
 use App\Services\Provisioning\ComputeTemplateCatalog;
+use App\Services\Provisioning\ProvisioningModuleLinker;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -35,8 +36,10 @@ class ProductController extends Controller
 {
     private const PER_PAGE = 20;
 
-    public function __construct(private readonly ProductOptionLinkService $optionLinks)
-    {
+    public function __construct(
+        private readonly ProductOptionLinkService $optionLinks,
+        private readonly ProvisioningModuleLinker $moduleLinker,
+    ) {
     }
 
     public function index(Request $request): View
@@ -89,7 +92,7 @@ class ProductController extends Controller
         try {
             $product = DB::transaction(function () use ($validated) {
                 $product = Product::create($this->productData($validated));
-                $this->ensureProvisioningModuleLink($product);
+                $this->moduleLinker->sync($product, $validated['provisioning_mode'] ?? null);
                 $this->savePricing($product, $validated['pricing'] ?? []);
                 $this->attachOptionGroups($product, $validated['option_groups'] ?? []);
 
@@ -251,7 +254,7 @@ class ProductController extends Controller
         try {
             DB::transaction(function () use ($validated, $request, $product) {
                 $product->update($this->productData($validated));
-                $this->ensureProvisioningModuleLink($product);
+                $this->moduleLinker->sync($product, $validated['provisioning_mode'] ?? null);
                 $this->savePricing($product, $validated['pricing'] ?? []);
                 $this->updateOptionLinks($request, $product, $validated['option_links'] ?? []);
             });
@@ -302,77 +305,34 @@ class ProductController extends Controller
     }
 
     /**
-     * The Details selection (provisioning module) is the single switch for a
-     * builtin provisioning module: keep its product_module link in step so the
-     * hosting actions and module syncs that resolve through enabled links keep
-     * working, and only the selected builtin stays active. Plugin modules are
-     * linked explicitly via the product Modules section.
-     */
-    private function ensureProvisioningModuleLink(Product $product): void
-    {
-        $registry = app(IntegrationRegistry::class);
-        $slug = trim((string) $product->provisioning_module);
-
-        if ($slug === '' || ! $registry->has($slug)) {
-            return;
-        }
-
-        if (! $registry->instanceFor($slug) instanceof ProvisioningModule) {
-            return;
-        }
-
-        ProductModule::query()
-            ->where('product_id', $product->id)
-            ->where('enabled', true)
-            ->whereIn('module_slug', $registry->slugs())
-            ->where('module_slug', '!=', $slug)
-            ->get()
-            ->each(function (ProductModule $link): void {
-                $link->update(['enabled' => false]);
-            });
-
-        $link = ProductModule::query()->firstOrNew([
-            'product_id' => $product->id,
-            'module_slug' => $slug,
-        ]);
-
-        if ($link->exists) {
-            if (! $link->enabled) {
-                $link->update(['enabled' => true]);
-            }
-
-            return;
-        }
-
-        $config = [];
-
-        foreach ($registry->configSchemaFor($slug)['fields'] as $field) {
-            if (array_key_exists('default', $field) && ! array_key_exists($field['key'], $config)) {
-                $config[$field['key']] = $field['default'];
-            }
-        }
-
-        $link->fill([
-            'enabled' => true,
-            'provisioning_mode' => $slug === 'hyperv' ? ProductModule::PROVISIONING_MODE_MANUAL : ProductModule::PROVISIONING_MODE_AUTO,
-            'config' => $config,
-        ])->save();
-    }
-
-    /**
      * Shared select-list data for the create/edit forms.
+     *
+     * Each builtin provisioner gets two entries — Auto and Manual — so the
+     * operator picks the mode in the same dropdown as the module. Manual means
+     * no provisioning on order; the account/VM is built later from the hosting
+     * page. `manual`/`custom` stay mode-less.
      *
      * @return array<string, mixed>
      */
     private function formData(): array
     {
-        $registry = app(\App\Services\Integrations\IntegrationRegistry::class);
+        $registry = app(IntegrationRegistry::class);
         $provisioningModules = [];
 
         foreach ($registry->slugs() as $slug) {
-            $provisioningModules[$slug] = $registry->nameFor($slug);
+            $name = $registry->nameFor($slug);
+
+            if (! $registry->instanceFor($slug) instanceof ProvisioningModule) {
+                $provisioningModules[$slug] = $name;
+
+                continue;
+            }
+
+            $provisioningModules[$slug.'|'.ProductModule::PROVISIONING_MODE_AUTO] = $name.' — Auto';
+            $provisioningModules[$slug.'|'.ProductModule::PROVISIONING_MODE_MANUAL] = $name.' — Manual';
         }
-        $provisioningModules['manual'] = 'Manual';
+
+        $provisioningModules['manual'] = 'Manual (no module)';
         $provisioningModules['custom'] = 'Custom';
 
         return [

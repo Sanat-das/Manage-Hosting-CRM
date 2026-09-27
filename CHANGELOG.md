@@ -113,6 +113,15 @@ All notable user-facing changes to this project are documented in this file.
   holding `hosting.manage` after typing the VMID. VMs that belong to a service
   and templates are refused, and the destroy is audited.
 
+- **Auto/Manual is now part of the provisioning module choice.** The product
+  Details dropdown lists every builtin module twice — *Auto* and *Manual*
+  (`Proxmox VE — Manual`, `Hyper-V — Auto`, …). Auto provisions when the order
+  is paid; Manual never touches the host: the order activates with a pending
+  hosting account and the account/VM is built later from the service page,
+  with the product's template restriction and optional template selection.
+  Hyper-V manual keeps its existing behaviour, and Proxmox VE and Virtualizor
+  manual now follow the same flow.
+
 ### Changed
 
 - **Quantity & Service Behaviour is the single switch.** `products.quantity_behaviour`
