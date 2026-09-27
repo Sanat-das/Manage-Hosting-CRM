@@ -10,11 +10,15 @@
       $options       list<array{id: string, label: string}> union across active servers
       $current       currently saved value ('' = server default)
       $saveUrl       merge-save PUT endpoint
+      $mode          stored auto|manual — the card is shown for Auto only and
+                     the edit page's JS toggles it with the Details dropdown
 --}}
 @php
     $cardId = 'compute-default-'.preg_replace('/[^a-z0-9_-]/i', '-', (string) $slug);
+    $cardMode = strtolower(trim((string) ($mode ?? 'auto')));
 @endphp
-<div class="border rounded p-3 mb-3" id="{{ $cardId }}" data-compute-default>
+<div class="border rounded p-3 mb-3" id="{{ $cardId }}" data-compute-default
+     data-compute-default-slug="{{ $slug }}" @if($cardMode !== 'auto')hidden @endif>
     <h6 class="mb-2"><i class="bi bi-hdd-stack me-1"></i> {{ $name }} default template</h6>
     <p class="text-muted small mb-2">
         Used when a service starts without a template picked at build time. Only templates curated on active

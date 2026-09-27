@@ -120,7 +120,8 @@ All notable user-facing changes to this project are documented in this file.
   hosting account and the account/VM is built later from the service page,
   with the product's template restriction and optional template selection.
   Hyper-V manual keeps its existing behaviour, and Proxmox VE and Virtualizor
-  manual now follow the same flow.
+  manual now follow the same flow. The product-level default-template card
+  appears for Auto only — a Manual build picks its template at build time.
 
 ### Changed
 

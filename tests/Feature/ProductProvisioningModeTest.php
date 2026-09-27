@@ -188,20 +188,7 @@ final class ProductProvisioningModeTest extends TestCase
     {
         $this->actingAsAdmin();
 
-        $product = Product::create([
-            'name' => 'Selected Mode',
-            'price' => 50,
-            'provisioning_module' => 'proxmox',
-            'billing_cycle' => 'monthly',
-            'status' => 'active',
-        ]);
-        ProductModule::create([
-            'product_id' => $product->id,
-            'module_slug' => 'proxmox',
-            'enabled' => true,
-            'provisioning_mode' => ProductModule::PROVISIONING_MODE_MANUAL,
-            'config' => [],
-        ]);
+        $product = $this->makeProxmoxProduct(ProductModule::PROVISIONING_MODE_MANUAL);
 
         $this->get(route('admin.products.edit', $product))
             ->assertOk()
@@ -213,24 +200,60 @@ final class ProductProvisioningModeTest extends TestCase
     {
         $this->actingAsAdmin();
 
+        $product = $this->makeProxmoxProduct(ProductModule::PROVISIONING_MODE_MANUAL);
+
+        $this->get(route('admin.products.show', $product))
+            ->assertOk()
+            ->assertSee('text-bg-warning ms-1">Manual</span>', false);
+    }
+
+    /**
+     * The product-level default template only matters when the module builds
+     * automatically; a Manual product picks its template at build time, so the
+     * card stays hidden.
+     */
+    public function test_the_default_template_card_is_hidden_for_a_manual_link(): void
+    {
+        $this->actingAsAdmin();
+
+        $product = $this->makeProxmoxProduct(ProductModule::PROVISIONING_MODE_MANUAL);
+
+        $this->get(route('admin.products.edit', $product))
+            ->assertOk()
+            ->assertSee('data-compute-default-slug="proxmox" hidden', false);
+    }
+
+    public function test_the_default_template_card_is_visible_for_an_auto_link(): void
+    {
+        $this->actingAsAdmin();
+
+        $product = $this->makeProxmoxProduct(ProductModule::PROVISIONING_MODE_AUTO);
+
+        $this->get(route('admin.products.edit', $product))
+            ->assertOk()
+            ->assertSee('data-compute-default-slug="proxmox"', false)
+            ->assertDontSee('data-compute-default-slug="proxmox" hidden', false);
+    }
+
+    private function makeProxmoxProduct(string $mode): Product
+    {
         $product = Product::create([
-            'name' => 'Shown Mode',
+            'name' => 'Mode '.$mode.' '.uniqid(),
             'price' => 50,
             'provisioning_module' => 'proxmox',
             'billing_cycle' => 'monthly',
             'status' => 'active',
         ]);
+
         ProductModule::create([
             'product_id' => $product->id,
             'module_slug' => 'proxmox',
             'enabled' => true,
-            'provisioning_mode' => ProductModule::PROVISIONING_MODE_MANUAL,
+            'provisioning_mode' => $mode,
             'config' => [],
         ]);
 
-        $this->get(route('admin.products.show', $product))
-            ->assertOk()
-            ->assertSee('text-bg-warning ms-1">Manual</span>', false);
+        return $product;
     }
 
     // ───────────────────────── manual order behaviour ─────────────────────────

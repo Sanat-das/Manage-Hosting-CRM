@@ -220,6 +220,10 @@ class ProductController extends Controller
                 'options' => ComputeTemplateCatalog::unionOptions($slug),
                 'current' => (string) ($cfg[$templateKey] ?? ''),
                 'saveUrl' => route('admin.products.modules.template-default', [$product, $slug]),
+                // The card is an Auto-mode concern: a Manual product picks its
+                // template when the operator builds the VM, so the card stays
+                // hidden until Auto is selected.
+                'mode' => (string) ($link->provisioning_mode ?? 'auto'),
             ];
         }
 

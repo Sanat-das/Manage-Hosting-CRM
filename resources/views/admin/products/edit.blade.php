@@ -584,6 +584,29 @@
                             .finally(function () { window.location.href = '{{ route('admin.products.edit', $product) }}'; });
                     });
                 });
+
+                // The product-level default template is an Auto-mode concern:
+                // a Manual product picks its template when the operator builds
+                // the VM. Toggle the card with the Details dropdown immediately
+                // (and on load, so it matches the stored mode server-side).
+                (function () {
+                    var moduleSelect = document.querySelector('select[name="provisioning_module"]');
+                    if (!moduleSelect) return;
+
+                    var syncDefaultTemplateCards = function () {
+                        var parts = String(moduleSelect.value || '').split('|');
+                        var slug = (parts[0] || '').toLowerCase();
+                        var mode = (parts[1] || '').toLowerCase();
+
+                        document.querySelectorAll('[data-compute-default]').forEach(function (card) {
+                            var cardSlug = (card.getAttribute('data-compute-default-slug') || '').toLowerCase();
+                            card.hidden = !(mode === 'auto' && slug === cardSlug);
+                        });
+                    };
+
+                    moduleSelect.addEventListener('change', syncDefaultTemplateCards);
+                    syncDefaultTemplateCards();
+                })();
             });
         </script>
     @endpush
