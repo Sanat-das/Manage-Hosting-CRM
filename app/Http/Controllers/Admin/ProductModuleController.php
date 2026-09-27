@@ -3,13 +3,14 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\Module;
 use App\Models\Product;
 use App\Models\ProductModule;
 use App\Services\Integrations\IntegrationRegistry;
 use App\Services\Modules\ModuleManager;
 use App\Services\Provisioning\ComputeTemplateCatalog;
-use App\Services\Provisioning\HypervTemplateCatalog;
-use App\Services\Provisioning\ProxmoxTemplateCatalog;
+use App\Services\Provisioning\ModuleRequiredOptions;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 
@@ -27,8 +28,7 @@ class ProductModuleController extends Controller
     public function __construct(
         private readonly IntegrationRegistry $registry,
         private readonly ModuleManager $manager,
-    ) {
-    }
+    ) {}
 
     /**
      * Resolve a module slug to its display name and whether it is linkable.
@@ -53,7 +53,7 @@ class ProductModuleController extends Controller
             return ['exists' => false, 'name' => $slug, 'isBuiltin' => false, 'isActivePlugin' => false];
         }
 
-        $isActive = $module->status === \App\Models\Module::STATUS_ACTIVE;
+        $isActive = $module->status === Module::STATUS_ACTIVE;
 
         return [
             'exists' => true,
@@ -97,11 +97,11 @@ class ProductModuleController extends Controller
                 ->values()
                 ->all();
 
-            $missing = \App\Services\Provisioning\ModuleRequiredOptions::missingKeysFor($moduleSlug, $attachedKeys);
+            $missing = ModuleRequiredOptions::missingKeysFor($moduleSlug, $attachedKeys);
 
             if ($missing !== []) {
                 return back()->withErrors([
-                    'module' => "Cannot enable {$target['name']}: the product is missing required Configuration Options (".implode(', ', $missing)."). Attach option groups with those keys on the Options tab first.",
+                    'module' => "Cannot enable {$target['name']}: the product is missing required Configuration Options (".implode(', ', $missing).'). Attach option groups with those keys on the Options tab first.',
                 ]);
             }
 
@@ -155,7 +155,7 @@ class ProductModuleController extends Controller
      * curated anywhere the value is accepted as-is and the driver re-validates
      * against the actual server at provision time.
      */
-    public function updateTemplateDefault(Product $product, string $moduleSlug, Request $request): RedirectResponse
+    public function updateTemplateDefault(Product $product, string $moduleSlug, Request $request): RedirectResponse|JsonResponse
     {
         $templateKey = ComputeTemplateCatalog::templateKey($moduleSlug);
 
@@ -202,6 +202,18 @@ class ProductModuleController extends Controller
         $message = $value === ''
             ? 'Template default cleared — the server default applies.'
             : "Default template set to '{$value}'.";
+
+        // The edit-page card saves over fetch with Accept: application/json.
+        // A redirect would be followed by fetch with the same method (only POST
+        // is rewritten to GET), landing on the GET-only edit route as a 405 —
+        // the save worked, but the UI reported failure. Answer AJAX directly.
+        if ($request->expectsJson()) {
+            return response()->json([
+                'ok' => true,
+                'template' => $value,
+                'message' => $message,
+            ]);
+        }
 
         return redirect()
             ->route('admin.products.edit', [$product, 'tab' => 'modules'])

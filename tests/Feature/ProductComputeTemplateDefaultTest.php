@@ -122,6 +122,31 @@ final class ProductComputeTemplateDefaultTest extends TestCase
         $this->assertSame(80, $dec['disk']);
     }
 
+    /**
+     * The edit-page card saves over fetch with `Accept: application/json`.
+     * A redirect answer is followed by fetch with the SAME method (only POST
+     * is rewritten to GET), so the original PUT save landed on the GET-only
+     * edit page as a 405 and the UI reported failure even though the save had
+     * already succeeded. AJAX callers must get JSON directly, no redirect.
+     */
+    public function test_endpoint_answers_ajax_callers_with_json_not_a_redirect(): void
+    {
+        $this->proxmoxServer('pve-a', [['vmid' => '113', 'node' => 'pve1', 'label' => 'ubuntu-2204']]);
+
+        $product = $this->productWithLink('proxmox', ['template_vmid' => '113']);
+
+        $this->actingAs($this->adminWith(['products.edit']))
+            ->putJson(route('admin.products.modules.template-default', [$product, 'proxmox']), [
+                'template' => '113',
+            ])
+            ->assertOk()
+            ->assertJson(['ok' => true, 'template' => '113']);
+
+        $pivot = ProductModule::where('product_id', $product->id)->where('module_slug', 'proxmox')->firstOrFail();
+        $dec = app(IntegrationRegistry::class)->decryptConfigFor('proxmox', $pivot->config);
+        $this->assertSame('113', $dec['template_vmid']);
+    }
+
     public function test_endpoint_rejects_an_unknown_template(): void
     {
         $this->proxmoxServer('pve-a', [['vmid' => '113', 'node' => 'pve1', 'label' => 'ubuntu-2204']]);

@@ -75,12 +75,9 @@ document.addEventListener('DOMContentLoaded', function () {
             if (csrf) headers['X-CSRF-TOKEN'] = csrf;
 
             fetch(button.getAttribute('data-url'), {
-                // Method-spoofed POST: some hosts (IIS/WebDAV) reject a real PUT
-                // with 405, and the rest of the admin UI submits `_method=PUT`
-                // for the same reason.
-                method: 'POST',
+                method: 'PUT',
                 headers: headers,
-                body: new URLSearchParams({ template: select.value, _method: 'PUT' }),
+                body: new URLSearchParams({ template: select.value }),
                 credentials: 'same-origin'
             }).then(function (res) {
                 if (res.ok) { window.location.reload(); return null; }

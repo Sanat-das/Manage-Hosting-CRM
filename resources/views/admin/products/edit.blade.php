@@ -526,16 +526,7 @@
                     if (!confirmDiscard()) return;
 
                     data.append('_token', csrf);
-
-                    // Method-spoofed POST: some hosts (IIS/WebDAV) reject a real
-                    // PUT with 405, so non-POST verbs ride `_method` like the
-                    // form submissions do.
-                    var verb = (method || 'POST').toUpperCase();
-                    if (verb !== 'POST') {
-                        data.append('_method', verb);
-                    }
-
-                    fetch(url, { method: 'POST', body: data, redirect: 'manual' })
+                    fetch(url, { method: method, body: data, redirect: 'manual' })
                         .finally(function () {
                             window.location.href = '{{ route('admin.products.edit', $product) }}';
                         });

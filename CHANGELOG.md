@@ -6,13 +6,14 @@ All notable user-facing changes to this project are documented in this file.
 
 ### Fixed
 
-- **Product default-template save returned 405 on hosts that reject PUT.**
-  The compute default-template card submitted a real `PUT`; IIS/WebDAV (and
-  some other hosts) answer **405 Method Not Allowed** to that method, so the
-  card showed "Could not save the default template" and the value never
-  changed. It now submits a method-spoofed `POST` with `_method=PUT` — the same
-  pattern the rest of the admin UI uses — and surfaces the HTTP status when a
-  save still fails. The module config save was given the same treatment.
+- **Product default-template save looked like a 405 even though it worked.**
+  The compute default-template card saved over fetch, and the endpoint answered
+  with a redirect. Fetch follows a 302 with the *same* method (only POST is
+  rewritten to GET), so the `PUT` landed on the GET-only edit route as
+  **405 Method Not Allowed** — the card showed "Could not save the default
+  template" while the value had in fact been saved. The endpoint now answers
+  AJAX callers (`Accept: application/json`) directly with JSON, and the card's
+  error message includes the HTTP status when a save really fails.
 
 - **Compute VMs are never mailed a login that exists nowhere.**
   Hyper-V and Proxmox VE welcome emails paired a guest username with the
