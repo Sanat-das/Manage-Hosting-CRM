@@ -345,6 +345,46 @@ final class ProxmoxVmLifecycleTest extends TestCase
         });
     }
 
+    public function test_status_presenter_allows_reset_for_a_running_proxmox_vm(): void
+    {
+        Http::fake([
+            '*/api2/json/nodes/pve1/qemu/901/status/current' => Http::response(['data' => ['status' => 'running', 'vmid' => 901]]),
+        ]);
+        Http::preventStrayRequests();
+
+        $server = $this->proxmoxServer();
+        $product = $this->productWithProxmoxLink($this->linkConfig());
+        $customer = $this->customer();
+        $account = $this->hostingAccount($customer, $product, $server, 'pvevm04');
+
+        $service = ServiceInstance::create([
+            'customer_id' => $customer->id,
+            'server_id' => $server->id,
+            'service_tag' => 'HOST-'.$account->id,
+            'username' => 'pvevm04',
+            'domain' => 'vm.test',
+            'provisioning_method' => 'proxmox',
+            'status' => 'active',
+        ]);
+
+        PanelAccount::create([
+            'service_instance_id' => $service->id,
+            'server_id' => $server->id,
+            'panel' => 'proxmox',
+            'username' => 'pvevm04',
+            'external_id' => '901',
+            'meta' => ['meta' => ['node' => 'pve1', 'vmid' => 901]],
+            'status' => PanelAccount::STATUS_ACTIVE,
+        ]);
+
+        $status = app(VmStatusPresenter::class)->build($account->fresh(), true);
+
+        $this->assertTrue($status['vm']['exists']);
+        $this->assertSame('running', $status['vm']['state']);
+        $this->assertTrue($status['can']['reset_password']);
+        $this->assertArrayNotHasKey('reset_password', $status['reasons']);
+    }
+
     /**
      * A module action's page reload renders immediately; the presenter's 10s
      * live-state probe cache must be dropped first or the card replays the

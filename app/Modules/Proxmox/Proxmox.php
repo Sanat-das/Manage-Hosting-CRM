@@ -17,6 +17,7 @@ use App\Models\ServiceInstance;
 use App\Modules\Proxmox\Services\ProxmoxClient;
 use App\Services\Provisioning\ProvisioningEventRecorder;
 use App\Services\Provisioning\ProxmoxTemplateCatalog;
+use App\Services\Provisioning\VmGuestCredentialStore;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -344,6 +345,146 @@ final class Proxmox extends AbstractComputeModule
             'external_id' => (string) $vmid,
             'state' => 'Running',
         ]);
+    }
+
+    /**
+     * Reset a guest OS password through the QEMU guest agent, falling back to
+     * cloud-init when the agent cannot do it.
+     *
+     * Mirrors HyperV::resetGuestAdminPassword(): the VM must be running, the
+     * username defaults to the stored guest login (`root` when nothing is
+     * stored), and the new password is written back to the credential store on
+     * success. `$currentPassword` exists for interface parity only — the PVE
+     * agent path is host-authoritative and never needs it.
+     */
+    public function resetGuestAdminPassword(ServiceInstance $service, string $newPassword, ?string $username = null, ?string $currentPassword = null): ProvisioningResult
+    {
+        $account = $this->accountFor($service);
+
+        if ($account === null) {
+            return ProvisioningResult::fail('No Proxmox VE VM is recorded for this service.');
+        }
+
+        $server = $service->server;
+
+        if ($server === null || ! $this->serverIsConfigured($server)) {
+            return ProvisioningResult::fail(sprintf(
+                'Server "%s" is not configured for proxmox (%s).',
+                $server?->name ?? $service->server_id,
+                $this->credentialHint(),
+            ));
+        }
+
+        try {
+            $vmid = $this->vmidFor($account);
+        } catch (PanelException $e) {
+            return ProvisioningResult::fail($e->getMessage());
+        }
+
+        $client = new ProxmoxClient($server);
+
+        try {
+            $node = $this->nodeFor($client, $account);
+
+            // A password set on a stopped guest would either fail inside the
+            // agent or silently do nothing — refuse it explicitly, matching
+            // the Hyper-V reset guard.
+            if (strtolower(trim($client->vmStatus($node, $vmid))) !== 'running') {
+                return ProvisioningResult::fail('Start the VM before resetting the password.');
+            }
+        } catch (PanelException $e) {
+            return ProvisioningResult::fail($e->getMessage());
+        } catch (\Throwable $e) {
+            return ProvisioningResult::fail('Proxmox VE password reset failed unexpectedly: '.$e->getMessage());
+        }
+
+        $storedUsername = null;
+
+        try {
+            $stored = app(VmGuestCredentialStore::class)->read($account);
+            $storedUsername = $stored['username'] ?? null;
+        } catch (\Throwable) {
+            // An unreadable store degrades to the default login.
+        }
+
+        $resolvedUsername = $username !== null && trim($username) !== '' ? trim($username) : null;
+
+        if ($resolvedUsername === null && $storedUsername !== null && trim($storedUsername) !== '') {
+            $resolvedUsername = trim($storedUsername);
+        }
+
+        if ($resolvedUsername === null || $resolvedUsername === '') {
+            $resolvedUsername = 'root';
+        }
+
+        try {
+            $client->setGuestPassword($node, $vmid, $resolvedUsername, $newPassword);
+        } catch (\Throwable $agentException) {
+            $agentError = $agentException->getMessage();
+
+            // The cloud-init fallback is only for agent-unavailability (not
+            // installed, not running, or an old guest): any other agent
+            // failure — auth/permission errors such as a 403, for example —
+            // must fail loudly with the agent error instead of being masked
+            // by a staged cloud-init password.
+            $agentUnavailable = stripos($agentError, 'agent') !== false;
+
+            if ($agentUnavailable) {
+                // The agent is unavailable (not installed, not running, or an
+                // old guest): when the VM carries a cloud-init drive the
+                // password can still be staged through cipassword for the
+                // next boot.
+                try {
+                    if ($client->hasCloudInitDrive($node, $vmid)
+                        && $client->applyCloudInitCredentials($node, $vmid, $resolvedUsername, $newPassword)) {
+                        $this->storeGuestCredentials($account, $resolvedUsername, $newPassword);
+
+                        return ProvisioningResult::ok(
+                            sprintf('Proxmox VE VM %d password updated via cloud-init — the change applies on next boot.', $vmid),
+                            [
+                                'username' => $resolvedUsername,
+                                'password' => $newPassword,
+                                'external_id' => (string) $vmid,
+                            ],
+                        );
+                    }
+                } catch (\Throwable $e) {
+                    Log::warning('Proxmox cloud-init password fallback failed', [
+                        'panel_account_id' => $account->id,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
+            }
+
+            return ProvisioningResult::fail('Proxmox VE password reset failed: '.$agentError);
+        }
+
+        $this->storeGuestCredentials($account, $resolvedUsername, $newPassword);
+
+        return ProvisioningResult::ok(
+            sprintf('Proxmox VE VM %d guest password reset', $vmid),
+            [
+                'username' => $resolvedUsername,
+                'password' => $newPassword,
+                'external_id' => (string) $vmid,
+            ],
+        );
+    }
+
+    /**
+     * Write the new guest login back to the credential store. Never throws:
+     * the password is already live inside the guest.
+     */
+    private function storeGuestCredentials(PanelAccount $account, string $username, string $newPassword): void
+    {
+        try {
+            app(VmGuestCredentialStore::class)->store($account, $username, $newPassword);
+        } catch (\Throwable $e) {
+            Log::warning('Proxmox guest credential store failed after password reset', [
+                'panel_account_id' => $account->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 
     /**

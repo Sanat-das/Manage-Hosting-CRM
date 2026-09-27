@@ -168,6 +168,10 @@
                 $clientVm = is_array(($vmStatus ?? null)['vm'] ?? null) ? $vmStatus['vm'] : [];
                 $clientCanReset = (bool) ($clientCan['reset_password'] ?? false);
                 $clientResetReason = trim((string) ($clientReasons['reset_password'] ?? ''));
+                // Reset gate follows the presenter, not the module slug: Hyper-V
+                // keeps its always-offered button (disabled with its reason when
+                // refused); compute modules offer it whenever the presenter
+                // allows the reset.
                 // Power actions are billing-status aware on the client side:
                 // the endpoint refuses anything but an ACTIVE service (a
                 // customer must never wake a suspended/terminated VM), so the
@@ -185,6 +189,7 @@
                 }
                 $clientPowerAction = is_array(($vmStatus ?? null)['action'] ?? null) ? $vmStatus['action'] : null;
                 $clientPowerRunning = (bool) ($clientPowerAction['running'] ?? false);
+                $clientShowReset = $isHyperv || $clientCanReset;
             @endphp
             <x-adminlte-card icon="bi bi-tools" title="Quick Actions">
                 @if (($clientVm['probe_error'] ?? '') !== '')
@@ -215,7 +220,7 @@
                         <input type="hidden" name="action" value="start">
                     </form>
                 @endif
-                @if ($isHyperv)
+                @if ($clientShowReset)
                     <button type="button" class="btn btn-outline-info w-100 mb-2" data-client-hv-action="reset_password"
                             data-bs-toggle="modal" data-bs-target="#client-reset-password-modal"
                             @if(! $clientCanReset) disabled title="{{ $clientResetReason !== '' ? $clientResetReason : 'Password reset is not available right now.' }}" @endif
@@ -226,7 +231,7 @@
                 <a href="#" class="btn btn-outline-info w-100 mb-2 disabled" title="Coming soon"><i class="bi bi-envelope me-1"></i> Manage Emails</a>
             </x-adminlte-card>
 
-            @if ($isHyperv)
+            @if ($clientShowReset)
                 <x-adminlte.partials.confirm-modal id="client-reset-password-modal" title="Reset Administrator password"
                     :message="'Reset the Administrator password inside the running guest. The VM must be running.'"
                     :action="route('client.hosting.reset-vm-password', $account)" method="POST"
@@ -323,7 +328,7 @@
 <script>
 document.addEventListener('DOMContentLoaded', function () {
     var statusUrl = @json($isCompute ? route('client.hosting.vm-status', $account) : null);
-    var resetUrl = @json($isHyperv ? route('client.hosting.reset-vm-password', $account) : null);
+    var resetUrl = @json($clientShowReset ? route('client.hosting.reset-vm-password', $account) : null);
     var powerUrl = @json($isCompute ? route('client.hosting.vm-power', $account) : null);
     var initialRunning = @json($isCompute ? $clientIsRunning : false);
     var csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || @json(csrf_token());

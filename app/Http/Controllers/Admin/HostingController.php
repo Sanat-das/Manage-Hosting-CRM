@@ -32,10 +32,11 @@ use App\Services\HostingService;
 use App\Services\Integrations\IntegrationRegistry;
 use App\Services\IpAssignmentService;
 use App\Services\Modules\ModuleManager;
+use App\Services\Provisioning\ComputeDriver;
 use App\Services\Provisioning\ComputeTemplateCatalog;
-use App\Services\Provisioning\HypervDriver;
 use App\Services\Provisioning\HypervTemplateCatalog;
 use App\Services\Provisioning\ManualProvisioner;
+use App\Services\Provisioning\ProvisioningDispatcher;
 use App\Services\Provisioning\ProvisioningEventRecorder;
 use App\Services\Provisioning\VmBuildDispatcher;
 use App\Services\Provisioning\VmGuestCredentialStore;
@@ -1245,6 +1246,69 @@ class HostingController extends Controller
     }
 
     /**
+     * The compute module that owns this account, or null when the account is
+     * not a VM service. Mirrors Client\HostingController::computeSlugFor():
+     * the server's own type wins (a machine lives on the server it was built
+     * on), then the product's provisioning module, then any enabled module
+     * link, then the provisioning dispatcher — every candidate gated on
+     * ComputeTemplateCatalog::supports() so a non-compute link can never
+     * claim the account. Lookup helper only — it never creates anything.
+     */
+    private function computeSlugForHosting(HostingAccount $hostingAccount): ?string
+    {
+        $serverType = strtolower(trim((string) ($hostingAccount->server?->server_type ?? '')));
+
+        if (ComputeTemplateCatalog::supports($serverType)) {
+            return $serverType;
+        }
+
+        $product = $hostingAccount->product;
+
+        if ($product === null) {
+            return null;
+        }
+
+        $raw = strtolower(trim((string) ($product->provisioning_module ?? '')));
+
+        if (ComputeTemplateCatalog::supports($raw)) {
+            return $raw;
+        }
+
+        try {
+            $links = $product->relationLoaded('moduleLinks')
+                ? $product->moduleLinks
+                : $product->moduleLinks()->where('enabled', true)->get();
+
+            foreach ($links as $link) {
+                if (! (bool) ($link->enabled ?? false)) {
+                    continue;
+                }
+
+                $slug = strtolower(trim((string) ($link->module_slug ?? '')));
+
+                if (ComputeTemplateCatalog::supports($slug)) {
+                    return $slug;
+                }
+            }
+        } catch (\Throwable) {
+            // Fall through to the dispatcher fallback below.
+        }
+
+        try {
+            $dispatcher = app(ProvisioningDispatcher::class);
+            $resolved = strtolower(trim((string) ($dispatcher->moduleFor($product) ?? '')));
+
+            if (ComputeTemplateCatalog::supports($resolved)) {
+                return $resolved;
+            }
+        } catch (\Throwable) {
+            // An unresolvable dispatcher mapping fails closed below.
+        }
+
+        return null;
+    }
+
+    /**
      * JSON status/progress API for the admin VM panel. Always 200, never throws.
      */
     public function vmStatus(Request $request, HostingAccount $hostingAccount): JsonResponse
@@ -1279,6 +1343,8 @@ class HostingController extends Controller
         ], 422);
 
         try {
+            $slug = $this->computeSlugForHosting($hostingAccount);
+
             // Lookup only — a GET must never create a ServiceInstance row
             // (same approach as VmStatusPresenter::panelAccountFor).
             $service = null;
@@ -1293,8 +1359,8 @@ class HostingController extends Controller
                 $service = null;
             }
 
-            $panel = $service !== null
-                ? PanelAccount::where('service_instance_id', $service->id)->where('panel', 'hyperv')->first()
+            $panel = $service !== null && $slug !== null
+                ? PanelAccount::where('service_instance_id', $service->id)->where('panel', $slug)->first()
                 : null;
 
             if ($panel === null) {
@@ -1307,12 +1373,13 @@ class HostingController extends Controller
                 return $notStored();
             }
 
+            $fallbackUsername = $slug === 'hyperv' ? 'Administrator' : 'root';
             $username = ($stored['username'] ?? null) !== null && trim((string) $stored['username']) !== ''
                 ? trim((string) $stored['username'])
-                : 'Administrator';
+                : $fallbackUsername;
 
             try {
-                $this->hostingService->audit($hostingAccount, 'hosting.module_action', 'Administrator credentials revealed', ['module' => 'hyperv', 'action' => 'reveal_credentials']);
+                $this->hostingService->audit($hostingAccount, 'hosting.module_action', 'Administrator credentials revealed', ['module' => $slug ?? 'hyperv', 'action' => 'reveal_credentials']);
             } catch (\Throwable) {
                 // Audit must never block the response.
             }
@@ -1346,12 +1413,12 @@ class HostingController extends Controller
         }
         $currentPassword = $validated['current_password'] ?? null;
 
-        // Resolve service + driver for reset
-        $service = $this->serviceForHosting($hostingAccount, 'hyperv');
-        $driver = HypervDriver::resolve();
+        // Resolve service + driver for reset (generic compute slug: the first
+        // enabled product link with a driver, else the server type).
+        $slug = $this->computeSlugForHosting($hostingAccount);
 
-        if ($driver === null || ! method_exists($driver, 'resetGuestAdminPassword')) {
-            $msg = 'Hyper-V module does not support password reset.';
+        if ($slug === null) {
+            $msg = 'Password reset is not available for this service.';
             if ($request->expectsJson() || $request->ajax()) {
                 return response()->json(['ok' => false, 'message' => $msg], 422);
             }
@@ -1359,26 +1426,42 @@ class HostingController extends Controller
             return back()->with('error', $msg);
         }
 
-        // Check stored credentials requirement
-        try {
-            $panel = PanelAccount::where('service_instance_id', $service->id)->where('panel', 'hyperv')->first();
-            $store = app(VmGuestCredentialStore::class);
-            $stored = $panel !== null ? $store->read($panel) : ['username' => null, 'password' => null];
-            if (($stored['password'] ?? null) === null && ($currentPassword === null || trim($currentPassword) === '')) {
-                $msg = 'No Administrator credentials are stored for this VM — enter the current password.';
-                if ($request->expectsJson() || $request->ajax()) {
-                    return response()->json(['ok' => false, 'message' => $msg], 422);
-                }
+        $service = $this->serviceForHosting($hostingAccount, $slug);
+        $driver = ComputeDriver::resolve($slug);
 
-                return back()->with('error', $msg);
+        if ($driver === null || ! method_exists($driver, 'resetGuestAdminPassword')) {
+            $msg = 'Password reset is not available for this service.';
+            if ($request->expectsJson() || $request->ajax()) {
+                return response()->json(['ok' => false, 'message' => $msg], 422);
             }
-        } catch (\Throwable) {
+
+            return back()->with('error', $msg);
+        }
+
+        // The stored-or-current pre-gate is a Hyper-V requirement (PowerShell
+        // Direct authenticates inside the guest); host-authoritative drivers
+        // such as Proxmox VE need no current password.
+        if ($slug === 'hyperv') {
+            try {
+                $panel = PanelAccount::where('service_instance_id', $service->id)->where('panel', 'hyperv')->first();
+                $store = app(VmGuestCredentialStore::class);
+                $stored = $panel !== null ? $store->read($panel) : ['username' => null, 'password' => null];
+                if (($stored['password'] ?? null) === null && ($currentPassword === null || trim($currentPassword) === '')) {
+                    $msg = 'No Administrator credentials are stored for this VM — enter the current password.';
+                    if ($request->expectsJson() || $request->ajax()) {
+                        return response()->json(['ok' => false, 'message' => $msg], 422);
+                    }
+
+                    return back()->with('error', $msg);
+                }
+            } catch (\Throwable) {
+            }
         }
 
         // Record attempt as provisioning event
         try {
             $event = $this->provisioningEvents->begin('update', [
-                'module' => 'hyperv',
+                'module' => $slug,
                 'action' => 'reset_password',
                 'hosting_account_id' => $hostingAccount->id,
                 'order_id' => $hostingAccount->order_id,
@@ -1427,11 +1510,11 @@ class HostingController extends Controller
             }
         }
         try {
-            $this->hostingService->audit($hostingAccount, 'hosting.module_action', $result->message ?? 'Password reset', ['module' => 'hyperv', 'action' => 'reset_password']);
+            $this->hostingService->audit($hostingAccount, 'hosting.module_action', $result->message ?? 'Password reset', ['module' => $slug, 'action' => 'reset_password']);
         } catch (\Throwable) {
         }
 
-        $resolvedUsername = $result->data['username'] ?? $username ?? 'Administrator';
+        $resolvedUsername = $result->data['username'] ?? $username ?? ($slug === 'hyperv' ? 'Administrator' : 'root');
 
         if ($request->expectsJson() || $request->ajax()) {
             return response()->json(['ok' => true, 'password' => $newPassword, 'username' => $resolvedUsername, 'message' => 'Administrator password reset']);

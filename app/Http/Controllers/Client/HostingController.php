@@ -12,7 +12,6 @@ use App\Services\Modules\ModuleManager;
 use App\Services\OrderConfigSnapshot;
 use App\Services\Provisioning\ComputeDriver;
 use App\Services\Provisioning\ComputeTemplateCatalog;
-use App\Services\Provisioning\HypervDriver;
 use App\Services\Provisioning\ManualProvisioner;
 use App\Services\Provisioning\ProvisioningDispatcher;
 use App\Services\Provisioning\ProvisioningEventRecorder;
@@ -290,8 +289,20 @@ class HostingController extends Controller
         $newPassword = $validated['password'];
 
         // Resolve service + driver for reset (same factory the admin uses).
-        $service = app(ManualProvisioner::class)->serviceForHosting($account, 'hyperv');
-        $driver = HypervDriver::resolve();
+        $account->loadMissing(['product.moduleLinks', 'server']);
+        $slug = $this->computeSlugFor($account);
+
+        if ($slug === null) {
+            $msg = 'Password reset is not available for this service.';
+            if ($this->wantsJson($request)) {
+                return response()->json(['ok' => false, 'message' => $msg], 422);
+            }
+
+            return back()->with('error', $msg);
+        }
+
+        $service = app(ManualProvisioner::class)->serviceForHosting($account, $slug);
+        $driver = ComputeDriver::resolve($slug);
 
         if ($driver === null || ! method_exists($driver, 'resetGuestAdminPassword')) {
             $msg = 'Password reset is not available for this service.';
@@ -304,26 +315,30 @@ class HostingController extends Controller
 
         // The customer never knows the current password — without a stored
         // credential there is nothing to authenticate into the guest with.
-        try {
-            $panel = PanelAccount::where('service_instance_id', $service->id)->where('panel', 'hyperv')->first();
-            $stored = $panel !== null
-                ? app(VmGuestCredentialStore::class)->read($panel)
-                : ['username' => null, 'password' => null];
-            if (($stored['password'] ?? null) === null) {
-                $msg = 'No stored credentials for this VM — contact support.';
-                if ($this->wantsJson($request)) {
-                    return response()->json(['ok' => false, 'message' => $msg], 422);
-                }
+        // Hyper-V-only: host-authoritative drivers such as Proxmox VE reset
+        // without it.
+        if ($slug === 'hyperv') {
+            try {
+                $panel = PanelAccount::where('service_instance_id', $service->id)->where('panel', 'hyperv')->first();
+                $stored = $panel !== null
+                    ? app(VmGuestCredentialStore::class)->read($panel)
+                    : ['username' => null, 'password' => null];
+                if (($stored['password'] ?? null) === null) {
+                    $msg = 'No stored credentials for this VM — contact support.';
+                    if ($this->wantsJson($request)) {
+                        return response()->json(['ok' => false, 'message' => $msg], 422);
+                    }
 
-                return back()->with('error', $msg);
+                    return back()->with('error', $msg);
+                }
+            } catch (\Throwable) {
             }
-        } catch (\Throwable) {
         }
 
         // Record the attempt as a provisioning event, exactly like admin.
         try {
             $event = $this->provisioningEvents->begin('update', [
-                'module' => 'hyperv',
+                'module' => $slug,
                 'action' => 'reset_password',
                 'hosting_account_id' => $account->id,
                 'order_id' => $account->order_id,
@@ -373,22 +388,26 @@ class HostingController extends Controller
             }
         }
         try {
-            $this->hostingService->audit($account, 'hosting.module_action', $result->message ?? 'Administrator password reset', ['module' => 'hyperv', 'action' => 'reset_password']);
+            $this->hostingService->audit($account, 'hosting.module_action', $result->message ?? 'Administrator password reset', ['module' => $slug, 'action' => 'reset_password']);
         } catch (\Throwable) {
         }
 
+        $successMessage = $slug === 'hyperv'
+            ? 'Administrator password reset. Use the new password on your next RDP login.'
+            : ($result->message ?? 'Password reset. Use the new password on your next login.');
+
         // Never echo the password: the customer typed it themselves.
         if ($this->wantsJson($request)) {
-            return response()->json(['ok' => true, 'message' => 'Administrator password reset. Use the new password on your next RDP login.']);
+            return response()->json(['ok' => true, 'message' => $successMessage]);
         }
 
-        return back()->with('success', 'Administrator password reset. Use the new password on your next RDP login.');
+        return back()->with('success', $successMessage);
     }
 
     /**
      * Customer "Start VM" / "Stop VM": power verbs only, gated by the live VM
      * state. Mirrors resetVmPassword() (customer scoping, driver via
-     * HypervDriver::resolve(), event + audit, JSON/redirect) but never
+     * ComputeDriver::resolve(), event + audit, JSON/redirect) but never
      * touches hosting_accounts.status — a customer powering off their VM is
      * not a billing suspension (only the PanelAccount mirror set by the
      * driver changes).

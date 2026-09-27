@@ -62,6 +62,15 @@ final class VmStatusPresenter
     private const ACTION_EVENT_TYPES = ['provision', 'unsuspend', 'suspend', 'restart', 'terminate', 'update'];
 
     /**
+     * Per-slug guest-password reset capability, memoized so the hot render
+     * path resolves the compute driver at most once per slug per process.
+     * Fail-closed: an unresolvable slug reads as "no reset", same as before.
+     *
+     * @var array<string, bool>
+     */
+    private static array $resetCapabilityCache = [];
+
+    /**
      * @param  bool  $refresh  bypass the short VM-state cache (the panel's
      *                         "Retry" affordance after a host probe failure)
      * @return array<string, mixed>
@@ -375,12 +384,15 @@ final class VmStatusPresenter
             }
         }
 
-        // Guest-password reset is a Hyper-V capability (the driver exposes
-        // resetGuestAdminPassword outside the provisioning contract); Proxmox VE
-        // has no equivalent flow yet, so never advertise it.
-        if (($can['reset_password'] ?? false) === true && $slug !== 'hyperv') {
-            $can['reset_password'] = false;
-            $reasons['reset_password'] = 'Password reset is not available for this service.';
+        // Guest-password reset is a driver capability: it is advertised only
+        // when the resolved compute driver exposes resetGuestAdminPassword()
+        // (Hyper-V via PowerShell Direct, Proxmox VE via the guest agent with
+        // a cloud-init fallback). Anything else keeps the frozen reason.
+        if (($can['reset_password'] ?? false) === true) {
+            if (! self::supportsGuestPasswordReset($slug)) {
+                $can['reset_password'] = false;
+                $reasons['reset_password'] = 'Password reset is not available for this service.';
+            }
         }
 
         // A reason is only meaningful for a disabled action.
@@ -391,6 +403,32 @@ final class VmStatusPresenter
         }
 
         return [$can, $reasons];
+    }
+
+    /**
+     * Does this compute module expose a guest-password reset flow? Resolved
+     * once per slug per process (see $resetCapabilityCache) — the render
+     * hot path calls permissions() on every poll, and driver resolution is
+     * pure for a given slug. Fail-closed on any throwable, same as before.
+     */
+    private static function supportsGuestPasswordReset(?string $slug): bool
+    {
+        $slug = strtolower(trim((string) ($slug ?? '')));
+
+        if ($slug === '') {
+            return false;
+        }
+
+        if (! array_key_exists($slug, self::$resetCapabilityCache)) {
+            try {
+                $driver = ComputeDriver::resolve($slug);
+                self::$resetCapabilityCache[$slug] = $driver !== null && method_exists($driver, 'resetGuestAdminPassword');
+            } catch (\Throwable) {
+                self::$resetCapabilityCache[$slug] = false;
+            }
+        }
+
+        return self::$resetCapabilityCache[$slug];
     }
 
     /**

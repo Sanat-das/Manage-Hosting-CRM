@@ -1720,6 +1720,39 @@ final class ProxmoxProvisioningTest extends TestCase
         Http::assertSent(fn (Request $r): bool => str_starts_with($r->url(), 'https://[::1]:8006/api2/json/version'));
     }
 
+    // ───────────────────── guest-agent password reset ─────────────────────
+
+    public function test_set_guest_password_posts_to_the_agent_endpoint(): void
+    {
+        $client = new ProxmoxClient($this->server());
+
+        Http::fake([
+            '*/api2/json/nodes/pve1/qemu/901/agent/set-user-password' => Http::response(['data' => null]),
+        ]);
+
+        $client->setGuestPassword('pve1', 901, 'root', 'Secret123');
+
+        Http::assertSent(fn (Request $r): bool => $r->method() === 'POST'
+            && str_contains($r->url(), '/nodes/pve1/qemu/901/agent/set-user-password')
+            && $r['username'] === 'root'
+            && $r['password'] === 'Secret123'
+            && (int) $r['crypted'] === 0);
+    }
+
+    public function test_set_guest_password_failure_throws_a_panel_exception(): void
+    {
+        $client = new ProxmoxClient($this->server());
+
+        Http::fake([
+            '*/api2/json/nodes/pve1/qemu/901/agent/set-user-password' => Http::response(['message' => 'QEMU guest agent is not running'], 500),
+        ]);
+
+        $this->expectException(PanelException::class);
+        $this->expectExceptionMessageMatches('/guest agent/');
+
+        $client->setGuestPassword('pve1', 901, 'root', 'Secret123');
+    }
+
     /**
      * PVE refuses to destroy a running VM ("VM is running - destroy failed"),
      * so a terminate on a live VM would fail. The destroy must stop it first.

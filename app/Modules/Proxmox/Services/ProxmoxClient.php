@@ -1181,6 +1181,28 @@ final class ProxmoxClient
         $this->simpleTask($node, $vmid, 'start');
     }
 
+    /**
+     * Set a guest OS user password through the QEMU guest agent.
+     *
+     * The agent must be running inside the guest; PVE answers synchronously
+     * (no task to wait for), so any failure surfaces here as a PanelException
+     * through the shared `call()` unwrap.
+     *
+     * @throws PanelException
+     */
+    public function setGuestPassword(string $node, int $vmid, string $username, string $password): void
+    {
+        $this->call('POST', sprintf(
+            '/nodes/%s/qemu/%d/agent/set-user-password',
+            rawurlencode($node),
+            $vmid,
+        ), [
+            'username' => $username,
+            'password' => $password,
+            'crypted' => 0,
+        ]);
+    }
+
     /** Graceful guest reboot (ACPI); PVE answers with a task that is awaited. */
     public function rebootVm(string $node, int $vmid): void
     {

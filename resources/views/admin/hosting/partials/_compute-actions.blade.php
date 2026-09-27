@@ -8,8 +8,8 @@
      *   curatedCount, noEffective, canRestart, startAfterCreateDefault
      *
      * Uses the same frozen endpoints as the Hyper-V card: POST module-action
-     * for verbs, GET vm-status for live state/progress. Guest-credential and
-     * password-reset affordances stay Hyper-V-only for now.
+     * for verbs, GET vm-status for live state/progress, POST reset-vm-password
+     * for password resets, GET vm-credentials for the on-demand reveal.
      */
     $computeSlug = (string) ($slug ?? '');
     $computeOptions = is_array($options ?? null) ? $options : [];
@@ -58,6 +58,21 @@
     $computeCanStop = (bool) ($computeCan['stop'] ?? false);
     $computeCanDelete = (bool) ($computeCan['delete'] ?? false);
     $computeProbeError = trim((string) ($computeVm['probe_error'] ?? ''));
+
+    // Password-reset + credentials-reveal gates, mirroring the Hyper-V card.
+    // The stored password is never server-rendered (bullets + on-demand
+    // fetch); only the stored flag and the username reach this HTML.
+    $computeReasons = is_array($computeVmStatus['reasons'] ?? null) ? $computeVmStatus['reasons'] : [];
+    $computeCredentials = is_array($computeVmStatus['credentials'] ?? null) ? $computeVmStatus['credentials'] : [];
+    $computeCredUsername = trim((string) ($computeCredentials['username'] ?? 'root'));
+    if ($computeCredUsername === '') { $computeCredUsername = 'root'; }
+    $computeCredsStored = (bool) ($computeCredentials['stored'] ?? false);
+    $computeCanReset = (bool) ($computeCan['reset_password'] ?? false);
+    $computeResetReason = trim((string) ($computeReasons['reset_password'] ?? ''));
+    $computeResetTitle = $computeIsRunning ? 'An action is already running — please wait.' : $computeResetReason;
+    $computeCredsTitle = $computeIsRunning
+        ? 'An action is already running — please wait.'
+        : (! $computeCredsStored ? 'No credentials are stored for this VM.' : '');
 @endphp
 <div class="ma-entry" id="compute-panel-{{ $computeSlug }}">
     <div class="d-flex flex-wrap align-items-center gap-2 py-2">
@@ -88,6 +103,13 @@
                 @endif
                 <button type="button" class="btn btn-sm btn-outline-danger" data-compute-action="delete"
                         @if(! $computeCanDelete || $computeIsRunning) disabled @endif>Delete</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" data-compute-action="reset_password"
+                        @if(! $computeCanReset || $computeIsRunning) disabled @endif
+                        @if($computeResetTitle !== '') title="{{ $computeResetTitle }}" @endif>Reset password</button>
+                {{-- Credentials reveal: fetched on demand, never server-rendered --}}
+                <button type="button" class="btn btn-sm btn-outline-secondary" data-compute-action="credentials"
+                        @if(! $computeCredsStored || $computeIsRunning) disabled @endif
+                        @if($computeCredsTitle !== '') title="{{ $computeCredsTitle }}" @endif>Credentials</button>
             @endcan
             @if ($computeProbeError !== '')
                 <button type="button" class="btn btn-sm btn-outline-secondary" data-compute-retry>Retry</button>
@@ -185,6 +207,76 @@
                     </div>
                 </form>
             </div>
+
+            {{-- Reset password. No current-password field: the frozen endpoint
+                 takes {username, password, password_confirmation} only. --}}
+            <div data-compute-view="reset_password" hidden>
+                <h6 class="fw-semibold mb-2">Reset password</h6>
+                <p class="small text-muted mb-2">Reset the password inside the running guest. The VM must be running.</p>
+                <form method="POST" action="{{ route('admin.hosting.reset-vm-password', $hostingAccount) }}" data-compute-form data-compute-form-action="reset_password">
+                    @csrf
+                    <div class="mb-2">
+                        <label for="compute-reset-username-{{ $computeSlug }}" class="form-label small mb-1">Username</label>
+                        <input id="compute-reset-username-{{ $computeSlug }}" name="username" type="text" class="form-control form-control-sm"
+                               value="{{ $computeCredUsername }}" maxlength="64" autocomplete="username" aria-label="Username">
+                    </div>
+                    <div class="mb-2">
+                        {{-- WHY this field has its own id instead of reusing any
+                             container id: the Generate button targets it by id
+                             and must land on the INPUT. --}}
+                        <label for="compute-reset-new-password-{{ $computeSlug }}" class="form-label small mb-1">New password</label>
+                        <div class="input-group input-group-sm">
+                            <input id="compute-reset-new-password-{{ $computeSlug }}" name="password" type="password" class="form-control"
+                                   autocomplete="new-password" required minlength="8" aria-label="New password">
+                            <button type="button" class="btn btn-outline-secondary" data-compute-generate-target="compute-reset-new-password-{{ $computeSlug }}">Generate</button>
+                        </div>
+                    </div>
+                    <div class="mb-2">
+                        <label for="compute-reset-password-confirm-{{ $computeSlug }}" class="form-label small mb-1">Confirm new password</label>
+                        <input id="compute-reset-password-confirm-{{ $computeSlug }}" name="password_confirmation" type="password" class="form-control form-control-sm"
+                               autocomplete="new-password" required minlength="8" aria-label="Confirm new password">
+                    </div>
+                    <div id="compute-reset-result-{{ $computeSlug }}" class="border rounded-2 p-2 mt-2 d-none" role="status" aria-live="polite">
+                        <div class="d-flex align-items-center justify-content-between gap-2">
+                            <code id="compute-reset-result-password-{{ $computeSlug }}"></code>
+                            <button type="button" class="btn btn-sm btn-outline-secondary" id="compute-reset-copy-{{ $computeSlug }}">Copy</button>
+                        </div>
+                        <div class="text-muted small mt-1">Copy this password now — it will not be shown again.</div>
+                    </div>
+                    <div class="d-flex gap-2 mt-2">
+                        <button type="button" class="btn btn-sm btn-outline-secondary" data-compute-cancel>Cancel</button>
+                        <button type="submit" class="btn btn-sm btn-primary" data-compute-submit>Reset password</button>
+                    </div>
+                </form>
+            </div>
+
+            {{-- Credentials reveal: a plain view (nothing posts). The password
+                 is fetched on demand via the vm-credentials endpoint and is
+                 never server-rendered into this HTML. --}}
+            <div data-compute-view="credentials" hidden>
+                <h6 class="fw-semibold mb-2">Credentials</h6>
+                <p class="small text-muted mb-2">The password is fetched only when you click Show or Copy, and is never written into the page.</p>
+                @if ($computeCredsStored)
+                    <p class="small text-muted mb-2">Stored credentials are available for this VM.</p>
+                @endif
+                <div class="mb-2">
+                    <span class="form-label small mb-1 d-block">Username</span>
+                    <code id="compute-credentials-username-{{ $computeSlug }}">{{ $computeCredUsername }}</code>
+                </div>
+                <div class="mb-2">
+                    <span class="form-label small mb-1 d-block">Password</span>
+                    <div class="d-flex flex-wrap align-items-center gap-2">
+                        <code id="compute-credentials-password-{{ $computeSlug }}" style="letter-spacing: 0.15em;">••••••••</code>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" id="compute-credentials-show-{{ $computeSlug }}" title="Show password" aria-label="Show password">Show</button>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" id="compute-credentials-copy-{{ $computeSlug }}" title="Copy password" aria-label="Copy password">Copy</button>
+                        <span id="compute-credentials-feedback-{{ $computeSlug }}" class="text-success small d-none" role="status">Copied!</span>
+                    </div>
+                </div>
+                <div id="compute-credentials-error-{{ $computeSlug }}" class="alert alert-danger py-2 px-3 mt-2 mb-0 d-none" role="alert"></div>
+                <div class="d-flex gap-2 mt-2">
+                    <button type="button" class="btn btn-sm btn-outline-secondary" data-compute-cancel>Close</button>
+                </div>
+            </div>
         </div>
     @endcan
 </div>
@@ -206,12 +298,14 @@
 
         var moduleActionUrl = @json(route('admin.hosting.module-action', $hostingAccount));
         var statusUrl = @json(route('admin.hosting.vm-status', $hostingAccount));
+        var credentialsUrl = @json(route('admin.hosting.vm-credentials', $hostingAccount));
         var csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || @json(csrf_token());
 
         var POLL_MS = 3000;
         var FIRST_POLL_MS = 800;
         var RELOAD_MS = 1200;
         var RUNNING_REASON = 'An action is already running — please wait.';
+        var NO_CREDENTIALS_REASON = 'No credentials are stored for this VM.';
 
         var statePill = document.getElementById('compute-state-' + slug);
         var hint = panel.querySelector('[data-compute-hint]');
@@ -224,7 +318,12 @@
         var disclosure = panel.querySelector('[data-compute-disclosure]');
         var buttons = Array.prototype.slice.call(panel.querySelectorAll('[data-compute-action]'));
 
-        var state = { last: null, busy: false, open: null, trigger: null, poll: null, alert: null };
+        var state = { last: null, busy: false, open: null, trigger: null, poll: null, alert: null, credsStored: @json($computeCredsStored) };
+
+        // Replaced by the credentials module below; declared here so the
+        // disclosure code can call them without ordering games.
+        var resetCredentialsView = function () {};
+        var invalidateCredentialsView = function () {};
 
         function fmtElapsed(sec) {
             sec = Math.max(0, parseInt(sec, 10) || 0);
@@ -274,6 +373,10 @@
         function applyStatus(status) {
             if (!status || typeof status !== 'object') return;
             state.last = status;
+            // The presenter always sends credentials; only trust it when present.
+            if (status.credentials && typeof status.credentials === 'object') {
+                state.credsStored = !!status.credentials.stored;
+            }
             var action = status.action || null;
             var vm = status.vm || null;
             var can = status.can || {};
@@ -297,6 +400,14 @@
             buttons.forEach(function (btn) {
                 var act = btn.getAttribute('data-compute-action');
                 if (act === 'restart') { btn.disabled = running || !(vm && vm.exists === true); return; }
+                if (act === 'credentials') {
+                    // No can key exists for credentials — its gate is credentials.stored.
+                    btn.disabled = running || !state.credsStored;
+                    if (running) btn.setAttribute('title', RUNNING_REASON);
+                    else if (!state.credsStored) btn.setAttribute('title', NO_CREDENTIALS_REASON);
+                    else btn.removeAttribute('title');
+                    return;
+                }
                 btn.disabled = running || !can[act];
                 if (running) btn.setAttribute('title', RUNNING_REASON);
                 else if (reasons[act]) btn.setAttribute('title', reasons[act]);
@@ -378,6 +489,7 @@
             state.trigger = trigger || null;
             disclosure.hidden = false;
             disclosure.setAttribute('aria-hidden', 'false');
+            if (action === 'credentials') resetCredentialsView();
             var first = disclosure.querySelector('[data-compute-view]:not([hidden]) input:not([type=hidden]), [data-compute-view]:not([hidden]) select');
             if (first) { try { first.focus(); } catch (e) {} }
         }
@@ -410,6 +522,22 @@
                 if (!ok) {
                     showFeedback('error', data.message || data.error || 'Action failed.');
                     setProgress(false);
+                    fetchStatus(false);
+                    return;
+                }
+                // Reset shows the new password once, in place, and never reloads.
+                if (action === 'reset_password') {
+                    var newPw = data.password || data.new_password || (data.data && data.data.password) || '';
+                    var resultBlock = panel.querySelector('#compute-reset-result-' + slug);
+                    var resultPw = panel.querySelector('#compute-reset-result-password-' + slug);
+                    if (resultBlock && resultPw) {
+                        resultPw.textContent = newPw || '(no password returned)';
+                        resultBlock.classList.remove('d-none');
+                    }
+                    invalidateCredentialsView();
+                    state.busy = false;
+                    setProgress(false);
+                    showFeedback('success', data.message || 'Password reset.');
                     fetchStatus(false);
                     return;
                 }
@@ -465,11 +593,191 @@
             });
         }
 
+        // ── Password generator (no deps; also mirrors the confirmation field) ─
+        function generatePassword(len) {
+            len = len || 16;
+            var chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%*?';
+            var out = '';
+            try {
+                var arr = new Uint32Array(len);
+                window.crypto.getRandomValues(arr);
+                for (var i = 0; i < len; i++) out += chars.charAt(arr[i] % chars.length);
+            } catch (ignored) {
+                // No WebCrypto: Math.random is weaker but still a fresh password.
+                for (var j = 0; j < len; j++) out += chars.charAt(Math.floor(Math.random() * chars.length));
+            }
+            return out;
+        }
+
+        // Any button carrying data-compute-generate-target fills that input
+        // with a strong random password.
+        function fillGeneratedPassword(gen) {
+            var input = document.getElementById(gen.getAttribute('data-compute-generate-target') || '');
+            // Guard against id collisions: a non-input with the same id would
+            // swallow the value silently.
+            if (!input || (input.tagName !== 'INPUT' && input.tagName !== 'TEXTAREA')) return;
+            var generated = generatePassword(16);
+            input.value = generated;
+            var form = input.form || (input.closest ? input.closest('form') : null);
+            var confirmation = form ? form.querySelector('[name="password_confirmation"]') : null;
+            if (confirmation) confirmation.value = generated;
+            input.setAttribute('type', 'text');
+            try { input.focus(); input.select(); } catch (e) {}
+            setTimeout(function () { input.setAttribute('type', 'password'); }, 5000);
+        }
+
+        function copyText(text, done) {
+            var finish = done || function () {};
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(text).then(finish, function () {
+                    legacyCopy(text);
+                    finish();
+                });
+                return;
+            }
+            legacyCopy(text);
+            finish();
+        }
+
+        function legacyCopy(text) {
+            var ta = document.createElement('textarea');
+            ta.value = text;
+            ta.style.cssText = 'position:fixed;opacity:0';
+            document.body.appendChild(ta);
+            ta.select();
+            try { document.execCommand('copy'); } catch (ignored) { /* no clipboard API — nothing else to try */ }
+            document.body.removeChild(ta);
+        }
+
+        // ── Reset result copy (panel-scoped through the slug-suffixed ids,
+        //    so co-rendered compute panels never share them) ────────────────
+        function copyResetPassword(btn) {
+            var pwEl = panel.querySelector('#compute-reset-result-password-' + slug);
+            var text = pwEl ? (pwEl.textContent || '') : '';
+            if (!text) return;
+            var original = btn.textContent;
+            copyText(text, function () {
+                btn.textContent = 'Copied';
+                setTimeout(function () { btn.textContent = original; }, 1200);
+            });
+        }
+
+        // ── Credentials reveal (fetched on demand, cached page-lifetime) ─────
+        (function initCredentials() {
+            var view = disclosure ? disclosure.querySelector('[data-compute-view="credentials"]') : null;
+            if (!view) return;
+            var userEl = panel.querySelector('#compute-credentials-username-' + slug);
+            var passEl = panel.querySelector('#compute-credentials-password-' + slug);
+            var showBtn = panel.querySelector('#compute-credentials-show-' + slug);
+            var copyBtn = panel.querySelector('#compute-credentials-copy-' + slug);
+            var copiedEl = panel.querySelector('#compute-credentials-feedback-' + slug);
+            var errorBox = panel.querySelector('#compute-credentials-error-' + slug);
+            if (!passEl || (!showBtn && !copyBtn)) return;
+
+            var masked = '••••••••';
+            var cached = null;
+            var visible = false;
+            var copiedTimer = null;
+
+            function showCopied() {
+                if (!copiedEl) return;
+                copiedEl.classList.remove('d-none');
+                if (copiedTimer) clearTimeout(copiedTimer);
+                copiedTimer = setTimeout(function () { copiedEl.classList.add('d-none'); }, 1800);
+            }
+
+            function showError(msg) {
+                if (!errorBox) return;
+                errorBox.textContent = msg;
+                errorBox.classList.remove('d-none');
+            }
+
+            function clearError() {
+                if (!errorBox) return;
+                errorBox.textContent = '';
+                errorBox.classList.add('d-none');
+            }
+
+            function fetchCredentials() {
+                if (cached !== null) return Promise.resolve(cached);
+                return fetch(credentialsUrl, {
+                    method: 'GET',
+                    headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                    credentials: 'same-origin'
+                }).then(function (res) {
+                    return res.json().catch(function () { return null; }).then(function (data) {
+                        // A reveal is audited server-side; unknown states answer 422.
+                        if (!res.ok || !data || data.ok !== true) {
+                            throw new Error((data && data.message) ? data.message : NO_CREDENTIALS_REASON);
+                        }
+                        cached = { username: data.username || 'root', password: data.password || '' };
+                        return cached;
+                    });
+                });
+            }
+
+            function setVisible(on, password) {
+                visible = !!on;
+                passEl.textContent = on ? (password || '') : masked;
+                passEl.style.letterSpacing = on ? 'normal' : '0.15em';
+                if (showBtn) {
+                    showBtn.setAttribute('title', on ? 'Hide password' : 'Show password');
+                    showBtn.setAttribute('aria-label', on ? 'Hide password' : 'Show password');
+                    var label = showBtn.querySelector('span');
+                    if (label) label.textContent = on ? 'Hide' : 'Show';
+                    else showBtn.textContent = on ? 'Hide' : 'Show';
+                }
+            }
+
+            resetCredentialsView = function () {
+                setVisible(false);
+                clearError();
+            };
+            // Called after a successful reset: the cached reveal is now stale.
+            invalidateCredentialsView = function () {
+                cached = null;
+                setVisible(false);
+                clearError();
+            };
+
+            if (showBtn) {
+                showBtn.addEventListener('click', function () {
+                    if (visible) { setVisible(false); return; }
+                    clearError();
+                    fetchCredentials().then(function (cred) {
+                        if (!cred.password) { showError(NO_CREDENTIALS_REASON); return; }
+                        if (userEl) userEl.textContent = cred.username;
+                        setVisible(true, cred.password);
+                    }).catch(function (err) {
+                        showError((err && err.message) ? err.message : 'Failed to load credentials.');
+                    });
+                });
+            }
+
+            if (copyBtn) {
+                copyBtn.addEventListener('click', function () {
+                    clearError();
+                    fetchCredentials().then(function (cred) {
+                        if (!cred.password) { showError(NO_CREDENTIALS_REASON); return; }
+                        copyText(cred.password, showCopied);
+                    }).catch(function (err) {
+                        showError((err && err.message) ? err.message : 'Failed to load credentials.');
+                    });
+                });
+            }
+        })();
+
         panel.addEventListener('click', function (ev) {
             var target = ev.target;
             if (!target || !target.closest) return;
 
             if (target.closest('[data-compute-cancel]')) { closeView(true); return; }
+
+            var generate = target.closest('[data-compute-generate-target]');
+            if (generate) { fillGeneratedPassword(generate); return; }
+
+            var copyReset = target.closest('#compute-reset-copy-' + slug);
+            if (copyReset) { copyResetPassword(copyReset); return; }
 
             var retry = target.closest('[data-compute-retry]');
             if (retry) {
@@ -483,7 +791,7 @@
             var action = btn.getAttribute('data-compute-action');
 
             if (action === 'start' || action === 'stop') { runDirect(action); return; }
-            if (action === 'create' || action === 'restart' || action === 'delete') { openView(action, btn); return; }
+            if (action === 'create' || action === 'restart' || action === 'delete' || action === 'reset_password' || action === 'credentials') { openView(action, btn); return; }
         });
 
         panel.addEventListener('input', function (ev) {
@@ -500,8 +808,19 @@
             var form = ev.target;
             if (!form || !form.hasAttribute || !form.hasAttribute('data-compute-form')) return;
             if (!form.checkValidity()) return;
+            var formAction = form.getAttribute('data-compute-form-action') || '';
+            if (formAction === 'reset_password') {
+                var pw = form.querySelector('[name="password"]');
+                var pw2 = form.querySelector('[name="password_confirmation"]');
+                if (pw && pw2 && pw.value !== pw2.value) {
+                    ev.preventDefault();
+                    showFeedback('error', 'Passwords do not match.');
+                    try { pw2.focus(); } catch (e) {}
+                    return;
+                }
+            }
             ev.preventDefault();
-            submitForm(form, form.getAttribute('data-compute-form-action') || '');
+            submitForm(form, formAction);
         });
 
         document.addEventListener('keydown', function (ev) {
