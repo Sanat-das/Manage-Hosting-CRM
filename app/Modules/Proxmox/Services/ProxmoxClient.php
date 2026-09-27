@@ -1200,6 +1200,13 @@ final class ProxmoxClient
      */
     public function destroyVm(string $node, int $vmid, bool $purge = true): void
     {
+        // PVE refuses to destroy a running VM ("VM is running - destroy
+        // failed"), so a destroy must stop it first — a terminate on a live VM
+        // would otherwise fail and leave the record inconsistent.
+        if ($this->vmStatus($node, $vmid) === 'running') {
+            $this->stopVm($node, $vmid);
+        }
+
         $upid = $this->call('DELETE', sprintf(
             '/nodes/%s/qemu/%d',
             rawurlencode($node),
@@ -1610,6 +1617,7 @@ final class ProxmoxClient
                 'switchName' => '',
                 'vhdPath' => '',
                 'node' => trim((string) ($row['node'] ?? '')),
+                'template' => (bool) ($row['template'] ?? false),
                 'diskGb' => (int) round(((int) ($row['maxdisk'] ?? 0)) / 1073741824),
             ];
         }

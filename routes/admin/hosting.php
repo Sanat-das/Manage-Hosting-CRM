@@ -134,6 +134,9 @@ Route::middleware(['web', 'auth', 'admin', 'throttle:admin'])->prefix('admin')->
     Route::get('servers/{server}/vms', [ServerController::class, 'vms'])
         ->middleware('permission:hosting.manage')
         ->name('servers.vms');
+    Route::post('servers/{server}/vms/{vmid}/destroy', [ServerController::class, 'destroyVm'])
+        ->middleware('permission:hosting.manage')
+        ->name('servers.vms.destroy');
     Route::post('servers/test-connection-dry', [ServerController::class, 'testConnectionDry'])
         ->middleware('permission:hosting.manage')
         ->name('servers.test-connection-dry');

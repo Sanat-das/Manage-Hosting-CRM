@@ -1265,6 +1265,8 @@ final class ProxmoxProvisioningTest extends TestCase
         $this->assertSame(2, $vm['processorCount']);
         $this->assertSame(10, $vm['diskGb']);
         $this->assertSame('1d 1h', $vm['uptime']);
+        // Not a template — the admin destroy affordance keys off this.
+        $this->assertFalse($vm['template']);
     }
 
     public function test_list_vms_degrades_to_empty_on_failure(): void
@@ -1716,5 +1718,28 @@ final class ProxmoxProvisioningTest extends TestCase
         $client->version();
 
         Http::assertSent(fn (Request $r): bool => str_starts_with($r->url(), 'https://[::1]:8006/api2/json/version'));
+    }
+
+    /**
+     * PVE refuses to destroy a running VM ("VM is running - destroy failed"),
+     * so a terminate on a live VM would fail. The destroy must stop it first.
+     */
+    public function test_destroy_stops_a_running_vm_before_deleting(): void
+    {
+        $client = new ProxmoxClient($this->server());
+
+        Http::fake([
+            '*/api2/json/nodes/pve1/qemu/105/status/current' => Http::response(['data' => ['status' => 'running']]),
+            '*/api2/json/nodes/pve1/qemu/105/status/shutdown' => Http::response(['data' => 'UPID:pve1:0000:shutdown']),
+            '*/api2/json/nodes/pve1/qemu/105/status/stop' => Http::response(['data' => 'UPID:pve1:0000:stop']),
+            '*/api2/json/nodes/pve1/tasks/*' => Http::response(['data' => ['status' => 'stopped', 'exitstatus' => 'OK']]),
+            '*/api2/json/nodes/pve1/qemu/105' => Http::response(['data' => 'UPID:pve1:0000:destroy']),
+        ]);
+
+        $client->destroyVm('pve1', 105);
+
+        Http::assertSent(fn (Request $r): bool => str_contains($r->url(), '/status/shutdown'));
+        Http::assertSent(fn (Request $r): bool => $r->method() === 'DELETE'
+            && str_contains($r->url(), '/nodes/pve1/qemu/105'));
     }
 }

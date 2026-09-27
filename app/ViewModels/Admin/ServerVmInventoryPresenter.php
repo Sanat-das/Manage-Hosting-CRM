@@ -205,6 +205,12 @@ final class ServerVmInventoryPresenter
             'memoryDemand' => self::intOrNull(self::liveValue($live, ['memoryDemand', 'memory_demand'])),
             'switchName' => self::stringOrNull(self::liveValue($live, ['switchName', 'switch_name'])),
             'vmId' => $vmId,
+            // The node the VM runs on — Proxmox addresses a VM per node, so the
+            // unmatched-row destroy action needs it.
+            'node' => self::stringOrNull(self::liveValue($live, ['node'])),
+            // Templates are clone sources; the destroy action refuses them, so
+            // the table must not offer it.
+            'template' => (bool) (self::liveValue($live, ['template']) ?? false),
             'vmIdShort' => self::shortId($vmId),
         ];
     }

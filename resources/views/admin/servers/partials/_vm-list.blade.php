@@ -11,6 +11,10 @@
     $liveTotal = $inventory['liveTotal'] ?? null;
     $liveUnavailable = (bool) ($inventory['liveUnavailable'] ?? false);
 
+    // Proxmox addresses a VM per node and its driver can destroy one; the
+    // unrecorded-VM cleanup form is therefore Proxmox-only for now.
+    $canDestroyUnmatched = (($server->server_type ?? $server->panel_type ?? '') === 'proxmox');
+
     // Transitional fallback until ServerController passes $vmInventory: map legacy
     // PanelAccount models to the display shape WITHOUT any live correlation
     // (hostMatch=false, live fields null). No external_id ↔ vmId matching here.
@@ -154,6 +158,7 @@
                     <thead>
                         <tr>
                             <th>Name</th><th>VMId</th><th>State</th><th>Uptime</th><th>CPU</th><th>Memory</th><th>Switch</th>
+                            @if($canDestroyUnmatched)<th class="text-end">Actions</th>@endif
                         </tr>
                     </thead>
                     <tbody>
@@ -169,6 +174,8 @@
                                 $lvVcpu = $lv['processorCount'] ?? null;
                                 $lvMemAssigned = $lv['memoryAssigned'] ?? null;
                                 $lvMemDemand = $lv['memoryDemand'] ?? null;
+                                $lvNode = trim((string) ($lv['node'] ?? ''));
+                                $lvTemplate = (bool) ($lv['template'] ?? false);
                             @endphp
                             <tr>
                                 <td><strong>{{ $lv['name'] ?? '—' }}</strong></td>
@@ -184,6 +191,28 @@
                                 <td class="small text-nowrap">{{ ($lvCpu !== null && $lvCpu !== '') ? $lvCpu.'%' : '—' }}@if($lvVcpu !== null && $lvVcpu !== '')<span class="text-muted"> · {{ $lvVcpu }} vCPU</span>@endif</td>
                                 <td class="small text-nowrap">{{ ($lvMemAssigned !== null && $lvMemAssigned !== '') ? \App\ViewModels\Admin\ServerDetailViewModel::fmtBytes($lvMemAssigned) : '—' }}@if($lvMemDemand !== null && $lvMemDemand !== '' && $lvMemDemand != $lvMemAssigned)<span class="text-muted"> · demand {{ \App\ViewModels\Admin\ServerDetailViewModel::fmtBytes($lvMemDemand) }}</span>@endif</td>
                                 <td class="text-muted small">{{ $lv['switchName'] ?: '—' }}</td>
+                                @if($canDestroyUnmatched)
+                                    <td class="text-end">
+                                        @if($lvTemplate)
+                                            <span class="badge text-bg-light border text-muted fw-normal">template</span>
+                                        @elseif($lvVmId !== null && $lvVmId !== '' && $lvNode !== '')
+                                            <form method="POST" action="{{ route('admin.servers.vms.destroy', [$server, $lvVmId]) }}"
+                                                  class="d-inline-flex gap-1 align-items-center" data-vm-destroy-form
+                                                  data-confirm-expected="{{ $lvVmId }}">
+                                                @csrf
+                                                <input type="hidden" name="node" value="{{ $lvNode }}">
+                                                <input type="text" name="confirm" class="form-control form-control-sm"
+                                                       style="width:110px;" placeholder="Type {{ $lvVmId }}"
+                                                       autocomplete="off" required
+                                                       aria-label="Type VMID {{ $lvVmId }} to confirm destroying this VM">
+                                                <button type="submit" class="btn btn-sm btn-outline-danger" disabled
+                                                        title="Destroy this unrecorded VM on the host">Destroy</button>
+                                            </form>
+                                        @else
+                                            <span class="text-muted">—</span>
+                                        @endif
+                                    </td>
+                                @endif
                             </tr>
                         @endforeach
                     </tbody>

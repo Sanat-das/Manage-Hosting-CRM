@@ -1626,6 +1626,93 @@ class ServerController extends Controller
     }
 
     /**
+     * Destroy a VM that exists on the host but has no provisioned record.
+     *
+     * The safe close for the one case the driver cannot clean up itself: a clone
+     * that outlived its task timeout may finish after the failure was reported,
+     * leaving a machine nothing addresses and a VMID the allocator cannot reuse.
+     *
+     * Guards, in order:
+     *  - Proxmox only (the driver with a VMID-addressed destroy);
+     *  - the typed VMID must match;
+     *  - a matching `panel_accounts.external_id` refuses — that VM belongs to a
+     *    service and must be terminated through its own flow;
+     *  - the node must be one the cluster currently reports;
+     *  - a template is refused: destroying a clone source would silently break
+     *    every product that curates it.
+     */
+    public function destroyVm(Request $request, Server $server, string $vmid): RedirectResponse
+    {
+        if (($server->server_type ?? '') !== 'proxmox') {
+            return back()->with('error', 'Destroying an unrecorded VM is available for Proxmox VE servers only.');
+        }
+
+        $vmidInt = (int) $vmid;
+
+        if ($vmidInt <= 0) {
+            return back()->with('error', 'That VMID is not valid.');
+        }
+
+        $validated = $request->validate([
+            'confirm' => ['required', 'string', 'max:32'],
+            'node' => ['required', 'string', 'max:64'],
+        ]);
+
+        if (trim((string) $validated['confirm']) !== (string) $vmidInt) {
+            return back()->with('error', 'Type the VMID exactly to confirm the destroy.');
+        }
+
+        if (PanelAccount::query()
+            ->where('server_id', $server->id)
+            ->where('external_id', (string) $vmidInt)
+            ->exists()) {
+            return back()->with('error', sprintf(
+                'VMID %d belongs to a provisioned service — terminate that service instead of destroying the VM directly.',
+                $vmidInt,
+            ));
+        }
+
+        $client = new \App\Modules\Proxmox\Services\ProxmoxClient($server);
+        $node = trim((string) $validated['node']);
+
+        try {
+            if (! in_array($node, $client->cachedNodes(), true)) {
+                return back()->with('error', sprintf('Node "%s" is not currently reported by this cluster.', $node));
+            }
+
+            if ($client->vmExists($node, $vmidInt)['exists'] !== true) {
+                return back()->with('success', sprintf('VMID %d is already gone from node "%s" — nothing to destroy.', $vmidInt, $node));
+            }
+
+            if ((int) ($client->vmConfig($node, $vmidInt)['template'] ?? 0) === 1) {
+                return back()->with('error', sprintf(
+                    'VMID %d is a template. Convert it to a VM in Proxmox first if you really mean to destroy it.',
+                    $vmidInt,
+                ));
+            }
+
+            $client->destroyVm($node, $vmidInt);
+        } catch (PanelException $e) {
+            if ($client->isMissingVm($e->getMessage())) {
+                return back()->with('success', sprintf('VMID %d was already gone — nothing to destroy.', $vmidInt));
+            }
+
+            return back()->with('error', 'Could not destroy VMID '.$vmidInt.': '.$e->getMessage());
+        } catch (\Throwable) {
+            return back()->with('error', 'Could not destroy VMID '.$vmidInt.': an unexpected error occurred.');
+        }
+
+        Log::info('Admin destroyed an unrecorded Proxmox VE VM', [
+            'server_id' => $server->id,
+            'node' => $node,
+            'vmid' => $vmidInt,
+            'admin_id' => $request->user()?->id,
+        ]);
+
+        return back()->with('success', sprintf('VMID %d was destroyed on node "%s".', $vmidInt, $node));
+    }
+
+    /**
      * @return array<string, mixed>
      */
     private function rules(IntegrationRegistry $registry, ?string $serverType = null, ?Server $existing = null): array

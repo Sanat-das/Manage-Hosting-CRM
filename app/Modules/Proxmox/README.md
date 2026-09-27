@@ -161,7 +161,11 @@ created but before the panel record is written (resize, config update, existence
 probe), the driver best-effort destroys it, so the VMID is reusable and the admin
 VM table does not accumulate machines nothing addresses. Only a clone that timed
 out while PVE was still running the task can finish later — the error names the
-node/VMID to check.
+node/VMID to check, and the finished VM appears under *On host, not provisioned*
+on the server page, where an admin with `hosting.manage` can destroy it (typed
+VMID confirmation; VMs owned by a service and templates are refused). The
+destroy stops a running VM first, because PVE refuses to delete one that is
+running — which also makes terminate work on a live VM.
 
 **Without `purge` a destroy leaves disks behind** and the VMID stays unusable.
 Terminate passes `purge=1` and tolerates an already-missing VM.

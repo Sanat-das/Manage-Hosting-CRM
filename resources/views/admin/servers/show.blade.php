@@ -352,5 +352,18 @@ document.addEventListener('click', function (event) {
     }
 });
 </script>
+<script>
+// Unrecorded-VM destroy: enable the submit only when the typed value matches
+// the VMID. UX only — the server re-validates the confirmation, ownership and
+// template status before anything is deleted.
+document.addEventListener('input', function (event) {
+    var input = event.target && event.target.closest ? event.target.closest('[data-vm-destroy-form] input[name="confirm"]') : null;
+    if (!input) return;
+    var form = input.closest('[data-vm-destroy-form]');
+    var expected = form ? (form.getAttribute('data-confirm-expected') || '') : '';
+    var submit = form ? form.querySelector('button[type="submit"]') : null;
+    if (submit) submit.disabled = input.value.trim() !== expected;
+});
+</script>
 @endpush
 @stop
