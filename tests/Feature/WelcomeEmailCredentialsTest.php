@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
+use App\Jobs\RunOrderProvisioning;
 use App\Jobs\SendEmail;
 use App\Models\Customer;
 use App\Models\EmailLog;
@@ -17,6 +18,7 @@ use App\Models\ServerGroup;
 use App\Models\ServerGroupMember;
 use App\Models\User;
 use App\Services\OrderService;
+use App\Services\Provisioning\ProvisioningDispatcher;
 use App\Settings\HostingSettings;
 use Database\Seeders\EmailTemplateSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -64,6 +66,7 @@ class WelcomeEmailCredentialsTest extends TestCase
 
         $order = $this->makePaidOrder();
         app(OrderService::class)->advanceAfterPayment($order);
+        $this->runQueuedProvisioning($order);
 
         $account = PanelAccount::sole();
 
@@ -82,7 +85,9 @@ class WelcomeEmailCredentialsTest extends TestCase
         Queue::fake();
         $this->fakeWhmSuccess();
 
-        app(OrderService::class)->advanceAfterPayment($this->makePaidOrder());
+        $order = $this->makePaidOrder();
+        app(OrderService::class)->advanceAfterPayment($order);
+        $this->runQueuedProvisioning($order);
 
         $password = PanelAccount::sole()->password_encrypted;
         $this->assertNotEmpty($password);
@@ -130,6 +135,7 @@ class WelcomeEmailCredentialsTest extends TestCase
         $order->product->update(['welcome_email_template_id' => $custom->id]);
 
         app(OrderService::class)->advanceAfterPayment($order);
+        $this->runQueuedProvisioning($order);
 
         Queue::assertPushed(SendEmail::class, fn (SendEmail $job) => str_starts_with($job->subject, 'Custom welcome for')
             && str_contains($job->body, 'User '.PanelAccount::sole()->username));
@@ -151,6 +157,7 @@ class WelcomeEmailCredentialsTest extends TestCase
         $order->product->update(['welcome_email_template_id' => $inactive->id]);
 
         app(OrderService::class)->advanceAfterPayment($order);
+        $this->runQueuedProvisioning($order);
 
         Queue::assertPushed(SendEmail::class, fn (SendEmail $job) => $job->subject !== 'Never sent'
             && str_contains($job->body, PanelAccount::sole()->password_encrypted));
@@ -167,7 +174,9 @@ class WelcomeEmailCredentialsTest extends TestCase
         EmailTemplate::where('name', 'service_activated')
             ->update(['body' => "Hi {{name}},\n\nYour service {{product_name}} is active.\n"]);
 
-        app(OrderService::class)->advanceAfterPayment($this->makePaidOrder());
+        $order = $this->makePaidOrder();
+        app(OrderService::class)->advanceAfterPayment($order);
+        $this->runQueuedProvisioning($order);
 
         Queue::assertPushed(SendEmail::class, fn (SendEmail $job) => str_contains($job->body, 'Your login details:')
             && str_contains($job->body, PanelAccount::sole()->password_encrypted));
@@ -180,7 +189,9 @@ class WelcomeEmailCredentialsTest extends TestCase
 
         app(HostingSettings::class)->fill(['hosting_welcome_email_enabled' => false])->save();
 
-        app(OrderService::class)->advanceAfterPayment($this->makePaidOrder());
+        $order = $this->makePaidOrder();
+        app(OrderService::class)->advanceAfterPayment($order);
+        $this->runQueuedProvisioning($order);
 
         Queue::assertNotPushed(SendEmail::class);
     }
@@ -194,6 +205,7 @@ class WelcomeEmailCredentialsTest extends TestCase
 
         $order = $this->makePaidOrder();
         $result = app(OrderService::class)->advanceAfterPayment($order);
+        $this->runQueuedProvisioning($order);
 
         $this->assertSame(Order::STATUS_FAILED, $result->fresh()->status);
         Queue::assertNotPushed(SendEmail::class);
@@ -205,13 +217,28 @@ class WelcomeEmailCredentialsTest extends TestCase
         $this->fakeWhmSuccess();
         EmailTemplate::query()->delete();
 
-        $result = app(OrderService::class)->advanceAfterPayment($this->makePaidOrder());
+        $order = $this->makePaidOrder();
+        $result = app(OrderService::class)->advanceAfterPayment($order);
+        $this->runQueuedProvisioning($order);
 
         $this->assertSame(Order::STATUS_ACTIVE, $result->fresh()->status);
         Queue::assertNotPushed(SendEmail::class);
     }
 
     // --- helpers ---
+
+    /**
+     * Provisioning is queued now; with Queue::fake() the job never runs, so
+     * the tests execute it explicitly to reach the same end state the inline
+     * path used to produce.
+     */
+    private function runQueuedProvisioning(Order $order): void
+    {
+        (new RunOrderProvisioning($order->id))->handle(
+            app(OrderService::class),
+            app(ProvisioningDispatcher::class),
+        );
+    }
 
     private function makePaidOrder(): Order
     {

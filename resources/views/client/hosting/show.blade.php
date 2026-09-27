@@ -168,10 +168,10 @@
                 $clientVm = is_array(($vmStatus ?? null)['vm'] ?? null) ? $vmStatus['vm'] : [];
                 $clientCanReset = (bool) ($clientCan['reset_password'] ?? false);
                 $clientResetReason = trim((string) ($clientReasons['reset_password'] ?? ''));
-                // Reset gate follows the presenter, not the module slug: Hyper-V
-                // keeps its always-offered button (disabled with its reason when
-                // refused); compute modules offer it whenever the presenter
-                // allows the reset.
+                // Reset gate follows the presenter, not the module slug: every
+                // compute service (Hyper-V and Proxmox alike) always offers
+                // the button — disabled with its reason when refused, matching
+                // the admin card — instead of hiding it.
                 // Power actions are billing-status aware on the client side:
                 // the endpoint refuses anything but an ACTIVE service (a
                 // customer must never wake a suspended/terminated VM), so the
@@ -189,17 +189,51 @@
                 }
                 $clientPowerAction = is_array(($vmStatus ?? null)['action'] ?? null) ? $vmStatus['action'] : null;
                 $clientPowerRunning = (bool) ($clientPowerAction['running'] ?? false);
-                $clientShowReset = $isHyperv || $clientCanReset;
+                $clientPowerProgress = max(0, min(100, (int) ($clientPowerAction['progress'] ?? 0)));
+                $clientPowerStageLabel = trim((string) ($clientPowerAction['stage_label'] ?? ($clientPowerAction['stage'] ?? 'Working…')));
+                if ($clientPowerStageLabel === '') { $clientPowerStageLabel = 'Working…'; }
+                $clientPowerElapsed = (int) ($clientPowerAction['elapsed'] ?? 0);
+                $clientPowerElapsedFmt = sprintf('%02d:%02d', intdiv($clientPowerElapsed, 60), $clientPowerElapsed % 60);
+                // Queued power/reset actions need a progress home even when
+                // the provisioning card is gone (it only renders while no VM
+                // exists): the hint mirrors the admin card's state line.
+                $clientActionHint = '';
+                if ($clientPowerRunning) {
+                    $clientActionHint = 'An action is already running — the controls unlock when it finishes.';
+                } elseif ($isCompute && ($clientVm['probe_error'] ?? '') === '' && ($clientVm['exists'] ?? null) === false) {
+                    $clientActionHint = 'No VM exists on the host yet — power actions unlock after provisioning.';
+                }
+                $clientShowReset = $isCompute || $clientCanReset;
             @endphp
             <x-adminlte-card icon="bi bi-tools" title="Quick Actions">
+                @if ($isCompute)
+                    {{-- Standalone progress panel for queued power/reset actions.
+                         The provisioning-card panel only exists while no VM is
+                         on the host, so queued verbs need a home that is always
+                         present for a compute service. Same markup as the card
+                         panel; driven by the same poller below. --}}
+                    <div id="client-action-progress" class="{{ $clientPowerRunning ? '' : 'd-none' }}"
+                         style="border: 1px solid var(--bs-border-color); border-radius: var(--radius-md); padding: var(--space-2) var(--space-3); margin-bottom: var(--space-2); background: var(--bs-body-bg);">
+                        <div class="d-flex align-items-center justify-content-between gap-2 flex-wrap mb-1">
+                            <span id="client-action-progress-label" aria-live="polite" style="font-size: var(--text-sm); font-weight: 600;">{{ $clientPowerRunning ? $clientPowerStageLabel : 'Working…' }}</span>
+                            <span id="client-action-progress-elapsed" class="text-muted" style="font-size: var(--text-xs); font-variant-numeric: tabular-nums;">{{ $clientPowerElapsedFmt }}</span>
+                        </div>
+                        <div class="progress" style="height: 8px; border-radius: var(--radius-md); background: var(--bs-tertiary-bg);">
+                            <div id="client-action-progress-bar" class="progress-bar progress-bar-striped progress-bar-animated"
+                                 role="progressbar"
+                                 aria-valuenow="{{ $clientPowerProgress }}" aria-valuemin="0" aria-valuemax="100"
+                                 style="width: {{ $clientPowerProgress }}%; background-color: var(--color-primary); transition: width var(--duration-base) var(--ease-default);"></div>
+                        </div>
+                    </div>
+                    <div class="mb-2" style="font-size: var(--text-xs);">
+                        <span id="client-action-hint" class="text-muted" aria-live="polite">{{ $clientActionHint }}</span>
+                    </div>
+                @endif
                 @if (($clientVm['probe_error'] ?? '') !== '')
                     <div class="d-flex align-items-center justify-content-between gap-2 mb-2" style="font-size: var(--text-xs);">
                         <span class="text-muted">Host unreachable — {{ $clientVm['probe_error'] }}</span>
                         <button type="button" id="client-retry-status" class="btn btn-sm btn-outline-secondary"><i class="bi bi-arrow-clockwise me-1"></i> Retry</button>
                     </div>
-                @endif
-                @if ($account->status === 'active')
-                    <a href="#" class="btn btn-outline-warning w-100 mb-2 disabled" title="Coming soon"><i class="bi bi-pause-circle me-1"></i> Suspend</a>
                 @endif
                 @if ($isCompute)
                     <button type="button" class="btn btn-outline-success w-100 mb-2" data-client-hv-action="start"
@@ -223,12 +257,11 @@
                 @if ($clientShowReset)
                     <button type="button" class="btn btn-outline-info w-100 mb-2" data-client-hv-action="reset_password"
                             data-bs-toggle="modal" data-bs-target="#client-reset-password-modal"
-                            @if(! $clientCanReset) disabled title="{{ $clientResetReason !== '' ? $clientResetReason : 'Password reset is not available right now.' }}" @endif
+                            @if(! $clientCanReset || $clientPowerRunning) disabled title="{{ $clientResetReason !== '' ? $clientResetReason : 'Password reset is not available right now.' }}" @endif
                     ><i class="bi bi-key me-1"></i> Reset Administrator password</button>
                 @elseif (! $isCompute)
                     <a href="#" class="btn btn-outline-info w-100 mb-2 disabled" title="Coming soon"><i class="bi bi-key me-1"></i> Change Password</a>
                 @endif
-                <a href="#" class="btn btn-outline-info w-100 mb-2 disabled" title="Coming soon"><i class="bi bi-envelope me-1"></i> Manage Emails</a>
             </x-adminlte-card>
 
             @if ($clientShowReset)
@@ -337,6 +370,11 @@ document.addEventListener('DOMContentLoaded', function () {
     var progressBar = document.getElementById('client-vm-progress-bar');
     var progressLabel = document.getElementById('client-vm-progress-label');
     var progressElapsed = document.getElementById('client-vm-progress-elapsed');
+    var actionPanel = document.getElementById('client-action-progress');
+    var actionBar = document.getElementById('client-action-progress-bar');
+    var actionLabel = document.getElementById('client-action-progress-label');
+    var actionElapsed = document.getElementById('client-action-progress-elapsed');
+    var actionHint = document.getElementById('client-action-hint');
     var vmStatePill = document.getElementById('client-vm-state');
     var provisionForm = document.getElementById('client-provision-form');
     var provisionSubmit = document.getElementById('client-provision-submit');
@@ -381,24 +419,38 @@ document.addEventListener('DOMContentLoaded', function () {
         return { label: 'Unknown', theme: 'secondary' };
     }
 
+    function paintPanel(panel, bar, label, elapsed, action, running) {
+        if (panel) {
+            if (running) panel.classList.remove('d-none');
+            else panel.classList.add('d-none');
+        }
+        if (label) {
+            var text = (action && (action.stage_label || action.stage)) ? (action.stage_label || action.stage) : (running ? 'Working…' : '');
+            if (running || text) label.textContent = text || 'Working…';
+        }
+        if (elapsed && action) elapsed.textContent = fmtElapsed(action.elapsed || 0);
+        if (bar && action) {
+            var pct = Math.max(0, Math.min(100, parseInt(action.progress, 10) || 0));
+            bar.style.width = pct + '%';
+            bar.setAttribute('aria-valuenow', String(pct));
+        }
+    }
+
     function applyStatus(status) {
         if (!status || typeof status !== 'object') return;
         var action = status.action || null;
         var vm = status.vm || null;
         var running = !!(action && action.running);
-        if (progressPanel) {
-            if (running) progressPanel.classList.remove('d-none');
-            else progressPanel.classList.add('d-none');
-        }
-        if (progressLabel) {
-            var label = (action && (action.stage_label || action.stage)) ? (action.stage_label || action.stage) : (running ? 'Working…' : '');
-            if (running || label) progressLabel.textContent = label || 'Working…';
-        }
-        if (progressElapsed && action) progressElapsed.textContent = fmtElapsed(action.elapsed || 0);
-        if (progressBar && action) {
-            var pct = Math.max(0, Math.min(100, parseInt(action.progress, 10) || 0));
-            progressBar.style.width = pct + '%';
-            progressBar.setAttribute('aria-valuenow', String(pct));
+        paintPanel(progressPanel, progressBar, progressLabel, progressElapsed, action, running);
+        paintPanel(actionPanel, actionBar, actionLabel, actionElapsed, action, running);
+        // While an action runs every action button (power + reset) stays
+        // locked; the page reloads ~1s after the terminal state, which
+        // re-renders the correct per-button gates — so never unlock here.
+        if (running) setClientActionsBusy(true);
+        if (actionHint) {
+            if (running) actionHint.textContent = 'An action is already running — the controls unlock when it finishes.';
+            else if (vm && vm.exists === false) actionHint.textContent = 'No VM exists on the host yet — power actions unlock after provisioning.';
+            else actionHint.textContent = '';
         }
         if (vmStatePill) {
             var st = vmStateLabel(vm);
@@ -450,10 +502,32 @@ document.addEventListener('DOMContentLoaded', function () {
     function stopPolling() {
         if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
     }
+    function setClientActionsBusy(busy) {
+        document.querySelectorAll('[data-client-hv-action]').forEach(function (btn) { btn.disabled = !!busy; });
+        if (provisionSubmit) provisionSubmit.disabled = !!busy;
+    }
+    // Queued verb (202): reveal the available progress panel (the standalone
+    // Quick Actions panel for power/reset; the provisioning-card panel for
+    // builds), label it generically, and lock the action buttons until the
+    // poller reloads the page.
+    function showQueuedProgress() {
+        if (progressPanel) {
+            progressPanel.classList.remove('d-none');
+            if (progressLabel) progressLabel.textContent = 'Working…';
+            if (progressBar) { progressBar.style.width = '4%'; progressBar.setAttribute('aria-valuenow', '4'); }
+        }
+        if (actionPanel) {
+            actionPanel.classList.remove('d-none');
+            if (actionLabel) actionLabel.textContent = 'Working…';
+            if (actionBar) { actionBar.style.width = '4%'; actionBar.setAttribute('aria-valuenow', '4'); }
+        }
+        if (actionHint) actionHint.textContent = 'An action is already running — the controls unlock when it finishes.';
+        setClientActionsBusy(true);
+    }
     window.addEventListener('beforeunload', function () { stopPolling(); });
 
-    // If rendered while a build runs, show the panel + disable + poll now.
-    if (initialRunning) startPolling();
+    // If rendered while an action runs, lock the buttons + poll now.
+    if (initialRunning) { setClientActionsBusy(true); startPolling(); }
 
     function postForm(url, form, submitBtn) {
         var fd = new FormData(form);
@@ -564,9 +638,25 @@ document.addEventListener('DOMContentLoaded', function () {
                         toastError(data.message || data.error || 'Password reset failed.');
                         return;
                     }
-                    // Never render the password back — the customer typed it.
+                    // Queued reset (202): no password exists yet — never the
+                    // reset toast, just queue + poll to completion.
+                    if (data.started) {
+                        resetForm.reset();
+                        try {
+                            var queuedInst = window.bootstrap && window.bootstrap.Modal ? window.bootstrap.Modal.getInstance(resetModal) : null;
+                            if (queuedInst) queuedInst.hide();
+                            else if (window.bootstrap && window.bootstrap.Modal) window.bootstrap.Modal.getOrCreateInstance(resetModal).hide();
+                        } catch (e) {}
+                        showQueuedProgress();
+                        toastSuccess(data.message || 'Password reset started.');
+                        startPolling();
+                        return;
+                    }
+                    // A queued reset never reports success here — the new
+                    // password only lands when the polled event completes.
+                    // Anything else is unexpected: close the modal and refresh
+                    // the status once.
                     resetForm.reset();
-                    toastSuccess(data.message || 'Administrator password reset.');
                     try {
                         var inst = window.bootstrap && window.bootstrap.Modal ? window.bootstrap.Modal.getInstance(resetModal) : null;
                         if (inst) inst.hide();
@@ -604,6 +694,12 @@ document.addEventListener('DOMContentLoaded', function () {
                     toastError(data.message || data.error || 'Start failed.');
                     return;
                 }
+                if (data.started) {
+                    showQueuedProgress();
+                    toastSuccess(data.message || 'VM start started.');
+                    startPolling();
+                    return;
+                }
                 toastSuccess(data.message || 'VM started.');
                 reloadSoon();
             }).catch(function (err) {
@@ -623,6 +719,17 @@ document.addEventListener('DOMContentLoaded', function () {
                     var ok = data.ok !== undefined ? !!data.ok : true;
                     if (!ok) {
                         toastError(data.message || data.error || 'Stop failed.');
+                        return;
+                    }
+                    if (data.started) {
+                        try {
+                            var stopInst = window.bootstrap && window.bootstrap.Modal ? window.bootstrap.Modal.getInstance(stopModal) : null;
+                            if (stopInst) stopInst.hide();
+                            else if (window.bootstrap && window.bootstrap.Modal) window.bootstrap.Modal.getOrCreateInstance(stopModal).hide();
+                        } catch (e) {}
+                        showQueuedProgress();
+                        toastSuccess(data.message || 'VM stop started.');
+                        startPolling();
                         return;
                     }
                     toastSuccess(data.message || 'VM stopped.');
@@ -676,6 +783,17 @@ document.addEventListener('DOMContentLoaded', function () {
                         var msg = data.message || data.error || 'Restart failed.';
                         showRestartAlert(msg);
                         toastError(msg);
+                        return;
+                    }
+                    if (data.started) {
+                        try {
+                            var restartInst = window.bootstrap && window.bootstrap.Modal ? window.bootstrap.Modal.getInstance(restartModal) : null;
+                            if (restartInst) restartInst.hide();
+                            else if (window.bootstrap && window.bootstrap.Modal) window.bootstrap.Modal.getOrCreateInstance(restartModal).hide();
+                        } catch (e) {}
+                        showQueuedProgress();
+                        toastSuccess(data.message || 'VM restart started.');
+                        startPolling();
                         return;
                     }
                     toastSuccess(data.message || 'VM restarted.');

@@ -39,6 +39,9 @@ class ProvisioningActionStatusTest extends TestCase
 
     public function test_module_action_start_failure_records_failed_event(): void
     {
+        // Start is queued now (sync queue runs the job inline): the host
+        // refusal lands as a failed unsuspend event behind a queued flash,
+        // never as an error flash — the local status still never flips.
         [$account] = $this->hostingWithHyperV(withPanelAccount: true, hostingStatus: 'suspended');
         Http::fake(fn ($r) => Http::response(['error' => 'HOST-START-BOOM-7'], 500));
 
@@ -48,7 +51,7 @@ class ProvisioningActionStatusTest extends TestCase
                 'action' => 'start',
             ])
             ->assertRedirect()
-            ->assertSessionHas('error');
+            ->assertSessionHas('success', 'Start queued.');
 
         $event = ProvisioningEvent::where('hosting_account_id', $account->id)->sole();
 
@@ -94,6 +97,7 @@ class ProvisioningActionStatusTest extends TestCase
             if (str_contains($body, 'Get-VM')) {
                 return Http::response(['exists' => true, 'name' => 'newvm', 'state' => 'Off', 'vmId' => self::GUID]);
             }
+
             return Http::response(['error' => 'unexpected host call'], 500);
         });
 

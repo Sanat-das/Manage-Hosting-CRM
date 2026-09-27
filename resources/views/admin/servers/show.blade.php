@@ -26,6 +26,7 @@
         $isConnected = $vm->isConnected;
         $isPanel = $vm->isPanel;
         $isHyperv = $vm->isHyperv;
+        $isProxmox = (($server->server_type ?? $server->panel_type ?? null) === 'proxmox');
     @endphp
 
     {{-- Server header --}}
@@ -101,6 +102,10 @@
 
             @if ($isHyperv)
                 @include('admin.servers.partials._essential-hyperv', ['server' => $server, 'vm' => ($vm ?? null), 'liveVms' => ($liveVms ?? null)])
+            @endif
+
+            @if ($isProxmox)
+                @include('admin.servers.partials._essential-proxmox', ['server' => $server, 'vm' => ($vm ?? null), 'liveVms' => ($liveVms ?? null)])
             @endif
         @endif
     </x-adminlte-card>

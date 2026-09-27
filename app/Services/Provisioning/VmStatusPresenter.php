@@ -52,8 +52,12 @@ final class VmStatusPresenter
         'building' => ['label' => 'Creating the VM on the host', 'progress' => 35],
         'verifying' => ['label' => 'Verifying the VM on the host', 'progress' => 75],
         'starting' => ['label' => 'Starting the VM', 'progress' => 88],
+        'stopping' => ['label' => 'Stopping the VM…', 'progress' => 50],
+        'restarting' => ['label' => 'Restarting the VM…', 'progress' => 50],
+        'destroying' => ['label' => 'Destroying the VM…', 'progress' => 50],
         'credentials' => ['label' => 'Verifying Administrator credentials', 'progress' => 92],
         'password' => ['label' => 'Setting a new Administrator password', 'progress' => 94],
+        'resetting' => ['label' => 'Resetting the password…', 'progress' => 90],
         'finalizing' => ['label' => 'Finishing up', 'progress' => 95],
         'done' => ['label' => 'Done', 'progress' => 100],
     ];

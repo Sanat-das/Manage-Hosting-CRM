@@ -571,6 +571,14 @@
                 }
                 // Reset shows the new password once, in place, and never reloads.
                 if (action === 'reset_password') {
+                    // Queued reset (202): no password exists yet — poll to completion.
+                    if (data.started) {
+                        closeView(false);
+                        setProgress(true, 4, 'Working…', 0, '');
+                        showFeedback('success', data.message || 'Password reset started.');
+                        startPolling();
+                        return;
+                    }
                     var newPw = data.password || data.new_password || (data.data && data.data.password) || '';
                     var resultBlock = panel.querySelector('#compute-reset-result-' + slug);
                     var resultPw = panel.querySelector('#compute-reset-result-password-' + slug);
@@ -625,6 +633,13 @@
                     showFeedback('error', data.message || data.error || 'Action failed.');
                     setProgress(false);
                     fetchStatus(false);
+                    return;
+                }
+                if (data.started) {
+                    closeView(false);
+                    setProgress(true, 4, 'Working…', 0, '');
+                    showFeedback('success', data.message || 'Action started.');
+                    startPolling();
                     return;
                 }
                 showFeedback('success', data.message || 'Done.');

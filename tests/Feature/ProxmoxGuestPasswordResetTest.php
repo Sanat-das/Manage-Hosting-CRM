@@ -469,7 +469,8 @@ final class ProxmoxGuestPasswordResetTest extends TestCase
                 'password_confirmation' => 'ClientNew789',
             ]);
 
-        $response->assertOk()->assertJson(['ok' => true]);
+        $response->assertStatus(202)->assertJson(['ok' => true, 'started' => true, 'action' => 'reset_password']);
+        $this->assertNotNull($response->json('event_id'));
         // The password the customer typed is never echoed back.
         $this->assertArrayNotHasKey('password', $response->json());
         $this->assertStringNotContainsString('ClientNew789', (string) $response->getContent());

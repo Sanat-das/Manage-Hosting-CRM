@@ -40,6 +40,8 @@ use App\Services\Provisioning\ProvisioningDispatcher;
 use App\Services\Provisioning\ProvisioningEventRecorder;
 use App\Services\Provisioning\VmBuildDispatcher;
 use App\Services\Provisioning\VmGuestCredentialStore;
+use App\Services\Provisioning\VmOperationConflictException;
+use App\Services\Provisioning\VmOperationDispatcher;
 use App\Services\Provisioning\VmStatusPresenter;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
@@ -103,6 +105,7 @@ class HostingController extends Controller
         private readonly ProvisioningEventRecorder $provisioningEvents,
         private readonly VmStatusPresenter $vmStatusPresenter,
         private readonly VmBuildDispatcher $vmBuildDispatcher,
+        private readonly VmOperationDispatcher $vmOperationDispatcher,
     ) {}
 
     public function index(Request $request): View
@@ -634,7 +637,7 @@ class HostingController extends Controller
 
         $redirect = redirect()->route('admin.hosting.show', $hostingAccount);
 
-        $renameOutcome = $this->syncHypervRenameOnHostNameChange($hostingAccount, $originalHostName);
+        $renameOutcome = $this->syncModuleRenameOnHostNameChange($hostingAccount, $originalHostName);
 
         if ($renameOutcome === null) {
             return $redirect->with('success', "Product/Service #{$hostingAccount->id} updated.");
@@ -643,7 +646,7 @@ class HostingController extends Controller
         if ($renameOutcome['success']) {
             return $redirect->with(
                 'success',
-                "Product/Service #{$hostingAccount->id} updated. Hyper-V VM renamed from '{$renameOutcome['old']}' to '{$renameOutcome['new']}'."
+                "Product/Service #{$hostingAccount->id} updated. {$renameOutcome['message']}"
             );
         }
 
@@ -655,18 +658,31 @@ class HostingController extends Controller
     }
 
     /**
-     * Rename the Hyper-V VM on the host after the admin changed the hosting
-     * account's host_name.
+     * Display labels for the rename flash/event messages. Registry names
+     * (e.g. "Hyper-V Compute") are product names, not the "X VM renamed"
+     * phrasing the rename flow has always used.
+     *
+     * @var array<string, string>
+     */
+    private const RENAME_MODULE_LABELS = [
+        'hyperv' => 'Hyper-V',
+        'proxmox' => 'Proxmox VE',
+    ];
+
+    /**
+     * Rename the VM on the host after the admin changed the hosting
+     * account's host_name — for every enabled product-module link whose
+     * driver exposes rename().
      *
      * Returns null when there is nothing to do (name unchanged, no enabled
-     * hyperv product link, or no mirrored ServiceInstance/PanelAccount — a
-     * host_name change on a non-provisioned service still saves cleanly).
+     * link with rename support, or no mirrored ServiceInstance/PanelAccount —
+     * a host_name change on a non-provisioned service still saves cleanly).
      * Otherwise returns ['success' => bool, 'old'/'new'/'message'] and records
-     * the attempt as an `update` provisioning event (action=rename).
+     * one `update` provisioning event (action=rename) per renamed module.
      *
      * @return array{success:bool,old:string,new:string,message:string}|null
      */
-    private function syncHypervRenameOnHostNameChange(HostingAccount $hostingAccount, mixed $originalHostName): ?array
+    private function syncModuleRenameOnHostNameChange(HostingAccount $hostingAccount, mixed $originalHostName): ?array
     {
         $old = trim((string) ($originalHostName ?? ''));
         $newRaw = $hostingAccount->getAttributes()['host_name'] ?? null;
@@ -676,12 +692,11 @@ class HostingController extends Controller
             return null;
         }
 
-        $link = ProductModule::where('product_id', $hostingAccount->product_id)
-            ->where('module_slug', 'hyperv')
+        $links = ProductModule::where('product_id', $hostingAccount->product_id)
             ->where('enabled', true)
-            ->first();
+            ->get();
 
-        if ($link === null) {
+        if ($links->isEmpty()) {
             return null;
         }
 
@@ -698,88 +713,132 @@ class HostingController extends Controller
             return null;
         }
 
-        $panelAccount = PanelAccount::where('service_instance_id', $service->id)
-            ->where('panel', 'hyperv')
-            ->first();
+        $attempts = 0;
+        $renamed = [];
+        $failures = [];
 
-        if ($panelAccount === null) {
-            return null;
-        }
+        foreach ($links as $link) {
+            $slug = strtolower(trim((string) ($link->module_slug ?? '')));
 
-        $driver = $this->hypervRenameDriver();
+            if ($slug === '') {
+                continue;
+            }
 
-        if ($driver === null) {
-            return null;
-        }
+            $driver = $this->renameDriverFor($slug);
 
-        $payload = [
-            'module' => 'hyperv',
-            'action' => 'rename',
-            'hosting_account_id' => $hostingAccount->id,
-            'order_id' => $hostingAccount->order_id,
-            'order_number' => $hostingAccount->order?->order_number,
-            'old_name' => $old,
-            'new_name' => $new,
-        ];
+            if ($driver === null) {
+                continue;
+            }
 
-        try {
-            $event = $this->provisioningEvents->begin('update', $payload, $service->id, $hostingAccount->id);
-        } catch (\Throwable $e) {
-            Log::error('Hyper-V rename event could not be opened', [
+            $panelAccount = PanelAccount::where('service_instance_id', $service->id)
+                ->where('panel', $slug)
+                ->first();
+
+            if ($panelAccount === null) {
+                continue;
+            }
+
+            $label = self::RENAME_MODULE_LABELS[$slug] ?? app(IntegrationRegistry::class)->nameFor($slug);
+            $attempts++;
+
+            $payload = [
+                'module' => $slug,
+                'action' => 'rename',
                 'hosting_account_id' => $hostingAccount->id,
-                'error' => $e->getMessage(),
-            ]);
-
-            return ['success' => false, 'old' => $old, 'new' => $new, 'message' => $e->getMessage()];
-        }
-
-        try {
-            $result = $driver->rename($service, $new);
-        } catch (\Throwable $e) {
-            Log::error('Hyper-V rename threw', [
-                'hosting_account_id' => $hostingAccount->id,
+                'order_id' => $hostingAccount->order_id,
+                'order_number' => $hostingAccount->order?->order_number,
                 'old_name' => $old,
                 'new_name' => $new,
-                'error' => $e->getMessage(),
-            ]);
-            $this->provisioningEvents->fail($event, $e->getMessage());
+            ];
 
-            return ['success' => false, 'old' => $old, 'new' => $new, 'message' => $e->getMessage()];
+            try {
+                $event = $this->provisioningEvents->begin('update', $payload, $service->id, $hostingAccount->id);
+            } catch (\Throwable $e) {
+                Log::error('Module rename event could not be opened', [
+                    'hosting_account_id' => $hostingAccount->id,
+                    'module' => $slug,
+                    'error' => $e->getMessage(),
+                ]);
+
+                $failures[] = ['label' => $label, 'message' => $e->getMessage()];
+
+                continue;
+            }
+
+            try {
+                $result = $driver->rename($service, $new);
+            } catch (\Throwable $e) {
+                Log::error('Module rename threw', [
+                    'hosting_account_id' => $hostingAccount->id,
+                    'module' => $slug,
+                    'old_name' => $old,
+                    'new_name' => $new,
+                    'error' => $e->getMessage(),
+                ]);
+                $this->provisioningEvents->fail($event, $e->getMessage());
+
+                $failures[] = ['label' => $label, 'message' => $e->getMessage()];
+
+                continue;
+            }
+
+            if (! $result->success) {
+                $message = $result->message ?? 'VM rename failed.';
+                $this->provisioningEvents->fail($event, $message);
+
+                $failures[] = ['label' => $label, 'message' => $message];
+
+                continue;
+            }
+
+            $this->provisioningEvents->complete(
+                $event,
+                $result->message ?? "{$label} VM renamed to '{$new}'",
+                is_array($result->data ?? null) ? $result->data : []
+            );
+
+            $renamed[] = $label;
         }
 
-        if (! $result->success) {
-            $message = $result->message ?? 'VM rename failed.';
-            $this->provisioningEvents->fail($event, $message);
-
-            return ['success' => false, 'old' => $old, 'new' => $new, 'message' => $message];
+        if ($attempts === 0) {
+            return null;
         }
 
-        $this->provisioningEvents->complete(
-            $event,
-            $result->message ?? "Hyper-V VM renamed to '{$new}'",
-            is_array($result->data ?? null) ? $result->data : []
-        );
+        if ($failures === []) {
+            $messages = array_map(static fn (string $label): string => "{$label} VM renamed from '{$old}' to '{$new}'.", $renamed);
 
-        return ['success' => true, 'old' => $old, 'new' => $new, 'message' => $result->message ?? 'renamed'];
+            return ['success' => true, 'old' => $old, 'new' => $new, 'message' => implode(' ', $messages)];
+        }
+
+        // A single attempted module keeps the historical bare message so the
+        // Hyper-V-only flow reads exactly as before; several modules name
+        // which one failed.
+        if ($attempts === 1) {
+            return ['success' => false, 'old' => $old, 'new' => $new, 'message' => (string) $failures[0]['message']];
+        }
+
+        $messages = array_map(static fn (array $failure): string => "{$failure['label']}: {$failure['message']}", $failures);
+
+        return ['success' => false, 'old' => $old, 'new' => $new, 'message' => implode('; ', $messages)];
     }
 
     /**
-     * Resolve the Hyper-V driver when it exposes rename(), else null (skip
-     * silently). Mirrors the moduleAction() resolution order (registry first,
-     * ModuleManager fallback).
+     * Resolve the driver for a module slug when it exposes rename(), else
+     * null (skip silently). Mirrors the moduleAction() resolution order
+     * (registry first, ModuleManager fallback).
      */
-    private function hypervRenameDriver(): ?object
+    private function renameDriverFor(string $slug): ?object
     {
         try {
             $registry = app(IntegrationRegistry::class);
 
-            if ($registry->has('hyperv')) {
-                $candidate = $registry->instanceFor('hyperv');
+            if ($registry->has($slug)) {
+                $candidate = $registry->instanceFor($slug);
 
                 return $candidate !== null && method_exists($candidate, 'rename') ? $candidate : null;
             }
 
-            $module = app(ModuleManager::class)->find('hyperv');
+            $module = app(ModuleManager::class)->find($slug);
 
             if ($module === null || $module->status !== Module::STATUS_ACTIVE) {
                 return null;
@@ -789,7 +848,7 @@ class HostingController extends Controller
 
             return $driver !== null && method_exists($driver, 'rename') ? $driver : null;
         } catch (\Throwable $e) {
-            Log::error('Hyper-V rename driver resolution failed', ['error' => $e->getMessage()]);
+            Log::error('Module rename driver resolution failed', ['module' => $slug, 'error' => $e->getMessage()]);
 
             return null;
         }
@@ -808,7 +867,9 @@ class HostingController extends Controller
             return back()->with('error', $e->getMessage());
         }
 
-        if ($moduleError = $this->syncModuleOnHostingChange($hostingAccount, 'terminate')) {
+        $reason = trim((string) ($request->input('reason') ?? ''));
+
+        if ($moduleError = $this->syncModuleOnHostingChange($hostingAccount, 'terminate', $request->user()?->id, $reason !== '' ? ['reason' => $reason] : [])) {
             return redirect()
                 ->route('admin.hosting.index')
                 ->with('success', "Product/Service #{$hostingAccount->id} terminated locally.")
@@ -817,69 +878,52 @@ class HostingController extends Controller
 
         return redirect()
             ->route('admin.hosting.index')
-            ->with('success', "Product/Service #{$hostingAccount->id} terminated (module synced).");
+            ->with('success', "Product/Service #{$hostingAccount->id} terminated (remote sync queued).");
     }
 
     /**
-     * Best-effort remote sync for the local hosting lifecycle: calls every
-     * enabled provisioning module on the account's mirrored service instance.
-     * Returns null when everything synced (or no module applies), otherwise a
-     * human-readable error for the flash message. Never throws.
+     * Best-effort remote sync for the local hosting lifecycle: queues one
+     * operation per enabled provisioning module link that supports the verb
+     * (each link's own slug is passed explicitly so multi-module accounts
+     * sync every module). Returns null when everything queued (or no module
+     * applies), otherwise a human-readable error for the flash message.
+     * Never throws.
+     *
+     * The local status flip stays synchronous in the caller; a remote
+     * failure now surfaces as a failed provisioning event instead of an
+     * error flash, so callers word the success flash as queued. A
+     * queue-time refusal (conflict, unresolvable module) still returns here
+     * for the error flash.
      */
-    private function syncModuleOnHostingChange(HostingAccount $hostingAccount, string $verb): ?string
+    private function syncModuleOnHostingChange(HostingAccount $hostingAccount, string $verb, ?int $actorId = null, array $options = []): ?string
     {
         try {
             $registry = app(IntegrationRegistry::class);
-            $manager = app(ModuleManager::class);
             $links = $hostingAccount->product?->moduleLinks()->where('enabled', true)->get() ?? collect();
             $errors = [];
 
             foreach ($links as $link) {
-                $slug = trim((string) ($link->module_slug ?? ''));
+                $slug = strtolower(trim((string) ($link->module_slug ?? '')));
                 if ($slug === '') {
                     continue;
                 }
 
-                $driver = null;
-                $name = $registry->nameFor($slug);
+                $driver = ComputeDriver::resolve($slug);
 
-                if ($registry->has($slug)) {
-                    $candidate = $registry->instanceFor($slug);
-                    if ($candidate !== null && method_exists($candidate, $verb)) {
-                        $driver = $candidate;
-                    }
-                } else {
-                    $module = $manager->find($slug);
-                    if ($module === null || $module->status !== Module::STATUS_ACTIVE) {
-                        continue;
-                    }
-                    $driver = $manager->capabilityInstance($module, 'provisioning');
-                    $name = $module->name ?? $name;
-                }
-
-                if ($driver === null) {
+                if ($driver === null || ! method_exists($driver, $verb)) {
                     continue;
                 }
 
-                $config = $registry->decryptConfigFor($slug, is_array($link->config ?? null) ? $link->config : []);
-                $service = $this->serviceForHosting($hostingAccount, $slug);
-
                 try {
-                    $result = $driver->{$verb}($service, $config);
-
-                    if ($result->success) {
-                        // ok
-                    } else {
-                        $errors[] = "{$name}: ".($result->message ?? "{$verb} failed");
-                    }
+                    $this->vmOperationDispatcher->dispatch($hostingAccount, $verb, $options, $actorId, $slug);
                 } catch (\Throwable $e) {
-                    Log::error('Hosting lifecycle module sync threw', [
+                    Log::warning('Hosting lifecycle module sync could not be queued', [
                         'hosting_account_id' => $hostingAccount->id,
                         'module' => $slug,
                         'action' => $verb,
                         'error' => $e->getMessage(),
                     ]);
-                    $errors[] = "{$name}: {$e->getMessage()}";
+                    $errors[] = "{$registry->nameFor($slug)}: {$e->getMessage()}";
                 }
 
                 // The host may have changed state even when the call failed;
@@ -888,7 +932,7 @@ class HostingController extends Controller
             }
 
             if ($errors !== []) {
-                return 'Remote sync incomplete — '.implode('; ', $errors);
+                return 'Remote sync could not be queued — '.implode('; ', $errors);
             }
 
             return null;
@@ -913,19 +957,22 @@ class HostingController extends Controller
             return back()->withInput()->with('error', $e->getMessage());
         }
 
-        // Best-effort remote sync: the local suspend is committed; a module
+        // Queued remote sync: the local suspend is committed; a queue-time
         // refusal is surfaced, not rolled back (same contract as
-        // OrderService::applyLifecycleEffects).
-        if ($moduleError = $this->syncModuleOnHostingChange($hostingAccount, 'suspend')) {
+        // OrderService::applyLifecycleEffects). A remote failure lands on the
+        // queued event instead.
+        $reason = trim((string) ($validated['reason'] ?? ''));
+
+        if ($moduleError = $this->syncModuleOnHostingChange($hostingAccount, 'suspend', $request->user()?->id, $reason !== '' ? ['reason' => $reason] : [])) {
             return back()
                 ->with('success', "Product/Service #{$hostingAccount->id} suspended locally.")
                 ->with('error', $moduleError);
         }
 
-        return back()->with('success', "Product/Service #{$hostingAccount->id} suspended (module synced).");
+        return back()->with('success', "Product/Service #{$hostingAccount->id} suspended (remote sync queued).");
     }
 
-    public function unsuspend(HostingAccount $hostingAccount): RedirectResponse
+    public function unsuspend(Request $request, HostingAccount $hostingAccount): RedirectResponse
     {
         try {
             $this->hostingService->unsuspend($hostingAccount);
@@ -933,13 +980,13 @@ class HostingController extends Controller
             return back()->with('error', $e->getMessage());
         }
 
-        if ($moduleError = $this->syncModuleOnHostingChange($hostingAccount, 'unsuspend')) {
+        if ($moduleError = $this->syncModuleOnHostingChange($hostingAccount, 'unsuspend', $request->user()?->id)) {
             return back()
                 ->with('success', "Product/Service #{$hostingAccount->id} reactivated locally.")
                 ->with('error', $moduleError);
         }
 
-        return back()->with('success', "Product/Service #{$hostingAccount->id} reactivated (module synced).");
+        return back()->with('success', "Product/Service #{$hostingAccount->id} reactivated (remote sync queued).");
     }
 
     /**
@@ -964,9 +1011,13 @@ class HostingController extends Controller
     {
         $validated = $request->validate([
             'module_slug' => ['required', 'string', 'max:100'],
-            'action' => ['required', 'string', 'in:create,start,stop,restart,delete,suspend,unsuspend,terminate'],
+            'action' => ['required', 'string', 'in:create,start,stop,restart,delete,suspend,unsuspend,terminate,reset_password'],
             'confirm' => ['nullable', 'string', 'max:255'],
             'delete_vhd' => ['nullable', 'boolean'],
+            'reason' => ['nullable', 'string', 'max:1000'],
+            'new_password' => ['nullable', 'string', 'max:128'],
+            'username' => ['nullable', 'string', 'max:64'],
+            'current_password' => ['nullable', 'string', 'max:128'],
             // `template` is the generalized field; `template_vm` stays accepted
             // for back-compat with the Hyper-V partial and older clients.
             'template' => ['nullable', 'string', 'max:64'],
@@ -1044,6 +1095,13 @@ class HostingController extends Controller
 
                 return back()->with('error', $msg);
             }
+        }
+
+        // Every non-create verb runs queued through the durable-event
+        // pipeline (RunVmOperation); only non-compute create stays inline
+        // below. Guards keep their exact messages and status codes.
+        if ($validated['action'] !== 'create') {
+            return $this->queueVmOperation($request, $hostingAccount, $validated, $slug);
         }
 
         $driver = null;
@@ -1234,6 +1292,140 @@ class HostingController extends Controller
         }
 
         return back()->with('success', "Module {$displayName} {$validated['action']}: ".($result->message ?? 'done.'));
+    }
+
+    /**
+     * Queue a VM power lifecycle verb (start/stop/restart/delete/suspend/
+     * unsuspend/terminate/reset_password) through VmOperationDispatcher.
+     *
+     * The durable event is opened and the job dispatched before returning,
+     * so JSON callers get the 202 started contract and form callers get the
+     * queued flash — the host result lands on the event, never in the
+     * response. Every production guard from the former inline flow stays
+     * here in the controller with its exact message and status code.
+     *
+     * @param  array<string, mixed>  $validated
+     */
+    private function queueVmOperation(Request $request, HostingAccount $hostingAccount, array $validated, string $slug): RedirectResponse|JsonResponse
+    {
+        $action = $validated['action'];
+        // delete stays aliased to terminate, as in the former inline flow.
+        $verb = $action === 'delete' ? 'terminate' : $action;
+        $wantsJson = $request->expectsJson() || $request->ajax();
+
+        // Power actions on a terminated service would hand out free compute.
+        // Create (re-provision) and Delete (cleanup) stay allowed.
+        if ($hostingAccount->status === HostingService::STATUS_TERMINATED
+            && in_array($action, ['start', 'stop', 'restart'], true)) {
+            $msg = "Service is terminated — {$action} is refused. Create re-provisions, Delete cleans up.";
+            if ($wantsJson) {
+                return response()->json(['ok' => false, 'message' => $msg], 422);
+            }
+
+            return back()->with('error', $msg);
+        }
+
+        // Typed confirmation for disruptive actions: the operator must type
+        // the visible host_name, not just click through a dialog.
+        if (in_array($action, ['restart', 'delete'], true)) {
+            $expected = (string) $hostingAccount->host_name;
+            if (trim((string) ($validated['confirm'] ?? '')) !== $expected) {
+                $msg = "Type '{$expected}' to confirm {$action}. Action cancelled — nothing was touched.";
+                if ($wantsJson) {
+                    return response()->json(['ok' => false, 'message' => $msg], 422);
+                }
+
+                return back()->with('error', $msg);
+            }
+        }
+
+        // Guard: a build already queued/running for this account (shared
+        // with the client portal through the dispatcher service).
+        if ($this->vmBuildDispatcher->isBuildRunning($hostingAccount)) {
+            $msg = 'A VM build is already running for this service.';
+            if ($wantsJson) {
+                return response()->json(['ok' => false, 'message' => $msg], 409);
+            }
+
+            return back()->with('error', $msg);
+        }
+
+        // Restart needs a driver that implements it (read-only probe — the
+        // dispatcher re-resolves everything when it opens the event).
+        if ($verb === 'restart') {
+            $restartDriver = ComputeDriver::resolve($slug);
+            if ($restartDriver === null || ! method_exists($restartDriver, 'restart')) {
+                $msg = 'Module '.app(IntegrationRegistry::class)->nameFor($slug).' does not support restart.';
+                if ($wantsJson) {
+                    return response()->json(['ok' => false, 'message' => $msg], 422);
+                }
+
+                return back()->with('error', $msg);
+            }
+        }
+
+        $options = [];
+
+        // Per-action VHD choice for Hyper-V delete. The form always submits
+        // delete_vhd (hidden 0 + checkbox), so an unchecked box genuinely
+        // orphans the disk; callers without the key fall back to config.
+        if (array_key_exists('delete_vhd', $validated)) {
+            $options['delete_vhd'] = (bool) $request->boolean('delete_vhd');
+        }
+
+        if ($verb === 'reset_password') {
+            $options['new_password'] = $validated['new_password'] ?? null;
+
+            $username = trim((string) ($validated['username'] ?? ''));
+            if ($username !== '') {
+                $options['username'] = $username;
+            }
+
+            $current = (string) ($validated['current_password'] ?? '');
+            if ($current !== '') {
+                $options['current_password'] = $current;
+            }
+        }
+
+        $reason = trim((string) ($validated['reason'] ?? ''));
+        if ($reason !== '') {
+            $options['reason'] = $reason;
+        }
+
+        try {
+            $event = $this->vmOperationDispatcher->dispatch($hostingAccount, $verb, $options, $request->user()?->id);
+        } catch (VmOperationConflictException $e) {
+            if ($wantsJson) {
+                return response()->json(['ok' => false, 'message' => $e->getMessage()], 409);
+            }
+
+            return back()->with('error', $e->getMessage());
+        } catch (\Throwable $e) {
+            Log::error('Queued VM operation failed', [
+                'hosting_account_id' => $hostingAccount->id,
+                'module' => $slug,
+                'action' => $verb,
+                'error' => $e->getMessage(),
+            ]);
+
+            if ($wantsJson) {
+                return response()->json(['ok' => false, 'message' => $e->getMessage()], 422);
+            }
+
+            return back()->with('error', $e->getMessage());
+        }
+
+        if ($wantsJson) {
+            return response()->json(['ok' => true, 'started' => true, 'event_id' => $event->id, 'action' => $verb], 202);
+        }
+
+        $message = ucfirst($action).' queued.';
+
+        if ($verb === 'terminate') {
+            return redirect()->route('admin.hosting.index')->with('success', $message);
+        }
+
+        return back()->with('success', $message);
     }
 
     /**

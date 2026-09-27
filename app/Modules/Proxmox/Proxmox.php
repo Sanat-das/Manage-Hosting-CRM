@@ -107,12 +107,14 @@ final class Proxmox extends AbstractComputeModule
 
     public function testConnection(Server $server): ServerConnectionResult
     {
-        return (new ProxmoxClient($server))->testConnection();
+        // Short per-call timeout: the info path fans out over many probes
+        // and carries its own deadline, so no single call may burn 30s.
+        return (new ProxmoxClient($server, 8))->testConnection();
     }
 
     public function getServerInfo(Server $server): ServerInfoDTO
     {
-        return (new ProxmoxClient($server))->getServerInfo();
+        return (new ProxmoxClient($server, 8))->getServerInfo();
     }
 
     /**
@@ -121,7 +123,7 @@ final class Proxmox extends AbstractComputeModule
      */
     public function getCachedServerInfo(Server $server, int $ttlSeconds = 60): ServerInfoDTO
     {
-        return (new ProxmoxClient($server))->cachedServerInfo($ttlSeconds);
+        return (new ProxmoxClient($server, 8))->cachedServerInfo($ttlSeconds);
     }
 
     /**
@@ -345,6 +347,103 @@ final class Proxmox extends AbstractComputeModule
             'external_id' => (string) $vmid,
             'state' => 'Running',
         ]);
+    }
+
+    /**
+     * Rename the VM on the node. NOT part of the ProvisioningModule contract —
+     * called directly (admin host_name change) following the restart() pattern.
+     *
+     * PVE rename changes the VM's display name (`name` config key). For
+     * cloud-init templates the guest hostname follows on the next boot; for
+     * plain VMs only the display name changes. The VMID addressing
+     * (`external_id`) is untouched.
+     */
+    public function rename(ServiceInstance $service, string $newName): ProvisioningResult
+    {
+        $account = $this->accountFor($service);
+
+        if ($account === null) {
+            return ProvisioningResult::fail('No Proxmox VE VM is recorded for this service.');
+        }
+
+        $server = $service->server;
+
+        if ($server === null || ! $this->serverIsConfigured($server)) {
+            return ProvisioningResult::fail(sprintf(
+                'Server "%s" is not configured for proxmox (%s).',
+                $server?->name ?? $service->server_id,
+                $this->credentialHint(),
+            ));
+        }
+
+        try {
+            $vmid = $this->vmidFor($account);
+        } catch (PanelException $e) {
+            return ProvisioningResult::fail($e->getMessage());
+        }
+
+        $sanitized = substr(preg_replace('/[^A-Za-z0-9._-]/', '-', trim($newName)) ?? '', 0, 63);
+
+        if ($sanitized === '') {
+            return ProvisioningResult::fail('The new VM name is empty after sanitizing for Proxmox VE (letters, digits, dot, underscore and dash only, max 63 chars).');
+        }
+
+        $client = new ProxmoxClient($server);
+
+        try {
+            $node = $this->nodeFor($client, $account);
+            $client->renameVm($node, $vmid, $sanitized);
+
+            $verified = trim((string) ($client->vmConfig($node, $vmid)['name'] ?? ''));
+        } catch (PanelException $e) {
+            return ProvisioningResult::fail($e->getMessage());
+        } catch (\Throwable $e) {
+            return ProvisioningResult::fail('Proxmox VE rename failed unexpectedly: '.$e->getMessage());
+        }
+
+        if ($verified === '' || $verified !== $sanitized) {
+            return ProvisioningResult::fail(sprintf(
+                'Proxmox VE rename did not stick: node "%s" still reports VM %d as "%s".',
+                $node,
+                $vmid,
+                $verified !== '' ? $verified : 'unnamed',
+            ));
+        }
+
+        $this->writeVmNameMeta($account, $verified);
+
+        return ProvisioningResult::ok("Proxmox VE VM renamed to '{$verified}'", [
+            'vmName' => $verified,
+            'external_id' => (string) $vmid,
+        ]);
+    }
+
+    /**
+     * Persist the VM name into the recorded meta shapes the readers accept
+     * (flat `meta.name`, plus inner `meta.meta.name` when that shape exists).
+     * Best-effort, never throws; `external_id` (the VMID) is untouched.
+     */
+    private function writeVmNameMeta(PanelAccount $account, string $name): void
+    {
+        try {
+            $meta = is_array($account->meta) ? $account->meta : [];
+            $meta['name'] = $name;
+
+            if (is_array($meta['meta'] ?? null)) {
+                $inner = $meta['meta'];
+                $inner['name'] = $name;
+                $meta['meta'] = $inner;
+            }
+
+            $account->meta = $meta;
+            $account->save();
+        } catch (\Throwable $e) {
+            Log::warning('Proxmox VE VM name sync failed', [
+                'panel_account_id' => $account->id,
+                'vm_name' => $name,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 
     /**

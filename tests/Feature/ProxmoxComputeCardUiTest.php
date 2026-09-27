@@ -258,7 +258,7 @@ final class ProxmoxComputeCardUiTest extends TestCase
 
     // ─────────────────────────── client gate ───────────────────────────
 
-    public function test_client_page_hides_reset_when_presenter_refuses_for_compute(): void
+    public function test_client_page_disables_reset_with_reason_when_presenter_refuses_for_compute(): void
     {
         [$account, $customer] = $this->hostingWithProxmox(hostingStatus: 'pending');
 
@@ -267,8 +267,12 @@ final class ProxmoxComputeCardUiTest extends TestCase
             ->assertOk()
             ->getContent();
 
-        $this->assertStringNotContainsString('data-client-hv-action="reset_password"', $content);
-        $this->assertStringNotContainsString('id="client-reset-password-modal"', $content);
+        // Refused resets render disabled with the presenter's reason (never
+        // hidden): no VM exists on the host yet.
+        $this->assertStringContainsString('data-client-hv-action="reset_password"', $content);
+        $this->assertStringContainsString('id="client-reset-password-modal"', $content);
+        $this->assertMatchesRegularExpression('/<button[^>]*data-client-hv-action="reset_password"[^>]*disabled[^>]*>/', $content);
+        $this->assertStringContainsString('VM is not created on the host yet.', $content);
     }
 
     public function test_client_page_offers_reset_when_presenter_allows_for_compute(): void
@@ -282,9 +286,12 @@ final class ProxmoxComputeCardUiTest extends TestCase
 
         $content = $this->actingAs($customer->user)->get(route('client.hosting.show', $account->id))->assertOk()->getContent();
 
-        // No VM on the host yet — the presenter refuses the reset, so a
-        // compute (non-Hyper-V) service offers no reset button at all.
-        $this->assertStringNotContainsString('data-client-hv-action="reset_password"', $content);
+        // No VM on the host yet — the presenter refuses the reset, so the
+        // button renders disabled with its reason (never hidden).
+        $this->assertStringContainsString('data-client-hv-action="reset_password"', $content);
+        $this->assertStringContainsString('id="client-reset-password-modal"', $content);
+        $this->assertMatchesRegularExpression('/<button[^>]*data-client-hv-action="reset_password"[^>]*disabled[^>]*>/', $content);
+        $this->assertStringContainsString('VM is not created on the host yet.', $content);
 
         $rendered = view('client.hosting.show', [
             'account' => $account->fresh(),
@@ -550,6 +557,33 @@ final class ProxmoxComputeCardUiTest extends TestCase
 
         $this->assertStringNotContainsString('VM Console', $html);
         $this->assertStringNotContainsString('pve-console', $html);
+    }
+
+    /**
+     * Queued verbs (202 {ok, started, event_id, action}): the one-click
+     * start/stop path and the queued reset both branch on data.started and
+     * poll to completion instead of the reload / inline-password paths.
+     * Rendering only — the JS runtime itself has no browser harness here.
+     */
+    public function test_compute_card_queues_direct_and_reset_actions_through_the_poller(): void
+    {
+        $html = $this->renderComputeCard([
+            'action' => ['running' => false],
+            'vm' => ['exists' => true, 'state' => 'running', 'probe_error' => null],
+            'can' => ['create' => false, 'start' => false, 'stop' => true, 'restart' => true, 'delete' => false, 'reset_password' => true],
+            'reasons' => [],
+            'credentials' => ['stored' => true, 'username' => 'root'],
+        ]);
+
+        $this->assertGreaterThanOrEqual(3, substr_count($html, 'data.started'));
+        $this->assertStringContainsString('startPolling()', $html);
+        $this->assertStringContainsString('Password reset started.', $html);
+        $this->assertStringContainsString('Action started.', $html);
+        // Previously asserted scaffolding is untouched.
+        $this->assertStringContainsString('data-compute-action="start"', $html);
+        $this->assertStringContainsString('data-compute-action="stop"', $html);
+        $this->assertStringContainsString('data-compute-progress', $html);
+        $this->assertStringContainsString('data-compute-view="reset_password"', $html);
     }
 
     // ─────────────────────────── helpers ───────────────────────────

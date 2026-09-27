@@ -3,26 +3,35 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Contracts\Integrations\PanelException;
-use App\Contracts\Integrations\ServerConnectionResult;
 use App\Http\Controllers\Controller;
+use App\Jobs\RunUnrecordedVmDestroy;
 use App\Models\HostingAccount;
 use App\Models\PanelAccount;
+use App\Models\ProvisioningEvent;
 use App\Models\ResourcePool;
 use App\Models\Server;
 use App\Models\ServerGroup;
 use App\Models\ServerGroupMember;
 use App\Models\ServiceInstance;
+use App\Modules\HyperV\Services\HyperVClient;
+use App\Modules\Proxmox\Services\ProxmoxClient;
+use App\Modules\Virtualizor\Services\VirtualizorClient;
 use App\Services\Integrations\IntegrationRegistry;
 use App\Services\Modules\ModuleManager;
+use App\Services\Provisioning\ProvisioningEventRecorder;
 use App\ViewModels\Admin\ServerDetailViewModel;
+use App\ViewModels\Admin\ServerVmInventoryPresenter;
+use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
+use Modules\SnmpMonitor\Services\SnmpMetricRepository;
 
 class ServerController extends Controller
 {
@@ -90,7 +99,7 @@ class ServerController extends Controller
         $server->setRelation('hostingAccounts', $hostingAccounts);
 
         // For virtualization servers (hyperv/proxmox/virtualizor) show VMs via PanelAccount/ServiceInstance
-        $panelAccounts = \App\Models\PanelAccount::where('server_id', $server->id)
+        $panelAccounts = PanelAccount::where('server_id', $server->id)
             ->with(['serviceInstance.order:id,order_number,status', 'serviceInstance.customer.user:id,email,first_name,last_name'])
             ->orderByDesc('id')
             ->paginate($perPage, ['*'], 'vms_page');
@@ -104,7 +113,7 @@ class ServerController extends Controller
             try {
                 $driver = $registry->resolveForServer($server);
                 if ($driver !== null && method_exists($driver, 'listVms')) {
-                    $liveVms = \Illuminate\Support\Facades\Cache::remember(
+                    $liveVms = Cache::remember(
                         "{$serverTypeForInventory}:server:{$server->id}:vms",
                         60,
                         fn () => $driver->listVms($server)
@@ -117,7 +126,7 @@ class ServerController extends Controller
 
         // Correlate provisioned PanelAccount rows with the live host inventory
         // for the merged VM table (pure presenter — no Blade owned here).
-        $vmInventory = \App\ViewModels\Admin\ServerVmInventoryPresenter::build($panelAccounts->items(), $liveVms);
+        $vmInventory = ServerVmInventoryPresenter::build($panelAccounts->items(), $liveVms);
 
         // ── Fresh resolve per GET (todo 7) — bounded, graceful degrade, idempotent persist ──
         $freshFailed = false;
@@ -130,7 +139,7 @@ class ServerController extends Controller
             try {
                 $start = microtime(true);
                 // Enforce 8s WinRM bound via client timeout; cachedServerInfo(60) is single cache home (60s TTL)
-                $client = new \App\Modules\HyperV\Services\HyperVClient($server, 8);
+                $client = new HyperVClient($server, 8);
                 $dto = $client->cachedServerInfo(60);
                 $elapsed = microtime(true) - $start;
                 // Bounded: treat >8s as failure even if client returned
@@ -142,14 +151,14 @@ class ServerController extends Controller
                 if ($hasError) {
                     $freshFailed = true;
                     $errorMsg = trim((string) $dto->meta['error']);
-                    $freshError = $errorMsg !== '' ? \Illuminate\Support\Str::limit($errorMsg, 200) : 'Live fetch failed.';
+                    $freshError = $errorMsg !== '' ? Str::limit($errorMsg, 200) : 'Live fetch failed.';
                 } else {
                     $freshDto = $dto;
                 }
             } catch (\Throwable $e) {
                 $freshFailed = true;
                 $errorMsg = trim((string) $e->getMessage());
-                $freshError = $errorMsg !== '' ? \Illuminate\Support\Str::limit($errorMsg, 200) : 'Live fetch failed.';
+                $freshError = $errorMsg !== '' ? Str::limit($errorMsg, 200) : 'Live fetch failed.';
             }
         } elseif ($serverType === 'proxmox') {
             // Proxmox VE via cachedServerInfo(60) with the PVE HTTP timeout
@@ -168,7 +177,7 @@ class ServerController extends Controller
                     if ($hasError) {
                         $freshFailed = true;
                         $errorMsg = trim((string) $dto->meta['error']);
-                        $freshError = $errorMsg !== '' ? \Illuminate\Support\Str::limit($errorMsg, 200) : 'Live fetch failed.';
+                        $freshError = $errorMsg !== '' ? Str::limit($errorMsg, 200) : 'Live fetch failed.';
                     } else {
                         $freshDto = $dto;
                     }
@@ -176,7 +185,7 @@ class ServerController extends Controller
             } catch (\Throwable $e) {
                 $freshFailed = true;
                 $errorMsg = trim((string) $e->getMessage());
-                $freshError = $errorMsg !== '' ? \Illuminate\Support\Str::limit($errorMsg, 200) : 'Live fetch failed.';
+                $freshError = $errorMsg !== '' ? Str::limit($errorMsg, 200) : 'Live fetch failed.';
             }
         } elseif (in_array($serverType, ['cpanel', 'plesk', 'directadmin', 'virtualizor'], true)) {
             // Panels via getServerInfo bounded at 5s for HTTP drivers, degrade to persisted on failure/timeout
@@ -193,7 +202,7 @@ class ServerController extends Controller
                     if ($hasError) {
                         $freshFailed = true;
                         $errorMsg = trim((string) $dto->meta['error']);
-                        $freshError = $errorMsg !== '' ? \Illuminate\Support\Str::limit($errorMsg, 200) : 'Live fetch failed.';
+                        $freshError = $errorMsg !== '' ? Str::limit($errorMsg, 200) : 'Live fetch failed.';
                     } else {
                         $freshDto = $dto;
                     }
@@ -201,7 +210,7 @@ class ServerController extends Controller
             } catch (\Throwable $e) {
                 $freshFailed = true;
                 $errorMsg = trim((string) $e->getMessage());
-                $freshError = $errorMsg !== '' ? \Illuminate\Support\Str::limit($errorMsg, 200) : 'Live fetch failed.';
+                $freshError = $errorMsg !== '' ? Str::limit($errorMsg, 200) : 'Live fetch failed.';
             }
         }
 
@@ -290,7 +299,7 @@ class ServerController extends Controller
             $checkedAtRaw = $provenance['checked_at'] ?? $meta['checked_at'] ?? null;
             if ($checkedAtRaw !== null && $checkedAtRaw !== '') {
                 try {
-                    $checkedAt = \Carbon\Carbon::parse($checkedAtRaw);
+                    $checkedAt = Carbon::parse($checkedAtRaw);
                     $provenanceStale = $checkedAt->diffInSeconds(now()) > 60;
                 } catch (\Throwable) {
                     $provenanceStale = false;
@@ -319,18 +328,18 @@ class ServerController extends Controller
         $vm = $this->applySnmpLatestBridge($server, $vm);
 
         // Totals for header badges (paginators only hold one page — counts need separate queries).
-        $panelAccountsTotal = \App\Models\PanelAccount::where('server_id', $server->id)->count();
-        $panelAccountsActive = \App\Models\PanelAccount::where('server_id', $server->id)->where('status', 'active')->count();
+        $panelAccountsTotal = PanelAccount::where('server_id', $server->id)->count();
+        $panelAccountsActive = PanelAccount::where('server_id', $server->id)->where('status', 'active')->count();
 
         // Census counts (todo 11): explicit meanings for the drift card.
         // Provisioned VMs = panelAccounts + service_instances rows on this server.
         // Scheduler load mirrors ServerAllocator::load(): hosting_accounts rows +
         // live service_instances (pending/provisioning/active/suspended).
         // Cap renders from $server->max_accounts directly (0 = Unlimited).
-        $serviceInstancesTotal = \App\Models\ServiceInstance::where('server_id', $server->id)->count();
+        $serviceInstancesTotal = ServiceInstance::where('server_id', $server->id)->count();
         $hostingAccountsTotal = $server->hostingAccounts()->count();
         $provisionedTotal = $panelAccountsTotal + $serviceInstancesTotal;
-        $schedulerLoad = $hostingAccountsTotal + \App\Models\ServiceInstance::where('server_id', $server->id)
+        $schedulerLoad = $hostingAccountsTotal + ServiceInstance::where('server_id', $server->id)
             ->whereIn('status', ['pending', 'provisioning', 'active', 'suspended'])
             ->count();
 
@@ -481,7 +490,7 @@ class ServerController extends Controller
             // Derived gauges (computed pct) win; raw payload fields fall back.
             $gauges = [];
             try {
-                $gauges = app(\Modules\SnmpMonitor\Services\SnmpMetricRepository::class)->latestSampleMetrics([$targetId]);
+                $gauges = app(SnmpMetricRepository::class)->latestSampleMetrics([$targetId]);
             } catch (\Throwable) {
                 $gauges = [];
             }
@@ -780,7 +789,7 @@ class ServerController extends Controller
         $factor = $byteFactor[strtolower($label)] ?? null;
         if ($factor !== null) {
             try {
-                return \App\ViewModels\Admin\ServerDetailViewModel::fmtBytes($numeric * $factor);
+                return ServerDetailViewModel::fmtBytes($numeric * $factor);
             } catch (\Throwable) {
                 // Fall through to verbatim below — display must never throw.
             }
@@ -930,7 +939,7 @@ class ServerController extends Controller
         if ($serverType === 'hyperv') {
             $host = trim((string) ($validated['host'] ?? $validated['ip_address'] ?? $validated['api_url'] ?? ''));
             // host may still be empty if top ip_address exists fallback
-            if ($host === '' && isset($validated['ip_address']) && trim((string)$validated['ip_address']) !== '') {
+            if ($host === '' && isset($validated['ip_address']) && trim((string) $validated['ip_address']) !== '') {
                 $host = trim((string) $validated['ip_address']);
             }
             $port = $validated['port'] ?? 5985;
@@ -940,7 +949,7 @@ class ServerController extends Controller
                 $attributes['api_url'] = sprintf('%s://%s:%d', $scheme, $host, (int) $port);
             }
             // ensure api_username comes from username alias if present
-            if (isset($validated['username']) && trim((string)$validated['username']) !== '' && empty($attributes['api_username'] ?? null)) {
+            if (isset($validated['username']) && trim((string) $validated['username']) !== '' && empty($attributes['api_username'] ?? null)) {
                 $attributes['api_username'] = trim((string) $validated['username']);
             }
         }
@@ -1007,9 +1016,9 @@ class ServerController extends Controller
         // empty picker, which would read as "this cluster has no templates".
         $proxmoxDiscoveredTemplates = [];
         $proxmoxDiscoveryError = '';
-        if ($type === 'proxmox' && \App\Modules\Proxmox\Services\ProxmoxClient::isConfigured($server)) {
+        if ($type === 'proxmox' && ProxmoxClient::isConfigured($server)) {
             try {
-                $proxmoxDiscoveredTemplates = \Illuminate\Support\Facades\Cache::remember(
+                $proxmoxDiscoveredTemplates = Cache::remember(
                     "proxmox:server:{$server->id}:discovered-templates",
                     300,
                     function () use ($registry, $server): array {
@@ -1031,9 +1040,9 @@ class ServerController extends Controller
         // Virtualizor OS-template curation gets the same treatment: discovered
         // live, cached briefly, degraded to the already-curated list on failure.
         $virtualizorDiscoveredOs = [];
-        if ($type === 'virtualizor' && \App\Modules\Virtualizor\Services\VirtualizorClient::isConfigured($server)) {
+        if ($type === 'virtualizor' && VirtualizorClient::isConfigured($server)) {
             try {
-                $virtualizorDiscoveredOs = \Illuminate\Support\Facades\Cache::remember(
+                $virtualizorDiscoveredOs = Cache::remember(
                     "virtualizor:server:{$server->id}:discovered-os",
                     300,
                     function () use ($registry, $server): array {
@@ -1365,7 +1374,7 @@ class ServerController extends Controller
         if ($driver === null) {
             return response()->json([
                 'ok' => false,
-                'message' => 'No module driver found for server type [' . $server->server_type . '].',
+                'message' => 'No module driver found for server type ['.$server->server_type.'].',
             ], 422);
         }
 
@@ -1443,11 +1452,11 @@ class ServerController extends Controller
         }
 
         if ($driver === null) {
-            return response()->json(['ok' => false, 'message' => 'No module driver found for server type [' . $serverType . '].'], 422);
+            return response()->json(['ok' => false, 'message' => 'No module driver found for server type ['.$serverType.'].'], 422);
         }
 
         // Build transient Server instance (not persisted) with encrypted cast handling
-        $transient = new Server();
+        $transient = new Server;
         $transient->server_type = $serverType;
 
         // Host resolution: prefer host, fallback to ip_address or api_url
@@ -1571,7 +1580,7 @@ class ServerController extends Controller
 
         if ($request->boolean('refresh')) {
             try {
-                \Illuminate\Support\Facades\Cache::forget("{$serverType}:server:{$server->id}:vms");
+                Cache::forget("{$serverType}:server:{$server->id}:vms");
             } catch (\Throwable) {
                 // cache forget failure must not break endpoint
             }
@@ -1588,7 +1597,7 @@ class ServerController extends Controller
                 ]);
             }
 
-            $rows = \Illuminate\Support\Facades\Cache::remember(
+            $rows = Cache::remember(
                 "hyperv:server:{$server->id}:vms",
                 60,
                 fn () => $driver->listVms($server)
@@ -1620,7 +1629,7 @@ class ServerController extends Controller
             return response()->json([
                 'ok' => false,
                 'vms' => [],
-                'error' => \Illuminate\Support\Str::limit(trim((string) $e->getMessage()) !== '' ? trim((string) $e->getMessage()) : 'Failed to fetch VMs.', 200),
+                'error' => Str::limit(trim((string) $e->getMessage()) !== '' ? trim((string) $e->getMessage()) : 'Failed to fetch VMs.', 200),
             ]);
         }
     }
@@ -1672,7 +1681,7 @@ class ServerController extends Controller
             ));
         }
 
-        $client = new \App\Modules\Proxmox\Services\ProxmoxClient($server);
+        $client = new ProxmoxClient($server);
         $node = trim((string) $validated['node']);
 
         try {
@@ -1690,8 +1699,6 @@ class ServerController extends Controller
                     $vmidInt,
                 ));
             }
-
-            $client->destroyVm($node, $vmidInt);
         } catch (PanelException $e) {
             if ($client->isMissingVm($e->getMessage())) {
                 return back()->with('success', sprintf('VMID %d was already gone — nothing to destroy.', $vmidInt));
@@ -1702,14 +1709,45 @@ class ServerController extends Controller
             return back()->with('error', 'Could not destroy VMID '.$vmidInt.': an unexpected error occurred.');
         }
 
-        Log::info('Admin destroyed an unrecorded Proxmox VE VM', [
+        // Every guard above passed: open the durable running event and queue
+        // the destroy on `provisioning`. The server page has no progress UI
+        // for this event (flash-only) — the row exists for the audit trail.
+        try {
+            $event = app(ProvisioningEventRecorder::class)->begin(
+                'terminate',
+                [
+                    'module' => 'proxmox',
+                    'action' => 'destroy_unrecorded',
+                    'server_id' => $server->id,
+                    'vmid' => $vmidInt,
+                    'node' => $node,
+                    'stage' => 'queued',
+                ],
+                null,
+                null,
+                $request->user()?->id,
+            );
+
+            RunUnrecordedVmDestroy::dispatch($event->id, $server->id, $vmidInt, $node);
+        } catch (\Throwable $e) {
+            Log::warning('Admin unrecorded Proxmox VE VM destroy could not be queued', [
+                'server_id' => $server->id,
+                'node' => $node,
+                'vmid' => $vmidInt,
+                'error' => $e->getMessage(),
+            ]);
+
+            return back()->with('error', 'Could not queue the destroy for VMID '.$vmidInt.': '.$e->getMessage());
+        }
+
+        Log::info('Admin queued an unrecorded Proxmox VE VM destroy', [
             'server_id' => $server->id,
             'node' => $node,
             'vmid' => $vmidInt,
             'admin_id' => $request->user()?->id,
         ]);
 
-        return back()->with('success', sprintf('VMID %d was destroyed on node "%s".', $vmidInt, $node));
+        return back()->with('success', 'Destroy queued.');
     }
 
     /**
@@ -1989,7 +2027,7 @@ class ServerController extends Controller
             if ($raw === null) {
                 $sanitizedList = [];
             } elseif (is_array($raw)) {
-                $sanitizedList = \App\Models\Server::sanitizeTemplateVms($raw);
+                $sanitizedList = Server::sanitizeTemplateVms($raw);
             } else {
                 // Defensive: non-array (should be blocked by validation) treat as empty clear if explicitly present
                 $sanitizedList = [];
@@ -2033,10 +2071,10 @@ class ServerController extends Controller
                     // Legacy single-template: allow any default (it becomes the fallback list).
                     $effectiveList = [$templateVmValue];
                 } else {
-                    $tmpServer = new \App\Models\Server(['connection_meta' => $base]);
+                    $tmpServer = new Server(['connection_meta' => $base]);
                     $effectiveList = $tmpServer->hypervTemplateVms();
                     if (array_key_exists('template_vms', $base) && is_array($base['template_vms'])) {
-                        $effectiveList = \App\Models\Server::sanitizeTemplateVms($base['template_vms']);
+                        $effectiveList = Server::sanitizeTemplateVms($base['template_vms']);
                     }
                 }
                 if (in_array($templateVmValue, $effectiveList, true)) {
@@ -2066,9 +2104,9 @@ class ServerController extends Controller
         if ($sanitizedList !== null) {
             $effectiveCurated = $sanitizedList;
         } elseif (array_key_exists('template_vms', $base)) {
-            $effectiveCurated = \App\Models\Server::sanitizeTemplateVms($base['template_vms']);
+            $effectiveCurated = Server::sanitizeTemplateVms($base['template_vms']);
         } else {
-            $effectiveCurated = (new \App\Models\Server(['connection_meta' => $base]))->hypervTemplateVms();
+            $effectiveCurated = (new Server(['connection_meta' => $base]))->hypervTemplateVms();
         }
         $allowedCurated = [];
         foreach ($effectiveCurated as $n) {
@@ -2078,15 +2116,23 @@ class ServerController extends Controller
         if ($hasLabelPayload) {
             $forRaw = $validated['template_label_for'] ?? [];
             $labelRaw = $validated['template_label'] ?? [];
-            if (! is_array($forRaw)) { $forRaw = []; }
-            if (! is_array($labelRaw)) { $labelRaw = []; }
+            if (! is_array($forRaw)) {
+                $forRaw = [];
+            }
+            if (! is_array($labelRaw)) {
+                $labelRaw = [];
+            }
             $incoming = [];
             $incomingBlank = [];
             $count = count($forRaw);
             for ($i = 0; $i < $count; $i++) {
                 $vmName = trim((string) ($forRaw[$i] ?? ''));
-                if ($vmName === '') { continue; }
-                if (! isset($allowedCurated[$vmName])) { continue; }
+                if ($vmName === '') {
+                    continue;
+                }
+                if (! isset($allowedCurated[$vmName])) {
+                    continue;
+                }
                 $lbl = isset($labelRaw[$i]) ? trim((string) $labelRaw[$i]) : '';
                 if ($lbl === '') {
                     $incomingBlank[$vmName] = true;
@@ -2101,7 +2147,7 @@ class ServerController extends Controller
                 }
             }
             $existingLabelsRaw = $base['template_labels'] ?? null;
-            $prunedExisting = \App\Models\Server::sanitizeTemplateLabels(is_array($existingLabelsRaw) ? $existingLabelsRaw : [], $effectiveCurated);
+            $prunedExisting = Server::sanitizeTemplateLabels(is_array($existingLabelsRaw) ? $existingLabelsRaw : [], $effectiveCurated);
             $final = $prunedExisting;
             foreach ($incomingBlank as $k => $_) {
                 unset($final[$k]);
@@ -2110,7 +2156,7 @@ class ServerController extends Controller
                 $final[$k] = $lbl;
             }
             // Prune stale that may remain if curated shrank and not covered above (sanitize already did)
-            $final = \App\Models\Server::sanitizeTemplateLabels($final, $effectiveCurated);
+            $final = Server::sanitizeTemplateLabels($final, $effectiveCurated);
             if ($final === []) {
                 unset($base['template_labels']);
             } else {
@@ -2120,7 +2166,7 @@ class ServerController extends Controller
             if ($sanitizedList !== null) {
                 $existingLabelsRaw = $base['template_labels'] ?? null;
                 if (is_array($existingLabelsRaw)) {
-                    $pruned = \App\Models\Server::sanitizeTemplateLabels($existingLabelsRaw, $effectiveCurated);
+                    $pruned = Server::sanitizeTemplateLabels($existingLabelsRaw, $effectiveCurated);
                     if ($pruned === []) {
                         unset($base['template_labels']);
                     } elseif ($pruned !== $existingLabelsRaw) {
@@ -2147,13 +2193,21 @@ class ServerController extends Controller
      * transport prefs). Returns null when the request carries none of them, so
      * an unrelated update never rewrites the meta.
      *
+     * The curated-template keys count as "carries them" too: the edit form
+     * renders no transport inputs for Proxmox, so a curation-only save from
+     * /admin/servers/{id}/edit would otherwise be dropped before the list and
+     * its default are merged.
+     *
      * @param  array<string, mixed>  $validated
      * @param  array<string, mixed>  $existing  current connection_meta (update path)
      * @return array<string, mixed>|null
      */
     private function proxmoxConnectionMeta(array $validated, array $existing = []): ?array
     {
-        $keys = ['port', 'auth_type', 'ticket_username'];
+        $keys = [
+            'port', 'auth_type', 'ticket_username', 'verify_tls',
+            'proxmox_templates', 'proxmox_template_default',
+        ];
         $has = false;
         foreach ($keys as $key) {
             if (array_key_exists($key, $validated)) {
@@ -2161,7 +2215,7 @@ class ServerController extends Controller
                 break;
             }
         }
-        if (! $has && ! array_key_exists('verify_tls', $validated)) {
+        if (! $has) {
             return null;
         }
 
@@ -2206,7 +2260,7 @@ class ServerController extends Controller
             if ($raw === null || $raw === []) {
                 unset($base['proxmox_templates'], $base['proxmox_template_default']);
             } else {
-                $sanitized = \App\Models\Server::sanitizeProxmoxTemplates(is_array($raw) ? $raw : []);
+                $sanitized = Server::sanitizeProxmoxTemplates(is_array($raw) ? $raw : []);
 
                 if ($sanitized === []) {
                     unset($base['proxmox_templates'], $base['proxmox_template_default']);
@@ -2228,7 +2282,7 @@ class ServerController extends Controller
 
         // Drop a default that is not (or is no longer) in the curated list.
         $curatedVmIds = array_column(
-            \App\Models\Server::sanitizeProxmoxTemplates($base['proxmox_templates'] ?? null),
+            Server::sanitizeProxmoxTemplates($base['proxmox_templates'] ?? null),
             'vmid',
         );
 
@@ -2349,7 +2403,7 @@ class ServerController extends Controller
         $base = $existing;
 
         if ($hasTemplates) {
-            $sanitized = \App\Models\Server::sanitizeVirtualizorOsTemplates($validated['virtualizor_os_templates']);
+            $sanitized = Server::sanitizeVirtualizorOsTemplates($validated['virtualizor_os_templates']);
 
             if ($sanitized === []) {
                 unset($base['virtualizor_os_templates'], $base['virtualizor_os_default']);
@@ -2369,7 +2423,7 @@ class ServerController extends Controller
         }
 
         $curatedIds = array_column(
-            \App\Models\Server::sanitizeVirtualizorOsTemplates($base['virtualizor_os_templates'] ?? null),
+            Server::sanitizeVirtualizorOsTemplates($base['virtualizor_os_templates'] ?? null),
             'osid',
         );
 
@@ -2401,13 +2455,13 @@ class ServerController extends Controller
     private function reportProxmoxStage(ServiceInstance $service, string $stage): void
     {
         try {
-            $event = \App\Models\ProvisioningEvent::where('service_instance_id', $service->id)
+            $event = ProvisioningEvent::where('service_instance_id', $service->id)
                 ->where('status', 'running')
                 ->orderByDesc('id')
                 ->first();
 
             if ($event !== null) {
-                app(\App\Services\Provisioning\ProvisioningEventRecorder::class)->progress($event, $stage);
+                app(ProvisioningEventRecorder::class)->progress($event, $stage);
             }
         } catch (\Throwable) {
             // Progress reporting must never break provisioning.

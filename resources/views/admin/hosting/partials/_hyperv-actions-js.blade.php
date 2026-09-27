@@ -550,6 +550,19 @@ document.addEventListener('DOMContentLoaded', function () {
 
         // Reset shows the new password once, in place, and never reloads.
         if (act === 'reset_password') {
+            // Queued reset (202): no password exists yet — poll to completion.
+            if (data.started) {
+                state.busy = false;
+                closeDisclosure(false);
+                setProgress(true);
+                setProgressLabel('Working…');
+                setProgressBar(4);
+                setProgressMessage('');
+                setBusyButtons();
+                showAlert('success', message || 'Password reset started.');
+                startPolling();
+                return;
+            }
             var newPw = data.password || data.new_password || (data.data && data.data.password) || '';
             var resultBlock = document.getElementById('hv-reset-result');
             var resultPw = document.getElementById('hv-reset-result-password');
@@ -641,7 +654,21 @@ document.addEventListener('DOMContentLoaded', function () {
             credentials: 'same-origin',
             body: body
         }).then(parseJsonResponse).then(function (data) {
-            handleActionResponse(null, act, data);
+            // Queued verb (202): stay on the progress strip and poll to
+            // completion instead of the reload path a synchronous success takes.
+            if (data && data.started) {
+                state.busy = false;
+                closeDisclosure(false);
+                setProgress(true);
+                setProgressLabel(act === 'start' ? 'Starting the VM…' : 'Stopping the VM…');
+                setProgressBar(4);
+                setProgressMessage('');
+                setBusyButtons();
+                showAlert('success', data.message || data.msg || 'Action started.');
+                startPolling();
+                return;
+            }
+            handleActionResponse(act, data);
         }).catch(function (err) {
             failAction(err);
         });

@@ -4,9 +4,13 @@ namespace App\Services;
 
 use App\Events\OrderCreated;
 use App\Events\OrderPaid;
+use App\Jobs\RunOrderLifecycleVerb;
+use App\Jobs\RunOrderProvisioning;
 use App\Models\Invoice;
 use App\Models\Order;
 use App\Models\OrderStatusHistory;
+use App\Models\Product;
+use App\Services\Integrations\IntegrationRegistry;
 use App\Services\Provisioning\ProvisioningDispatcher;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -69,7 +73,7 @@ class OrderService
     private static function autoProvisionSlugs(): array
     {
         try {
-            $slugs = app(\App\Services\Integrations\IntegrationRegistry::class)->slugs();
+            $slugs = app(IntegrationRegistry::class)->slugs();
             $slugs[] = 'custom';
 
             return array_values(array_unique($slugs));
@@ -348,14 +352,11 @@ class OrderService
                 return;
             }
 
-            $attempt = $this->provisioning->run($order);
-
-            if (! $attempt->succeeded()) {
-                Log::error('Provisioning module reported failure on order activation', [
-                    'order_id' => $order->id,
-                    'error' => $attempt->message,
-                ]);
-            }
+            // The build can outlast the web request, so it runs queued in
+            // RunOrderProvisioning; the order stays active either way and a
+            // module refusal lands as a provisioning_events row the operator
+            // can retry from the hosting page.
+            RunOrderProvisioning::dispatch($order->id);
         } catch (\Throwable $e) {
             Log::error('Auto-provisioning on order activation failed', [
                 'order_id' => $order->id,
@@ -376,22 +377,13 @@ class OrderService
     {
         try {
             if ($to === Order::STATUS_SUSPENDED) {
-                $attempt = $this->provisioning->suspend($order, $notes);
+                RunOrderLifecycleVerb::dispatch($order->id, 'suspend', $notes);
             } elseif ($from === Order::STATUS_SUSPENDED && $to === Order::STATUS_ACTIVE) {
-                $attempt = $this->provisioning->unsuspend($order, $notes);
+                RunOrderLifecycleVerb::dispatch($order->id, 'unsuspend', $notes);
             } elseif (in_array($to, self::ENDING_STATUSES, true) && in_array($from, self::PROVISIONED_STATUSES, true)) {
-                $attempt = $this->provisioning->terminate($order, $notes);
+                RunOrderLifecycleVerb::dispatch($order->id, 'terminate', $notes);
             } else {
                 return;
-            }
-
-            if (! $attempt->succeeded()) {
-                Log::error('Provisioning module reported failure on order status change', [
-                    'order_id' => $order->id,
-                    'from' => $from,
-                    'to' => $to,
-                    'error' => $attempt->message,
-                ]);
             }
         } catch (\Throwable $e) {
             // The dispatcher already isolates module failures; this is the
@@ -493,23 +485,14 @@ class OrderService
             try {
                 $this->transition($order, Order::STATUS_PROVISIONING, 'Auto-provisioning after invoice payment');
 
-                $attempt = $this->provisioning->run($order->refresh());
+                // The build can outlast the web request, so it runs queued in
+                // RunOrderProvisioning, which lands the provisioning ->
+                // active/failed hop. The order stays provisioning until the job
+                // finishes; a dispatch failure falls into the failure handling
+                // below, exactly as a thrown build did.
+                RunOrderProvisioning::dispatch($order->refresh()->id);
 
-                if (! $attempt->succeeded()) {
-                    Log::error('Provisioning module reported failure', [
-                        'order_id' => $order->id,
-                        'module' => $module,
-                        'error' => $attempt->message,
-                    ]);
-
-                    return $this->transition(
-                        $order->refresh(),
-                        Order::STATUS_FAILED,
-                        'Provisioning failed: '.$attempt->message,
-                    );
-                }
-
-                return $this->transition($order->refresh(), Order::STATUS_ACTIVE, $attempt->activationNote());
+                return $order->refresh();
             } catch (\Throwable $e) {
                 Log::error('Auto-provisioning failed after invoice payment', [
                     'order_id' => $order->id,
@@ -554,7 +537,7 @@ class OrderService
         return $order;
     }
 
-    private function isManualComputeProduct(?\App\Models\Product $product): bool
+    private function isManualComputeProduct(?Product $product): bool
     {
         return $this->provisioning->isManualComputeProduct($product);
     }

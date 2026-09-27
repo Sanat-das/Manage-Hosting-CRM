@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
+use App\Jobs\RunOrderProvisioning;
 use App\Jobs\SendEmail;
 use App\Models\Customer;
 use App\Models\Order;
@@ -16,6 +17,7 @@ use App\Models\ServerGroupMember;
 use App\Models\ServiceInstance;
 use App\Models\User;
 use App\Services\OrderService;
+use App\Services\Provisioning\ProvisioningDispatcher;
 use App\Services\Provisioning\WelcomeMailer;
 use Database\Seeders\EmailTemplateSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -57,6 +59,7 @@ class HypervCredentialDeliveryTest extends TestCase
             }
             if (str_contains($body, 'Start-VM -VM')) {
                 $state = 'Running';
+
                 return Http::response(['state' => 'Running', 'name' => 'hv-rotated', 'vmId' => self::VM_GUID]);
             }
             if (str_contains($body, 'Invoke-Command -VMName')) {
@@ -64,6 +67,7 @@ class HypervCredentialDeliveryTest extends TestCase
                 if (str_contains($body, 'Set-LocalUser')) {
                     return Http::response(['ok' => true, 'vmName' => 'hv-rotated']);
                 }
+
                 return Http::response(['verified' => true, 'guest' => 'HV-ROTATED']);
             }
             if (str_contains($body, 'Get-VM')) {
@@ -83,6 +87,11 @@ class HypervCredentialDeliveryTest extends TestCase
         ]);
 
         $result = app(OrderService::class)->advanceAfterPayment($order);
+
+        // Provisioning now runs queued: run the faked build inline so the same
+        // end state the inline path produced is exercised.
+        (new RunOrderProvisioning($order->id))->handle(app(OrderService::class), app(ProvisioningDispatcher::class));
+
         $this->assertSame(Order::STATUS_ACTIVE, $result->fresh()->status);
 
         $panel = PanelAccount::sole();
@@ -117,6 +126,7 @@ class HypervCredentialDeliveryTest extends TestCase
             }
             if (str_contains($body, 'Start-VM -VM')) {
                 $state = 'Running';
+
                 return Http::response(['state' => 'Running', 'name' => 'hv-supplied', 'vmId' => self::VM_GUID]);
             }
             if (str_contains($body, 'Invoke-Command -VMName')) {
@@ -138,6 +148,11 @@ class HypervCredentialDeliveryTest extends TestCase
         ]);
 
         $result = app(OrderService::class)->advanceAfterPayment($order);
+
+        // Provisioning now runs queued: run the faked build inline so the same
+        // end state the inline path produced is exercised.
+        (new RunOrderProvisioning($order->id))->handle(app(OrderService::class), app(ProvisioningDispatcher::class));
+
         $this->assertSame(Order::STATUS_ACTIVE, $result->fresh()->status);
 
         $panel = PanelAccount::sole();
@@ -194,12 +209,14 @@ class HypervCredentialDeliveryTest extends TestCase
             }
             if (str_contains($body, 'Start-VM -VM')) {
                 $state = 'Running';
+
                 return Http::response(['state' => 'Running', 'name' => 'hv-nocp', 'vmId' => self::VM_GUID]);
             }
             if (str_contains($body, 'Invoke-Command -VMName')) {
                 if (str_contains($body, 'Set-LocalUser')) {
                     return Http::response(['ok' => true, 'vmName' => 'hv-nocp']);
                 }
+
                 return Http::response(['verified' => true, 'guest' => 'HV-NOCP']);
             }
             if (str_contains($body, 'Get-VM')) {
@@ -219,6 +236,10 @@ class HypervCredentialDeliveryTest extends TestCase
         ]);
 
         app(OrderService::class)->advanceAfterPayment($order);
+
+        // Provisioning now runs queued: run the faked build inline so the same
+        // end state the inline path produced is exercised.
+        (new RunOrderProvisioning($order->id))->handle(app(OrderService::class), app(ProvisioningDispatcher::class));
 
         Queue::assertPushed(SendEmail::class, fn (SendEmail $job) => ! str_contains($job->body, '/cpanel')
             && ! str_contains($job->logBody ?? '', '/cpanel'));

@@ -1,12 +1,15 @@
 <?php
 
-use App\Services\Cron\CronTaskRegistry;
+use App\Models\CronTask;
 // The facade registers tasks; the underlying Schedule instance is what holds
 // them, and the two class names differ — alias so the gate loop below reads
 // the registry rather than the facade.
+use App\Services\Cron\CronTaskRegistry;
 use Illuminate\Console\Scheduling\Schedule as ScheduleRegistry;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schedule;
 use Modules\SnmpMonitor\Jobs\PollHostBatch;
 use Modules\SnmpMonitor\Jobs\RollupHourlyAggregates;
@@ -178,37 +181,48 @@ Schedule::command('queue:work --queue=emails,default --sleep=3 --tries=3 --stop-
     ->name('queue-emails-cron')
     ->onSuccess(function () {
         try {
-            $remaining = \Illuminate\Support\Facades\DB::table('jobs')->where('queue', 'emails')->count();
-            $failed = \Illuminate\Support\Facades\DB::table('failed_jobs')->count();
-            \Illuminate\Support\Facades\Log::info('queue-emails-cron drained', ['remaining' => $remaining, 'failed' => $failed]);
+            $remaining = DB::table('jobs')->where('queue', 'emails')->count();
+            $failed = DB::table('failed_jobs')->count();
+            Log::info('queue-emails-cron drained', ['remaining' => $remaining, 'failed' => $failed]);
             __cron_atomic_write_health(['last_run' => now()->toIso8601String(), 'remaining' => $remaining, 'failed' => $failed, 'status' => 'ok']);
-        } catch (\Throwable $e) {
+        } catch (Throwable $e) {
         }
     })
     ->onFailure(function () {
         try {
-            \Illuminate\Support\Facades\Log::warning('queue-emails-cron failed');
+            Log::warning('queue-emails-cron failed');
             __cron_atomic_write_health(['last_run' => now()->toIso8601String(), 'status' => 'failed']);
-        } catch (\Throwable $e) {
+        } catch (Throwable $e) {
         }
     });
 
 Schedule::call(function () {
     try {
-        $jobs = \Illuminate\Support\Facades\DB::table('jobs')->where('queue', 'emails')->count();
-        $failed = \Illuminate\Support\Facades\DB::table('failed_jobs')->count();
+        $jobs = DB::table('jobs')->where('queue', 'emails')->count();
+        $failed = DB::table('failed_jobs')->count();
         $queueOk = $jobs < 20 && $failed === 0;
-        \Illuminate\Support\Facades\Log::info('emails-queue-heartbeat', ['jobs' => $jobs, 'failed' => $failed, 'ok' => $queueOk]);
+        Log::info('emails-queue-heartbeat', ['jobs' => $jobs, 'failed' => $failed, 'ok' => $queueOk]);
         __cron_atomic_write_health([
             'heartbeat_at' => now()->toIso8601String(),
             'heartbeat_jobs' => $jobs,
             'heartbeat_failed' => $failed,
             'heartbeat_ok' => $queueOk,
         ]);
-    } catch (\Throwable $e) {
-        \Illuminate\Support\Facades\Log::warning('emails-queue-heartbeat failed', ['error' => $e->getMessage()]);
+    } catch (Throwable $e) {
+        Log::warning('emails-queue-heartbeat failed', ['error' => $e->getMessage()]);
     }
 })->everyFiveMinutes()->name('emails-queue-heartbeat')->withoutOverlapping(10);
+
+// `provisioning` carries VM builds and power/verb operations. The systemd
+// unit (deploy/systemd/managehosting-queue-provisioning.service) is the
+// consumer; without it queued jobs sit in the table forever. Rows left
+// `running` by a killed worker only clear at the 35-minute stale threshold,
+// so this sweeper fails them every five minutes and the compute card stops
+// spinning without waiting for the next dispatch.
+Schedule::command('provisioning:reconcile')
+    ->everyFiveMinutes()
+    ->withoutOverlapping(10)
+    ->runInBackground();
 
 /*
 |--------------------------------------------------------------------------
@@ -263,7 +277,7 @@ foreach (app(ScheduleRegistry::class)->events() as $scheduledEvent) {
 */
 
 try {
-    $overrides = \App\Models\CronTask::query()
+    $overrides = CronTask::query()
         ->whereNotNull('expression')
         ->orWhereNotNull('timezone')
         ->orWhereNotNull('description')

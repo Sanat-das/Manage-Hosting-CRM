@@ -10,13 +10,14 @@ use App\Services\HostingService;
 use App\Services\Integrations\IntegrationRegistry;
 use App\Services\Modules\ModuleManager;
 use App\Services\OrderConfigSnapshot;
-use App\Services\Provisioning\ComputeDriver;
 use App\Services\Provisioning\ComputeTemplateCatalog;
 use App\Services\Provisioning\ManualProvisioner;
 use App\Services\Provisioning\ProvisioningDispatcher;
 use App\Services\Provisioning\ProvisioningEventRecorder;
 use App\Services\Provisioning\VmBuildDispatcher;
 use App\Services\Provisioning\VmGuestCredentialStore;
+use App\Services\Provisioning\VmOperationConflictException;
+use App\Services\Provisioning\VmOperationDispatcher;
 use App\Services\Provisioning\VmStatusPresenter;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -36,6 +37,7 @@ class HostingController extends Controller
         private readonly OrderConfigSnapshot $snapshot,
         private readonly ManualProvisioner $provisioner,
         private readonly VmBuildDispatcher $vmBuildDispatcher,
+        private readonly VmOperationDispatcher $vmOperationDispatcher,
         private readonly VmStatusPresenter $vmStatusPresenter,
         private readonly ProvisioningEventRecorder $provisioningEvents,
         private readonly HostingService $hostingService,
@@ -271,8 +273,9 @@ class HostingController extends Controller
     /**
      * Customer "Reset Administrator password": the customer types only the
      * NEW password — the panel authenticates into the running guest with the
-     * credentials it already has stored. Mirrors the admin reset flow
-     * (update event + audit) without ever echoing the password back.
+     * credentials it already has stored. Queued through VmOperationDispatcher
+     * (202/started contract, progress via vm-status), mirroring the admin
+     * reset flow without ever echoing the password back.
      */
     public function resetVmPassword(Request $request, HostingAccount $hostingAccount): JsonResponse|RedirectResponse
     {
@@ -288,7 +291,8 @@ class HostingController extends Controller
 
         $newPassword = $validated['password'];
 
-        // Resolve service + driver for reset (same factory the admin uses).
+        // Resolve the compute module that owns this account (the dispatcher
+        // re-validates the link/driver when it opens the event).
         $account->loadMissing(['product.moduleLinks', 'server']);
         $slug = $this->computeSlugFor($account);
 
@@ -302,21 +306,12 @@ class HostingController extends Controller
         }
 
         $service = app(ManualProvisioner::class)->serviceForHosting($account, $slug);
-        $driver = ComputeDriver::resolve($slug);
-
-        if ($driver === null || ! method_exists($driver, 'resetGuestAdminPassword')) {
-            $msg = 'Password reset is not available for this service.';
-            if ($this->wantsJson($request)) {
-                return response()->json(['ok' => false, 'message' => $msg], 422);
-            }
-
-            return back()->with('error', $msg);
-        }
 
         // The customer never knows the current password — without a stored
         // credential there is nothing to authenticate into the guest with.
         // Hyper-V-only: host-authoritative drivers such as Proxmox VE reset
         // without it.
+        $storedUsername = null;
         if ($slug === 'hyperv') {
             try {
                 $panel = PanelAccount::where('service_instance_id', $service->id)->where('panel', 'hyperv')->first();
@@ -331,32 +326,30 @@ class HostingController extends Controller
 
                     return back()->with('error', $msg);
                 }
+                $storedUsername = $stored['username'] ?? null;
             } catch (\Throwable) {
             }
         }
 
-        // Record the attempt as a provisioning event, exactly like admin.
-        try {
-            $event = $this->provisioningEvents->begin('update', [
-                'module' => $slug,
-                'action' => 'reset_password',
-                'hosting_account_id' => $account->id,
-                'order_id' => $account->order_id,
-            ], $service->id, $account->id);
-        } catch (\Throwable $e) {
-            Log::error('client resetVmPassword event begin failed', ['error' => $e->getMessage()]);
-            $event = null;
+        $options = ['new_password' => $newPassword];
+        if (is_string($storedUsername) && trim($storedUsername) !== '') {
+            $options['username'] = trim($storedUsername);
         }
 
         try {
-            $result = $driver->resetGuestAdminPassword($service, $newPassword);
-        } catch (\Throwable $e) {
-            if (isset($event) && $event !== null) {
-                try {
-                    $this->provisioningEvents->fail($event, $e->getMessage());
-                } catch (\Throwable) {
-                }
+            $event = $this->vmOperationDispatcher->dispatch($account, 'reset_password', $options, $request->user()?->id, $slug);
+        } catch (VmOperationConflictException $e) {
+            if ($this->wantsJson($request)) {
+                return response()->json(['ok' => false, 'message' => $e->getMessage()], 409);
             }
+
+            return back()->with('error', $e->getMessage());
+        } catch (\Throwable $e) {
+            Log::error('Client queued VM password reset failed', [
+                'hosting_account_id' => $account->id,
+                'module' => $slug,
+                'error' => $e->getMessage(),
+            ]);
             // Driver messages are already sanitized — pass through verbatim.
             $msg = $e->getMessage();
             if ($this->wantsJson($request)) {
@@ -366,51 +359,21 @@ class HostingController extends Controller
             return back()->with('error', $msg);
         }
 
-        if (! $result->success) {
-            if (isset($event) && $event !== null) {
-                try {
-                    $this->provisioningEvents->fail($event, $result->message ?? 'Password reset failed');
-                } catch (\Throwable) {
-                }
-            }
-            $msg = $result->message ?? 'Password reset failed';
-            if ($this->wantsJson($request)) {
-                return response()->json(['ok' => false, 'message' => $msg], 422);
-            }
-
-            return back()->with('error', $msg);
-        }
-
-        if (isset($event) && $event !== null) {
-            try {
-                $this->provisioningEvents->complete($event, $result->message ?? 'Administrator password reset', is_array($result->data ?? null) ? $result->data : []);
-            } catch (\Throwable) {
-            }
-        }
-        try {
-            $this->hostingService->audit($account, 'hosting.module_action', $result->message ?? 'Administrator password reset', ['module' => $slug, 'action' => 'reset_password']);
-        } catch (\Throwable) {
-        }
-
-        $successMessage = $slug === 'hyperv'
-            ? 'Administrator password reset. Use the new password on your next RDP login.'
-            : ($result->message ?? 'Password reset. Use the new password on your next login.');
-
         // Never echo the password: the customer typed it themselves.
         if ($this->wantsJson($request)) {
-            return response()->json(['ok' => true, 'message' => $successMessage]);
+            return response()->json(['ok' => true, 'started' => true, 'event_id' => $event->id, 'action' => 'reset_password'], 202);
         }
 
-        return back()->with('success', $successMessage);
+        return back()->with('success', 'Password reset queued — progress is shown on this page.');
     }
 
     /**
-     * Customer "Start VM" / "Stop VM": power verbs only, gated by the live VM
-     * state. Mirrors resetVmPassword() (customer scoping, driver via
-     * ComputeDriver::resolve(), event + audit, JSON/redirect) but never
-     * touches hosting_accounts.status — a customer powering off their VM is
-     * not a billing suspension (only the PanelAccount mirror set by the
-     * driver changes).
+     * Customer "Start VM" / "Stop VM" / "Restart VM": power verbs only, queued
+     * through VmOperationDispatcher (202/started contract, progress via
+     * vm-status). Never touches hosting_accounts.status — a customer powering
+     * off their VM is not a billing suspension (only the PanelAccount mirror
+     * set by the driver changes). Enforced by passing `power_only => true`,
+     * which makes the job skip the local status effect (host action only).
      */
     public function vmPower(Request $request, HostingAccount $hostingAccount): JsonResponse|RedirectResponse
     {
@@ -459,7 +422,8 @@ class HostingController extends Controller
             }
         }
 
-        // Resolve service + driver for power (same factory the admin uses).
+        // Resolve the compute module that owns this account (the dispatcher
+        // re-validates the link/driver when it opens the event).
         $account->loadMissing(['product.moduleLinks', 'server']);
         $slug = $this->computeSlugFor($account);
 
@@ -472,72 +436,35 @@ class HostingController extends Controller
             return back()->with('error', $msg);
         }
 
-        $service = app(ManualProvisioner::class)->serviceForHosting($account, $slug);
-        $driver = ComputeDriver::resolve($slug);
-
+        // Restart never surprise-starts a stopped VM: refuse before queueing
+        // when the live probe shows a non-running machine.
         if ($action === 'restart') {
-            if ($driver === null || ! method_exists($driver, 'restart')) {
-                $msg = 'Restart is not available for this service.';
-                if ($this->wantsJson($request)) {
-                    return response()->json(['ok' => false, 'message' => $msg], 422);
-                }
+            $refusal = $this->stoppedRestartRefusal($request, $account, $slug);
 
-                return back()->with('error', $msg);
+            if ($refusal !== null) {
+                return $refusal;
             }
-        } elseif ($driver === null || ! method_exists($driver, 'suspend') || ! method_exists($driver, 'unsuspend')) {
-            $msg = 'Power actions are not available for this service.';
+        }
+
+        try {
+            // Host-only by rule: client power actions must never move
+            // hosting_accounts.status, so the job skips its local
+            // status effect (admin callers omit the flag and keep the
+            // billing semantics).
+            $event = $this->vmOperationDispatcher->dispatch($account, $action, ['power_only' => true], $request->user()?->id, $slug);
+        } catch (VmOperationConflictException $e) {
             if ($this->wantsJson($request)) {
-                return response()->json(['ok' => false, 'message' => $msg], 422);
+                return response()->json(['ok' => false, 'message' => $e->getMessage()], 409);
             }
 
-            return back()->with('error', $msg);
-        }
-
-        // Decrypt the product's link config for this module (empty when no link).
-        $config = [];
-        try {
-            $link = $account->product?->moduleLinks?->firstWhere('module_slug', $slug)
-                ?? ($account->product ? $account->product->moduleLinks()->where('module_slug', $slug)->first() : null);
-            if ($link) {
-                $rawConfig = is_array($link->config ?? null) ? $link->config : [];
-                $config = app(IntegrationRegistry::class)->decryptConfigFor($slug, $rawConfig);
-            }
-        } catch (\Throwable) {
-            $config = [];
-        }
-
-        $eventType = $action === 'start' ? 'unsuspend' : ($action === 'restart' ? 'restart' : 'suspend');
-
-        // Record the attempt as a provisioning event, exactly like reset.
-        try {
-            $event = $this->provisioningEvents->begin($eventType, [
+            return back()->with('error', $e->getMessage());
+        } catch (\Throwable $e) {
+            Log::error('Client queued VM power action failed', [
+                'hosting_account_id' => $account->id,
                 'module' => $slug,
                 'action' => $action,
-                'hosting_account_id' => $account->id,
-                'order_id' => $account->order_id,
-            ], $service->id, $account->id);
-        } catch (\Throwable $e) {
-            Log::error('client vmPower event begin failed', ['error' => $e->getMessage()]);
-            $event = null;
-        }
-
-        try {
-            if ($action === 'restart') {
-                $result = $driver->restart($service, $config);
-            } elseif ($action === 'start') {
-                $result = $driver->unsuspend($service, $config);
-            } else {
-                $result = $driver->suspend($service, $config);
-            }
-        } catch (\Throwable $e) {
-            if (isset($event) && $event !== null) {
-                try {
-                    $this->provisioningEvents->fail($event, $e->getMessage());
-                } catch (\Throwable) {
-                }
-            }
-            // The host may have changed state even when the call failed.
-            $this->vmStatusPresenter->forgetVmState($slug, $account->id);
+                'error' => $e->getMessage(),
+            ]);
             // Driver messages are already sanitized — pass through verbatim.
             $msg = $e->getMessage();
             if ($this->wantsJson($request)) {
@@ -547,46 +474,71 @@ class HostingController extends Controller
             return back()->with('error', $msg);
         }
 
-        // Any module call can change the live VM state; drop the presenter's
-        // short probe cache so the post-action render cannot replay it.
-        $this->vmStatusPresenter->forgetVmState($slug, $account->id);
-
-        if (! $result->success) {
-            if (isset($event) && $event !== null) {
-                try {
-                    $this->provisioningEvents->fail($event, $result->message ?? 'Power action failed');
-                } catch (\Throwable) {
-                }
-            }
-            $msg = $result->message ?? 'Power action failed';
-            if ($this->wantsJson($request)) {
-                return response()->json(['ok' => false, 'message' => $msg], 422);
-            }
-
-            return back()->with('error', $msg);
-        }
-
-        if (isset($event) && $event !== null) {
-            try {
-                $fallback = $action === 'start' ? 'VM started.' : ($action === 'restart' ? 'VM restarted.' : 'VM stopped.');
-                $this->provisioningEvents->complete($event, $result->message ?? $fallback, is_array($result->data ?? null) ? $result->data : []);
-            } catch (\Throwable) {
-            }
-        }
-        try {
-            $fallback = $action === 'start' ? 'VM started.' : ($action === 'restart' ? 'VM restarted.' : 'VM stopped.');
-            $this->hostingService->audit($account, 'hosting.module_action', $result->message ?? $fallback, ['module' => $slug, 'action' => $action]);
-        } catch (\Throwable) {
-        }
-
-        $state = $action === 'start' || $action === 'restart' ? 'Running' : 'Off';
-        $fallback = $action === 'start' ? 'VM started.' : ($action === 'restart' ? 'VM restarted.' : 'VM stopped.');
-        $message = $result->message ?? $fallback;
         if ($this->wantsJson($request)) {
-            return response()->json(['ok' => true, 'action' => $action, 'message' => $message, 'state' => $state]);
+            return response()->json(['ok' => true, 'started' => true, 'event_id' => $event->id, 'action' => $action], 202);
         }
 
-        return back()->with('success', $message);
+        return back()->with('success', ucfirst($action).' queued — progress is shown on this page.');
+    }
+
+    /**
+     * Refuse a restart against a stopped VM before queueing: only a RUNNING
+     * VM is rebooted — a stopped VM is refused, never surprise-started. The
+     * refusal is recorded as a failed restart event (the same verdict the
+     * former inline driver refusal wrote) and answered 422. Null when the
+     * restart may queue. A probe failure fails open to the queue — the job
+     * records its verdict on its own event.
+     */
+    private function stoppedRestartRefusal(Request $request, HostingAccount $account, string $slug): JsonResponse|RedirectResponse|null
+    {
+        try {
+            $status = $this->vmStatusPresenter->build($account);
+        } catch (\Throwable) {
+            return null;
+        }
+
+        $vm = is_array($status['vm'] ?? null) ? $status['vm'] : null;
+
+        if ($vm === null || ($vm['exists'] ?? null) !== true) {
+            return null;
+        }
+
+        $state = (string) ($vm['state'] ?? '');
+
+        if (strtolower(trim($state)) === 'running') {
+            return null;
+        }
+
+        $name = trim((string) ($vm['name'] ?? ''));
+        $shownState = $state !== '' ? $state : 'not running';
+        $msg = $name !== ''
+            ? "VM '{$name}' is {$shownState}, not Running — start it instead of restarting."
+            : "This VM is {$shownState}, not Running — start it instead of restarting.";
+
+        $serviceId = null;
+        try {
+            $serviceId = app(ManualProvisioner::class)->serviceForHosting($account, $slug)->id;
+        } catch (\Throwable) {
+            $serviceId = null;
+        }
+
+        try {
+            $event = $this->provisioningEvents->begin('restart', [
+                'module' => $slug,
+                'action' => 'restart',
+                'hosting_account_id' => $account->id,
+                'order_id' => $account->order_id,
+            ], $serviceId, $account->id);
+            $this->provisioningEvents->fail($event, $msg);
+        } catch (\Throwable $e) {
+            Log::error('client vmPower restart refusal event failed', ['error' => $e->getMessage()]);
+        }
+
+        if ($this->wantsJson($request)) {
+            return response()->json(['ok' => false, 'message' => $msg], 422);
+        }
+
+        return back()->with('error', $msg);
     }
 
     /**

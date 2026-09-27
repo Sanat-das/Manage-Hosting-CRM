@@ -49,3 +49,23 @@ php artisan queue:work --queue=emails --stop-when-empty  # manual drain test
 - Systemd unit `deploy/systemd/managehosting-queue-emails.service` remains for VPS/dedicated servers — cron is just the shared-hosting fallback. They can coexist; only one will actually claim jobs due to `withoutOverlapping`.
 - If your host only allows 5-minute cron, change `everyMinute()` to `everyFiveMinutes()` — delivery will just be delayed up to 5 min.
 - `QUEUE_CONNECTION=database` is kept. Switching to `sync` would also work (no worker needed) but makes web requests slower and hides failures, so cron + database queue is preferred.
+
+## Provisioning queue worker
+
+VM builds (`ProvisionComputeVm`) and compute power/verb operations run on the
+`provisioning` queue — **without a consumer they never run**: jobs sit in the
+`jobs` table and the compute card spins until the 35-minute stale threshold.
+
+VPS/dedicated (systemd): `deploy/systemd/managehosting-queue-provisioning.service`
+
+```
+php artisan queue:work --queue=provisioning --sleep=3 --tries=1 --timeout=1800 --max-time=3600
+```
+
+`--timeout=1800` must exceed the longest verb (clone ~900s, destroy ~600s);
+`--tries=1` because power verbs are not idempotent and must never auto-retry.
+
+The scheduler also runs `provisioning:reconcile` every five minutes
+(`routes/console.php`) to fail `running` operation rows left behind by killed
+workers, so an interrupted start/stop clears on its own instead of waiting
+for the next dispatch.

@@ -10,14 +10,15 @@ use App\Models\PanelAccount;
 use App\Models\Permission;
 use App\Models\Product;
 use App\Models\ProductModule;
+use App\Models\ProvisioningEvent;
 use App\Models\Role;
 use App\Models\Server;
 use App\Models\ServiceInstance;
 use App\Models\User;
-use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\Http;
 use App\Modules\HyperV\HyperV;
 use App\Modules\HyperV\Services\HyperVClient;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
 /**
@@ -47,7 +48,8 @@ class HyperVModuleActionsTest extends TestCase
     public function test_start_is_idempotent_when_already_running(): void
     {
         $server = $this->hypervServer();
-        $hostState = 'Running'; $this->fakeHost($hostState);
+        $hostState = 'Running';
+        $this->fakeHost($hostState);
 
         $result = (new HyperVClient($server))->startVm(self::VM);
 
@@ -59,7 +61,8 @@ class HyperVModuleActionsTest extends TestCase
     public function test_start_powers_on_an_off_vm_without_force(): void
     {
         $server = $this->hypervServer();
-        $hostState = 'Off'; $this->fakeHost($hostState);
+        $hostState = 'Off';
+        $this->fakeHost($hostState);
 
         $result = (new HyperVClient($server))->startVm(self::VM);
 
@@ -72,7 +75,8 @@ class HyperVModuleActionsTest extends TestCase
     public function test_stop_is_idempotent_when_already_off(): void
     {
         $server = $this->hypervServer();
-        $hostState = 'Off'; $this->fakeHost($hostState);
+        $hostState = 'Off';
+        $this->fakeHost($hostState);
 
         $result = (new HyperVClient($server))->stopVm(self::VM);
 
@@ -83,7 +87,8 @@ class HyperVModuleActionsTest extends TestCase
     public function test_stop_is_graceful_without_force_or_turnoff(): void
     {
         $server = $this->hypervServer();
-        $hostState = 'Running'; $this->fakeHost($hostState);
+        $hostState = 'Running';
+        $this->fakeHost($hostState);
 
         $result = (new HyperVClient($server))->stopVm(self::VM);
 
@@ -96,7 +101,8 @@ class HyperVModuleActionsTest extends TestCase
     public function test_restart_is_refused_when_not_running_without_touching_host(): void
     {
         $server = $this->hypervServer();
-        $hostState = 'Off'; $this->fakeHost($hostState);
+        $hostState = 'Off';
+        $this->fakeHost($hostState);
 
         $result = (new HyperVClient($server))->restartVm(self::VM);
 
@@ -107,7 +113,8 @@ class HyperVModuleActionsTest extends TestCase
     public function test_restart_reboots_a_running_vm_without_force(): void
     {
         $server = $this->hypervServer();
-        $hostState = 'Running'; $this->fakeHost($hostState);
+        $hostState = 'Running';
+        $this->fakeHost($hostState);
 
         $result = (new HyperVClient($server))->restartVm(self::VM);
 
@@ -119,7 +126,8 @@ class HyperVModuleActionsTest extends TestCase
     public function test_remove_refuses_a_running_vm_without_touching_host(): void
     {
         $server = $this->hypervServer();
-        $hostState = 'Running'; $this->fakeHost($hostState);
+        $hostState = 'Running';
+        $this->fakeHost($hostState);
 
         $result = (new HyperVClient($server))->removeVm(self::VM, self::VHD, true);
 
@@ -130,7 +138,8 @@ class HyperVModuleActionsTest extends TestCase
     public function test_remove_off_vm_deletes_the_recorded_vhd(): void
     {
         $server = $this->hypervServer();
-        $hostState = 'Off'; $this->fakeHost($hostState);
+        $hostState = 'Off';
+        $this->fakeHost($hostState);
 
         $result = (new HyperVClient($server))->removeVm(self::VM, self::VHD, true);
 
@@ -142,7 +151,8 @@ class HyperVModuleActionsTest extends TestCase
     public function test_remove_rejects_an_unvalidated_vhd_path(): void
     {
         $server = $this->hypervServer();
-        $hostState = 'Off'; $this->fakeHost($hostState);
+        $hostState = 'Off';
+        $this->fakeHost($hostState);
 
         $result = (new HyperVClient($server))->removeVm(self::VM, 'C:\\Windows\\other.vhdx', true);
 
@@ -153,7 +163,8 @@ class HyperVModuleActionsTest extends TestCase
     public function test_remove_without_vhd_flag_keeps_the_disk(): void
     {
         $server = $this->hypervServer();
-        $hostState = 'Off'; $this->fakeHost($hostState);
+        $hostState = 'Off';
+        $this->fakeHost($hostState);
 
         $result = (new HyperVClient($server))->removeVm(self::VM, self::VHD, false);
 
@@ -168,9 +179,9 @@ class HyperVModuleActionsTest extends TestCase
     {
         $server = $this->hypervServer();
         $fault = '<s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope">'
-            . '<s:Body><s:Fault><s:Code><s:Subcode><s:Value>a:MessageInformationHeaderRequired</s:Value></s:Subcode></s:Code>'
-            . '<s:Reason><s:Text>The WS-Management service cannot process the request. The SOAP packet contains a WS-Addressing To element that was invalid.</s:Text></s:Reason>'
-            . '</s:Fault></s:Body></s:Envelope>';
+            .'<s:Body><s:Fault><s:Code><s:Subcode><s:Value>a:MessageInformationHeaderRequired</s:Value></s:Subcode></s:Code>'
+            .'<s:Reason><s:Text>The WS-Management service cannot process the request. The SOAP packet contains a WS-Addressing To element that was invalid.</s:Text></s:Reason>'
+            .'</s:Fault></s:Body></s:Envelope>';
         Http::fake(['*' => Http::response($fault, 500)]);
 
         $result = (new HyperVClient($server))->getVmState(self::VM);
@@ -204,7 +215,8 @@ class HyperVModuleActionsTest extends TestCase
         $service = $this->service($server);
         $this->panelAccount($service, $server);
 
-        $hostState = 'Running'; $this->fakeHost($hostState);
+        $hostState = 'Running';
+        $this->fakeHost($hostState);
         $this->assertTrue(app(HyperV::class)->suspend($service, [])->success);
         $this->assertSame(PanelAccount::STATUS_SUSPENDED, PanelAccount::sole()->status);
         Http::assertSent(fn ($r) => str_contains($r->body(), 'Stop-VM -VM'));
@@ -220,7 +232,8 @@ class HyperVModuleActionsTest extends TestCase
         $server = $this->hypervServer();
         $service = $this->service($server);
         $this->panelAccount($service, $server);
-        $hostState = 'Running'; $this->fakeHost($hostState);
+        $hostState = 'Running';
+        $this->fakeHost($hostState);
 
         $result = app(HyperV::class)->terminate($service, []);
 
@@ -234,7 +247,8 @@ class HyperVModuleActionsTest extends TestCase
         $server = $this->hypervServer();
         $service = $this->service($server);
         $this->panelAccount($service, $server);
-        $hostState = 'Off'; $this->fakeHost($hostState);
+        $hostState = 'Off';
+        $this->fakeHost($hostState);
 
         $result = app(HyperV::class)->terminate($service, ['delete_vhd_on_terminate' => true]);
 
@@ -249,7 +263,8 @@ class HyperVModuleActionsTest extends TestCase
         $service = $this->service($server);
         $this->panelAccount($service, $server);
 
-        $hostState = 'Off'; $this->fakeHost($hostState);
+        $hostState = 'Off';
+        $this->fakeHost($hostState);
         $this->assertFalse(app(HyperV::class)->restart($service, [])->success);
 
         $hostState = 'Running'; // same fake observes the new state (Http::fake merges stubs)
@@ -330,7 +345,8 @@ class HyperVModuleActionsTest extends TestCase
     public function test_module_action_restart_with_confirmation_calls_the_host(): void
     {
         [$account] = $this->hostingWithHyperV(withPanelAccount: true);
-        $hostState = 'Running'; $this->fakeHost($hostState);
+        $hostState = 'Running';
+        $this->fakeHost($hostState);
 
         $this->actingAsAdminWith(['hosting.edit'])
             ->post(route('admin.hosting.module-action', $account), [
@@ -355,6 +371,7 @@ class HyperVModuleActionsTest extends TestCase
             if (str_contains($body, 'Get-VM')) {
                 return Http::response(['exists' => true, 'name' => 'web-01', 'state' => 'Off', 'vmId' => self::GUID]);
             }
+
             return Http::response(['error' => 'unexpected host call'], 500);
         });
 
@@ -377,6 +394,7 @@ class HyperVModuleActionsTest extends TestCase
             if (str_contains($body, 'Get-VM')) {
                 return Http::response(['exists' => true, 'name' => 'hv-web-01', 'state' => 'Off', 'vmId' => self::GUID]);
             }
+
             return Http::response(['error' => 'unexpected host call'], 500);
         });
 
@@ -412,6 +430,7 @@ class HyperVModuleActionsTest extends TestCase
             if (str_contains($body, 'Get-VM')) {
                 return Http::response(['exists' => true, 'name' => self::VM, 'state' => 'Off', 'vmId' => self::GUID]);
             }
+
             return Http::response(['error' => 'unexpected host call'], 500);
         });
 
@@ -424,10 +443,14 @@ class HyperVModuleActionsTest extends TestCase
         Http::assertSent(fn ($r) => str_contains($r->body(), "\$vmName = '{$username}'"));
     }
 
-    public function test_module_action_delete_refuses_a_running_vm(): void
+    public function test_module_action_delete_queues_then_fails_on_a_running_vm(): void
     {
+        // Delete is queued now (sync queue runs the job inline): the host
+        // refusal lands as a failed terminate event, never as an error
+        // flash — and Remove-VM is still never sent for a running VM.
         [$account] = $this->hostingWithHyperV(withPanelAccount: true);
-        $hostState = 'Running'; $this->fakeHost($hostState);
+        $hostState = 'Running';
+        $this->fakeHost($hostState);
 
         $this->actingAsAdminWith(['hosting.edit'])
             ->post(route('admin.hosting.module-action', $account), [
@@ -436,12 +459,19 @@ class HyperVModuleActionsTest extends TestCase
                 'confirm' => $account->host_name,
                 'delete_vhd' => true,
             ])
-            ->assertRedirect()
-            ->assertSessionHas('error');
+            ->assertRedirect(route('admin.hosting.index'))
+            ->assertSessionHas('success', 'Delete queued.');
+
+        $event = ProvisioningEvent::where('hosting_account_id', $account->id)->sole();
+        $this->assertSame('terminate', $event->event_type);
+        $this->assertSame('failed', $event->status);
+        $this->assertStringContainsString('Stop it first', (string) $event->last_error);
 
         foreach ($this->bodies() as $body) {
             $this->assertStringNotContainsString('Remove-VM -VM', $body);
         }
+
+        $this->assertSame(PanelAccount::STATUS_ACTIVE, PanelAccount::sole()->status);
     }
 
     public function test_module_action_start_powers_on_and_reactivates(): void
@@ -494,6 +524,7 @@ class HyperVModuleActionsTest extends TestCase
             if (str_contains($body, 'Get-VM')) {
                 return Http::response(['exists' => true, 'name' => 'newvm', 'state' => 'Off', 'vmId' => self::GUID]);
             }
+
             return Http::response(['error' => 'unexpected host call'], 500);
         });
 

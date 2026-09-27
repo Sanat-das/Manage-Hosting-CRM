@@ -144,8 +144,8 @@ class ClientHostingVmActionsTest extends TestCase
                 'password_confirmation' => 'NewSecret123',
             ]);
 
-        $response->assertOk()->assertJson(['ok' => true]);
-        $this->assertStringContainsString('RDP', (string) $response->json('message'));
+        $response->assertStatus(202)->assertJson(['ok' => true, 'started' => true, 'action' => 'reset_password']);
+        $this->assertNotNull($response->json('event_id'));
         // The password the customer typed is never echoed back.
         $this->assertArrayNotHasKey('password', $response->json());
         $this->assertStringNotContainsString('NewSecret123', (string) $response->getContent());
@@ -277,7 +277,8 @@ class ClientHostingVmActionsTest extends TestCase
         $response = $this->actingAs($customer->user)
             ->postJson(route('client.hosting.vm-power', $account), ['action' => 'start']);
 
-        $response->assertOk()->assertJson(['ok' => true, 'action' => 'start', 'state' => 'Running']);
+        $response->assertStatus(202)->assertJson(['ok' => true, 'started' => true, 'action' => 'start']);
+        $this->assertNotNull($response->json('event_id'));
         Http::assertSent(fn ($r) => str_contains((string) $r->body(), 'Start-VM -VM'));
 
         $event = ProvisioningEvent::where('hosting_account_id', $account->id)
@@ -301,7 +302,8 @@ class ClientHostingVmActionsTest extends TestCase
         $response = $this->actingAs($customer->user)
             ->postJson(route('client.hosting.vm-power', $account), ['action' => 'stop']);
 
-        $response->assertOk()->assertJson(['ok' => true, 'action' => 'stop', 'state' => 'Off']);
+        $response->assertStatus(202)->assertJson(['ok' => true, 'started' => true, 'action' => 'stop']);
+        $this->assertNotNull($response->json('event_id'));
         Http::assertSent(fn ($r) => str_contains((string) $r->body(), 'Stop-VM -VM'));
 
         $event = ProvisioningEvent::where('hosting_account_id', $account->id)
@@ -365,6 +367,96 @@ class ClientHostingVmActionsTest extends TestCase
             ->assertSessionHas('error', 'A VM build is already running for this service.');
 
         Http::assertNothingSent();
+    }
+
+    public function test_vm_power_queues_event_with_queued_stage(): void
+    {
+        // The queued contract: 202 {ok, started, event_id, action} with the
+        // durable event opened at stage `queued` for the poller to follow.
+        [$account, $customer] = $this->hostingWithHyperV(withPanelAccount: true, hostingStatus: 'active');
+        $state = 'Running';
+        $this->fakeHost($state);
+
+        $response = $this->actingAs($customer->user)
+            ->postJson(route('client.hosting.vm-power', $account), ['action' => 'stop']);
+
+        $response->assertStatus(202)->assertJson(['ok' => true, 'started' => true, 'action' => 'stop']);
+        $this->assertNotNull($response->json('event_id'));
+
+        $event = ProvisioningEvent::where('hosting_account_id', $account->id)
+            ->where('event_type', 'suspend')->orderByDesc('id')->first();
+        $this->assertNotNull($event);
+        $this->assertSame((int) $response->json('event_id'), $event->id);
+        $this->assertSame('hyperv', $event->payload['module'] ?? null);
+        $this->assertSame('stop', $event->payload['action'] ?? null);
+    }
+
+    public function test_vm_power_409_while_operation_running(): void
+    {
+        // A non-build action already queued/running refuses the next verb
+        // through the dispatcher's conflict guard (the build guard above only
+        // sees provision/create rows).
+        [$account, $customer] = $this->hostingWithHyperV(withPanelAccount: true, hostingStatus: 'active');
+        ProvisioningEvent::create([
+            'service_instance_id' => null,
+            'hosting_account_id' => $account->id,
+            'event_type' => 'suspend',
+            'status' => 'running',
+            'event_status' => 'running',
+            'payload' => ['module' => 'hyperv', 'action' => 'stop', 'stage' => 'stopping'],
+        ]);
+        Http::fake();
+
+        $this->actingAs($customer->user)
+            ->postJson(route('client.hosting.vm-power', $account), ['action' => 'start'])
+            ->assertStatus(409)
+            ->assertJson(['ok' => false, 'message' => 'An action is already running for this service.']);
+
+        Http::assertNothingSent();
+    }
+
+    public function test_show_page_renders_standalone_action_panel_when_vm_exists(): void
+    {
+        [$account, $customer] = $this->hostingWithHyperV(withPanelAccount: true, hostingStatus: 'active');
+        $state = 'Running';
+        $this->fakeHost($state);
+
+        $content = $this->actingAs($customer->user)
+            ->get(route('client.hosting.show', $account->id))
+            ->assertOk()
+            ->getContent();
+
+        // The provisioning-card panel is gone with the card (it only renders
+        // while no VM exists) — the standalone Quick Actions panel carries
+        // queued power/reset progress instead.
+        $this->assertStringNotContainsString('id="client-vm-progress"', $content);
+        foreach (['client-action-progress', 'client-action-progress-label', 'client-action-progress-elapsed', 'client-action-progress-bar', 'client-action-hint'] as $id) {
+            $this->assertStringContainsString('id="'.$id.'"', $content);
+        }
+        // Running VM on an active service: reset is offered, enabled.
+        $this->assertStringContainsString('data-client-hv-action="reset_password"', $content);
+        $this->assertDoesNotMatchRegularExpression('/<button[^>]*data-client-hv-action="reset_password"[^>]*disabled[^>]*>/', $content);
+        $this->assertStringContainsString('id="client-reset-password-modal"', $content);
+    }
+
+    public function test_show_page_renders_proxmox_reset_disabled_with_reason(): void
+    {
+        // Proxmox with no VM yet: can.reset_password is false, so the button
+        // renders disabled with the presenter's reason (never hidden).
+        [$account, $customer] = $this->hostingWithProxmox();
+
+        $content = $this->actingAs($customer->user)
+            ->get(route('client.hosting.show', $account->id))
+            ->assertOk()
+            ->getContent();
+
+        foreach (['client-action-progress', 'client-action-progress-label', 'client-action-progress-elapsed', 'client-action-progress-bar', 'client-action-hint'] as $id) {
+            $this->assertStringContainsString('id="'.$id.'"', $content);
+        }
+        $this->assertStringContainsString('data-client-hv-action="reset_password"', $content);
+        $this->assertStringContainsString('id="client-reset-password-modal"', $content);
+        $this->assertMatchesRegularExpression('/<button[^>]*data-client-hv-action="reset_password"[^>]*disabled[^>]*>/', $content);
+        $this->assertStringContainsString('VM is not created on the host yet.', $content);
     }
 
     public function test_show_page_shows_provisioning_card_for_active_account_without_vm(): void
@@ -447,7 +539,8 @@ class ClientHostingVmActionsTest extends TestCase
                 'confirm' => $account->host_name,
             ]);
 
-        $response->assertOk()->assertJson(['ok' => true, 'action' => 'restart', 'state' => 'Running']);
+        $response->assertStatus(202)->assertJson(['ok' => true, 'started' => true, 'action' => 'restart']);
+        $this->assertNotNull($response->json('event_id'));
         Http::assertSent(fn ($r) => str_contains((string) $r->body(), 'Restart-VM'));
 
         $event = ProvisioningEvent::where('hosting_account_id', $account->id)
@@ -520,6 +613,36 @@ class ClientHostingVmActionsTest extends TestCase
         // Billing gate: a suspended service never offers a reboot, even with a running VM.
         $this->assertMatchesRegularExpression('/<button[^>]*data-client-hv-action="restart"[^>]*disabled[^>]*>/', $content);
         $this->assertStringContainsString('This service is not active.', $content);
+    }
+
+    public function test_show_page_queues_power_and_reset_actions_through_the_poller(): void
+    {
+        [$account, $customer] = $this->hostingWithHyperV(withPanelAccount: true, hostingStatus: 'active');
+        $state = 'Running';
+        $this->fakeHost($state);
+
+        $content = $this->actingAs($customer->user)
+            ->get(route('client.hosting.show', $account->id))
+            ->assertOk()
+            ->getContent();
+
+        // Queued verbs (202 {ok, started, event_id, action}): start/stop/
+        // restart/reset reveal the progress panel, lock the buttons, toast
+        // the queued message and poll — instead of toast + reload. The
+        // queued reset never shows the reset-success toast (no password
+        // exists yet). Rendering only — the JS runtime has no browser
+        // harness here.
+        $this->assertStringContainsString('showQueuedProgress', $content);
+        $this->assertStringContainsString('data.started', $content);
+        $this->assertStringContainsString('Password reset started.', $content);
+        $this->assertStringContainsString('startPolling()', $content);
+        // Previously asserted scaffolding is untouched.
+        $this->assertStringContainsString('data-client-hv-action="start"', $content);
+        $this->assertStringContainsString('data-client-hv-action="stop"', $content);
+        $this->assertStringContainsString('data-client-hv-action="restart"', $content);
+        $this->assertStringContainsString('id="client-vm-start-form"', $content);
+        $this->assertStringContainsString('id="client-vm-restart-modal"', $content);
+        $this->assertStringContainsString('id="client-reset-password-modal"', $content);
     }
 
     // ─────────────────────────── helpers ───────────────────────────
@@ -625,6 +748,41 @@ class ClientHostingVmActionsTest extends TestCase
 
             return Http::response(['error' => 'unexpected host call'], 500);
         });
+    }
+
+    /**
+     * Proxmox compute account with no VM on the host yet (no panel record):
+     * can.reset_password is false with the frozen "not created" reason.
+     *
+     * @return array{0:HostingAccount,1:Customer}
+     */
+    private function hostingWithProxmox(string $hostingStatus = 'active'): array
+    {
+        $server = Server::create([
+            'name' => 'pve-1',
+            'ip_address' => '10.0.0.20',
+            'server_type' => 'proxmox',
+            'api_url' => 'https://10.0.0.20:8006',
+            'api_username' => 'root@pam!automation',
+            'api_password_encrypted' => 'TOKEN-SECRET',
+            'max_accounts' => 0,
+            'status' => 'active',
+        ]);
+        $product = Product::create(['name' => 'PVE', 'price' => 50]);
+        ProductModule::create([
+            'product_id' => $product->id, 'module_slug' => 'proxmox', 'enabled' => true, 'config' => [],
+        ]);
+        $customer = $this->makeCustomer();
+        $account = HostingAccount::create([
+            'customer_id' => $customer->id,
+            'product_id' => $product->id,
+            'server_id' => $server->id,
+            'domain' => 'vm.test',
+            'host_name' => 'pve-web-'.str()->lower(str()->random(6)),
+            'status' => $hostingStatus,
+        ]);
+
+        return [$account->fresh(), $customer];
     }
 
     /**

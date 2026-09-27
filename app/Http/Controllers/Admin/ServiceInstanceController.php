@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\AuditLog;
+use App\Models\Module;
 use App\Models\Order;
 use App\Models\PanelAccount;
 use App\Models\ProvisioningEvent;
@@ -12,6 +13,8 @@ use App\Models\ServiceInstance;
 use App\Services\Integrations\IntegrationRegistry;
 use App\Services\Modules\ModuleManager;
 use App\Services\Provisioning\ProvisioningDispatcher;
+use App\Services\Provisioning\VmOperationConflictException;
+use App\Services\Provisioning\VmOperationDispatcher;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -333,8 +336,10 @@ class ServiceInstanceController extends Controller
      * Run a lifecycle verb against the module that owns this service.
      *
      * Order-born services go through the ProvisioningDispatcher (order audit
-     * + event rows); order-less mirrors call the owning module directly,
-     * resolved from the recorded PanelAccount panel (or the server's driver).
+     * + event rows); order-less lifecycle verbs queue through
+     * VmOperationDispatcher (the dispatcher owns the durable event, so the
+     * one-shot writes below only serve the order-less provision path, which
+     * stays inline because a build is not a VM operation).
      *
      * The local status flip happens only in the action methods above — never
      * here — so a module refusal leaves local and remote in agreement.
@@ -374,7 +379,35 @@ class ServiceInstanceController extends Controller
                 return "Module {$slug} cannot provision.";
             }
 
-            $method = $verb === 'provision' ? 'provision' : $verb;
+            // Order-less power verbs run queued: the durable event goes
+            // running/queued now and lands completed/failed on the worker. A
+            // queue-time refusal (conflict, unresolvable module) returns here
+            // for the error flash.
+            if ($verb !== 'provision') {
+                try {
+                    app(VmOperationDispatcher::class)->dispatchForService(
+                        $serviceInstance,
+                        $verb,
+                        [],
+                        auth()->id(),
+                        $slug,
+                    );
+
+                    return true;
+                } catch (VmOperationConflictException $e) {
+                    return $e->getMessage();
+                } catch (\Throwable $e) {
+                    Log::error('Service instance queued module action failed', [
+                        'service_instance_id' => $serviceInstance->id,
+                        'action' => $verb,
+                        'error' => $e->getMessage(),
+                    ]);
+
+                    return "Module action failed: {$e->getMessage()}";
+                }
+            }
+
+            $method = 'provision';
             $result = $provisioner->{$method}($serviceInstance, $config);
 
             if ($result->success) {
@@ -431,10 +464,11 @@ class ServiceInstanceController extends Controller
                 if ($driver === null) {
                     try {
                         $module = app(ModuleManager::class)->find($slug);
-                        if ($module !== null && $module->status === \App\Models\Module::STATUS_ACTIVE) {
+                        if ($module !== null && $module->status === Module::STATUS_ACTIVE) {
                             $driver = app(ModuleManager::class)->capabilityInstance($module, 'provisioning');
                             if ($driver !== null) {
                                 $config = app(ModuleManager::class)->decryptConfig($module, is_array($module->config ?? null) ? $module->config : []);
+
                                 return [$slug, $driver, $config];
                             }
                         }
@@ -445,6 +479,7 @@ class ServiceInstanceController extends Controller
                 if ($driver !== null) {
                     // Builtin: decrypt via registry (config may be link-level but for order-less we use empty or panel config)
                     $config = $registry->decryptConfigFor($slug, []);
+
                     return [$slug, $driver, $config];
                 }
             }

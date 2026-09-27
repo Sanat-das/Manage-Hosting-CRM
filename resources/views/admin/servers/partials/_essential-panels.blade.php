@@ -25,6 +25,7 @@
     $version = $vm?->version ?? ($version ?? '');
     $latency = $vm?->latency ?? ($latency ?? null);
     $isHyperv = $vm?->isHyperv ?? (($server->server_type ?? null) === 'hyperv');
+    $isProxmox = (($server->server_type ?? $server->panel_type ?? null) === 'proxmox');
     // Census (todo 11): explicit meanings, never silent substitution.
     // Remote = connection_meta.totalAccounts (Hyper-V: meta.meta.vmCounts.total);
     // missing remote renders —, Plesk stub renders "No remote data" (never "0 servers").
@@ -65,6 +66,9 @@
     // Census remote cell: the run/stop split IS the remote total, so it replaces
     // it rather than printing the same VMs twice. Built here (not with inline
     // directives) so no @if can be glued to a word and leak as literal text.
+    // Proxmox with nothing visible has no census source either: a blind
+    // credential must read "No remote data", never a false 0.
+    $proxmoxNoRemote = $isProxmox && ! $hasVmCounts && $remoteTotal === null;
     $remoteDisplay = '—';
     if ($hasVmCounts && is_array($vmCounts)) {
         $remoteDisplay = ((int) ($vmCounts['running'] ?? 0)).' running · '.((int) ($vmCounts['stopped'] ?? 0)).' stopped';
@@ -73,9 +77,17 @@
         }
     } elseif ($remoteTotal !== null) {
         $remoteDisplay = (string) $remoteTotal;
-    } elseif ($hypervNoRemote || ($server->server_type ?? null) === 'plesk') {
+    } elseif ($hypervNoRemote || $proxmoxNoRemote || ($server->server_type ?? null) === 'plesk') {
         $remoteDisplay = 'No remote data';
     }
+    // Proxmox transport: auth badge source (cold loads read the flat
+    // persisted meta, fresh renders the nested DTO meta — either wins).
+    $hvMetaForTransport = is_array($vm?->hv ?? null) ? $vm->hv : [];
+    $topMetaForTransport = is_array($vm?->meta ?? null) ? $vm->meta : [];
+    $proxmoxAuthRaw = $hvMetaForTransport['auth_type'] ?? $topMetaForTransport['auth_type'] ?? null;
+    $proxmoxAuth = is_string($proxmoxAuthRaw) && strtolower(trim($proxmoxAuthRaw)) === 'ticket' ? 'Ticket' : 'Token';
+    $proxmoxNodeCountRaw = $hvMetaForTransport['node_count'] ?? $topMetaForTransport['node_count'] ?? null;
+    $proxmoxNodeCount = is_numeric($proxmoxNodeCountRaw) ? (int) $proxmoxNodeCountRaw : null;
     $freshError = $freshError ?? null;
     // Aggregates (todo 10): pools-minus-allocations + usage/quotas, read-only rows.
     $poolAvailability = $poolAvailability ?? [];
@@ -103,7 +115,7 @@
                 <span class="text-muted">Latency</span>
                 <span class="fw-semibold">{{ $latency !== null ? $latency.' ms' : '—' }}</span>
             </div>
-            @if ($isHyperv)
+            @if ($isHyperv || $isProxmox)
                 <div class="d-flex flex-wrap align-items-center gap-1 mt-2 pt-2 border-top small" data-transport="strip">
                     <span class="text-muted" style="font-size:var(--text-xs); text-transform:uppercase;">Transport</span>
                     <code style="font-size:var(--text-xs);">{{ $vm?->transportHost }}:{{ $vm?->transportPort }}</code>
@@ -118,6 +130,12 @@
                             <span class="badge text-bg-secondary" style="font-size:var(--text-xs);">No SSL</span>
                         @endif
                     @endif
+                    @if ($isProxmox)
+                        <span class="badge text-bg-info" style="font-size:var(--text-xs);">{{ $proxmoxAuth }}</span>
+                        @if (($vm?->metaVerifyTls ?? null) === false)
+                            <span class="badge text-bg-warning" style="font-size:var(--text-xs);">Verify TLS off</span>
+                        @endif
+                    @endif
                 </div>
             @endif
         </div>
@@ -129,13 +147,19 @@
             @if ($uptimeDisplay)
                 <div class="fw-semibold" style="font-size:var(--text-sm);">{{ $uptimeDisplay }}</div>
                 @if ($bootTime)
-                    <div class="text-muted small" style="font-size:var(--text-xs);">Booted {{ $bootTime }}</div>
+                    <div class="text-muted small" style="font-size:var(--text-xs);">{{ $isProxmox ? 'Oldest boot' : 'Booted' }} {{ $bootTime }}</div>
+                @endif
+                @if ($isProxmox)
+                    <div class="text-muted small" style="font-size:var(--text-xs);">Cluster up (longest node)</div>
                 @endif
             @elseif ($bootTime)
                 <div class="fw-semibold" style="font-size:var(--text-sm);">Booted {{ $bootTime }}</div>
             @elseif ($snmpUptime)
                 <div class="fw-semibold" style="font-size:var(--text-sm);">{{ $snmpUptime }}</div>
                 <div class="text-muted small" style="font-size:var(--text-xs);">SNMP · {{ $snmpSource }} · {{ $snmpCollectedAt }}</div>
+            @elseif ($isProxmox)
+                <div class="fw-semibold" style="font-size:var(--text-sm);">—</div>
+                <div class="text-muted small" style="font-size:var(--text-xs);">No remote data</div>
             @else
                 <div class="fw-semibold" style="font-size:var(--text-sm);">—</div>
                 <div class="text-muted small" style="font-size:var(--text-xs);">No data yet — Re-test</div>
@@ -160,7 +184,7 @@
                     Re-test to refresh.
                     <button type="button" class="btn btn-sm btn-outline-warning ms-2" onclick="document.getElementById('retestBtn')?.click()">Re-test now</button>
                 </div>
-            @elseif ($isHyperv && ! $hasVmCounts)
+            @elseif (($isHyperv || $isProxmox) && ! $hasVmCounts)
                 <div class="alert alert-warning py-1 px-2 mb-2 small" data-available="limited-badge">
                     <i class="bi bi-exclamation-triangle me-1"></i>Limited data — re-test to load VM counts.
                 </div>
@@ -216,7 +240,13 @@
                     </div>
                 @endif
             @endif
-            @if ($logicalCpu !== null || $cpuLoadPercent !== null)
+            @if ($isProxmox && ($proxmoxNodeCount !== null || $logicalCpu !== null || $cpuLoadPercent !== null))
+                <div class="small mt-1" data-available="live-compute">Compute:
+                    @if ($proxmoxNodeCount !== null)<strong>{{ $proxmoxNodeCount }} {{ $proxmoxNodeCount === 1 ? 'node' : 'nodes' }}</strong>@endif
+                    @if ($logicalCpu !== null)@if ($proxmoxNodeCount !== null)<span class="text-muted"> · </span>@endif<strong>{{ $logicalCpu }} vCPU</strong>@endif
+                    @if ($cpuLoadPercent !== null)<span class="text-muted"> · </span><span>avg load <strong>{{ $cpuLoadPercent }}%</strong></span>@endif
+                </div>
+            @elseif (! $isProxmox && ($logicalCpu !== null || $cpuLoadPercent !== null))
                 <div class="small mt-1" data-available="live-compute">Compute:
                     @if ($logicalCpu !== null)<strong>{{ $logicalCpu }} logical CPUs</strong>@endif
                     @if ($logicalCpu !== null && $cpuLoadPercent !== null)<span class="text-muted"> · </span>@endif

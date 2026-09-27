@@ -14,6 +14,9 @@
     // Proxmox addresses a VM per node and its driver can destroy one; the
     // unrecorded-VM cleanup form is therefore Proxmox-only for now.
     $canDestroyUnmatched = (($server->server_type ?? $server->panel_type ?? '') === 'proxmox');
+    // The per-row node key only exists on Proxmox host rows — the Node column
+    // renders for Proxmox servers only.
+    $isProxmox = (($server->server_type ?? $server->panel_type ?? '') === 'proxmox');
 
     // Transitional fallback until ServerController passes $vmInventory: map legacy
     // PanelAccount models to the display shape WITHOUT any live correlation
@@ -158,6 +161,7 @@
                     <thead>
                         <tr>
                             <th>Name</th><th>VMId</th><th>State</th><th>Uptime</th><th>CPU</th><th>Memory</th><th>Switch</th>
+                            @if($isProxmox)<th>Node</th>@endif
                             @if($canDestroyUnmatched)<th class="text-end">Actions</th>@endif
                         </tr>
                     </thead>
@@ -191,6 +195,9 @@
                                 <td class="small text-nowrap">{{ ($lvCpu !== null && $lvCpu !== '') ? $lvCpu.'%' : '—' }}@if($lvVcpu !== null && $lvVcpu !== '')<span class="text-muted"> · {{ $lvVcpu }} vCPU</span>@endif</td>
                                 <td class="small text-nowrap">{{ ($lvMemAssigned !== null && $lvMemAssigned !== '') ? \App\ViewModels\Admin\ServerDetailViewModel::fmtBytes($lvMemAssigned) : '—' }}@if($lvMemDemand !== null && $lvMemDemand !== '' && $lvMemDemand != $lvMemAssigned)<span class="text-muted"> · demand {{ \App\ViewModels\Admin\ServerDetailViewModel::fmtBytes($lvMemDemand) }}</span>@endif</td>
                                 <td class="text-muted small">{{ $lv['switchName'] ?: '—' }}</td>
+                                @if($isProxmox)
+                                    <td>@if($lvNode !== '')<span class="badge text-bg-light border fw-normal" style="font-size:var(--text-xs);">{{ $lvNode }}</span>@else<span class="text-muted">—</span>@endif</td>
+                                @endif
                                 @if($canDestroyUnmatched)
                                     <td class="text-end">
                                         @if($lvTemplate)

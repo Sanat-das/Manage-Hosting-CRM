@@ -1143,6 +1143,21 @@ final class ProxmoxClient
     }
 
     /**
+     * Rename a VM's display name (`PUT /nodes/{node}/qemu/{vmid}/config`
+     * with `name`).
+     *
+     * This changes the name shown in the PVE UI; for cloud-init templates the
+     * guest hostname follows on the next boot. Read the config back to verify
+     * — the caller decides what a mismatch means.
+     *
+     * @throws PanelException
+     */
+    public function renameVm(string $node, int $vmid, string $name): void
+    {
+        $this->updateVm($node, $vmid, ['name' => $name]);
+    }
+
+    /**
      * @return array<string, mixed>
      *
      * @throws PanelException
@@ -1438,13 +1453,369 @@ final class ProxmoxClient
 
     // ──────────────────────────── host information ────────────────────────────
 
+    /**
+     * Has the info/test deadline passed? Checked before every PVE call on
+     * the info paths so a sick cluster degrades to partial telemetry
+     * instead of blocking the admin page past the controller's bound.
+     */
+    private function expired(?float $deadline): bool
+    {
+        return $deadline !== null && microtime(true) >= $deadline;
+    }
+
+    /**
+     * Transport keys both writers emit so the Host card strip renders on
+     * cold loads too. Display only — never a credential.
+     *
+     * @return array<string, mixed>
+     */
+    private function transportTelemetry(): array
+    {
+        return [
+            'host' => self::host($this->server),
+            'port' => $this->port(),
+            'verify_tls' => $this->verifyTls(),
+            'auth_type' => $this->authType(),
+        ];
+    }
+
+    /**
+     * Seconds → the .NET TimeSpan "d.hh:mm:ss" shape the shared
+     * ServerDetailViewModel::fmtUptime() humaniser already parses, so
+     * Proxmox uptimes render through the same humaniser as Hyper-V.
+     */
+    private function formatTimespan(int $seconds): string
+    {
+        $seconds = max(0, $seconds);
+
+        return sprintf(
+            '%d.%02d:%02d:%02d',
+            intdiv($seconds, 86400),
+            intdiv($seconds % 86400, 3600),
+            intdiv($seconds % 3600, 60),
+            $seconds % 60,
+        );
+    }
+
+    /**
+     * Cluster-wide essential telemetry for the Essential Information block.
+     *
+     * Fan-out per call: /nodes (via the 60s cachedNodes home) +
+     * /cluster/status + /cluster/resources + one /nodes/{node}/status and
+     * one /nodes/{node}/storage per ONLINE node. Storage is only attempted
+     * for nodes whose status succeeded — a dead node degrades to its
+     * survivors instead of paying two timeouts. Every per-node call is
+     * isolated, so one dead node never fails the aggregate.
+     *
+     * Every PVE call on this path honours $deadline: the clock is checked
+     * before nodes, /cluster/status, each per-node status/storage probe
+     * and /cluster/resources, and an expired budget skips the call, leaving
+     * that field absent. Partial telemetry renders through the existing
+     * empty vocabulary (keys omitted, never zeroed) — no new flag.
+     * Budgets: testConnection() allows 10s, and getServerInfo() allows 6s
+     * so it stays inside the controller's 8s bound.
+     *
+     * Headline aggregates are cluster sums across ONLINE nodes (RAM,
+     * storage, vCPU); uptime is the longest node uptime and per-node
+     * detail rides along for the supplement card. Keys mirror
+     * HyperVClient::fetchInfo() vocabulary (bytes for RAM/storage,
+     * vmCounts{running,stopped,total}) so the shared _essential-panels
+     * partial renders both unchanged. Keys are omitted — never zeroed —
+     * when the cluster yields nothing, so the partial's frozen empty
+     * vocabulary renders instead of a false 0.
+     *
+     * @param  ?float  $deadline  microtime(true) timestamp at which probing stops, null for unbounded
+     * @return array<string, mixed>
+     */
+    private function essentialTelemetry(?float $deadline = null): array
+    {
+        try {
+            $nodes = $this->expired($deadline) ? [] : $this->cachedNodes();
+        } catch (Throwable) {
+            return $this->transportTelemetry();
+        }
+
+        if ($nodes === []) {
+            return $this->transportTelemetry();
+        }
+
+        $tele = $this->transportTelemetry();
+
+        $clusterName = '';
+        $quorate = null;
+        /** @var array<string, array{ip: string, online: bool}> $nodeHealth */
+        $nodeHealth = [];
+
+        if (! $this->expired($deadline)) {
+            try {
+                $status = $this->call('GET', '/cluster/status');
+                if (is_array($status)) {
+                    foreach ($status as $row) {
+                        if (! is_array($row)) {
+                            continue;
+                        }
+                        $type = strtolower(trim((string) ($row['type'] ?? '')));
+                        if ($type === 'cluster') {
+                            $name = trim((string) ($row['name'] ?? ''));
+                            if ($name !== '') {
+                                $clusterName = $name;
+                            }
+                            if (array_key_exists('quorate', $row)) {
+                                $quorate = (bool) $row['quorate'];
+                            }
+                        } elseif ($type === 'node') {
+                            $name = trim((string) ($row['name'] ?? ''));
+                            if ($name === '') {
+                                continue;
+                            }
+                            $nodeHealth[$name] = [
+                                'ip' => trim((string) ($row['ip'] ?? '')),
+                                'online' => ((int) ($row['online'] ?? 0)) === 1,
+                            ];
+                        }
+                    }
+                }
+            } catch (Throwable) {
+                // Cluster status is cosmetic next to the aggregates; degrade.
+            }
+        }
+
+        // Nodes PVE did not report on are assumed online — /cluster/status
+        // may itself be the call that failed.
+        $targets = array_values(array_filter(
+            $nodes,
+            static fn (string $n): bool => ! isset($nodeHealth[$n]) || $nodeHealth[$n]['online'],
+        ));
+
+        $tele['node_count'] = count($nodes);
+        $tele['node'] = $targets[0] ?? $nodes[0] ?? '';
+        if ($clusterName !== '') {
+            $tele['clusterName'] = $clusterName;
+        }
+        if ($quorate !== null) {
+            $tele['quorate'] = $quorate;
+        }
+
+        // Cluster-wide VM counts come before the per-node fan-out: they are
+        // one cheap call, and a slow node must not starve them past the
+        // deadline (which would read as "no VMs" instead of "unknown").
+        $running = 0;
+        $total = 0;
+        if (! $this->expired($deadline)) {
+            try {
+                $vms = $this->call('GET', '/cluster/resources', ['type' => 'vm']);
+                if (is_array($vms)) {
+                    foreach ($vms as $row) {
+                        if (! is_array($row)) {
+                            continue;
+                        }
+                        if (strtolower(trim((string) ($row['type'] ?? ''))) !== 'qemu') {
+                            continue;
+                        }
+                        $total++;
+                        if (strtolower(trim((string) ($row['status'] ?? ''))) === 'running') {
+                            $running++;
+                        }
+                    }
+                }
+            } catch (Throwable) {
+                // A blind credential sees nothing — omit counts, never zero them.
+            }
+        }
+
+        // Omitted when the cluster yields nothing: the partial's frozen
+        // empty vocabulary ("No remote data" / limited-data badge) renders
+        // instead of a false "0 running · 0 stopped".
+        if ($total > 0) {
+            $tele['vmCounts'] = ['running' => $running, 'stopped' => $total - $running, 'total' => $total];
+            $tele['vms_running'] = $running;
+            $tele['vms_total'] = $total;
+        }
+
+        $ramTotal = 0;
+        $ramFree = 0;
+        $vcpu = 0;
+        $loadSum = 0.0;
+        $loadSamples = 0;
+        $maxUptime = 0;
+        $contributors = 0;
+        $nodeRows = [];
+        $okNodes = [];
+
+        foreach ($targets as $node) {
+            $row = [
+                'name' => $node,
+                'online' => ! isset($nodeHealth[$node]) || $nodeHealth[$node]['online'],
+                'ip' => $nodeHealth[$node]['ip'] ?? '',
+                'uptime' => '',
+                'uptimeSeconds' => 0,
+                'reachable' => false,
+            ];
+
+            if ($deadline !== null && microtime(true) >= $deadline) {
+                $nodeRows[] = $row;
+
+                continue;
+            }
+
+            try {
+                $st = $this->call('GET', sprintf('/nodes/%s/status', rawurlencode($node)));
+            } catch (Throwable) {
+                $nodeRows[] = $row;
+
+                continue;
+            }
+
+            $st = is_array($st) ? $st : [];
+            $uptime = (int) ($st['uptime'] ?? 0);
+
+            $mem = is_array($st['memory'] ?? null) ? $st['memory'] : [];
+            $memTotal = (int) ($mem['total'] ?? 0);
+            $memFree = (int) ($mem['free'] ?? max(0, $memTotal - (int) ($mem['used'] ?? 0)));
+
+            $cpuInfo = is_array($st['cpuinfo'] ?? null) ? $st['cpuinfo'] : [];
+            $maxCpu = (int) ($st['maxcpu'] ?? ($cpuInfo['cpus'] ?? 0));
+
+            $cpu = $st['cpu'] ?? null;
+
+            if ($memTotal > 0) {
+                $ramTotal += $memTotal;
+                $ramFree += max(0, $memFree);
+            }
+            if ($maxCpu > 0) {
+                $vcpu += $maxCpu;
+            }
+            if (is_numeric($cpu)) {
+                $loadSum += (float) $cpu;
+                $loadSamples++;
+            }
+            if ($uptime > $maxUptime) {
+                $maxUptime = $uptime;
+            }
+            $contributors++;
+
+            $row['uptime'] = $uptime > 0 ? $this->formatTimespan($uptime) : '';
+            $row['uptimeSeconds'] = $uptime;
+            $row['reachable'] = true;
+            $nodeRows[] = $row;
+            $okNodes[] = $node;
+        }
+
+        // Offline nodes still get a row (status dot, no uptime) so the
+        // supplement shows the whole cluster, not just its survivors.
+        foreach ($nodes as $node) {
+            if (in_array($node, $targets, true)) {
+                continue;
+            }
+            $nodeRows[] = [
+                'name' => $node,
+                'online' => false,
+                'ip' => $nodeHealth[$node]['ip'] ?? '',
+                'uptime' => '',
+                'uptimeSeconds' => 0,
+                'reachable' => false,
+            ];
+        }
+
+        if ($nodeRows !== []) {
+            $tele['clusterNodes'] = array_slice($nodeRows, 0, 32);
+        }
+
+        if ($contributors > 0) {
+            if ($ramTotal > 0) {
+                $tele['ramTotal'] = $ramTotal;
+                $tele['ramFree'] = max(0, min($ramTotal, $ramFree));
+            }
+            if ($vcpu > 0) {
+                $tele['logicalCpu'] = $vcpu;
+            }
+            if ($loadSamples > 0) {
+                $tele['cpuLoadPercent'] = (int) round($loadSum / $loadSamples * 100);
+            }
+            if ($maxUptime > 0) {
+                $tele['uptime'] = $this->formatTimespan($maxUptime);
+                $tele['bootTime'] = now()->subSeconds($maxUptime)->toIso8601String();
+            }
+        }
+
+        // Storage, deduped by pool name: shared pools (Ceph/RBD, PBS) are
+        // reported per node and summing them per node would multiply the
+        // cluster total. First-seen wins; the list is capped so the
+        // persisted meta stays under the 16KB ceiling.
+        /** @var array<string, array<string, mixed>> $pools */
+        $pools = [];
+        foreach ($okNodes as $node) {
+            if ($deadline !== null && microtime(true) >= $deadline) {
+                break;
+            }
+
+            try {
+                $rows = $this->call('GET', sprintf('/nodes/%s/storage', rawurlencode($node)));
+            } catch (Throwable) {
+                continue;
+            }
+            if (! is_array($rows)) {
+                continue;
+            }
+            foreach ($rows as $r) {
+                if (! is_array($r)) {
+                    continue;
+                }
+                $name = trim((string) ($r['storage'] ?? ''));
+                if ($name === '' || isset($pools[$name])) {
+                    continue;
+                }
+                $total = (int) ($r['total'] ?? 0);
+                $avail = (int) ($r['avail'] ?? 0);
+                $used = (int) ($r['used'] ?? max(0, $total - $avail));
+                $pools[$name] = [
+                    'name' => $name,
+                    'total' => $total,
+                    'used' => max(0, $used),
+                    'avail' => max(0, $avail),
+                    'content' => trim((string) ($r['content'] ?? '')),
+                    'active' => ! empty($r['active']),
+                    'node' => $node,
+                ];
+                if (count($pools) >= 20) {
+                    break 2;
+                }
+            }
+        }
+
+        if ($pools !== []) {
+            $tele['storagePools'] = array_values($pools);
+
+            $storageTotal = 0;
+            $storageFree = 0;
+            foreach ($pools as $pool) {
+                if (! $pool['active'] || (int) $pool['total'] <= 0) {
+                    continue;
+                }
+                $storageTotal += (int) $pool['total'];
+                $storageFree += max(0, min((int) $pool['total'], (int) $pool['avail']));
+            }
+            if ($storageTotal > 0) {
+                $tele['storageTotal'] = $storageTotal;
+                $tele['storageFree'] = $storageFree;
+            }
+        }
+
+        return $tele;
+    }
+
     public function testConnection(): ServerConnectionResult
     {
         $start = microtime(true);
+        // One shared budget for the whole path (see getServerInfo()): every
+        // probe below is skipped once it is spent, leaving that field
+        // absent, so a sick cluster degrades instead of stacking per-call
+        // timeouts behind the button.
+        $deadline = $start + 10;
 
         try {
-            $version = $this->version();
-            $nodes = $this->nodes();
+            $version = $this->expired($deadline) ? '' : $this->version();
+            $nodes = $this->expired($deadline) ? [] : $this->nodes();
             $latency = (int) round((microtime(true) - $start) * 1000);
 
             // Probe the reachable node, not merely the first one listed: PVE
@@ -1452,10 +1823,14 @@ final class ProxmoxClient
             // makes storage look invisible when it is not.
             $node = '';
 
-            try {
-                $node = $this->defaultNode();
-            } catch (PanelException) {
+            if ($this->expired($deadline)) {
                 $node = $nodes[0] ?? '';
+            } else {
+                try {
+                    $node = $this->defaultNode();
+                } catch (PanelException) {
+                    $node = $nodes[0] ?? '';
+                }
             }
 
             // Reachability is not readiness. A PVE API token is created with
@@ -1463,7 +1838,9 @@ final class ProxmoxClient
             // and answers /version and /nodes fine, but every VM and datastore
             // call comes back empty. Reporting that as "connected" is a false
             // green — provisioning then fails much later, on the first clone.
-            $privileges = $this->effectivePrivileges();
+            // Skipped (null) when the budget is spent: an unprobed credential
+            // must not read as privilege-less.
+            $privileges = $this->expired($deadline) ? null : $this->effectivePrivileges();
 
             if ($privileges === []) {
                 return ServerConnectionResult::fail(
@@ -1478,11 +1855,16 @@ final class ProxmoxClient
                 );
             }
 
-            $vms = $this->call('GET', '/cluster/resources', ['type' => 'vm']);
+            $vms = null;
+
+            if (! $this->expired($deadline)) {
+                $vms = $this->call('GET', '/cluster/resources', ['type' => 'vm']);
+            }
+
             $vmCount = is_array($vms) ? count($vms) : 0;
 
             $datastores = 0;
-            if ($node !== '') {
+            if ($node !== '' && ! $this->expired($deadline)) {
                 try {
                     $storage = $this->call('GET', sprintf('/nodes/%s/storage', rawurlencode($node)));
                     $datastores = is_array($storage) ? count($storage) : 0;
@@ -1496,6 +1878,15 @@ final class ProxmoxClient
                 $warnings[] = 'no datastores are visible to this credential, so creating disks will fail';
             }
 
+            // Same telemetry keys as getServerInfo() so the block survives
+            // cold loads from persisted meta. Never throws: skipped calls
+            // and per-node failures degrade inside essentialTelemetry().
+            // Merged first: the connection flow's own node pick
+            // (defaultNode, which probes for a reachable node) wins over
+            // telemetry's first-online guess. Shares this method's deadline,
+            // not a second budget.
+            $telemetry = $this->essentialTelemetry($deadline);
+
             return ServerConnectionResult::ok(
                 sprintf(
                     'Connected to Proxmox VE %s (%d node%s, %d VM%s visible).%s',
@@ -1507,7 +1898,7 @@ final class ProxmoxClient
                     $warnings === [] ? '' : ' Warning: '.implode('; ', $warnings).'.',
                 ),
                 $latency,
-                AbstractPanelModule::capMeta([
+                AbstractPanelModule::capMeta(array_merge($telemetry, [
                     'version' => $version,
                     'node_count' => count($nodes),
                     'node' => $node,
@@ -1517,7 +1908,12 @@ final class ProxmoxClient
                     'privilege_count' => count($privileges),
                     'vms_visible' => $vmCount,
                     'datastores_visible' => $datastores,
-                ]),
+                    'provenance' => [
+                        'source' => 'testConnection',
+                        'version' => $version,
+                        'checked_at' => now()->toIso8601String(),
+                    ],
+                ])),
             );
         } catch (PanelException $e) {
             return ServerConnectionResult::fail(
@@ -1565,42 +1961,37 @@ final class ProxmoxClient
     public function getServerInfo(): ServerInfoDTO
     {
         $start = microtime(true);
+        // One shared budget for the whole path — version(), the telemetry
+        // fan-out and the cluster-name fallback all honour it — so a sick
+        // cluster degrades inside the controller's 8s bound instead of
+        // paying a per-call timeout per probe.
+        $deadline = $start + 6;
         $fallbackHost = $this->hostLabel();
 
         try {
-            $version = $this->version();
-            $nodes = $this->nodes();
+            $version = $this->expired($deadline) ? '' : $this->version();
+            $telemetry = $this->essentialTelemetry($deadline);
 
-            $running = 0;
-            $total = 0;
-            $vms = $this->call('GET', '/cluster/resources', ['type' => 'vm']);
-            if (is_array($vms)) {
-                foreach ($vms as $row) {
-                    if (! is_array($row)) {
-                        continue;
-                    }
-                    if (strtolower(trim((string) ($row['type'] ?? ''))) !== 'qemu') {
-                        continue;
-                    }
-                    $total++;
-                    if (strtolower(trim((string) ($row['status'] ?? ''))) === 'running') {
-                        $running++;
-                    }
-                }
+            $provenance = AbstractPanelModule::successProvenance(
+                '/version + /cluster/status + /cluster/resources + per-node status/storage',
+                $version,
+                $fallbackHost,
+            );
+            $provenance['provenance']['checked_at'] = now()->toIso8601String();
+
+            $clusterName = trim((string) ($telemetry['clusterName'] ?? ''));
+
+            if ($clusterName === '' && ! $this->expired($deadline)) {
+                $clusterName = $this->clusterName();
             }
 
             return new ServerInfoDTO(
-                hostname: $this->clusterName() ?: $fallbackHost,
+                hostname: $clusterName !== '' ? $clusterName : $fallbackHost,
                 version: $version,
                 ipAddress: (string) $this->server->ip_address,
-                totalAccounts: $total,
+                totalAccounts: (int) ($telemetry['vms_total'] ?? 0),
                 latencyMs: (int) round((microtime(true) - $start) * 1000),
-                meta: AbstractPanelModule::successProvenance('/version + /cluster/resources', $version, $fallbackHost) + [
-                    'node_count' => count($nodes),
-                    'node' => $nodes[0] ?? '',
-                    'vms_running' => $running,
-                    'vms_total' => $total,
-                ],
+                meta: $provenance + $telemetry,
             );
         } catch (PanelException $e) {
             return new ServerInfoDTO(

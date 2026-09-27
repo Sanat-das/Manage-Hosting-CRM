@@ -53,7 +53,7 @@ class HypervActionsUiTest extends TestCase
         $this->assertStringContainsString('progress-bar-animated', $html);
         $this->assertStringContainsString('aria-valuenow', $html);
 
-        foreach (['create','start','stop','restart','delete','reset_password'] as $act) {
+        foreach (['create', 'start', 'stop', 'restart', 'delete', 'reset_password'] as $act) {
             $this->assertStringContainsString('data-hv-action="'.$act.'"', $html);
         }
 
@@ -286,7 +286,7 @@ class HypervActionsUiTest extends TestCase
             'product_id' => $product->id,
             'host_name' => 'hv-creds-02',
         ]);
-        $service = \App\Models\ServiceInstance::create([
+        $service = ServiceInstance::create([
             'customer_id' => $account->customer_id,
             'order_id' => null,
             'server_id' => null,
@@ -296,7 +296,7 @@ class HypervActionsUiTest extends TestCase
             'provisioning_method' => 'hyperv',
             'status' => 'pending',
         ]);
-        \App\Models\PanelAccount::create([
+        PanelAccount::create([
             'service_instance_id' => $service->id,
             'server_id' => null,
             'panel' => 'hyperv',
@@ -305,7 +305,7 @@ class HypervActionsUiTest extends TestCase
             'guest_username' => 'Administrator',
             'guest_password_encrypted' => 'NeverRenderMe42',
             'meta' => ['vmName' => 'hv-creds-02'],
-            'status' => \App\Models\PanelAccount::STATUS_ACTIVE,
+            'status' => PanelAccount::STATUS_ACTIVE,
         ]);
 
         $html = $this->actingAsAdminWith(['hosting.view', 'hosting.edit'])
@@ -356,6 +356,7 @@ class HypervActionsUiTest extends TestCase
             if (str_contains($body, 'Get-VM')) {
                 return Http::response(['exists' => true, 'name' => 'hv-retry-ok-01', 'state' => 'Off', 'vmId' => '11111111-2222-3333-4444-555555555555']);
             }
+
             return Http::response(['error' => 'unexpected host call'], 500);
         });
 
@@ -405,6 +406,41 @@ class HypervActionsUiTest extends TestCase
         $this->assertArrayHasKey('probe_error', $json['vm']);
         // Probe failure keeps vm unknown but the key must be present.
         $this->assertTrue($json['vm']['probe_error'] !== null || array_key_exists('probe_error', $json['vm']));
+    }
+
+    public function test_direct_actions_delegate_with_the_fixed_arity_and_queue_through_the_poller(): void
+    {
+        Http::fake();
+
+        $product = Product::create(['name' => 'HV', 'price' => 50]);
+        ProductModule::create([
+            'product_id' => $product->id, 'module_slug' => 'hyperv', 'enabled' => true, 'config' => [],
+        ]);
+        $account = HostingAccount::create([
+            'customer_id' => $this->makeCustomer()->id,
+            'product_id' => $product->id,
+            'host_name' => 'hv-queued-01',
+        ]);
+
+        $html = $this->actingAsAdminWith(['hosting.view', 'hosting.edit'])
+            ->get(route('admin.hosting.show', $account))
+            ->assertOk()
+            ->getContent();
+
+        // The arity bug dropped the server message/state; the queued
+        // start/stop path must reach handleActionResponse intact, and the
+        // queued reset must poll instead of rendering an inline password.
+        // Rendering only — the JS runtime itself has no browser harness here.
+        $this->assertStringContainsString('handleActionResponse(act, data)', $html);
+        $this->assertStringNotContainsString('handleActionResponse(null, act, data)', $html);
+        $this->assertGreaterThanOrEqual(3, substr_count($html, 'data.started'));
+        $this->assertStringContainsString('Password reset started.', $html);
+        // Previously asserted scaffolding is untouched.
+        foreach (['create', 'start', 'stop', 'restart', 'delete', 'reset_password'] as $act) {
+            $this->assertStringContainsString('data-hv-action="'.$act.'"', $html);
+        }
+        $this->assertStringContainsString('hv-progress-bar', $html);
+        $this->assertStringContainsString('hv-reset-result', $html);
     }
 
     private function hostingWithPanel(string $hostName): array

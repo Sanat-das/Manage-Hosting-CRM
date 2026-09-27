@@ -1,0 +1,43 @@
+[Unit]
+Description=ManageHosting Queue Worker - provisioning queue
+Documentation=https://laravel.com/docs/queues
+After=network.target mysql.service mariadb.service
+Wants=network-online.target
+# If using Redis for queues, also wait for redis: After=redis-server.service
+
+[Service]
+Type=simple
+# Run as the web user - change if your app runs as a different user
+User=www-data
+Group=www-data
+# Absolute path to the app on the server. Update this for your deploy path.
+WorkingDirectory=/var/www/managehosting
+# Use full PHP binary path so systemd does not depend on $PATH
+#
+# --timeout=1800 must stay above the longest verb this worker can run: a
+# compute clone takes up to ~900s and a destroy up to ~600s, and the build
+# job itself allows 1800s (ProvisionComputeVm $timeout with failOnTimeout).
+# A shorter --timeout would SIGKILL healthy long builds mid-clone.
+# --tries=1 because power/verb operations are not idempotent — an automatic
+# retry could double-apply a start/stop/terminate the first attempt already
+# executed, so a failure must surface instead of re-running.
+ExecStart=/usr/bin/php /var/www/managehosting/artisan queue:work --queue=provisioning --sleep=3 --tries=1 --timeout=1800 --max-time=3600
+# Laravel queue workers should always restart - they exit on --max-time by design
+Restart=always
+RestartSec=5
+# Kill the worker gracefully on stop (SIGTERM lets it finish the current job)
+KillMode=process
+KillSignal=SIGTERM
+TimeoutStopSec=60
+# Logging - journald. View with: journalctl -u managehosting-queue-provisioning -f
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=managehosting-queue-provisioning
+# Hardening (optional but recommended)
+NoNewPrivileges=true
+PrivateTmp=true
+# Ensure queue worker sees .env
+EnvironmentFile=-/var/www/managehosting/.env
+
+[Install]
+WantedBy=multi-user.target
