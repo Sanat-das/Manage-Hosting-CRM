@@ -6,6 +6,34 @@ All notable user-facing changes to this project are documented in this file.
 
 ### Fixed
 
+- **Compute VMs are never mailed a login that exists nowhere.**
+  Hyper-V and Proxmox VE welcome emails paired a guest username with the
+  generated panel password when no guest credentials had been applied — a
+  secret that opens nothing in the guest. Compute VMs without a guest login now
+  deliver the service address only (no cPanel link, no "change this password"
+  prompt), cloud-init guest credentials are delivered verbatim, and a guest
+  username is never paired with the panel password. The audit log still redacts
+  whatever was actually sent.
+
+- **Proxmox VE template discovery reports failures instead of "no templates".**
+  A privilege-separated API token with no ACL sees zero VMs on every node,
+  which rendered exactly like a healthy cluster with no templates. Discovery
+  now probes effective privileges and fails when every node errors, and the
+  *Clone templates* panel shows the reason as an error rather than an empty
+  picker.
+
+- **Terminating a running Proxmox VE VM now works.**
+  PVE refuses to destroy a running VM ("VM is running - destroy failed"), so
+  the destroy path stops it first. This also fixes the unrecorded-VM cleanup
+  action on the server page.
+
+- **Service-instance "Provision Status" now saves, badges and filters for real.**
+  The `service_instances.provision_status` column never existed: the select
+  saved nothing while reporting success, the badge was always empty, and the
+  filter errored with "Unknown column". The column is added and backfilled from
+  each row's newest panel account (or its service status), and provisioning
+  updates it as the module reports its outcome.
+
 - **Global search: roles holding only `x.manage` now find the records their screens already admit them to.**
   `GlobalSearchService::permissionNames()` expands every held `x.manage` permission into its `x.view` twin,
   mirroring `PermissionMiddleware`'s existing manage-implies-view fallback. A custom role holding only
@@ -69,6 +97,21 @@ All notable user-facing changes to this project are documented in this file.
   `/admin/search` results page. Each provider is one class listed in
   `config/search.php`, and a viewer only ever sees the groups their
   permissions allow. Reference: [docs/search.md](docs/search.md).
+
+- **Proxmox VE provisioning module.** Proxmox VE is no longer a stub: the
+  driver creates and manages QEMU/KVM VMs over the PVE REST API — task-polled
+  clone/create/resize/start/stop/destroy, curated templates per server with
+  per-product restrictions, cloud-init `ciuser`/`cipassword` on templates with
+  a cloud-init drive, ISO-aware empty builds (the ISO pool is resolved and the
+  file verified before the VM is created), best-effort cleanup of a failed
+  build, and a configurable clone timeout. Reference:
+  [app/Modules/Proxmox/README.md](app/Modules/Proxmox/README.md).
+
+- **Destroy unrecorded VMs from the server page.** A VM on a Proxmox host with
+  no provisioned record — for example a clone that outlived its task timeout —
+  is listed under *On host, not provisioned* and can be destroyed by an admin
+  holding `hosting.manage` after typing the VMID. VMs that belong to a service
+  and templates are refused, and the destroy is audited.
 
 ### Changed
 
