@@ -91,10 +91,10 @@ class WelcomeMailer
 
         $isHtml = $this->isHtml((string) $template->body);
         // WHY: the redacted value MUST be whatever is actually rendered. Guest
-        // credentials are what the customer logs in with on a Windows VM; the
-        // panel password is a generated secret nobody uses there. deliveredCredentials()
+        // credentials are what the customer logs in with on a VM; the panel
+        // password is a generated secret nobody uses there. deliveredCredentials()
         // prefers guest_username/guest_password so audit redaction stays in sync.
-        $password = $this->deliveredCredentials($credentials)['password'];
+        $password = $this->deliveredCredentials($credentials, $service)['password'];
 
         $vars = $this->variables($order, $service, $credentials, $isHtml);
 
@@ -162,11 +162,12 @@ class WelcomeMailer
         $customer = $order->customer;
 
         // WHY: guest credentials are the ones the customer actually logs in with on
-        // a Windows VM. The panel password is a generated secret nobody uses there,
-        // so when guest_username/guest_password are present they must be delivered
-        // instead. Falls back to panel credentials for cPanel/Plesk etc.
-        $delivered = $this->deliveredCredentials($credentials);
-        $username = $delivered['username'] !== '' ? $delivered['username'] : (string) ($service->username ?? '');
+        // a VM. The panel password is a generated secret nobody uses there, so when
+        // guest_username/guest_password are present they must be delivered instead.
+        // A compute VM without guest credentials has no login to deliver at all —
+        // see deliveredCredentials().
+        $delivered = $this->deliveredCredentials($credentials, $service);
+        $username = $delivered['username'];
         $password = $delivered['password'];
         $ip = (string) ($credentials['ip'] ?? $service->server?->ip_address ?? '');
         $nameservers = $this->flatten($credentials['nameservers'] ?? null);
@@ -204,10 +205,11 @@ class WelcomeMailer
             'service_password' => $password,
             'service_ip' => $ip,
             'service_nameservers' => $nameservers,
-            // WHY: a Windows VM has no cPanel. The control-panel URL is meaningless there
-            // and would confuse the customer, so hyperv omits it entirely — the credentials
-            // block then renders Username / Password / Server IP only.
-            'control_panel_url' => $service->provisioning_method === 'hyperv' ? '' : ($domain !== '' ? 'https://'.$domain.'/cpanel' : ''),
+            // WHY: a compute VM has no control panel. The cPanel URL is
+            // meaningless there and would confuse the customer, so hyperv and
+            // proxmox omit it entirely — the credentials block then renders
+            // Username / Password / Server IP only.
+            'control_panel_url' => $this->isComputeVm($service) ? '' : ($domain !== '' ? 'https://'.$domain.'/cpanel' : ''),
         ];
 
         $vars['service_credentials'] = $this->credentialsBlock($vars, $isHtml);
@@ -216,26 +218,56 @@ class WelcomeMailer
     }
 
     /**
-     * Which credentials the customer actually receives. Guest credentials win
-     * when the module supplied them (Hyper-V VM — Administrator inside the guest
-     * is what the customer logs in with, not the panel username/password). For
-     * every other module the guest keys are absent and the panel credentials are
-     * delivered unchanged. Trimmed so "  " does not count as a credential.
+     * Which credentials the customer actually receives.
+     *
+     * Guest credentials win when the module supplied them (a VM — the guest
+     * login is what the customer uses, not the panel username/password), and
+     * are delivered exactly as supplied: a guest username must never be paired
+     * with the panel password, which exists nowhere in the guest.
+     *
+     * A compute VM that supplied no guest credentials has no login to deliver —
+     * mailing the generated panel password would hand the customer a secret
+     * that opens nothing, so both fields stay empty and the credentials block
+     * degrades to the service address. Every other module (cPanel, Plesk, …)
+     * keeps the panel-credential fallback.
      *
      * @param  array<string, mixed>  $credentials
      * @return array{username: string, password: string}
      */
-    private function deliveredCredentials(array $credentials): array
+    private function deliveredCredentials(array $credentials, ServiceInstance $service): array
     {
         $guestUsername = trim((string) ($credentials['guest_username'] ?? ''));
-        $panelUsername = trim((string) ($credentials['username'] ?? ''));
         $guestPassword = trim((string) ($credentials['guest_password'] ?? ''));
-        $panelPassword = trim((string) ($credentials['password'] ?? ''));
+
+        if ($guestUsername !== '' || $guestPassword !== '') {
+            return ['username' => $guestUsername, 'password' => $guestPassword];
+        }
+
+        if ($this->isComputeVm($service)) {
+            return ['username' => '', 'password' => ''];
+        }
+
+        $panelUsername = trim((string) ($credentials['username'] ?? ''));
 
         return [
-            'username' => $guestUsername !== '' ? $guestUsername : $panelUsername,
-            'password' => $guestPassword !== '' ? $guestPassword : $panelPassword,
+            'username' => $panelUsername !== '' ? $panelUsername : trim((string) ($service->username ?? '')),
+            'password' => trim((string) ($credentials['password'] ?? '')),
         ];
+    }
+
+    /**
+     * Is this a VM whose login lives inside the guest rather than the panel?
+     *
+     * Hyper-V and Proxmox VE both build a machine the panel does not manage a
+     * login for; the generated panel password is bookkeeping, not a credential.
+     */
+    private function isComputeVm(ServiceInstance $service): bool
+    {
+        return in_array(
+            strtolower(trim((string) $service->provisioning_method)),
+            ['hyperv', 'proxmox'],
+            true,
+        );
     }
 
     /**
@@ -259,15 +291,21 @@ class WelcomeMailer
             return '';
         }
 
+        // A block with no password (a VM whose login was configured separately)
+        // must not tell the customer to change one.
+        $hasPassword = ($vars['service_password'] ?? '') !== '';
+
         if (! $isHtml) {
-            $lines = ['Your login details:', ''];
+            $lines = [$hasPassword ? 'Your login details:' : 'Your service details:', ''];
 
             foreach ($rows as $label => $value) {
                 $lines[] = sprintf('  %-14s : %s', $label, $value);
             }
 
-            $lines[] = '';
-            $lines[] = 'Please change this password after your first login.';
+            if ($hasPassword) {
+                $lines[] = '';
+                $lines[] = 'Please change this password after your first login.';
+            }
 
             return implode("\n", $lines);
         }
@@ -287,7 +325,9 @@ class WelcomeMailer
             .'style="border:1px solid #e2e8f0;border-radius:8px;margin:18px 0;">'
             .$cells
             .'</table>'
-            .'<p style="font-size:13px;color:#64748b;">Please change this password after your first login.</p>';
+            .($hasPassword
+                ? '<p style="font-size:13px;color:#64748b;">Please change this password after your first login.</p>'
+                : '');
     }
 
     /**
