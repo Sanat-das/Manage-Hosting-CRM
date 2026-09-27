@@ -75,14 +75,19 @@ document.addEventListener('DOMContentLoaded', function () {
             if (csrf) headers['X-CSRF-TOKEN'] = csrf;
 
             fetch(button.getAttribute('data-url'), {
-                method: 'PUT',
+                // Method-spoofed POST: some hosts (IIS/WebDAV) reject a real PUT
+                // with 405, and the rest of the admin UI submits `_method=PUT`
+                // for the same reason.
+                method: 'POST',
                 headers: headers,
-                body: new URLSearchParams({ template: select.value }),
+                body: new URLSearchParams({ template: select.value, _method: 'PUT' }),
                 credentials: 'same-origin'
             }).then(function (res) {
                 if (res.ok) { window.location.reload(); return null; }
-                return res.json().catch(function () { return null; }).then(function (data) {
-                    var msg = 'Could not save the default template.';
+                return res.text().then(function (text) {
+                    var data = null;
+                    try { data = JSON.parse(text); } catch (e) { data = null; }
+                    var msg = 'Could not save the default template (HTTP ' + res.status + ').';
                     if (data && data.errors && data.errors.template && data.errors.template[0]) {
                         msg = data.errors.template[0];
                     } else if (data && data.message) {
