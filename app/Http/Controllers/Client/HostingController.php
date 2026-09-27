@@ -10,10 +10,12 @@ use App\Services\HostingService;
 use App\Services\Integrations\IntegrationRegistry;
 use App\Services\Modules\ModuleManager;
 use App\Services\OrderConfigSnapshot;
+use App\Services\Provisioning\ComputeDriver;
+use App\Services\Provisioning\ComputeTemplateCatalog;
 use App\Services\Provisioning\HypervDriver;
-use App\Services\Provisioning\HypervVmBuildDispatcher;
 use App\Services\Provisioning\ManualProvisioner;
 use App\Services\Provisioning\ProvisioningEventRecorder;
+use App\Services\Provisioning\VmBuildDispatcher;
 use App\Services\Provisioning\VmGuestCredentialStore;
 use App\Services\Provisioning\VmStatusPresenter;
 use Illuminate\Http\JsonResponse;
@@ -33,7 +35,7 @@ class HostingController extends Controller
     public function __construct(
         private readonly OrderConfigSnapshot $snapshot,
         private readonly ManualProvisioner $provisioner,
-        private readonly HypervVmBuildDispatcher $vmBuildDispatcher,
+        private readonly VmBuildDispatcher $vmBuildDispatcher,
         private readonly VmStatusPresenter $vmStatusPresenter,
         private readonly ProvisioningEventRecorder $provisioningEvents,
         private readonly HostingService $hostingService,
@@ -155,16 +157,27 @@ class HostingController extends Controller
 
         $account = $customer->hostingAccounts()->findOrFail($hostingAccount->id);
 
+        $account->loadMissing(['product.moduleLinks', 'server']);
+
+        $slug = $this->computeSlugFor($account);
+
+        if ($slug === null) {
+            $msg = 'This service does not support VM provisioning.';
+            if ($this->wantsJson($request)) {
+                return response()->json(['ok' => false, 'message' => $msg], 422);
+            }
+
+            return back()->with('error', $msg);
+        }
+
         $validated = $request->validate([
+            'template' => ['nullable', 'string', 'max:64'],
+            // Legacy field name from the Hyper-V-only form; still accepted.
             'template_vm' => ['nullable', 'string', 'max:64'],
         ]);
 
-        $templateVm = isset($validated['template_vm']) ? trim((string) $validated['template_vm']) : null;
-        if ($templateVm === '') {
-            $templateVm = null;
-        }
-
-        $account->loadMissing(['product.moduleLinks', 'server']);
+        $template = trim((string) ($validated['template'] ?? $validated['template_vm'] ?? ''));
+        $template = $template !== '' ? $template : null;
 
         // Pending accounts may always (re)build. An active account may build
         // only when no VM exists on the host yet — WHY: hyperv-manual orders
@@ -198,7 +211,7 @@ class HostingController extends Controller
         }
 
         try {
-            $event = $this->vmBuildDispatcher->dispatch($account, $templateVm, true, null, null);
+            $event = $this->vmBuildDispatcher->dispatch($account, $template, true, null, null, false, $slug);
 
             if ($this->wantsJson($request)) {
                 return response()->json([
@@ -212,8 +225,9 @@ class HostingController extends Controller
 
             return back()->with('info', 'Your VM build has started — progress is shown on this page.');
         } catch (\Throwable $e) {
-            Log::error('Client Hyper-V queued create failed', [
+            Log::error('Client queued VM create failed', [
                 'hosting_account_id' => $account->id,
+                'module' => $slug,
                 'error' => $e->getMessage(),
             ]);
             $msg = $e->getMessage();
@@ -432,8 +446,20 @@ class HostingController extends Controller
         }
 
         // Resolve service + driver for power (same factory the admin uses).
-        $service = app(ManualProvisioner::class)->serviceForHosting($account, 'hyperv');
-        $driver = HypervDriver::resolve();
+        $account->loadMissing(['product.moduleLinks', 'server']);
+        $slug = $this->computeSlugFor($account);
+
+        if ($slug === null) {
+            $msg = 'Power actions are not available for this service.';
+            if ($this->wantsJson($request)) {
+                return response()->json(['ok' => false, 'message' => $msg], 422);
+            }
+
+            return back()->with('error', $msg);
+        }
+
+        $service = app(ManualProvisioner::class)->serviceForHosting($account, $slug);
+        $driver = ComputeDriver::resolve($slug);
 
         if ($action === 'restart') {
             if ($driver === null || ! method_exists($driver, 'restart')) {
@@ -453,14 +479,14 @@ class HostingController extends Controller
             return back()->with('error', $msg);
         }
 
-        // Decrypt the product's hyperv link config (empty when no link).
+        // Decrypt the product's link config for this module (empty when no link).
         $config = [];
         try {
-            $link = $account->product?->moduleLinks?->firstWhere('module_slug', 'hyperv')
-                ?? ($account->product ? $account->product->moduleLinks()->where('module_slug', 'hyperv')->first() : null);
+            $link = $account->product?->moduleLinks?->firstWhere('module_slug', $slug)
+                ?? ($account->product ? $account->product->moduleLinks()->where('module_slug', $slug)->first() : null);
             if ($link) {
                 $rawConfig = is_array($link->config ?? null) ? $link->config : [];
-                $config = app(IntegrationRegistry::class)->decryptConfigFor('hyperv', $rawConfig);
+                $config = app(IntegrationRegistry::class)->decryptConfigFor($slug, $rawConfig);
             }
         } catch (\Throwable) {
             $config = [];
@@ -471,7 +497,7 @@ class HostingController extends Controller
         // Record the attempt as a provisioning event, exactly like reset.
         try {
             $event = $this->provisioningEvents->begin($eventType, [
-                'module' => 'hyperv',
+                'module' => $slug,
                 'action' => $action,
                 'hosting_account_id' => $account->id,
                 'order_id' => $account->order_id,
@@ -529,7 +555,7 @@ class HostingController extends Controller
         }
         try {
             $fallback = $action === 'start' ? 'VM started.' : ($action === 'restart' ? 'VM restarted.' : 'VM stopped.');
-            $this->hostingService->audit($account, 'hosting.module_action', $result->message ?? $fallback, ['module' => 'hyperv', 'action' => $action]);
+            $this->hostingService->audit($account, 'hosting.module_action', $result->message ?? $fallback, ['module' => $slug, 'action' => $action]);
         } catch (\Throwable) {
         }
 
@@ -552,25 +578,35 @@ class HostingController extends Controller
     }
 
     /**
-     * Resolve the hyperv slug for a product, or null when not hyperv.
-     * Single home used by show() and provision() so detection logic exists once.
+     * The compute module that owns this account, or null when the account is
+     * not a VM service. The server's own type wins (a machine lives on the
+     * server it was built on), then the product's provisioning module, then
+     * any enabled module link. Single home used by show() and provision().
      */
-    private function hypervSlugForProduct(?\App\Models\Product $product): ?string
+    private function computeSlugFor(HostingAccount $account): ?string
     {
+        $serverType = strtolower(trim((string) ($account->server?->server_type ?? '')));
+        if (ComputeTemplateCatalog::supports($serverType)) {
+            return $serverType;
+        }
+
+        $product = $account->product;
+
         if ($product === null) {
             return null;
         }
 
-        $raw = trim((string) ($product->provisioning_module ?? ''));
-        if ($raw === 'hyperv') {
-            return 'hyperv';
+        $raw = strtolower(trim((string) ($product->provisioning_module ?? '')));
+        if (ComputeTemplateCatalog::supports($raw)) {
+            return $raw;
         }
 
         try {
             $links = $product->relationLoaded('moduleLinks') ? $product->moduleLinks : $product->moduleLinks()->get();
             foreach ($links as $link) {
-                if (trim((string) ($link->module_slug ?? '')) === 'hyperv' && (bool) $link->enabled) {
-                    return 'hyperv';
+                $slug = strtolower(trim((string) ($link->module_slug ?? '')));
+                if ((bool) $link->enabled && ComputeTemplateCatalog::supports($slug)) {
+                    return $slug;
                 }
             }
         } catch (\Throwable) {
@@ -578,8 +614,9 @@ class HostingController extends Controller
 
         try {
             $dispatcher = app(\App\Services\Provisioning\ProvisioningDispatcher::class);
-            if ($dispatcher->moduleFor($product) === 'hyperv') {
-                return 'hyperv';
+            $resolved = strtolower(trim((string) ($dispatcher->moduleFor($product) ?? '')));
+            if (ComputeTemplateCatalog::supports($resolved)) {
+                return $resolved;
             }
         } catch (\Throwable) {
         }
@@ -590,55 +627,61 @@ class HostingController extends Controller
     /**
      * Build the provisioning card data for the view.
      *
-     * @return array{isHyperv: bool, templates: list<array{name: string, label: string}>, default: ?string}
+     * @return array{isCompute: bool, isHyperv: bool, slug: ?string, templateKey: string, templateLabel: string, templates: list<array{id: string, label: string, node?: string}>, default: ?string, curatedCount: int, noEffective: bool}
      */
     private function provisionCardFor(HostingAccount $account): array
     {
-        $isHyperv = $this->hypervSlugForProduct($account->product) !== null;
+        $slug = $this->computeSlugFor($account);
         $templates = [];
         $default = null;
         $curatedCount = 0;
         $noEffective = false;
-        if ($isHyperv) {
+
+        if ($slug !== null && $account->server !== null) {
             $server = $account->server;
-            $curatedCount = count($server?->hypervTemplateVms() ?? []);
+            $curatedCount = count(ComputeTemplateCatalog::curatedIds($server, $slug));
+
             $productAllowed = [];
             try {
-                $link = $account->product?->moduleLinks?->firstWhere('module_slug', 'hyperv')
-                    ?? ($account->product ? $account->product->moduleLinks()->where('module_slug', 'hyperv')->first() : null);
+                $link = $account->product?->moduleLinks?->firstWhere('module_slug', $slug)
+                    ?? ($account->product ? $account->product->moduleLinks()->where('module_slug', $slug)->first() : null);
                 if ($link) {
                     $rawCfg = is_array($link->config) ? $link->config : [];
-                    $dec = app(\App\Services\Integrations\IntegrationRegistry::class)->decryptConfigFor('hyperv', $rawCfg);
+                    $dec = app(\App\Services\Integrations\IntegrationRegistry::class)->decryptConfigFor($slug, $rawCfg);
                     $rawAllowed = $dec['allowed_templates'] ?? [];
-                    $productAllowed = \App\Services\Provisioning\HypervTemplateCatalog::sanitizeAllowed(is_array($rawAllowed) ? $rawAllowed : []);
+                    $productAllowed = ComputeTemplateCatalog::sanitizeAllowed($slug, is_array($rawAllowed) ? $rawAllowed : []);
                 }
             } catch (\Throwable) {
                 $productAllowed = [];
             }
-            if ($server !== null) {
-                $templates = \App\Services\Provisioning\HypervTemplateCatalog::effectiveOptions($server, $productAllowed);
-                $def = $server->hypervDefaultTemplate();
-                if ($def !== null && $def !== '' && in_array($def, array_column($templates, 'name'), true)) {
-                    $default = $def;
-                } elseif ($def !== null && $def !== '' && $productAllowed !== [] && ! in_array($def, array_column($templates, 'name'), true)) {
-                    $default = null;
-                } else {
-                    $default = $def;
-                    if ($default !== null && $default !== '' && ! in_array($default, array_column($templates, 'name'), true)) {
-                        $default = $templates[0]['name'] ?? null;
-                    }
-                }
-                if ($templates === [] && $curatedCount > 0) {
-                    $noEffective = true;
-                    $default = null;
-                }
-            } else {
-                $templates = [];
+
+            $templates = ComputeTemplateCatalog::options($server, $slug, $productAllowed);
+            $optionIds = array_column($templates, 'id');
+            $def = ComputeTemplateCatalog::default($server, $slug);
+
+            if ($def !== null && $def !== '' && in_array($def, $optionIds, true)) {
+                $default = $def;
+            } elseif ($optionIds !== []) {
+                $default = $optionIds[0];
+            }
+
+            if ($templates === [] && $curatedCount > 0) {
+                $noEffective = true;
                 $default = null;
             }
         }
 
-        return ['isHyperv' => $isHyperv, 'templates' => $templates, 'default' => $default, 'curatedCount' => $curatedCount, 'noEffective' => $noEffective];
+        return [
+            'isCompute' => $slug !== null,
+            'isHyperv' => $slug === 'hyperv',
+            'slug' => $slug,
+            'templateKey' => $slug !== null ? (ComputeTemplateCatalog::templateKey($slug) ?? 'template') : 'template',
+            'templateLabel' => $slug !== null ? ComputeTemplateCatalog::templateLabel($slug) : 'Template',
+            'templates' => $templates,
+            'default' => $default,
+            'curatedCount' => $curatedCount,
+            'noEffective' => $noEffective,
+        ];
     }
 
     /**

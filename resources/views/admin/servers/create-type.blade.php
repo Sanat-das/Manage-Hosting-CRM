@@ -65,12 +65,9 @@
                                 $slug = $type['slug'] ?? $type['value'] ?? '';
                                 $label = $type['label'] ?? Str::title($slug);
                                 $desc = $type['description'] ?? '';
-                                $isInactive = ($type['status'] ?? 'active') !== 'active' || (($type['disabled'] ?? false) === true);
-                                // Proxmox stub: module provides fail but is still active; we treat disabled flag from manifest/config
-                                // Also if group proxmox but controller marks coming_soon
-                                $comingSoon = ($type['coming_soon'] ?? false) || ($slug === 'proxmox' && ($type['disabled'] ?? false));
-                                // fallback: if slug proxmox and description contains Coming soon
-                                if ($slug === 'proxmox' && str_contains(strtolower($desc), 'coming soon')) { $comingSoon = true; }
+                                // Parked types (e.g. Proxmox VE) are flagged by the controller,
+                                // which is the single source of truth for "coming soon".
+                                $comingSoon = ($type['coming_soon'] ?? false) === true;
                                 $icon = $slugIcon[$slug] ?? 'bi bi-box';
                             @endphp
                             <div class="col-12 col-md-6 col-lg-4">

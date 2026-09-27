@@ -4,21 +4,25 @@ declare(strict_types=1);
 
 namespace App\Services\Provisioning;
 
-use App\Jobs\ProvisionHypervVm;
+use App\Jobs\ProvisionComputeVm;
 use App\Models\HostingAccount;
 use App\Models\ProvisioningEvent;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 
 /**
- * Single entry point for starting a Hyper-V VM build.
+ * Single entry point for starting a compute VM build (Hyper-V, Proxmox VE,
+ * future compute drivers).
  *
  * Both the admin module-action and the client portal go through here, so the
  * durable `running` event, the queue dispatch and the "already building"
- * guard exist once. The caller only decides who may ask (permissions), never
- * how the build is recorded.
+ * guard exist once. The caller only decides who may ask (permissions) and
+ * which template was picked, never how the build is recorded.
+ *
+ * `$moduleSlug` defaults to `hyperv` for back-compat with the original
+ * Hyper-V-only signature.
  */
-final class HypervVmBuildDispatcher
+class VmBuildDispatcher
 {
     public function __construct(
         private readonly ProvisioningEventRecorder $recorder,
@@ -30,33 +34,38 @@ final class HypervVmBuildDispatcher
      */
     public function dispatch(
         HostingAccount $account,
-        ?string $templateVm,
-        bool $startAfterCreate,
-        ?string $guestUsername,
-        ?string $guestPassword,
+        ?string $template = null,
+        bool $startAfterCreate = true,
+        ?string $guestUsername = null,
+        ?string $guestPassword = null,
         bool $applyGeneratedPassword = false,
+        string $moduleSlug = 'hyperv',
     ): ProvisioningEvent {
+        $moduleSlug = strtolower(trim($moduleSlug)) !== '' ? strtolower(trim($moduleSlug)) : 'hyperv';
+
         $this->reconcileStaleBuilds($account);
 
-        $service = $this->provisioner->serviceForHosting($account, 'hyperv');
+        $service = $this->provisioner->serviceForHosting($account, $moduleSlug);
 
         $event = $this->recorder->begin('provision', [
-            'module' => 'hyperv',
+            'module' => $moduleSlug,
             'action' => 'create',
             'hosting_account_id' => $account->id,
             'order_id' => $account->order_id,
             'order_number' => $account->order?->order_number,
             'stage' => 'queued',
+            'template' => $template,
         ], $service->id, $account->id);
 
-        ProvisionHypervVm::dispatch(
+        ProvisionComputeVm::dispatch(
             $event->id,
             $account->id,
-            $templateVm,
+            $template,
             $startAfterCreate,
             $guestUsername,
             $guestPassword,
             $applyGeneratedPassword,
+            $moduleSlug,
         );
 
         return $event;
@@ -100,7 +109,7 @@ final class HypervVmBuildDispatcher
                 try {
                     $this->recorder->fail($event, 'The build was interrupted before it finished (worker stopped) — retry the create.');
                 } catch (Throwable $e) {
-                    Log::warning('HypervVmBuildDispatcher: failed to reconcile stale build', [
+                    Log::warning('VmBuildDispatcher: failed to reconcile stale build', [
                         'event_id' => $event->id,
                         'hosting_account_id' => $account->id,
                         'error' => $e->getMessage(),
@@ -108,7 +117,7 @@ final class HypervVmBuildDispatcher
                 }
             }
         } catch (Throwable $e) {
-            Log::warning('HypervVmBuildDispatcher: reconcileStaleBuilds failed', [
+            Log::warning('VmBuildDispatcher: reconcileStaleBuilds failed', [
                 'hosting_account_id' => $account->id,
                 'error' => $e->getMessage(),
             ]);

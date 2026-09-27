@@ -270,4 +270,200 @@ class Server extends Model
 
         return $out;
     }
+
+    // ───────────────────── Proxmox VE curated templates ─────────────────────
+
+    /**
+     * Curated Proxmox VE templates for this server.
+     *
+     * Stored as one structured list rather than Hyper-V's parallel
+     * `template_vms` + `template_labels` keys. A PVE template is identified by
+     * its **VMID**, and a clone must also know the node the template lives on —
+     * the clone call addresses the template on ITS node and targets the node the
+     * new VM should end up on. So each entry carries vmid + node + an optional
+     * display label.
+     *
+     * @return list<array{vmid: string, node: string, label: string}>
+     */
+    public function proxmoxTemplates(): array
+    {
+        $meta = is_array($this->connection_meta) ? $this->connection_meta : [];
+
+        return self::sanitizeProxmoxTemplates($meta['proxmox_templates'] ?? null);
+    }
+
+    /**
+     * Default template VMID, only when it is still in proxmoxTemplates().
+     */
+    public function proxmoxDefaultTemplate(): ?string
+    {
+        $meta = is_array($this->connection_meta) ? $this->connection_meta : [];
+        $raw = $meta['proxmox_template_default'] ?? null;
+
+        if (! is_string($raw) && ! is_numeric($raw)) {
+            return null;
+        }
+
+        $vmid = trim((string) $raw);
+
+        if ($vmid === '') {
+            return null;
+        }
+
+        foreach ($this->proxmoxTemplates() as $template) {
+            if ($template['vmid'] === $vmid) {
+                return $vmid;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Canonicalize a raw `proxmox_templates` value.
+     *
+     * VMID is the identity, so entries without a usable one are dropped; the
+     * first occurrence of a VMID wins. Labels fall back to the VMID so the UI
+     * always has something to render.
+     *
+     * @return list<array{vmid: string, node: string, label: string}>
+     */
+    public static function sanitizeProxmoxTemplates(mixed $raw): array
+    {
+        if (! is_array($raw)) {
+            return [];
+        }
+
+        $out = [];
+        $seen = [];
+
+        foreach ($raw as $item) {
+            if (! is_array($item)) {
+                continue;
+            }
+
+            $rawVmid = $item['vmid'] ?? null;
+
+            if (! is_numeric($rawVmid)) {
+                continue;
+            }
+
+            $vmid = (string) (int) $rawVmid;
+
+            if ((int) $vmid <= 0 || isset($seen[$vmid])) {
+                continue;
+            }
+
+            $seen[$vmid] = true;
+
+            $node = mb_substr(trim((string) ($item['node'] ?? '')), 0, 64);
+            $label = trim(mb_substr(trim((string) ($item['label'] ?? '')), 0, 80));
+
+            $out[] = [
+                'vmid' => $vmid,
+                'node' => $node,
+                'label' => $label !== '' ? $label : $vmid,
+            ];
+
+            if (count($out) >= 50) {
+                break;
+            }
+        }
+
+        return $out;
+    }
+
+    // ───────────────────── Virtualizor curated OS templates ─────────────────────
+
+    /**
+     * Curated Virtualizor OS templates: list of {osid, label}. Identity is the
+     * numeric osid — the same template name can exist for several virt types.
+     *
+     * @return list<array{osid: string, label: string}>
+     */
+    public function virtualizorOsTemplates(): array
+    {
+        $meta = is_array($this->connection_meta) ? $this->connection_meta : [];
+
+        return self::sanitizeVirtualizorOsTemplates($meta['virtualizor_os_templates'] ?? null);
+    }
+
+    /**
+     * Default OS template, only when it is still in virtualizorOsTemplates().
+     */
+    public function virtualizorDefaultOs(): ?string
+    {
+        $meta = is_array($this->connection_meta) ? $this->connection_meta : [];
+        $raw = $meta['virtualizor_os_default'] ?? null;
+
+        if (! is_string($raw) && ! is_numeric($raw)) {
+            return null;
+        }
+
+        $osid = trim((string) $raw);
+
+        if ($osid === '') {
+            return null;
+        }
+
+        foreach ($this->virtualizorOsTemplates() as $template) {
+            if ($template['osid'] === $osid) {
+                return $osid;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Canonicalize a raw `virtualizor_os_templates` value.
+     *
+     * The osid is the identity, so entries without a usable one are dropped;
+     * the first occurrence wins and labels fall back to the osid so the UI
+     * always has something to render.
+     *
+     * @return list<array{osid: string, label: string}>
+     */
+    public static function sanitizeVirtualizorOsTemplates(mixed $raw): array
+    {
+        if (! is_array($raw)) {
+            return [];
+        }
+
+        $out = [];
+        $seen = [];
+
+        foreach ($raw as $item) {
+            if (! is_array($item)) {
+                continue;
+            }
+
+            $rawId = $item['osid'] ?? null;
+
+            if (! is_numeric($rawId)) {
+                continue;
+            }
+
+            $osid = (string) (int) $rawId;
+
+            if ((int) $osid <= 0 || isset($seen[$osid])) {
+                continue;
+            }
+
+            $seen[$osid] = true;
+
+            $label = trim(mb_substr(trim((string) ($item['label'] ?? '')), 0, 80));
+
+            $out[] = [
+                'osid' => $osid,
+                'label' => $label !== '' ? $label : $osid,
+            ];
+
+            if (count($out) >= 50) {
+                break;
+            }
+        }
+
+        return $out;
+    }
 }

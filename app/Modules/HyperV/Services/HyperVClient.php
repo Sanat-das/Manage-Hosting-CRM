@@ -93,9 +93,9 @@ final class HyperVClient
                 );
             }
 
-            $info = $this->fetchInfo($baseUrl, $username, $verifyTls, $host, $port, $useSsl);
+            $info = $this->fetchInfo($host);
 
-            if ($info === null) {
+            if (isset($info['error'])) {
                 $latency = $this->elapsedMs($start);
 
                 return ServerConnectionResult::ok(
@@ -112,7 +112,7 @@ final class HyperVClient
             }
 
             $latency = $this->elapsedMs($start);
-            $meta = $info->toArray();
+            $meta = $info['dto']->toArray();
             $meta['latencyMs'] = $latency;
             $meta['host'] = $host;
             $meta['port'] = $port;
@@ -150,23 +150,22 @@ final class HyperVClient
         $port = $this->port();
         $useSsl = $this->useSsl($port);
         $verifyTls = $this->verifyTls();
-        $username = trim((string) $this->server->api_username);
-        $scheme = $useSsl ? 'https' : 'http';
-        $baseUrl = sprintf('%s://%s:%d/wsman', $scheme, $host, $port);
 
         try {
-            $dto = $this->fetchInfo($baseUrl, $username, $verifyTls, $host, $port, $useSsl);
+            $info = $this->fetchInfo($host);
 
-            if ($dto === null) {
+            if (isset($info['error'])) {
                 return new ServerInfoDTO(
                     hostname: $host,
                     version: '',
                     ipAddress: (string) $this->server->ip_address,
                     totalAccounts: 0,
                     latencyMs: $this->elapsedMs($start),
-                    meta: ['host' => $host, 'port' => $port, 'use_ssl' => $useSsl, 'verify_tls' => $verifyTls],
+                    meta: ['error' => $info['error'], 'host' => $host, 'port' => $port, 'use_ssl' => $useSsl, 'verify_tls' => $verifyTls],
                 );
             }
+
+            $dto = $info['dto'];
 
             return new ServerInfoDTO(
                 hostname: $dto->hostname !== '' ? $dto->hostname : $host,
@@ -686,13 +685,29 @@ PS;
      * every request. Single cache home for Hyper-V server info (TTL 60s,
      * key includes the server id) — controllers call this instead of
      * adding their own Cache::remember layer.
+     *
+     * Caches the DTO's toArray() shape, never the object itself:
+     * `cache.serializable_classes` is false in this app, so an object put in
+     * the cache comes back as __PHP_Incomplete_Class on every serializing
+     * store. Anything that is not the array shape (expired, legacy payload
+     * from another driver, garbage) is refetched and overwritten.
      */
     public function cachedServerInfo(int $ttlSeconds = 60): ServerInfoDTO
     {
         $ttlSeconds = max(1, min(600, $ttlSeconds));
         $key = sprintf('hyperv:server:%s:info', (string) ($this->server->id ?? $this->server->ip_address ?? 'new'));
 
-        return Cache::remember($key, $ttlSeconds, fn (): ServerInfoDTO => $this->getServerInfo());
+        $cached = Cache::get($key);
+
+        if (is_array($cached) && $cached !== []) {
+            return ServerInfoDTO::fromArray($cached);
+        }
+
+        $dto = $this->getServerInfo();
+
+        Cache::put($key, $dto->toArray(), $ttlSeconds);
+
+        return $dto;
     }
 
     /**
@@ -1822,18 +1837,23 @@ PS;
      * totals/used (storageTotal/storageUsed/volumes[]), osBuild and
      * cpuLoadPercent.
      *
-     * The live WinRM SOAP reply embeds that JSON as command output text, so
-     * parseInfoBody() can extract the {...} fragment. On parse failure
-     * returns null so testConnection can still succeed with just the
-     * Test-WSMan proof (degraded mode).
+     * Runs through the shared invokeRemote transport — native PowerShell
+     * remoting when available, SOAP otherwise — the same channel listVms()
+     * and getVmState() use, so the card can never disagree with the VM table
+     * about how the host was reached. Bounded by the client timeout on both
+     * channels: a slow host degrades the card, it never hangs the page.
+     *
+     * Failures come back as ['error' => ...] so the caller can surface the
+     * reason (the card renders meta.error) instead of showing an empty card.
+     *
+     * @return array{dto:ServerInfoDTO}|array{error:string}
      */
-    private function fetchInfo(string $baseUrl, string $username, bool $verifyTls, string $host, int $port, bool $useSsl): ?ServerInfoDTO
+    private function fetchInfo(string $host): array
     {
-        try {
-            // No host-controlled values are interpolated into this snippet, so
-            // there is nothing to escape; any future interpolation MUST go
-            // through self::psQuote() (never addslashes()).
-            $ps = <<<'PS'
+        // No host-controlled values are interpolated into this snippet, so
+        // there is nothing to escape; any future interpolation MUST go
+        // through self::psQuote() (never addslashes()).
+        $ps = <<<'PS'
 $ErrorActionPreference = 'SilentlyContinue';
 $h = Get-VMHost -ErrorAction SilentlyContinue;
 $os = Get-CimInstance Win32_OperatingSystem -ErrorAction SilentlyContinue;
@@ -1848,8 +1868,10 @@ foreach ($d in @(Get-PSDrive -ErrorAction SilentlyContinue | Where-Object { $_.P
   $t = $u + $f; $stTotal += $t; $stUsed += $u; $stFree += $f
   $vols += @{ name = [string]$d.Name; total = $t; used = $u; free = $f }
 }
+$bootDt = $null;
+if ($os -and $os.LastBootUpTime) { if ($os.LastBootUpTime -is [datetime]) { $bootDt = $os.LastBootUpTime } else { try { $bootDt = [Management.ManagementDateTimeConverter]::ToDateTime([string]$os.LastBootUpTime) } catch { try { $bootDt = [datetime]::Parse([string]$os.LastBootUpTime) } catch {} } } }
 $boot = $null; $uptime = $null;
-if ($os -and $os.LastBootUpTime) { $boot = ([Management.ManagementDateTimeConverter]::ToDateTime([string]$os.LastBootUpTime)).ToString('o'); try { $uptime = [string]((Get-Date) - ([Management.ManagementDateTimeConverter]::ToDateTime([string]$os.LastBootUpTime))) } catch {} }
+if ($bootDt) { $boot = $bootDt.ToString('o'); try { $uptime = [string]((Get-Date) - $bootDt) } catch {} }
 $cpuLoad = $null; if ($procs -and $procs.Count -gt 0) { $loads = @($procs | Where-Object { $_.LoadPercentage } | Select-Object -ExpandProperty LoadPercentage); if ($loads.Count -gt 0) { $cpuLoad = [int](($loads | Measure-Object -Average).Average) } }
 $memTotal = 0; $memFree = 0; if ($os) { $memTotal = [long]$os.TotalVisibleMemorySize * 1KB; $memFree = [long]$os.FreePhysicalMemory * 1KB }
 if ($cs -and $cs.TotalPhysicalMemory) { $memTotal = [long]$cs.TotalPhysicalMemory }
@@ -1860,61 +1882,19 @@ $out = @{
 }
 $out | ConvertTo-Json -Compress -Depth 5
 PS;
-            $response = Http::withOptions(['verify' => $verifyTls])
-                ->timeout($this->timeout)
-                ->withHeaders([
-                    'Content-Type' => 'application/soap+xml;charset=UTF-8',
-                    'User-Agent' => 'ManageHosting-HyperVClient/1.0',
-                ])
-                ->withBasicAuth($username, $this->password())
-                ->withBody($this->invokeEnvelope($ps), 'application/soap+xml;charset=UTF-8')
-                ->post($baseUrl);
+        $result = $this->invokeRemote($ps, $this->timeout, true);
 
-            if ($response->failed()) {
-                return null;
-            }
-
-            $body = (string) $response->body();
-
-            return $this->parseInfoBody($body, $host);
-        } catch (Throwable) {
-            return null;
-        }
-    }
-
-    /**
-     * Parse SOAP+JSON or plain JSON body into ServerInfoDTO meta.
-     *
-     * Handles both real WinRM SOAP (extracts inner JSON text) and Http::fake() plain JSON.
-     */
-    private function parseInfoBody(string $body, string $host): ?ServerInfoDTO
-    {
-        $trimmed = trim($body);
-
-        if ($trimmed === '') {
-            return null;
+        if (isset($result['error'])) {
+            return ['error' => $result['error']];
         }
 
-        // If body is already JSON (fake), decode directly.
-        $json = json_decode($trimmed, true);
-        if (is_array($json) && (isset($json['vmHost']) || isset($json['host']) || isset($json['hostOS']) || isset($json['switches']) || isset($json['vmSwitches']) || isset($json['vms']) || isset($json['vmCounts']) || isset($json['volumes']) || isset($json['uptime']) || isset($json['storageFree']))) {
-            return $this->dtoFromDecoded($json, $host);
+        $data = $result['data'] ?? null;
+
+        if (! is_array($data)) {
+            return ['error' => 'Host returned no host-info payload.'];
         }
 
-        // SOAP: extract inner text between <...> or CDATA that contains JSON.
-        if (str_contains($trimmed, '<')) {
-            // Look for JSON fragment inside SOAP
-            if (preg_match('/\{.*\}/s', $trimmed, $m) === 1) {
-                $inner = json_decode($m[0], true);
-                if (is_array($inner)) {
-                    return $this->dtoFromDecoded($inner, $host);
-                }
-            }
-
-            return null;
-        }
-
-        return null;
+        return ['dto' => $this->dtoFromDecoded($data, $host)];
     }
 
     /**

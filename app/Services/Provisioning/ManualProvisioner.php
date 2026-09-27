@@ -167,18 +167,18 @@ class ManualProvisioner
             return ProvisioningResult::fail("No provisioning driver found for {$moduleSlug}.");
         }
 
-        $hypervAllowed = [];
-        $hypervEffective = [];
-        // 6. Template rule (hyperv) with per-product restriction
-        if (strtolower($moduleSlug) === 'hyperv') {
-            $curated = $server->hypervTemplateVms();
+        $templateKey = ComputeTemplateCatalog::templateKey($moduleSlug);
+        $templateAllowed = [];
+        // 6. Template rule for compute modules (Hyper-V name, Proxmox VE VMID)
+        // with the product's per-module allow-list.
+        if ($templateKey !== null) {
+            $curated = ComputeTemplateCatalog::curatedIds($server, $moduleSlug);
             $rawLinkConfig = is_array($link->config ?? null) ? $link->config : [];
             $decryptedLinkConfig = $this->registry->decryptConfigFor($moduleSlug, $rawLinkConfig);
             $allowedRaw = $decryptedLinkConfig['allowed_templates'] ?? [];
-            $allowed = HypervTemplateCatalog::sanitizeAllowed(is_array($allowedRaw) ? $allowedRaw : []);
-            $hypervAllowed = $allowed;
-            $effective = HypervTemplateCatalog::effectiveNames($server, $allowed);
-            $hypervEffective = $effective;
+            $allowed = ComputeTemplateCatalog::sanitizeAllowed($moduleSlug, is_array($allowedRaw) ? $allowedRaw : []);
+            $templateAllowed = $allowed;
+            $effective = ComputeTemplateCatalog::effectiveIds($server, $moduleSlug, $allowed);
 
             $explicit = $templateVm !== null ? trim((string) $templateVm) : '';
             if ($explicit !== '') {
@@ -192,21 +192,17 @@ class ManualProvisioner
                 if (! in_array($explicit, $effective, true)) {
                     return ProvisioningResult::fail("Template '{$explicit}' is not in the curated list for server '{$server->name}'.");
                 }
-            } else {
-                // effective empty
-                if ($curated !== []) {
-                    // Server has curated but product restriction excludes everything
-                    return ProvisioningResult::fail("no template is allowed for this product on server '{$server->name}'.");
-                }
+            } elseif ($curated !== []) {
+                // Server has curated but product restriction excludes everything
+                return ProvisioningResult::fail("no template is allowed for this product on server '{$server->name}'.");
+            } elseif ($explicit !== '') {
                 // curated empty -> legacy blank-disk, template must be empty
-                if ($explicit !== '') {
-                    return ProvisioningResult::fail("Template '{$explicit}' is not in the curated list for server '{$server->name}'.");
-                }
+                return ProvisioningResult::fail("Template '{$explicit}' is not in the curated list for server '{$server->name}'.");
             }
         }
 
         // 7. Concurrency lock (multi-GB clone must not let a second worker in)
-        $lock = Cache::lock("hyperv:provision:{$account->id}", 1900);
+        $lock = Cache::lock(strtolower($moduleSlug).":provision:{$account->id}", 1900);
         if (! $lock->get()) {
             return ProvisioningResult::fail('provisioning already in progress');
         }
@@ -249,15 +245,19 @@ class ManualProvisioner
                 $explicitTemplate = mb_substr($explicitTemplate, 0, 64);
             }
 
-            // For hyperv, include template_vm when set or when server has default? Spec says when set.
-            // But HyperV module expects template_vm explicit or default via server; we pass explicit only when set.
-            if (strtolower($moduleSlug) === 'hyperv') {
+            // The chosen template is injected under the module's own config
+            // key (template_vm / template_vmid); the allow-list rides along so
+            // the driver can re-validate before touching the host.
+            if ($templateKey !== null) {
                 if ($explicitTemplate !== '') {
-                    $config['template_vm'] = $explicitTemplate;
+                    $config[$templateKey] = $explicitTemplate;
                 }
-                if ($hypervAllowed !== []) {
-                    $config['allowed_templates'] = $hypervAllowed;
+                if ($templateAllowed !== []) {
+                    $config['allowed_templates'] = $templateAllowed;
                 }
+            }
+
+            if (strtolower($moduleSlug) === 'hyperv') {
                 // Inject defaults for required hyperv keys so a bare product config (empty link config)
                 // still provisions via driver defaults (cpu=2, ram=2048, disk=50, etc.) and keeps the
                 // existing blank-disk test green. Missing-key validation still runs afterwards so a
@@ -283,7 +283,10 @@ class ManualProvisioner
             // Merge overrides (guest credentials, start_after_create) before validation.
             if ($overrides !== []) {
                 foreach ($overrides as $k => $v) {
-                    if ($v !== null && $v !== '') {
+                    // Booleans are meaningful even when false (start_after_create,
+                    // apply_password): dropping false silently re-applied the
+                    // config default instead of the operator's choice.
+                    if ($v !== null && ($v !== '' || is_bool($v))) {
                         $config[$k] = $v;
                     }
                 }

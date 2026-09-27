@@ -41,4 +41,26 @@ final readonly class ServerInfoDTO
             'meta' => $this->meta,
         ];
     }
+
+    /**
+     * Rehydrate from the toArray() shape.
+     *
+     * This is the ONLY payload allowed to sit in the cache: cache stores run
+     * with `cache.serializable_classes` = false (gadget-chain hardening), so a
+     * serialized DTO comes back from any serializing store (database, file,
+     * redis) as __PHP_Incomplete_Class and blows up the declared return type.
+     *
+     * @param  array<string, mixed>  $data  the toArray() shape
+     */
+    public static function fromArray(array $data): self
+    {
+        return new self(
+            hostname: (string) ($data['hostname'] ?? ''),
+            version: (string) ($data['version'] ?? ''),
+            ipAddress: (string) ($data['ipAddress'] ?? ''),
+            totalAccounts: is_numeric($data['totalAccounts'] ?? null) ? (int) $data['totalAccounts'] : 0,
+            latencyMs: is_numeric($data['latencyMs'] ?? null) ? (int) $data['latencyMs'] : 0,
+            meta: is_array($data['meta'] ?? null) ? $data['meta'] : [],
+        );
+    }
 }

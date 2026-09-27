@@ -3,9 +3,11 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\AuditLog;
 use App\Models\Order;
 use App\Models\PanelAccount;
 use App\Models\ProvisioningEvent;
+use App\Models\Server;
 use App\Models\ServiceInstance;
 use App\Services\Integrations\IntegrationRegistry;
 use App\Services\Modules\ModuleManager;
@@ -13,6 +15,7 @@ use App\Services\Provisioning\ProvisioningDispatcher;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 
 class ServiceInstanceController extends Controller
@@ -54,18 +57,217 @@ class ServiceInstanceController extends Controller
         $provisioningEvents = ProvisioningEvent::where('service_instance_id', $serviceInstance->id)
             ->orderByDesc('created_at')->limit(20)->get();
 
-        return view('admin.service-instances.show', compact('serviceInstance', 'provisioningEvents'));
+        // Eligible move targets: active servers of the same kind. Resolved here
+        // so the view never queries, and so an impossible move is not offered.
+        $moveTargets = Server::query()
+            ->where('status', 'active')
+            ->where('id', '!=', (int) $serviceInstance->server_id)
+            ->when(
+                in_array(strtolower(trim((string) $serviceInstance->provisioning_method)), ['proxmox', 'hyperv', 'virtualizor', 'cpanel', 'plesk', 'directadmin'], true),
+                fn ($query) => $query->where('server_type', strtolower(trim((string) $serviceInstance->provisioning_method))),
+            )
+            ->orderBy('name')
+            ->get(['id', 'name', 'server_type']);
+
+        // true = verified present, false = verified gone, null = unverifiable.
+        // Unknown counts as present for the warning, so an unprobeable driver
+        // keeps the safe behaviour.
+        $machineState = $this->machineState($serviceInstance);
+
+        return view('admin.service-instances.show', compact('serviceInstance', 'provisioningEvents', 'moveTargets', 'machineState'));
     }
 
     public function update(Request $request, ServiceInstance $serviceInstance): RedirectResponse
     {
         $validated = $request->validate([
             'status' => ['sometimes', 'string', 'in:active,suspended,cancelled,terminated,pending'],
-            'provision_status' => ['sometimes', 'string', 'in:pending,provisioning,provisioned,failed,suspended'],
+            'provision_status' => ['sometimes', 'string', Rule::in(ServiceInstance::PROVISION_STATUSES)],
         ]);
         $serviceInstance->update($validated);
 
         return redirect()->route('admin.service-instances.show', $serviceInstance)->with('success', 'Service instance updated.');
+    }
+
+    /**
+     * Re-point a service at a different server.
+     *
+     * `service_instances.server_id` is otherwise written exactly once, by the
+     * provisioning dispatcher at creation. That left no way to move a service
+     * off a server being decommissioned — and because the server delete is
+     * correctly blocked while services point at it, the server could not be
+     * removed either. This closes that dead end.
+     *
+     * Two guards, because a wrong move is silent and damaging:
+     *
+     *  - the target must be an active server of the same kind, so a Proxmox
+     *    service cannot be pointed at a Hyper-V host;
+     *  - a service whose machine was actually built needs an explicit
+     *    acknowledgement. Every later lifecycle call resolves the driver from
+     *    `server_id`, so pointing it at a server that does not hold the machine
+     *    would make suspend/terminate target the wrong place.
+     */
+    public function move(Request $request, ServiceInstance $serviceInstance): RedirectResponse
+    {
+        $validated = $request->validate([
+            'server_id' => ['required', 'integer', 'exists:servers,id'],
+            'confirm_machine_handled' => ['sometimes', 'boolean'],
+        ]);
+
+        $target = Server::findOrFail($validated['server_id']);
+
+        if ((int) $serviceInstance->server_id === (int) $target->id) {
+            return back()->with('error', sprintf('This service is already on "%s".', $target->name));
+        }
+
+        $blocker = $this->moveBlocker($serviceInstance, $target);
+
+        if ($blocker !== null) {
+            return back()->with('error', $blocker);
+        }
+
+        $from = $serviceInstance->server?->name ?? 'unassigned';
+        $tag = $serviceInstance->service_tag ?: '#'.$serviceInstance->id;
+        $machine = $this->machineState($serviceInstance);
+
+        // `false` is the only outcome that clears the guard: a machine that could
+        // NOT be verified (`null`) must be treated as still there, otherwise an
+        // unreachable host would let a live service be re-pointed silently.
+        $confirmed = $request->boolean('confirm_machine_handled');
+
+        if ($machine !== false && ! $confirmed) {
+            return back()->with('error', sprintf(
+                '%s Moving it would point suspend/terminate at a server that does not hold that machine. '
+                .'Migrate or destroy it in Proxmox/Hyper-V first, then tick the confirmation to move.',
+                $machine === true
+                    ? sprintf('Service %s already has a machine on "%s".', $tag, $from)
+                    : sprintf('Whether service %s still has a machine on "%s" could not be verified.', $tag, $from),
+            ));
+        }
+
+        $fromServerId = $serviceInstance->server_id;
+
+        $serviceInstance->update(['server_id' => $target->id]);
+
+        // `created_at` is not fillable on AuditLog, so it is set explicitly —
+        // passing it to create() would silently store NULL.
+        $audit = new AuditLog([
+            'user_id' => $request->user()?->id,
+            'action' => 'service.moved',
+            'entity_type' => 'service_instance',
+            'entity_id' => $serviceInstance->id,
+            'details' => json_encode([
+                'service' => $tag,
+                'from' => $from,
+                'from_server_id' => $fromServerId,
+                'to' => $target->name,
+                'to_server_id' => $target->id,
+                'machine_state' => $machine === null ? 'unknown' : ($machine ? 'present' : 'absent'),
+                'machine_acknowledged' => $machine === true && $confirmed,
+            ]),
+            'ip_address' => $request->ip(),
+            'user_agent' => $request->userAgent(),
+        ]);
+        $audit->created_at = now();
+        $audit->save();
+
+        $note = match ($machine) {
+            true => ' Its existing machine must be migrated separately.',
+            false => ' The machine previously recorded for it no longer exists on the host.',
+            default => '',
+        };
+
+        return redirect()
+            ->route('admin.service-instances.show', $serviceInstance)
+            ->with('success', sprintf('Service %s moved from "%s" to "%s".%s', $tag, $from, $target->name, $note));
+    }
+
+    /**
+     * Why this service cannot be moved to this server, or null when it can.
+     */
+    private function moveBlocker(ServiceInstance $serviceInstance, Server $target): ?string
+    {
+        $tag = $serviceInstance->service_tag ?: '#'.$serviceInstance->id;
+
+        if (trim((string) $target->status) !== 'active') {
+            return sprintf('Server "%s" is not active, so services cannot be moved onto it.', $target->name);
+        }
+
+        if (in_array(strtolower(trim((string) $serviceInstance->status)), ['terminated', 'cancelled'], true)) {
+            return sprintf('Service %s is %s — there is nothing left to move.', $tag, $serviceInstance->status);
+        }
+
+        // Only constrain when both sides name a known server type; 'manual' or
+        // a plugin slug has no type to match against.
+        $method = strtolower(trim((string) $serviceInstance->provisioning_method));
+        $type = strtolower(trim((string) ($target->server_type ?? '')));
+        $typed = ['proxmox', 'hyperv', 'virtualizor', 'cpanel', 'plesk', 'directadmin'];
+
+        if (in_array($method, $typed, true) && $type !== '' && $method !== $type) {
+            return sprintf(
+                'Service %s is a %s service and cannot live on a %s server. Pick a %s server.',
+                $tag,
+                $method,
+                $type,
+                $method,
+            );
+        }
+
+        return null;
+    }
+
+    /**
+     * Does this service really still have a machine?
+     *
+     * `true` / `false` are verified against the owning driver. `null` means it
+     * could not be determined — no panel account, no probing hook, or the host
+     * did not answer — and callers must treat that as "assume it is still
+     * there", never as "gone".
+     *
+     * Without the probe a stale record (the VM was deleted out-of-band) would
+     * demand the confirmation tick forever, which trains operators to tick it
+     * blindly.
+     */
+    private function machineState(ServiceInstance $serviceInstance): ?bool
+    {
+        $account = PanelAccount::where('service_instance_id', $serviceInstance->id)
+            ->orderByDesc('id')
+            ->first();
+
+        if ($account === null) {
+            // No panel record at all: the only signal left is external_id, which
+            // a module writes on success. It cannot be verified, so trust it.
+            return trim((string) ($serviceInstance->external_id ?? '')) !== '' ? null : false;
+        }
+
+        $server = $account->server_id !== null ? Server::find($account->server_id) : null;
+
+        if ($server === null) {
+            return null;
+        }
+
+        try {
+            $driver = app(IntegrationRegistry::class)->resolveForServer($server);
+        } catch (\Throwable) {
+            return null;
+        }
+
+        if ($driver === null || ! method_exists($driver, 'recordedVmState')) {
+            // No hook for this driver — cannot verify, so assume present.
+            return null;
+        }
+
+        try {
+            $probe = $driver->recordedVmState($account);
+
+            return is_bool($probe['exists'] ?? null) ? $probe['exists'] : null;
+        } catch (\Throwable $e) {
+            Log::warning('Could not probe service machine state', [
+                'service_instance_id' => $serviceInstance->id,
+                'error' => $e->getMessage(),
+            ]);
+
+            return null;
+        }
     }
 
     /**

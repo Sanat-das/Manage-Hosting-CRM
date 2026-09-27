@@ -7,7 +7,9 @@ use App\Models\Product;
 use App\Models\ProductModule;
 use App\Services\Integrations\IntegrationRegistry;
 use App\Services\Modules\ModuleManager;
+use App\Services\Provisioning\ComputeTemplateCatalog;
 use App\Services\Provisioning\HypervTemplateCatalog;
+use App\Services\Provisioning\ProxmoxTemplateCatalog;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 
@@ -143,6 +145,70 @@ class ProductModuleController extends Controller
             ->with('success', "Module {$target['name']} is now {$validated['provisioning_mode']} on product {$product->name}.");
     }
 
+    /**
+     * Save the product-level default template for a compute module.
+     *
+     * Merge-saves: every other config key on the link survives. An empty value
+     * clears the default (the server default / first effective template then
+     * applies at provision time). A non-empty value is validated against the
+     * union of curated templates across active servers — when nothing is
+     * curated anywhere the value is accepted as-is and the driver re-validates
+     * against the actual server at provision time.
+     */
+    public function updateTemplateDefault(Product $product, string $moduleSlug, Request $request): RedirectResponse
+    {
+        $templateKey = ComputeTemplateCatalog::templateKey($moduleSlug);
+
+        abort_if($templateKey === null, 404, 'This module has no template default.');
+
+        $target = $this->resolveTarget($moduleSlug);
+        abort_unless($target['exists'], 404, 'Module not found.');
+
+        $pivot = ProductModule::query()
+            ->where('product_id', $product->id)
+            ->where('module_slug', $moduleSlug)
+            ->first();
+
+        abort_unless($pivot, 404, 'Module is not enabled on this product.');
+
+        $validated = $request->validate([
+            'template' => ['nullable', 'string', 'max:64'],
+        ]);
+
+        $value = trim((string) ($validated['template'] ?? ''));
+
+        if ($value !== '') {
+            $known = array_column(ComputeTemplateCatalog::unionOptions($moduleSlug), 'id');
+
+            if ($known !== [] && ! in_array($value, $known, true)) {
+                return back()
+                    ->withInput()
+                    ->withErrors(['template' => "Unknown or inactive template '{$value}'. Allowed: ".implode(', ', $known)]);
+            }
+        }
+
+        $existingRaw = is_array($pivot->config) ? $pivot->config : [];
+        $decrypted = $this->registry->decryptConfigFor($moduleSlug, $existingRaw);
+
+        if ($value === '') {
+            unset($decrypted[$templateKey]);
+        } else {
+            $decrypted[$templateKey] = $value;
+        }
+
+        $encrypted = $this->registry->encryptConfigFor($moduleSlug, $decrypted);
+        $pivot->update(['config' => $encrypted]);
+
+        $message = $value === ''
+            ? 'Template default cleared — the server default applies.'
+            : "Default template set to '{$value}'.";
+
+        return redirect()
+            ->route('admin.products.edit', [$product, 'tab' => 'modules'])
+            ->with('success', $message)
+            ->with('active_tab', 'modules');
+    }
+
     public function updateConfig(Product $product, string $moduleSlug, Request $request): RedirectResponse
     {
         $target = $this->resolveTarget($moduleSlug);
@@ -202,9 +268,20 @@ class ProductModuleController extends Controller
             ->with('success', "Configuration saved for module {$target['name']}.");
     }
 
+    /**
+     * Restrict a product to a subset of the server's curated templates.
+     *
+     * Any compute module with selectable templates (Hyper-V by name, Proxmox VE
+     * by VMID, Virtualizor by OSID) uses this one endpoint — the per-module
+     * identity is absorbed by ComputeTemplateCatalog.
+     */
     public function updateAllowedTemplates(Product $product, string $moduleSlug, Request $request): RedirectResponse
     {
-        abort_unless($moduleSlug === 'hyperv', 404, 'Only hyperv supports template restrictions.');
+        abort_unless(
+            ComputeTemplateCatalog::supports($moduleSlug),
+            404,
+            'This module does not support template restrictions.',
+        );
 
         $target = $this->resolveTarget($moduleSlug);
         abort_unless($target['exists'], 404, 'Module not found.');
@@ -227,21 +304,26 @@ class ProductModuleController extends Controller
             $rawAllowed = [];
         }
 
-        $sanitized = HypervTemplateCatalog::sanitizeAllowed($rawAllowed);
+        $sanitized = ComputeTemplateCatalog::sanitizeAllowed($moduleSlug, $rawAllowed);
 
         if ($sanitized !== []) {
-            $unionNames = HypervTemplateCatalog::unionNames();
-            $unionSet = array_flip($unionNames);
+            $known = array_column(ComputeTemplateCatalog::unionOptions($moduleSlug), 'id');
+
+            $knownSet = array_flip($known);
             $unknown = [];
-            foreach ($sanitized as $name) {
-                if (! isset($unionSet[$name])) {
-                    $unknown[] = $name;
+            foreach ($sanitized as $value) {
+                if (! isset($knownSet[$value])) {
+                    $unknown[] = $value;
                 }
             }
+
             if ($unknown !== []) {
                 return back()
                     ->withInput()
-                    ->withErrors(['allowed_templates' => 'Unknown templates: '.implode(', ', $unknown).'. Allowed: '.implode(', ', $unionNames)]);
+                    ->withErrors([
+                        'allowed_templates' => 'Unknown templates: '.implode(', ', $unknown)
+                            .'. Allowed: '.($known === [] ? '(none curated)' : implode(', ', $known)),
+                    ]);
             }
         }
 
@@ -259,7 +341,7 @@ class ProductModuleController extends Controller
 
         return redirect()
             ->route('admin.products.edit', [$product, 'tab' => 'modules'])
-            ->with('success', 'Hyper-V template restriction saved.')
+            ->with('success', $target['name'].' template restriction saved.')
             ->with('active_tab', 'modules');
     }
 }

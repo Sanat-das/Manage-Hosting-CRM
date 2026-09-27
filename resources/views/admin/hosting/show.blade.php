@@ -110,6 +110,8 @@
                         'hvDefault' => $hvDefault ?? ($hypervEffectiveDefault ?? null),
                         'hvCuratedCount' => $hvCuratedCount ?? ($hypervCuratedCount ?? 0),
                     ])
+                @elseif (! empty($computeCards[$mod->slug]))
+                    @include('admin.hosting.partials._compute-actions', $computeCards[$mod->slug])
                 @else
                     @php
                         // Unique DOM key for this row's inline confirm strip. Slugs are
@@ -199,7 +201,7 @@
                     </div>
                 @endif
             @endforeach
-            <p class="text-muted small mb-0 mt-2">Calls the enabled module directly from this account. Manual links only run here — never automatically. Hyper-V power actions are state-checked on the host; Restart and Delete require typing the account name.</p>
+            <p class="text-muted small mb-0 mt-2">Calls the enabled module directly from this account. Manual links only run here — never automatically. Compute power actions are state-checked on the host; Restart and Delete require typing the account name.</p>
         </x-adminlte-card>
 
         {{-- Inline (not @push('css')): this card renders in the body, after the head's

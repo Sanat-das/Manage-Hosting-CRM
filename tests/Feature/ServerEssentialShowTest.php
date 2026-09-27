@@ -264,4 +264,186 @@ final class ServerEssentialShowTest extends TestCase
 
         fwrite(STDERR, "\n[EVIDENCE stale-fresh-error] banner shows last refresh failure reason\n");
     }
+
+    public function test_transport_strip_carries_one_security_badge_and_no_raw_url(): void
+    {
+        $plain = $this->makeServer([
+            'server_type' => 'hyperv',
+            'ip_address' => '192.0.2.77',
+            'api_url' => 'http://192.0.2.77:5985',
+            'connection_meta' => ['use_ssl' => false, 'verify_tls' => false, 'meta' => ['hostname' => 'hv-plain.example.com']],
+        ]);
+        $plainHtml = view('admin.servers.partials._essential-panels', [
+            'server' => $plain->refresh(), 'vm' => ServerDetailViewModel::fromServer($plain->refresh()),
+        ])->render();
+
+        $this->assertStringContainsString('No SSL', $plainHtml);
+        // Plain HTTP: a TLS-verify flag would say nothing new, and the api_url
+        // only repeats the host:port already on the strip.
+        $this->assertStringNotContainsString('Verify TLS off', $plainHtml);
+        $this->assertStringNotContainsString('Verify TLS on', $plainHtml);
+        $this->assertStringNotContainsString('http://192.0.2.77:5985', $plainHtml);
+
+        $tls = $this->makeServer([
+            'server_type' => 'hyperv',
+            'ip_address' => '192.0.2.78',
+            'api_url' => 'https://192.0.2.78:5986',
+            'connection_meta' => ['use_ssl' => true, 'verify_tls' => false, 'meta' => ['hostname' => 'hv-tls.example.com']],
+        ]);
+        $tlsHtml = view('admin.servers.partials._essential-panels', [
+            'server' => $tls->refresh(), 'vm' => ServerDetailViewModel::fromServer($tls->refresh()),
+        ])->render();
+
+        // With TLS on, the disabled verification IS the warning worth printing.
+        $this->assertStringContainsString('SSL', $tlsHtml);
+        $this->assertStringContainsString('Verify TLS off', $tlsHtml);
+
+        fwrite(STDERR, "\n[EVIDENCE transport-badges] plain=No SSL only, tls=SSL + Verify TLS off, no api_url echo\n");
+    }
+
+    public function test_volume_rows_render_only_when_more_than_one_real_volume(): void
+    {
+        $server = $this->makeServer([
+            'server_type' => 'hyperv',
+            'connection_meta' => ['meta' => [
+                'storageTotal' => 1000,
+                'storageUsed' => 400,
+                'storageFree' => 600,
+                // A zero-size drive is a device artefact, not capacity.
+                'volumes' => [
+                    ['name' => 'C', 'total' => 1000, 'used' => 400, 'free' => 600],
+                    ['name' => 'D', 'total' => 0, 'used' => 0, 'free' => 0],
+                ],
+            ]],
+        ]);
+        $vm = ServerDetailViewModel::fromServer($server->refresh());
+        $html = view('admin.servers.partials._essential-panels', ['server' => $server->refresh(), 'vm' => $vm])->render();
+
+        // Aggregate only: one real volume would print the same numbers twice.
+        $this->assertStringContainsString('400 B of 1000 B', $html);
+        $this->assertStringNotContainsString('C:', $html);
+        $this->assertStringNotContainsString('D:', $html);
+
+        $twoVolumes = $this->makeServer([
+            'server_type' => 'hyperv',
+            'connection_meta' => ['meta' => [
+                'storageTotal' => 3000,
+                'storageUsed' => 1500,
+                'storageFree' => 1500,
+                'volumes' => [
+                    ['name' => 'C', 'total' => 1000, 'used' => 500, 'free' => 500],
+                    ['name' => 'D', 'total' => 2000, 'used' => 1000, 'free' => 1000],
+                ],
+            ]],
+        ]);
+        $vmTwo = ServerDetailViewModel::fromServer($twoVolumes->refresh());
+        $htmlTwo = view('admin.servers.partials._essential-panels', ['server' => $twoVolumes->refresh(), 'vm' => $vmTwo])->render();
+
+        $this->assertStringContainsString('C:', $htmlTwo);
+        $this->assertStringContainsString('D:', $htmlTwo);
+        $this->assertStringContainsString('50%', $htmlTwo);
+
+        fwrite(STDERR, "\n[EVIDENCE volume-rows] single real volume = aggregate only, two = C:/D: rows with shares\n");
+    }
+
+    public function test_consumption_hides_zero_value_rows_and_empty_blocks(): void
+    {
+        $server = $this->makeServer();
+        $vm = ServerDetailViewModel::fromServer($server->refresh());
+
+        $allZero = view('admin.servers.partials._essential-panels', [
+            'server' => $server->refresh(), 'vm' => $vm,
+            'consumptionRows' => [
+                ['source' => 'metered', 'label' => 'usage:disk', 'value' => 0.0, 'unit' => 'MB', 'display' => '0 B'],
+                ['source' => 'legacy', 'label' => 'quota:disk_quota', 'value' => 0.0, 'unit' => 'MB', 'display' => '0 B'],
+                ['source' => 'legacy', 'label' => 'quota:disk_used', 'value' => 0.0, 'unit' => 'MB', 'display' => '0 B'],
+            ],
+        ])->render();
+
+        $this->assertStringContainsString('No usage recorded', $allZero);
+        $this->assertStringNotContainsString('quota:disk_quota', $allZero);
+        $this->assertStringNotContainsString('Legacy quota', $allZero);
+        $this->assertStringNotContainsString('Metered', $allZero);
+
+        $mixed = view('admin.servers.partials._essential-panels', [
+            'server' => $server->refresh(), 'vm' => $vm,
+            'consumptionRows' => [
+                ['source' => 'metered', 'label' => 'usage:disk', 'value' => 512.0, 'unit' => 'MB', 'display' => '512 MB'],
+                ['source' => 'legacy', 'label' => 'quota:bandwidth_quota', 'value' => 0.0, 'unit' => 'MB', 'display' => '0 B'],
+            ],
+        ])->render();
+
+        // A zero row proves nothing: the non-zero row prints, its block stays,
+        // and the empty block disappears instead of rendering a bare label.
+        $this->assertStringContainsString('Metered', $mixed);
+        $this->assertStringContainsString('usage:disk', $mixed);
+        $this->assertStringContainsString('512 MB', $mixed);
+        $this->assertStringNotContainsString('quota:bandwidth_quota', $mixed);
+        $this->assertStringNotContainsString('Legacy quota', $mixed);
+
+        fwrite(STDERR, "\n[EVIDENCE consumption-zeros] all-zero = 'No usage recorded', mixed = non-zero rows only\n");
+    }
+
+    public function test_census_remote_carries_the_run_stop_split_once_and_leaks_no_directive(): void
+    {
+        $server = $this->makeServer([
+            'server_type' => 'hyperv',
+            'connection_meta' => ['totalAccounts' => 5, 'meta' => [
+                'vmCounts' => ['running' => 3, 'stopped' => 1, 'saved' => 1, 'total' => 5],
+                'provenance' => ['checked_at' => now()->toIso8601String()],
+            ]],
+        ]);
+        $vm = ServerDetailViewModel::fromServer($server->refresh());
+        $html = view('admin.servers.partials._essential-panels', ['server' => $server->refresh(), 'vm' => $vm])->render();
+
+        $this->assertStringContainsString('3 running · 1 stopped · 1 saved', $html);
+        $this->assertSame(1, substr_count($html, '3 running'), 'The split is the remote total — it must not print twice.');
+        $this->assertStringContainsString('data-census="remote"', $html);
+        // An inline directive glued to a word never compiles and leaks as text.
+        $this->assertStringNotContainsString('@if', $html);
+        $this->assertStringNotContainsString('@endif', $html);
+
+        fwrite(STDERR, "\n[EVIDENCE census-split] remote = '3 running · 1 stopped · 1 saved' exactly once, no raw directives\n");
+    }
+
+    public function test_drift_badge_age_is_humanised(): void
+    {
+        $fresh = $this->makeServer([
+            'server_type' => 'hyperv',
+            'connection_meta' => ['totalAccounts' => 9, 'provenance' => ['checked_at' => now()->toIso8601String()]],
+        ]);
+        $this->assertSame('just now', ServerDetailViewModel::fromServer($fresh->refresh())->censusCheckedAtHuman);
+
+        $stale = $this->makeServer([
+            'server_type' => 'hyperv',
+            'connection_meta' => ['totalAccounts' => 9, 'provenance' => ['checked_at' => now()->subDays(3)->toIso8601String()]],
+        ]);
+        $staleVm = ServerDetailViewModel::fromServer($stale->refresh());
+        $this->assertSame('3 days ago', $staleVm->censusCheckedAtHuman);
+
+        // An ISO stamp on screen is trivia for a machine; the age is the fact.
+        $html = view('admin.servers.partials._essential-panels', ['server' => $stale->refresh(), 'vm' => $staleVm])->render();
+        $this->assertStringContainsString('Remote differs from ledger', $html);
+        $this->assertStringContainsString('last poll 3 days ago', $html);
+
+        fwrite(STDERR, "\n[EVIDENCE drift-age] fresh='just now', 3-day-old='3 days ago'\n");
+    }
+
+    public function test_entitlement_pools_block_hidden_until_there_are_pools(): void
+    {
+        $server = $this->makeServer();
+        $vm = ServerDetailViewModel::fromServer($server->refresh());
+
+        $empty = view('admin.servers.partials._essential-panels', ['server' => $server->refresh(), 'vm' => $vm])->render();
+        $this->assertStringNotContainsString('Entitlement pools', $empty);
+
+        $withPool = view('admin.servers.partials._essential-panels', [
+            'server' => $server->refresh(), 'vm' => $vm,
+            'poolAvailability' => [['pool_type' => 'ipv4', 'unit' => 'address', 'display' => '12']],
+        ])->render();
+        $this->assertStringContainsString('Entitlement pools', $withPool);
+        $this->assertStringContainsString('12 available', $withPool);
+
+        fwrite(STDERR, "\n[EVIDENCE pools-hidden] empty pools render no label, populated pools do\n");
+    }
 }

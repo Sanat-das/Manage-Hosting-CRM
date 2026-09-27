@@ -30,10 +30,11 @@ use App\Services\HostingService;
 use App\Services\Integrations\IntegrationRegistry;
 use App\Services\IpAssignmentService;
 use App\Services\Modules\ModuleManager;
+use App\Services\Provisioning\ComputeTemplateCatalog;
 use App\Services\Provisioning\HypervDriver;
-use App\Services\Provisioning\HypervVmBuildDispatcher;
 use App\Services\Provisioning\ManualProvisioner;
 use App\Services\Provisioning\ProvisioningEventRecorder;
+use App\Services\Provisioning\VmBuildDispatcher;
 use App\Services\Provisioning\VmStatusPresenter;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
@@ -96,7 +97,7 @@ class HostingController extends Controller
         private readonly ManualProvisioner $manualProvisioner,
         private readonly ProvisioningEventRecorder $provisioningEvents,
         private readonly VmStatusPresenter $vmStatusPresenter,
-        private readonly HypervVmBuildDispatcher $vmBuildDispatcher,
+        private readonly VmBuildDispatcher $vmBuildDispatcher,
     ) {}
 
     public function index(Request $request): View
@@ -342,6 +343,7 @@ class HostingController extends Controller
         // builtins the driver is resolved via IntegrationRegistry, for plugins
         // via ModuleManager fallback.
         $provisioningModules = [];
+        $computeCards = [];
         $productLinks = $hostingAccount->product?->moduleLinks()->where('enabled', true)->get() ?? collect();
         foreach ($productLinks as $link) {
             $slug = trim((string) ($link->module_slug ?? ''));
@@ -378,6 +380,42 @@ class HostingController extends Controller
                 'name' => $name,
                 'mode' => $link->provisioning_mode ?? 'auto',
             ];
+
+            // Compute modules own a VM card on this page. Hyper-V keeps its
+            // dedicated partial (guest credentials, reset, VHD handling);
+            // every other compute module renders the shared card.
+            if ($slug !== 'hyperv' && ComputeTemplateCatalog::supports($slug) && $hostingAccount->server !== null) {
+                try {
+                    $rawCfg = is_array($link->config) ? $link->config : [];
+                    $dec = $registry->decryptConfigFor($slug, $rawCfg);
+                    $allowed = ComputeTemplateCatalog::sanitizeAllowed(
+                        $slug,
+                        is_array($dec['allowed_templates'] ?? null) ? $dec['allowed_templates'] : [],
+                    );
+
+                    $server = $hostingAccount->server;
+                    $options = ComputeTemplateCatalog::options($server, $slug, $allowed);
+                    $optionIds = array_column($options, 'id');
+                    $default = ComputeTemplateCatalog::default($server, $slug);
+
+                    $computeCards[$slug] = [
+                        'slug' => $slug,
+                        'name' => $name,
+                        'mode' => $link->provisioning_mode ?? 'auto',
+                        'templateKey' => ComputeTemplateCatalog::templateKey($slug),
+                        'templateLabel' => ComputeTemplateCatalog::templateLabel($slug),
+                        'options' => $options,
+                        'default' => $default !== null && in_array($default, $optionIds, true) ? $default : ($optionIds[0] ?? null),
+                        'curatedCount' => count(ComputeTemplateCatalog::curatedIds($server, $slug)),
+                        'noEffective' => $options === [] && ComputeTemplateCatalog::curatedIds($server, $slug) !== [],
+                        'canRestart' => method_exists($driver, 'restart'),
+                        'startAfterCreateDefault' => ! array_key_exists('start_after_create', $dec) || (bool) $dec['start_after_create'],
+                    ];
+                } catch (\Throwable) {
+                    // A template lookup failure must not break the page; the
+                    // module row still renders without a card.
+                }
+            }
         }
 
         // Hyper-V effective templates for the admin Create modal (per-product restriction)
@@ -429,6 +467,7 @@ class HostingController extends Controller
             'modulePanels' => $modulePanels,
             'moduleTools' => $moduleTools,
             'provisioningModules' => $provisioningModules,
+            'computeCards' => $computeCards,
             'audit' => $audit,
             'packages' => $packages,
             'assignedIps' => $assignedIps,
@@ -919,6 +958,9 @@ class HostingController extends Controller
             'action' => ['required', 'string', 'in:create,start,stop,restart,delete,suspend,unsuspend,terminate'],
             'confirm' => ['nullable', 'string', 'max:255'],
             'delete_vhd' => ['nullable', 'boolean'],
+            // `template` is the generalized field; `template_vm` stays accepted
+            // for back-compat with the Hyper-V partial and older clients.
+            'template' => ['nullable', 'string', 'max:64'],
             'template_vm' => ['nullable', 'string', 'max:64'],
             'start_after_create' => ['nullable', 'boolean'],
             'guest_username' => ['nullable', 'string', 'max:64'],
@@ -934,12 +976,15 @@ class HostingController extends Controller
         $registry = app(IntegrationRegistry::class);
         $manager = app(ModuleManager::class);
 
-        // Hyper-V create → async queued job (host-verified)
-        if ($validated['action'] === 'create' && $slug === 'hyperv') {
-            $templateVm = isset($validated['template_vm']) ? trim((string) $validated['template_vm']) : null;
-            if ($templateVm === '') {
-                $templateVm = null;
-            }
+        // Compute create → async queued job (host-verified). Any module with
+        // selectable templates (Hyper-V, Proxmox VE) builds through the same
+        // durable-event pipeline; the template value is validated against the
+        // product's effective set inside ManualProvisioner before the host is
+        // touched.
+        if ($validated['action'] === 'create' && ComputeTemplateCatalog::supports($slug)) {
+            $rawTemplate = $validated['template'] ?? $validated['template_vm'] ?? null;
+            $template = $rawTemplate !== null ? trim((string) $rawTemplate) : '';
+            $template = $template !== '' ? $template : null;
             $guestUsername = isset($validated['guest_username']) ? trim((string) $validated['guest_username']) : null;
             if ($guestUsername === '') {
                 $guestUsername = null;
@@ -963,11 +1008,12 @@ class HostingController extends Controller
             try {
                 $event = $this->vmBuildDispatcher->dispatch(
                     $hostingAccount,
-                    $templateVm,
+                    $template,
                     $startAfterCreate,
                     $guestUsername,
                     $guestPassword,
                     (bool) $request->boolean('apply_password'),
+                    $slug,
                 );
 
                 if ($request->expectsJson() || $request->ajax()) {
@@ -976,8 +1022,9 @@ class HostingController extends Controller
 
                 return back()->with('info', 'VM build started.');
             } catch (\Throwable $e) {
-                Log::error('Hyper-V queued create failed', [
+                Log::error('Queued VM create failed', [
                     'hosting_account_id' => $hostingAccount->id,
+                    'module' => $slug,
                     'error' => $e->getMessage(),
                 ]);
                 $msg = $e->getMessage();

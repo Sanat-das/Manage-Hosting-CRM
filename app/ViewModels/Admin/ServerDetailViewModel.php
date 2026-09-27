@@ -93,6 +93,9 @@ final readonly class ServerDetailViewModel
         public mixed $snmpDisks = null,
         // Census provenance for the drift badge (todo 11): raw checked_at string or null.
         public mixed $censusCheckedAt = null,
+        // Human age of censusCheckedAt ("2 minutes ago"), null when absent/unparseable.
+        // Parsed here so the partial stays dump-only.
+        public mixed $censusCheckedAtHuman = null,
     ) {}
 
     public static function fromServer(Server $server): self
@@ -284,6 +287,18 @@ final readonly class ServerDetailViewModel
             $censusCheckedAt = null;
         }
 
+        $censusCheckedAtHuman = null;
+        if ($censusCheckedAt !== null) {
+            try {
+                $checked = Carbon::parse($censusCheckedAt);
+                // A GET that fetched fresh telemetry stamps checked_at seconds ago:
+                // "0 seconds ago" helps nobody, "just now" reads like a human wrote it.
+                $censusCheckedAtHuman = $checked->diffInSeconds(now()) < 60 ? 'just now' : $checked->diffForHumans();
+            } catch (\Throwable) {
+                $censusCheckedAtHuman = null;
+            }
+        }
+
         // Hyper-V transport / RAM / storage / switches.
         $transportHost = $metaHost ?? $server->ip_address;
         $parsedPort = (is_string($server->api_url) && str_contains($server->api_url, '://')) ? parse_url($server->api_url, PHP_URL_PORT) : null;
@@ -364,6 +379,7 @@ final readonly class ServerDetailViewModel
             snmpMem: $snmpMem,
             snmpDisks: $snmpDisks,
             censusCheckedAt: $censusCheckedAt,
+            censusCheckedAtHuman: $censusCheckedAtHuman,
         );
     }
 

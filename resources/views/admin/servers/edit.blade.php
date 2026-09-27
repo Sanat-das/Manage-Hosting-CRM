@@ -305,6 +305,208 @@
                 </div>
             </div>
         @endif
+
+        @if (($serverType ?? $server->server_type) === 'proxmox')
+            @php
+                $curatedTemplates = method_exists($server, 'proxmoxTemplates') ? $server->proxmoxTemplates() : [];
+                $curatedByVmid = [];
+                foreach ($curatedTemplates as $tpl) {
+                    $curatedByVmid[(string) $tpl['vmid']] = $tpl;
+                }
+
+                // Union of what the cluster currently offers and what is already
+                // saved: a template that vanished from PVE (or a node that is
+                // down) must still render, so the operator can see and drop it
+                // rather than having it silently disappear from their curation.
+                $rows = [];
+                foreach (($proxmoxDiscoveredTemplates ?? []) as $tpl) {
+                    $vmid = (string) $tpl['vmid'];
+                    $rows[$vmid] = ['vmid' => $vmid, 'name' => (string) $tpl['name'], 'node' => (string) $tpl['node'], 'live' => true];
+                }
+                foreach ($curatedByVmid as $vmid => $tpl) {
+                    if (! isset($rows[$vmid])) {
+                        $rows[$vmid] = ['vmid' => $vmid, 'name' => '', 'node' => (string) $tpl['node'], 'live' => false];
+                    }
+                }
+                ksort($rows, SORT_NUMERIC);
+
+                $selectedVmIds = array_map(static fn (array $t): string => (string) $t['vmid'], $curatedTemplates);
+                $oldSelected = old('proxmox_templates_selected');
+                if ($oldSelected !== null) {
+                    $selectedVmIds = array_map(static fn ($v): string => (string) $v, (array) $oldSelected);
+                }
+                $oldLabels = old('proxmox_labels');
+                $oldDefault = old('proxmox_template_default', $server->proxmoxDefaultTemplate() ?? '');
+            @endphp
+
+            <hr class="my-3">
+            <h6 class="fw-semibold mb-3">Clone templates</h6>
+
+            @if (empty($proxmoxDiscoveredTemplates ?? []))
+                <x-adminlte-alert theme="warning" class="small mb-3">
+                    No templates were discovered on this cluster. Create one in Proxmox (right-click a VM →
+                    <em>Convert to template</em>), make sure the credential can read the node, then
+                    <strong>Re-test Connection</strong> and reload this page.
+                </x-adminlte-alert>
+            @endif
+
+            @if (empty($rows))
+                <p class="text-muted small mb-0">Nothing to curate yet.</p>
+            @else
+                <input type="hidden" name="proxmox_templates_present" value="1">
+                <div class="border rounded p-2 mb-2" style="max-height: 320px; overflow-y: auto;">
+                    @foreach ($rows as $row)
+                        @php
+                            $isSelected = in_array($row['vmid'], $selectedVmIds, true);
+                            $labelValue = is_array($oldLabels) && array_key_exists($row['vmid'], $oldLabels)
+                                ? (string) $oldLabels[$row['vmid']]
+                                : (string) ($curatedByVmid[$row['vmid']]['label'] ?? '');
+                            $autoLabel = $row['name'] !== '' ? $row['name'] : $row['vmid'];
+                        @endphp
+                        <div class="mb-2 pb-2 {{ ! $loop->last ? 'border-bottom' : '' }}">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox"
+                                       name="proxmox_templates_selected[]" value="{{ $row['vmid'] }}"
+                                       id="pve-tpl-{{ $row['vmid'] }}" @checked($isSelected)>
+                                <label class="form-check-label" for="pve-tpl-{{ $row['vmid'] }}">
+                                    <span class="fw-medium">{{ $autoLabel }}</span>
+                                    <span class="text-muted small">(VMID {{ $row['vmid'] }} · {{ $row['node'] ?: 'node unknown' }})</span>
+                                    @if (! $row['live'])
+                                        <span class="badge text-bg-warning ms-1" style="font-size:var(--text-xs);">not on cluster</span>
+                                    @endif
+                                </label>
+                            </div>
+                            <div class="ms-4 mt-1">
+                                <input type="hidden" name="proxmox_nodes[{{ $row['vmid'] }}]" value="{{ $row['node'] }}">
+                                <input type="text" name="proxmox_labels[{{ $row['vmid'] }}]"
+                                       value="{{ $labelValue }}" maxlength="80"
+                                       class="form-control form-control-sm" style="max-width: 320px;"
+                                       placeholder="Label shown in the picker (defaults to {{ $autoLabel }})"
+                                       aria-label="Label for template {{ $row['vmid'] }}">
+                            </div>
+                        </div>
+                    @endforeach
+                </div>
+
+                <div class="mb-2">
+                    <label for="field_proxmox_template_default" class="form-label fw-medium">Default template</label>
+                    <select id="field_proxmox_template_default" name="proxmox_template_default" class="form-select" style="max-width: 360px;">
+                        <option value="">— None —</option>
+                        @foreach ($rows as $row)
+                            <option value="{{ $row['vmid'] }}" @selected((string) $oldDefault === $row['vmid'])>
+                                {{ $row['name'] !== '' ? $row['name'] : 'VMID '.$row['vmid'] }}
+                            </option>
+                        @endforeach
+                    </select>
+                    <div class="form-text">
+                        Used when a product does not name a template. Only curated templates above can be selected.
+                    </div>
+                </div>
+
+                @error('proxmox_templates')<div class="invalid-feedback d-block">{{ $message }}</div>@enderror
+                @error('proxmox_templates_selected')<div class="invalid-feedback d-block">{{ $message }}</div>@enderror
+                @error('proxmox_template_default')<div class="invalid-feedback d-block">{{ $message }}</div>@enderror
+            @endif
+        @endif
+
+        @if (($serverType ?? $server->server_type) === 'virtualizor')
+            @php
+                $curatedOs = method_exists($server, 'virtualizorOsTemplates') ? $server->virtualizorOsTemplates() : [];
+                $curatedByOsid = [];
+                foreach ($curatedOs as $tpl) {
+                    $curatedByOsid[(string) $tpl['osid']] = $tpl;
+                }
+
+                // Union of what the panel offers now and what is already saved,
+                // so a template removed panel-side still renders and can be dropped.
+                $rows = [];
+                foreach (($virtualizorDiscoveredOs ?? []) as $tpl) {
+                    $osid = (string) $tpl['osid'];
+                    $rows[$osid] = ['osid' => $osid, 'name' => (string) $tpl['name'], 'type' => (string) $tpl['type'], 'live' => true];
+                }
+                foreach ($curatedByOsid as $osid => $tpl) {
+                    if (! isset($rows[$osid])) {
+                        $rows[$osid] = ['osid' => $osid, 'name' => '', 'type' => '', 'live' => false];
+                    }
+                }
+                ksort($rows, SORT_NUMERIC);
+
+                $selectedOsIds = array_map(static fn (array $t): string => (string) $t['osid'], $curatedOs);
+                $oldSelected = old('virtualizor_templates_selected');
+                if ($oldSelected !== null) {
+                    $selectedOsIds = array_map(static fn ($v): string => (string) $v, (array) $oldSelected);
+                }
+                $oldLabels = old('virtualizor_labels');
+                $oldDefault = old('virtualizor_template_default', $server->virtualizorDefaultOs() ?? '');
+            @endphp
+
+            <hr class="my-3">
+            <h6 class="fw-semibold mb-3">OS templates</h6>
+
+            @if (empty($virtualizorDiscoveredOs ?? []))
+                <x-adminlte-alert theme="warning" class="small mb-3">
+                    No OS templates were discovered on this panel. Sync templates in Virtualizor, make sure the
+                    API credentials can list them, then <strong>Re-test Connection</strong> and reload this page.
+                </x-adminlte-alert>
+            @endif
+
+            @if (empty($rows))
+                <p class="text-muted small mb-0">Nothing to curate yet.</p>
+            @else
+                <input type="hidden" name="virtualizor_templates_present" value="1">
+                <div class="border rounded p-2 mb-2" style="max-height: 320px; overflow-y: auto;">
+                    @foreach ($rows as $row)
+                        @php
+                            $isSelected = in_array($row['osid'], $selectedOsIds, true);
+                            $labelValue = is_array($oldLabels) && array_key_exists($row['osid'], $oldLabels)
+                                ? (string) $oldLabels[$row['osid']]
+                                : (string) ($curatedByOsid[$row['osid']]['label'] ?? '');
+                            $autoLabel = $row['name'] !== '' ? $row['name'] : $row['osid'];
+                        @endphp
+                        <div class="mb-2 pb-2 {{ ! $loop->last ? 'border-bottom' : '' }}">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox"
+                                       name="virtualizor_templates_selected[]" value="{{ $row['osid'] }}"
+                                       id="vz-os-{{ $row['osid'] }}" @checked($isSelected)>
+                                <label class="form-check-label" for="vz-os-{{ $row['osid'] }}">
+                                    <span class="fw-medium">{{ $autoLabel }}</span>
+                                    <span class="text-muted small">(OSID {{ $row['osid'] }}{{ $row['type'] !== '' ? ' · '.$row['type'] : '' }})</span>
+                                    @if (! $row['live'])
+                                        <span class="badge text-bg-warning ms-1" style="font-size:var(--text-xs);">not on panel</span>
+                                    @endif
+                                </label>
+                            </div>
+                            <div class="ms-4 mt-1">
+                                <input type="text" name="virtualizor_labels[{{ $row['osid'] }}]"
+                                       value="{{ $labelValue }}" maxlength="80"
+                                       class="form-control form-control-sm" style="max-width: 320px;"
+                                       placeholder="Label shown in the picker (defaults to {{ $autoLabel }})"
+                                       aria-label="Label for OS template {{ $row['osid'] }}">
+                            </div>
+                        </div>
+                    @endforeach
+                </div>
+
+                <div class="mb-2">
+                    <label for="field_virtualizor_template_default" class="form-label fw-medium">Default OS template</label>
+                    <select id="field_virtualizor_template_default" name="virtualizor_template_default" class="form-select" style="max-width: 360px;">
+                        <option value="">— None —</option>
+                        @foreach ($rows as $row)
+                            <option value="{{ $row['osid'] }}" @selected((string) $oldDefault === $row['osid'])>
+                                {{ $row['name'] !== '' ? $row['name'] : 'OSID '.$row['osid'] }}
+                            </option>
+                        @endforeach
+                    </select>
+                    <div class="form-text">
+                        Used when a product does not name an OS template. Only curated templates above can be selected.
+                    </div>
+                </div>
+
+                @error('virtualizor_os_templates')<div class="invalid-feedback d-block">{{ $message }}</div>@enderror
+                @error('virtualizor_templates_selected')<div class="invalid-feedback d-block">{{ $message }}</div>@enderror
+                @error('virtualizor_template_default')<div class="invalid-feedback d-block">{{ $message }}</div>@enderror
+            @endif
+        @endif
     </x-adminlte.partials.form-card>
 
     @if ($server->server_type === 'hyperv')

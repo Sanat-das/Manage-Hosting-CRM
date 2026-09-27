@@ -44,7 +44,7 @@ return [
             'class' => \App\Modules\Proxmox\Proxmox::class,
             'name' => 'Proxmox VE',
             'group' => 'virtualization',
-            'description' => 'Proxmox VE stub — coming soon.',
+            'description' => 'Proxmox VE QEMU/KVM virtual machines.',
         ],
     ],
 ];

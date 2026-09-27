@@ -8,6 +8,7 @@ use App\Contracts\Integrations\Capabilities\ProvisioningModule;
 use App\Models\PanelAccount;
 use App\Models\Server;
 use App\Models\ServiceInstance;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Throwable;
 
@@ -344,6 +345,29 @@ abstract class AbstractPanelModule implements ProvisioningModule
             ['service_instance_id' => $service->id],
             $panelData,
         );
+
+        // A built panel account means the service is live, so advance a
+        // not-yet-live service row here — the one place every driver passes
+        // through. Callers that do their own sync (the dispatcher, the manual
+        // provisioner) have paths that skip it: e.g. the "already provisioned"
+        // short-circuit returns before touching the service, leaving a service
+        // reading `pending` forever while its machine exists.
+        //
+        // Only pending/provisioning is advanced: a suspended or terminated
+        // service must not be silently reactivated by a re-provision.
+        if (in_array((string) $service->status, ['pending', 'provisioning'], true)) {
+            try {
+                $service->update([
+                    'status' => 'active',
+                    'provision_status' => 'provisioned',
+                ]);
+            } catch (Throwable $e) {
+                Log::warning('Could not advance service status after provisioning', [
+                    'service_instance_id' => $service->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
 
         $message = ucfirst($this->panel()).' account created';
         if (is_string($warning) && trim($warning) !== '') {

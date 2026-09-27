@@ -4,17 +4,22 @@ namespace App\Http\Controllers\Admin;
 
 use App\Contracts\Integrations\ServerConnectionResult;
 use App\Http\Controllers\Controller;
+use App\Models\HostingAccount;
 use App\Models\PanelAccount;
+use App\Models\ResourcePool;
 use App\Models\Server;
 use App\Models\ServerGroup;
 use App\Models\ServerGroupMember;
+use App\Models\ServiceInstance;
 use App\Services\Integrations\IntegrationRegistry;
 use App\Services\Modules\ModuleManager;
 use App\ViewModels\Admin\ServerDetailViewModel;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 
@@ -93,12 +98,13 @@ class ServerController extends Controller
 
         // Live Hyper-V host inventory (guarded: hyperv + connected only, 60s cache, never breaks page).
         $liveVms = null;
-        if (($server->server_type ?? $server->panel_type) === 'hyperv' && ($server->connection_status ?? '') === 'connected') {
+        $serverTypeForInventory = (string) ($server->server_type ?? $server->panel_type ?? '');
+        if (in_array($serverTypeForInventory, ['hyperv', 'proxmox'], true) && ($server->connection_status ?? '') === 'connected') {
             try {
                 $driver = $registry->resolveForServer($server);
                 if ($driver !== null && method_exists($driver, 'listVms')) {
                     $liveVms = \Illuminate\Support\Facades\Cache::remember(
-                        "hyperv:server:{$server->id}:vms",
+                        "{$serverTypeForInventory}:server:{$server->id}:vms",
                         60,
                         fn () => $driver->listVms($server)
                     );
@@ -117,22 +123,46 @@ class ServerController extends Controller
         $freshDto = null;
         $freshError = null;
         $serverType = (string) ($server->server_type ?? $server->panel_type ?? '');
-        $isProxmox = $serverType === 'proxmox';
 
-        if (! $isProxmox) {
-            if ($serverType === 'hyperv') {
-                // Hyper-V via cachedServerInfo(60) with WinRM invoke bounded at 8s
-                try {
+        if ($serverType === 'hyperv') {
+            // Hyper-V via cachedServerInfo(60) with WinRM invoke bounded at 8s
+            try {
+                $start = microtime(true);
+                // Enforce 8s WinRM bound via client timeout; cachedServerInfo(60) is single cache home (60s TTL)
+                $client = new \App\Modules\HyperV\Services\HyperVClient($server, 8);
+                $dto = $client->cachedServerInfo(60);
+                $elapsed = microtime(true) - $start;
+                // Bounded: treat >8s as failure even if client returned
+                if ($elapsed > 8) {
+                    throw new \RuntimeException('Hyper-V fetch exceeded 8s bound');
+                }
+                // Detect error DTO (a failed Hyper-V fetch surfaces via meta.error)
+                $hasError = is_array($dto->meta) && isset($dto->meta['error']) && trim((string) $dto->meta['error']) !== '';
+                if ($hasError) {
+                    $freshFailed = true;
+                    $errorMsg = trim((string) $dto->meta['error']);
+                    $freshError = $errorMsg !== '' ? \Illuminate\Support\Str::limit($errorMsg, 200) : 'Live fetch failed.';
+                } else {
+                    $freshDto = $dto;
+                }
+            } catch (\Throwable $e) {
+                $freshFailed = true;
+                $errorMsg = trim((string) $e->getMessage());
+                $freshError = $errorMsg !== '' ? \Illuminate\Support\Str::limit($errorMsg, 200) : 'Live fetch failed.';
+            }
+        } elseif ($serverType === 'proxmox') {
+            // Proxmox VE via cachedServerInfo(60) with the PVE HTTP timeout
+            // bounded at 8s. The client never throws — a failure comes back as
+            // meta.error, same contract as the panel/Hyper-V fetches.
+            try {
+                $driver = $registry->resolveForServer($server);
+                if ($driver !== null && method_exists($driver, 'getCachedServerInfo')) {
                     $start = microtime(true);
-                    // Enforce 8s WinRM bound via client timeout; cachedServerInfo(60) is single cache home (60s TTL)
-                    $client = new \App\Modules\HyperV\Services\HyperVClient($server, 8);
-                    $dto = $client->cachedServerInfo(60);
+                    $dto = $driver->getCachedServerInfo($server, 60);
                     $elapsed = microtime(true) - $start;
-                    // Bounded: treat >8s as failure even if client returned
                     if ($elapsed > 8) {
-                        throw new \RuntimeException('Hyper-V fetch exceeded 8s bound');
+                        throw new \RuntimeException('Proxmox VE fetch exceeded 8s bound');
                     }
-                    // Detect error DTO (Proxmox stub and Hyper-V failure both surface via meta.error)
                     $hasError = is_array($dto->meta) && isset($dto->meta['error']) && trim((string) $dto->meta['error']) !== '';
                     if ($hasError) {
                         $freshFailed = true;
@@ -141,41 +171,37 @@ class ServerController extends Controller
                     } else {
                         $freshDto = $dto;
                     }
-                } catch (\Throwable $e) {
-                    $freshFailed = true;
-                    $errorMsg = trim((string) $e->getMessage());
-                    $freshError = $errorMsg !== '' ? \Illuminate\Support\Str::limit($errorMsg, 200) : 'Live fetch failed.';
                 }
-            } elseif (in_array($serverType, ['cpanel', 'plesk', 'directadmin', 'virtualizor'], true)) {
-                // Panels via getServerInfo bounded at 5s for HTTP drivers, degrade to persisted on failure/timeout
-                try {
-                    $driver = $registry->resolveForServer($server);
-                    if ($driver !== null && method_exists($driver, 'getServerInfo')) {
-                        $start = microtime(true);
-                        $dto = $driver->getServerInfo($server);
-                        $elapsed = microtime(true) - $start;
-                        if ($elapsed > 5) {
-                            throw new \RuntimeException('Panel fetch exceeded 5s bound');
-                        }
-                        $hasError = is_array($dto->meta) && isset($dto->meta['error']) && trim((string) $dto->meta['error']) !== '';
-                        if ($hasError) {
-                            $freshFailed = true;
-                            $errorMsg = trim((string) $dto->meta['error']);
-                            $freshError = $errorMsg !== '' ? \Illuminate\Support\Str::limit($errorMsg, 200) : 'Live fetch failed.';
-                        } else {
-                            $freshDto = $dto;
-                        }
-                    }
-                } catch (\Throwable $e) {
-                    $freshFailed = true;
-                    $errorMsg = trim((string) $e->getMessage());
-                    $freshError = $errorMsg !== '' ? \Illuminate\Support\Str::limit($errorMsg, 200) : 'Live fetch failed.';
-                }
+            } catch (\Throwable $e) {
+                $freshFailed = true;
+                $errorMsg = trim((string) $e->getMessage());
+                $freshError = $errorMsg !== '' ? \Illuminate\Support\Str::limit($errorMsg, 200) : 'Live fetch failed.';
             }
-        } else {
-            // Proxmox stub → empty state, never exception
-            $freshDto = null;
-            $freshFailed = false;
+        } elseif (in_array($serverType, ['cpanel', 'plesk', 'directadmin', 'virtualizor'], true)) {
+            // Panels via getServerInfo bounded at 5s for HTTP drivers, degrade to persisted on failure/timeout
+            try {
+                $driver = $registry->resolveForServer($server);
+                if ($driver !== null && method_exists($driver, 'getServerInfo')) {
+                    $start = microtime(true);
+                    $dto = $driver->getServerInfo($server);
+                    $elapsed = microtime(true) - $start;
+                    if ($elapsed > 5) {
+                        throw new \RuntimeException('Panel fetch exceeded 5s bound');
+                    }
+                    $hasError = is_array($dto->meta) && isset($dto->meta['error']) && trim((string) $dto->meta['error']) !== '';
+                    if ($hasError) {
+                        $freshFailed = true;
+                        $errorMsg = trim((string) $dto->meta['error']);
+                        $freshError = $errorMsg !== '' ? \Illuminate\Support\Str::limit($errorMsg, 200) : 'Live fetch failed.';
+                    } else {
+                        $freshDto = $dto;
+                    }
+                }
+            } catch (\Throwable $e) {
+                $freshFailed = true;
+                $errorMsg = trim((string) $e->getMessage());
+                $freshError = $errorMsg !== '' ? \Illuminate\Support\Str::limit($errorMsg, 200) : 'Live fetch failed.';
+            }
         }
 
         // Persist rule (idempotent GET): on success deep-merge ONLY allow-listed transport keys plus provenance checked_at
@@ -274,11 +300,10 @@ class ServerController extends Controller
             }
             $isStaleComputed = $freshFailed || $provenanceStale || $ageStale;
         } else {
-            // Panels: stale if updated_at older than 15min or fetch failed
+            // Panels (and Proxmox VE): stale if updated_at older than 15min or fetch failed
             $ts = $server->updated_at ?? $server->last_checked_at;
             $panelAgeStale = $ts ? $ts->diffInMinutes(now()) > 15 : false;
             $isStaleComputed = $freshFailed || $panelAgeStale || $ageStale;
-            // Proxmox stub always empty but never throws — stale follows panel 15min rule
         }
 
         // Wire isStale to ViewModel (todo 1 prop, consume-only: no parser edits).
@@ -827,15 +852,6 @@ class ServerController extends Controller
     {
         $options = $registry->serverTypeOptions();
 
-        // Keep proxmox marked as coming soon (stub) even though builtin now always exists
-        foreach ($options as &$opt) {
-            if (($opt['slug'] ?? $opt['value'] ?? '') === 'proxmox') {
-                $opt['coming_soon'] = true;
-                $opt['disabled'] = true;
-            }
-        }
-        unset($opt);
-
         $grouped = collect($options)->groupBy('group')->all();
 
         // Provide both variable names for view compatibility
@@ -879,6 +895,33 @@ class ServerController extends Controller
             $transportMeta = $this->hypervConnectionMeta($validated);
             if ($transportMeta !== null) {
                 $attributes['connection_meta'] = $transportMeta;
+            }
+        }
+
+        // Proxmox VE transport/auth prefs have no columns either.
+        if ($serverType === 'proxmox') {
+            $assembled = $this->proxmoxTemplatesFromRequest($request);
+            if ($assembled !== null) {
+                $validated['proxmox_templates'] = $assembled;
+            }
+
+            $proxmoxMeta = $this->proxmoxConnectionMeta($validated);
+            if ($proxmoxMeta !== null) {
+                $attributes['connection_meta'] = $proxmoxMeta;
+            }
+        }
+
+        // Virtualizor has no transport prefs, but its curated OS templates
+        // live in connection_meta too.
+        if ($serverType === 'virtualizor') {
+            $assembled = $this->virtualizorTemplatesFromRequest($request);
+            if ($assembled !== null) {
+                $validated['virtualizor_os_templates'] = $assembled;
+            }
+
+            $virtualizorMeta = $this->virtualizorConnectionMeta($validated);
+            if ($virtualizorMeta !== null) {
+                $attributes['connection_meta'] = $virtualizorMeta;
             }
         }
 
@@ -957,6 +1000,50 @@ class ServerController extends Controller
 
         $selectedGroupId = $server->groupMembers()->first()?->server_group_id;
 
+        // Proxmox VE curation needs the cluster's actual templates, because a
+        // VMID is not something an operator should have to memorise. Bounded and
+        // cached; any failure degrades to an empty picker (the curated list the
+        // operator already saved is still rendered from connection_meta).
+        $proxmoxDiscoveredTemplates = [];
+        if ($type === 'proxmox' && \App\Modules\Proxmox\Services\ProxmoxClient::isConfigured($server)) {
+            try {
+                $proxmoxDiscoveredTemplates = \Illuminate\Support\Facades\Cache::remember(
+                    "proxmox:server:{$server->id}:discovered-templates",
+                    300,
+                    function () use ($registry, $server): array {
+                        $driver = $registry->resolveForServer($server);
+
+                        return ($driver !== null && method_exists($driver, 'discoverTemplates'))
+                            ? $driver->discoverTemplates($server)
+                            : [];
+                    },
+                );
+            } catch (\Throwable) {
+                $proxmoxDiscoveredTemplates = [];
+            }
+        }
+
+        // Virtualizor OS-template curation gets the same treatment: discovered
+        // live, cached briefly, degraded to the already-curated list on failure.
+        $virtualizorDiscoveredOs = [];
+        if ($type === 'virtualizor' && \App\Modules\Virtualizor\Services\VirtualizorClient::isConfigured($server)) {
+            try {
+                $virtualizorDiscoveredOs = \Illuminate\Support\Facades\Cache::remember(
+                    "virtualizor:server:{$server->id}:discovered-os",
+                    300,
+                    function () use ($registry, $server): array {
+                        $driver = $registry->resolveForServer($server);
+
+                        return ($driver !== null && method_exists($driver, 'discoverOsTemplates'))
+                            ? $driver->discoverOsTemplates($server)
+                            : [];
+                    },
+                );
+            } catch (\Throwable) {
+                $virtualizorDiscoveredOs = [];
+            }
+        }
+
         return view('admin.servers.edit', [
             'server' => $server,
             'serverType' => $type,
@@ -965,6 +1052,8 @@ class ServerController extends Controller
             'groups' => $groups,
             'selectedGroupId' => $selectedGroupId,
             'typeLocked' => true,
+            'proxmoxDiscoveredTemplates' => $proxmoxDiscoveredTemplates,
+            'virtualizorDiscoveredOs' => $virtualizorDiscoveredOs,
         ]);
     }
 
@@ -1037,6 +1126,34 @@ class ServerController extends Controller
             }
         }
 
+        // Merge Proxmox VE transport/auth prefs into existing connection_meta
+        // (host telemetry under the nested `meta` key is preserved).
+        if ($newType === 'proxmox') {
+            $existingMeta = is_array($server->connection_meta) ? $server->connection_meta : [];
+            $assembled = $this->proxmoxTemplatesFromRequest($request);
+            if ($assembled !== null) {
+                $validated['proxmox_templates'] = $assembled;
+            }
+            $proxmoxMeta = $this->proxmoxConnectionMeta($validated, $existingMeta);
+            if ($proxmoxMeta !== null) {
+                $attributes['connection_meta'] = $proxmoxMeta;
+            }
+        }
+
+        // Virtualizor curation merges into the existing connection_meta so
+        // telemetry/other keys survive an unrelated save.
+        if ($newType === 'virtualizor') {
+            $existingMeta = is_array($server->connection_meta) ? $server->connection_meta : [];
+            $assembled = $this->virtualizorTemplatesFromRequest($request);
+            if ($assembled !== null) {
+                $validated['virtualizor_os_templates'] = $assembled;
+            }
+            $virtualizorMeta = $this->virtualizorConnectionMeta($validated, $existingMeta);
+            if ($virtualizorMeta !== null) {
+                $attributes['connection_meta'] = $virtualizorMeta;
+            }
+        }
+
         if ($newType === 'hyperv') {
             $host = trim((string) ($validated['host'] ?? $validated['ip_address'] ?? $server->ip_address));
             $port = $validated['port'] ?? null;
@@ -1078,6 +1195,161 @@ class ServerController extends Controller
         return redirect()
             ->route('admin.servers.show', $server)
             ->with('success', "Server {$server->name} updated.");
+    }
+
+    /**
+     * Delete a server.
+     *
+     * There are **no foreign keys** on `servers(id)` in this schema, so deleting
+     * a referenced server would not error — it would silently orphan the rows
+     * that point at it (hosting accounts, services, panel accounts, resource
+     * pools keep a dangling `server_id` and stop reconciling). So the delete is
+     * refused with a count of what is in the way, and the operator removes those
+     * first.
+     *
+     * Group memberships are purely relational and are cleaned up as part of the
+     * delete.
+     */
+    public function destroy(Server $server): RedirectResponse
+    {
+        $name = (string) $server->name;
+        $blockers = $this->serverDeleteBlockers($server);
+
+        if ($blockers !== []) {
+            return redirect()
+                ->route('admin.servers.index')
+                ->with('error', sprintf(
+                    'Cannot delete "%s" — it is still in use by %s. Move or terminate those records first '
+                    .'(a pending service appears under Orders, not on the server itself).',
+                    $name,
+                    implode(', ', $blockers),
+                ));
+        }
+
+        try {
+            DB::transaction(function () use ($server): void {
+                ServerGroupMember::where('server_id', $server->id)->delete();
+                $server->delete();
+            });
+        } catch (\Throwable $e) {
+            Log::warning('Server delete failed', [
+                'server_id' => $server->id,
+                'error' => $e->getMessage(),
+            ]);
+
+            return redirect()
+                ->route('admin.servers.index')
+                ->with('error', sprintf('Could not delete "%s": %s', $name, $e->getMessage()));
+        }
+
+        $this->forgetServerCaches($server);
+
+        return redirect()
+            ->route('admin.servers.index')
+            ->with('success', sprintf('Server "%s" deleted.', $name));
+    }
+
+    /**
+     * Rows that reference this server and would be orphaned by deleting it.
+     *
+     * Each entry names the first few offending records, not just a count: a bare
+     * "1 service" is a dead end, because a pending service has no panel account
+     * and therefore appears nowhere near the server — the operator needs the
+     * service tag to look it up.
+     *
+     * @return list<string>
+     */
+    private function serverDeleteBlockers(Server $server): array
+    {
+        $out = [];
+
+        $hostingCount = HostingAccount::where('server_id', $server->id)->count();
+        if ($hostingCount > 0) {
+            // host_name is the field these rows actually populate; domain and
+            // username are frequently null, and an unnamed blocker is unfindable.
+            $samples = HostingAccount::where('server_id', $server->id)
+                ->limit(3)
+                ->get(['domain', 'host_name', 'username'])
+                ->map(fn (HostingAccount $account): string => (string) (
+                    $account->domain ?: $account->host_name ?: $account->username
+                ))
+                ->all();
+
+            $out[] = $this->describeBlocker('hosting account', $hostingCount, $samples);
+        }
+
+        $serviceCount = ServiceInstance::where('server_id', $server->id)->count();
+        if ($serviceCount > 0) {
+            $out[] = $this->describeBlocker(
+                'service',
+                $serviceCount,
+                ServiceInstance::where('server_id', $server->id)->limit(3)->pluck('service_tag')->all(),
+            );
+        }
+
+        $panelCount = PanelAccount::where('server_id', $server->id)->count();
+        if ($panelCount > 0) {
+            $out[] = $this->describeBlocker(
+                'panel account',
+                $panelCount,
+                PanelAccount::where('server_id', $server->id)->limit(3)->pluck('username')->all(),
+            );
+        }
+
+        $poolCount = ResourcePool::where('server_id', $server->id)->count();
+        if ($poolCount > 0) {
+            $out[] = $this->describeBlocker(
+                'resource pool',
+                $poolCount,
+                ResourcePool::where('server_id', $server->id)->limit(3)->pluck('name')->all(),
+            );
+        }
+
+        return $out;
+    }
+
+    /**
+     * "3 services (SVC-1, SVC-2, +1 more)".
+     *
+     * @param  array<int, mixed>  $samples
+     */
+    private function describeBlocker(string $label, int $count, array $samples): string
+    {
+        $clean = [];
+        foreach ($samples as $sample) {
+            $value = trim((string) $sample);
+            if ($value !== '') {
+                $clean[] = $value;
+            }
+        }
+
+        $shown = array_slice($clean, 0, 3);
+        $extra = $count - count($shown);
+
+        $text = sprintf('%d %s%s', $count, $label, $count === 1 ? '' : 's');
+
+        if ($shown !== []) {
+            $text .= ' ('.implode(', ', $shown).($extra > 0 ? sprintf(', +%d more', $extra) : '').')';
+        }
+
+        return $text;
+    }
+
+    /**
+     * Drop the per-server caches a deleted server would otherwise leave behind
+     * until their TTL expires.
+     */
+    private function forgetServerCaches(Server $server): void
+    {
+        foreach (['hyperv', 'proxmox'] as $driver) {
+            foreach (['vms', 'info', 'nodes', 'discovered-templates'] as $suffix) {
+                try {
+                    Cache::forget(sprintf('%s:server:%d:%s', $driver, $server->id, $suffix));
+                } catch (\Throwable) {
+                    // Cache eviction must never fail the delete that succeeded.
+                }
+            }
+        }
     }
 
     public function testConnection(Request $request, Server $server, IntegrationRegistry $registry): JsonResponse
@@ -1202,6 +1474,34 @@ class ServerController extends Controller
             // Panel types: map generic fields
             $transient->ip_address = $host !== '' ? $host : (trim((string) $request->input('ip_address')) !== '' ? trim((string) $request->input('ip_address')) : '127.0.0.1');
             $transient->api_url = $apiUrl !== '' ? $apiUrl : null;
+
+            if ($serverType === 'proxmox') {
+                // Proxmox resolves credentials by field name: auth_type picks the
+                // pair, and the secret is the token secret OR the account
+                // password. Storing it in api_password_encrypted (not api_key)
+                // keeps `password_encrypted` out of the plaintext api_key column.
+                $authType = strtolower(trim((string) $request->input('auth_type', 'token')));
+                $transient->api_username = trim((string) $request->input('api_username', ''));
+                $transient->connection_meta = array_filter([
+                    'verify_tls' => $verifyTls,
+                    'auth_type' => $authType === 'ticket' ? 'ticket' : 'token',
+                    'port' => (int) $request->input('port', 0) > 0 ? (int) $request->input('port') : null,
+                    'ticket_username' => trim((string) $request->input('ticket_username', '')) ?: null,
+                ], static fn ($v) => $v !== null);
+
+                $secret = trim((string) (
+                    $request->input('api_password')
+                    ?? $request->input('password')
+                    ?? $request->input('api_password_encrypted')
+                    ?? ''
+                ));
+                if ($secret !== '') {
+                    $transient->api_password_encrypted = $secret;
+                }
+
+                return $this->runProxmoxTestConnection($transient, $serverType);
+            }
+
             $transient->api_username = trim((string) ($request->input('api_username') ?? $request->input('username') ?? ''));
             $apiKey = trim((string) ($request->input('api_key') ?? $request->input('password') ?? $request->input('api_password_encrypted') ?? ''));
             $transient->api_key = $apiKey !== '' ? $apiKey : null;
@@ -1227,21 +1527,45 @@ class ServerController extends Controller
         ]);
     }
 
+    /**
+     * Run a Proxmox VE connection test against a transient (unsaved) server and
+     * persist the outcome, mirroring the shared path below. Split out because
+     * Proxmox needs transport/auth values that arrive as form fields and are
+     * never columns — the driver reads them from connection_meta.
+     */
+    private function runProxmoxTestConnection(Server $transient, string $serverType): JsonResponse
+    {
+        $driver = app(IntegrationRegistry::class)->instanceFor($serverType);
+
+        if ($driver === null || ! method_exists($driver, 'testConnection')) {
+            return response()->json(['ok' => false, 'message' => 'No module driver found for server type ['.$serverType.'].'], 422);
+        }
+
+        $result = $driver->testConnection($transient);
+
+        return response()->json([
+            'ok' => $result->ok,
+            'message' => $result->message,
+            'latencyMs' => $result->latencyMs,
+            'meta' => $result->meta,
+        ]);
+    }
+
     public function vms(Request $request, Server $server, IntegrationRegistry $registry): JsonResponse
     {
         $serverType = (string) ($server->server_type ?? $server->panel_type ?? '');
 
-        if ($serverType !== 'hyperv') {
+        if (! in_array($serverType, ['hyperv', 'proxmox'], true)) {
             return response()->json([
                 'ok' => false,
                 'vms' => [],
-                'error' => 'This endpoint is available only for Hyper-V servers.',
+                'error' => 'This endpoint is available only for virtualization servers.',
             ], 422);
         }
 
         if ($request->boolean('refresh')) {
             try {
-                \Illuminate\Support\Facades\Cache::forget("hyperv:server:{$server->id}:vms");
+                \Illuminate\Support\Facades\Cache::forget("{$serverType}:server:{$server->id}:vms");
             } catch (\Throwable) {
                 // cache forget failure must not break endpoint
             }
@@ -1254,7 +1578,7 @@ class ServerController extends Controller
                 return response()->json([
                     'ok' => false,
                     'vms' => [],
-                    'error' => 'Hyper-V driver not available.',
+                    'error' => ucfirst($serverType).' driver not available.',
                 ]);
             }
 
@@ -1338,6 +1662,20 @@ class ServerController extends Controller
         $base['api_password'] = ['nullable', 'string', 'max:2000'];
         $base['api_password_encrypted'] = ['nullable', 'string', 'max:2000'];
 
+        if ($serverType === 'virtualizor') {
+            // Curated OS templates: {osid, label} assembled server-side from the
+            // parallel form arrays (mirrors proxmox_templates).
+            $base['virtualizor_os_templates'] = ['nullable', 'array', 'max:50'];
+            $base['virtualizor_os_templates.*.osid'] = ['nullable'];
+            $base['virtualizor_os_templates.*.label'] = ['nullable', 'string', 'max:80'];
+            $base['virtualizor_template_default'] = ['nullable', 'string', 'max:20'];
+            $base['virtualizor_templates_present'] = ['nullable'];
+            $base['virtualizor_templates_selected'] = ['nullable', 'array', 'max:50'];
+            $base['virtualizor_templates_selected.*'] = ['nullable'];
+            $base['virtualizor_labels'] = ['nullable', 'array'];
+            $base['virtualizor_labels.*'] = ['nullable', 'string', 'max:80'];
+        }
+
         // Type-specific refinements
         if ($serverType === 'hyperv') {
             $base['port'] = ['required', 'integer', 'min:1', 'max:65535'];
@@ -1355,6 +1693,30 @@ class ServerController extends Controller
             $base['username'] = ['required', 'string', 'max:255'];
             $base['password'] = ['required', 'string', 'max:2000'];
             $base['api_username'] = ['nullable', 'string', 'max:255'];
+        } elseif ($serverType === 'proxmox') {
+            // Proxmox VE: transport + auth live in connection_meta, so they are
+            // validated here; the schema's own fields are the source of truth.
+            $base['port'] = ['nullable', 'integer', 'min:1', 'max:65535'];
+            $base['use_ssl'] = ['nullable', 'boolean'];
+            $base['verify_tls'] = ['nullable', 'boolean'];
+            $base['auth_type'] = ['nullable', Rule::in(['token', 'ticket'])];
+            $base['api_username'] = ['nullable', 'string', 'max:255'];
+            $base['api_password'] = ['nullable', 'string', 'max:2000'];
+            $base['ticket_username'] = ['nullable', 'string', 'max:255'];
+            // Curated templates: {vmid, node, label} entries discovered from PVE.
+            $base['proxmox_templates'] = ['nullable', 'array', 'max:50'];
+            $base['proxmox_templates.*.vmid'] = ['nullable'];
+            $base['proxmox_templates.*.node'] = ['nullable', 'string', 'max:64'];
+            $base['proxmox_templates.*.label'] = ['nullable', 'string', 'max:80'];
+            $base['proxmox_template_default'] = ['nullable', 'string', 'max:20'];
+            // Server edit form posts the curation as parallel arrays.
+            $base['proxmox_templates_present'] = ['nullable'];
+            $base['proxmox_templates_selected'] = ['nullable', 'array', 'max:50'];
+            $base['proxmox_templates_selected.*'] = ['nullable'];
+            $base['proxmox_labels'] = ['nullable', 'array'];
+            $base['proxmox_labels.*'] = ['nullable', 'string', 'max:80'];
+            $base['proxmox_nodes'] = ['nullable', 'array'];
+            $base['proxmox_nodes.*'] = ['nullable', 'string', 'max:64'];
         } elseif ($serverType !== null && $serverType !== '') {
             // For panel types, try to infer required keys from schema
             try {
@@ -1418,7 +1780,7 @@ class ServerController extends Controller
         }
 
         // ip_address / host
-        if ($serverType === 'hyperv') {
+        if ($serverType === 'hyperv' || $serverType === 'proxmox') {
             $host = trim((string) ($validated['host'] ?? $validated['ip_address'] ?? ''));
             if ($host !== '') {
                 $out['ip_address'] = $host;
@@ -1445,7 +1807,7 @@ class ServerController extends Controller
         }
 
         // api_key vs encrypted password
-        if ($serverType === 'hyperv') {
+        if ($serverType === 'hyperv' || $serverType === 'proxmox') {
             $pwd = $validated['password'] ?? $validated['api_password'] ?? $validated['api_password_encrypted'] ?? null;
             if (is_string($pwd) && trim($pwd) !== '') {
                 $out['api_password_encrypted'] = $pwd;
@@ -1687,6 +2049,246 @@ class ServerController extends Controller
     }
 
     /**
+     * Proxmox VE transport + auth preferences. None of these have columns, so
+     * they persist inside connection_meta (same mechanism as the Hyper-V
+     * transport prefs). Returns null when the request carries none of them, so
+     * an unrelated update never rewrites the meta.
+     *
+     * @param  array<string, mixed>  $validated
+     * @param  array<string, mixed>  $existing  current connection_meta (update path)
+     * @return array<string, mixed>|null
+     */
+    private function proxmoxConnectionMeta(array $validated, array $existing = []): ?array
+    {
+        $keys = ['port', 'auth_type', 'ticket_username'];
+        $has = false;
+        foreach ($keys as $key) {
+            if (array_key_exists($key, $validated)) {
+                $has = true;
+                break;
+            }
+        }
+        if (! $has && ! array_key_exists('verify_tls', $validated)) {
+            return null;
+        }
+
+        $base = $existing;
+
+        if (array_key_exists('port', $validated)) {
+            $port = (int) $validated['port'];
+            // 0/blank means "use the PVE default" rather than persisting a port
+            // that cannot be dialled.
+            if ($port > 0) {
+                $base['port'] = $port;
+            } else {
+                unset($base['port']);
+            }
+        }
+
+        if (array_key_exists('auth_type', $validated)) {
+            $type = strtolower(trim((string) $validated['auth_type']));
+            $base['auth_type'] = $type === 'ticket' ? 'ticket' : 'token';
+        }
+
+        $ticketUser = trim((string) ($validated['ticket_username'] ?? ''));
+        if (array_key_exists('ticket_username', $validated)) {
+            if ($ticketUser !== '') {
+                $base['ticket_username'] = mb_substr($ticketUser, 0, 255);
+            } else {
+                unset($base['ticket_username']);
+            }
+        }
+
+        if (array_key_exists('verify_tls', $validated)) {
+            $base['verify_tls'] = (bool) $validated['verify_tls'];
+        }
+
+        // ── Curated templates ──
+        // Absent preserves, [] clears, non-empty replaces — and the default is
+        // only kept while it is still in the resulting list, so a removed
+        // template can never stay selected as the default.
+        if (array_key_exists('proxmox_templates', $validated)) {
+            $raw = $validated['proxmox_templates'];
+
+            if ($raw === null || $raw === []) {
+                unset($base['proxmox_templates'], $base['proxmox_template_default']);
+            } else {
+                $sanitized = \App\Models\Server::sanitizeProxmoxTemplates(is_array($raw) ? $raw : []);
+
+                if ($sanitized === []) {
+                    unset($base['proxmox_templates'], $base['proxmox_template_default']);
+                } else {
+                    $base['proxmox_templates'] = $sanitized;
+                }
+            }
+        }
+
+        if (array_key_exists('proxmox_template_default', $validated)) {
+            $default = trim((string) ($validated['proxmox_template_default'] ?? ''));
+
+            if ($default === '') {
+                unset($base['proxmox_template_default']);
+            } else {
+                $base['proxmox_template_default'] = $default;
+            }
+        }
+
+        // Drop a default that is not (or is no longer) in the curated list.
+        $curatedVmIds = array_column(
+            \App\Models\Server::sanitizeProxmoxTemplates($base['proxmox_templates'] ?? null),
+            'vmid',
+        );
+
+        if (isset($base['proxmox_template_default'])
+            && ! in_array((string) $base['proxmox_template_default'], $curatedVmIds, true)) {
+            unset($base['proxmox_template_default']);
+        }
+
+        // Credentials must never be persisted into the meta.
+        unset($base['api_key'], $base['api_password'], $base['password'], $base['secret']);
+
+        return $base;
+    }
+
+    /**
+     * Assemble the parallel curation form fields into the structured list.
+     *
+     * The server edit form cannot post nested objects conveniently, so it posts
+     * `proxmox_templates_selected[]` plus per-VMID label/node maps. Returns null
+     * when the form carried no curation payload at all, so an unrelated save
+     * never rewrites the curated list.
+     *
+     * @return list<array{vmid: string, node: string, label: string}>|null
+     */
+    private function proxmoxTemplatesFromRequest(Request $request): ?array
+    {
+        if (! $request->has('proxmox_templates_present')) {
+            return null;
+        }
+
+        $selected = $request->input('proxmox_templates_selected', []);
+        $labels = $request->input('proxmox_labels', []);
+        $nodes = $request->input('proxmox_nodes', []);
+
+        $out = [];
+
+        foreach ((array) $selected as $vmid) {
+            if (! is_numeric($vmid)) {
+                continue;
+            }
+
+            $vmid = (string) (int) $vmid;
+
+            if ((int) $vmid <= 0) {
+                continue;
+            }
+
+            $out[] = [
+                'vmid' => $vmid,
+                'node' => is_array($nodes) ? (string) ($nodes[$vmid] ?? '') : '',
+                'label' => is_array($labels) ? (string) ($labels[$vmid] ?? '') : '',
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
+     * Assemble the Virtualizor OS-template curation form fields.
+     *
+     * Mirrors proxmoxTemplatesFromRequest(): posts
+     * `virtualizor_templates_selected[]` plus a per-osid label map, and returns
+     * null when the form carried no curation payload at all.
+     *
+     * @return list<array{osid: string, label: string}>|null
+     */
+    private function virtualizorTemplatesFromRequest(Request $request): ?array
+    {
+        if (! $request->has('virtualizor_templates_present')) {
+            return null;
+        }
+
+        $selected = $request->input('virtualizor_templates_selected', []);
+        $labels = $request->input('virtualizor_labels', []);
+
+        $out = [];
+
+        foreach ((array) $selected as $osid) {
+            if (! is_numeric($osid)) {
+                continue;
+            }
+
+            $osid = (string) (int) $osid;
+
+            if ((int) $osid <= 0) {
+                continue;
+            }
+
+            $out[] = [
+                'osid' => $osid,
+                'label' => is_array($labels) ? (string) ($labels[$osid] ?? '') : '',
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
+     * Merge the Virtualizor curation into connection_meta.
+     *
+     * Absent preserves, [] clears, non-empty replaces — and the default is
+     * only kept while it is still in the resulting list. Returns null when the
+     * request carried neither field, so an unrelated update never rewrites it.
+     *
+     * @param  array<string, mixed>  $validated
+     * @param  array<string, mixed>  $existing
+     * @return array<string, mixed>|null
+     */
+    private function virtualizorConnectionMeta(array $validated, array $existing = []): ?array
+    {
+        $hasTemplates = array_key_exists('virtualizor_os_templates', $validated);
+        $hasDefault = array_key_exists('virtualizor_template_default', $validated);
+
+        if (! $hasTemplates && ! $hasDefault) {
+            return null;
+        }
+
+        $base = $existing;
+
+        if ($hasTemplates) {
+            $sanitized = \App\Models\Server::sanitizeVirtualizorOsTemplates($validated['virtualizor_os_templates']);
+
+            if ($sanitized === []) {
+                unset($base['virtualizor_os_templates'], $base['virtualizor_os_default']);
+            } else {
+                $base['virtualizor_os_templates'] = $sanitized;
+            }
+        }
+
+        if ($hasDefault) {
+            $default = trim((string) ($validated['virtualizor_template_default'] ?? ''));
+
+            if ($default === '') {
+                unset($base['virtualizor_os_default']);
+            } else {
+                $base['virtualizor_os_default'] = $default;
+            }
+        }
+
+        $curatedIds = array_column(
+            \App\Models\Server::sanitizeVirtualizorOsTemplates($base['virtualizor_os_templates'] ?? null),
+            'osid',
+        );
+
+        if (isset($base['virtualizor_os_default'])
+            && ! in_array((string) $base['virtualizor_os_default'], $curatedIds, true)) {
+            unset($base['virtualizor_os_default']);
+        }
+
+        return $base;
+    }
+
+    /**
      * @return list<string>
      */
     private function activeSlugs(IntegrationRegistry $registry): array
@@ -1695,6 +2297,27 @@ class ServerController extends Controller
             return array_column($registry->serverTypeOptions(), 'value');
         } catch (\Throwable) {
             return [];
+        }
+    }
+
+    /**
+     * Report a provisioning stage on the running event. Mirrors
+     * HyperV::reportStage() — the pipeline is shared, so Proxmox reports the
+     * same way. Never throws: progress reporting must not break provisioning.
+     */
+    private function reportProxmoxStage(ServiceInstance $service, string $stage): void
+    {
+        try {
+            $event = \App\Models\ProvisioningEvent::where('service_instance_id', $service->id)
+                ->where('status', 'running')
+                ->orderByDesc('id')
+                ->first();
+
+            if ($event !== null) {
+                app(\App\Services\Provisioning\ProvisioningEventRecorder::class)->progress($event, $stage);
+            }
+        } catch (\Throwable) {
+            // Progress reporting must never break provisioning.
         }
     }
 

@@ -69,16 +69,16 @@ final class VmStatusPresenter
     public function build(HostingAccount $hostingAccount, bool $refresh = false): array
     {
         $action = $this->actionFromLatestEvent($hostingAccount);
-        $panelAccount = $this->panelAccountFor($hostingAccount);
+        [$slug, $panelAccount] = $this->panelAccountFor($hostingAccount);
 
         $vmProbeError = null;
-        $vm = $this->probeVm($hostingAccount, $panelAccount, $action, $vmProbeError, $refresh);
+        $vm = $this->probeVm($hostingAccount, $slug, $panelAccount, $action, $vmProbeError, $refresh);
         // Explicit probe error so the UI can explain an unknown state and
         // offer a retry instead of leaving every action silently disabled.
         $vm['probe_error'] = $vmProbeError;
 
         $stored = false;
-        $credUsername = 'Administrator';
+        $credUsername = $slug === 'hyperv' ? 'Administrator' : 'root';
         if ($panelAccount !== null) {
             try {
                 $read = app(VmGuestCredentialStore::class)->read($panelAccount);
@@ -91,7 +91,7 @@ final class VmStatusPresenter
             }
         }
 
-        [$can, $reasons] = $this->permissions($hostingAccount, $vm, $action, $vmProbeError);
+        [$can, $reasons] = $this->permissions($slug, $hostingAccount, $vm, $action, $vmProbeError);
 
         return [
             'ok' => true,
@@ -210,11 +210,17 @@ final class VmStatusPresenter
      * @param  string|null  $probeError  set when the host could not be reached
      * @return array{exists: bool|null, state: ?string, name: ?string, vmId: ?string}
      */
-    private function probeVm(HostingAccount $hostingAccount, ?PanelAccount $panelAccount, ?array $action, ?string &$probeError, bool $refresh = false): array
+    private function probeVm(HostingAccount $hostingAccount, ?string $slug, ?PanelAccount $panelAccount, ?array $action, ?string &$probeError, bool $refresh = false): array
     {
         $unknown = ['exists' => null, 'state' => null, 'name' => null, 'vmId' => null];
 
         if ($panelAccount === null) {
+            return ['exists' => false, 'state' => null, 'name' => null, 'vmId' => null];
+        }
+
+        // No compute module resolves for this account (panel hosting, for
+        // example): there is no VM contract to report.
+        if ($slug === null) {
             return ['exists' => false, 'state' => null, 'name' => null, 'vmId' => null];
         }
 
@@ -228,14 +234,14 @@ final class VmStatusPresenter
         }
 
         try {
-            $driver = HypervDriver::resolve();
+            $driver = ComputeDriver::resolve($slug);
 
             if ($driver === null || ! method_exists($driver, 'recordedVmState')) {
                 // Driver without the hook: trust the recorded identity.
                 return ['exists' => true, 'state' => null] + $identityFallback;
             }
 
-            $cacheKey = "hyperv:vm-state:{$hostingAccount->id}";
+            $cacheKey = "{$slug}:vm-state:{$hostingAccount->id}";
             if ($refresh) {
                 // Operator asked to re-check: drop the short TTL so the next
                 // probe talks to the host again instead of replaying the error.
@@ -246,7 +252,8 @@ final class VmStatusPresenter
             if (($probe['exists'] ?? null) === true) {
                 return [
                     'exists' => true,
-                    'state' => $probe['state'] ?? null,
+                    // Hyper-V reports `state`; Proxmox VE reports `status`.
+                    'state' => $probe['state'] ?? $probe['status'] ?? null,
                     'name' => ($probe['name'] ?? null) ?: $identityFallback['name'],
                     'vmId' => ($probe['vmId'] ?? null) ?: $identityFallback['vmId'],
                 ];
@@ -275,7 +282,7 @@ final class VmStatusPresenter
      * @param  array<string, mixed>|null  $action
      * @return array{0: array<string, bool>, 1: array<string, string>}
      */
-    private function permissions(HostingAccount $hostingAccount, array $vm, ?array $action, ?string $probeError): array
+    private function permissions(?string $slug, HostingAccount $hostingAccount, array $vm, ?array $action, ?string $probeError): array
     {
         $can = ['create' => false, 'start' => false, 'stop' => false, 'restart' => false, 'delete' => false, 'reset_password' => false];
         $reasons = [];
@@ -284,6 +291,10 @@ final class VmStatusPresenter
         $isTerminated = $hostingAccount->status === HostingService::STATUS_TERMINATED;
         $vmExists = $vm['exists'] === true;
         $vmState = $vm['state'] !== null ? strtolower((string) $vm['state']) : null;
+        $vmRunning = $vmState === 'running';
+        // "off" and "saved" (Hyper-V) and "stopped" (Proxmox VE) are all
+        // verified-not-running states.
+        $vmOff = in_array($vmState, ['off', 'saved', 'stopped'], true);
 
         if ($isRunning) {
             foreach (array_keys($can) as $k) {
@@ -299,10 +310,10 @@ final class VmStatusPresenter
             if (! $vmExists) {
                 $can['create'] = true;
                 $reasons['delete'] = 'VM is not created on the host yet.';
-            } elseif ($vmState === 'running') {
+            } elseif ($vmRunning) {
                 $reasons['create'] = 'A VM already exists on the host — delete it first to rebuild.';
                 $reasons['delete'] = 'Stop the VM first.';
-            } elseif (in_array($vmState, ['off', 'saved'], true)) {
+            } elseif ($vmOff) {
                 $reasons['create'] = 'A VM already exists on the host — delete it first to rebuild.';
                 $can['delete'] = true;
             } else {
@@ -317,14 +328,14 @@ final class VmStatusPresenter
             foreach (['start', 'stop', 'restart', 'delete', 'reset_password'] as $k) {
                 $reasons[$k] = 'VM is not created on the host yet.';
             }
-        } elseif ($vmState === 'running') {
+        } elseif ($vmRunning) {
             $reasons['create'] = 'A VM already exists on the host — delete it first to rebuild.';
             $reasons['start'] = 'VM is already running.';
             $can['stop'] = true;
             $can['restart'] = true;
             $reasons['delete'] = 'Stop the VM first.';
             $can['reset_password'] = true;
-        } elseif (in_array($vmState, ['off', 'saved'], true)) {
+        } elseif ($vmOff) {
             $reasons['create'] = 'A VM already exists on the host — delete it first to rebuild.';
             $can['start'] = true;
             $reasons['stop'] = 'VM is not running.';
@@ -339,6 +350,14 @@ final class VmStatusPresenter
             }
         }
 
+        // Guest-password reset is a Hyper-V capability (the driver exposes
+        // resetGuestAdminPassword outside the provisioning contract); Proxmox VE
+        // has no equivalent flow yet, so never advertise it.
+        if (($can['reset_password'] ?? false) === true && $slug !== 'hyperv') {
+            $can['reset_password'] = false;
+            $reasons['reset_password'] = 'Password reset is not available for this service.';
+        }
+
         // A reason is only meaningful for a disabled action.
         foreach ($reasons as $key => $reason) {
             if (($can[$key] ?? false) === true) {
@@ -350,20 +369,87 @@ final class VmStatusPresenter
     }
 
     /**
-     * The account's hyperv PanelAccount, or null. Lookup only — a GET must
-     * never create a ServiceInstance row.
+     * The account's compute panel record, plus the module slug it belongs to.
+     *
+     * Candidate order: the server's own type (a machine lives on the server it
+     * was built on), then the product's provisioning module and enabled links.
+     * Lookup only — a GET must never create a ServiceInstance or PanelAccount.
+     *
+     * @return array{0: ?string, 1: ?PanelAccount}
      */
-    private function panelAccountFor(HostingAccount $hostingAccount): ?PanelAccount
+    private function panelAccountFor(HostingAccount $hostingAccount): array
     {
+        $slugs = $this->computeSlugs($hostingAccount);
+
+        if ($slugs === []) {
+            return [null, null];
+        }
+
         try {
             $service = $this->findServiceForStatus($hostingAccount);
 
-            return $service !== null
-                ? PanelAccount::where('service_instance_id', $service->id)->where('panel', 'hyperv')->first()
-                : null;
+            if ($service === null) {
+                return [$slugs[0], null];
+            }
+
+            $accounts = PanelAccount::where('service_instance_id', $service->id)
+                ->whereIn('panel', $slugs)
+                ->get();
+
+            foreach ($slugs as $slug) {
+                $match = $accounts->first(fn ($account) => (string) $account->panel === $slug);
+
+                if ($match !== null) {
+                    return [$slug, $match];
+                }
+            }
         } catch (\Throwable) {
-            return null;
+            // Un-resolvable service/account must degrade to "no record".
         }
+
+        return [$slugs[0], null];
+    }
+
+    /**
+     * Module slugs that could own a VM for this account, most-specific first.
+     *
+     * @return list<string>
+     */
+    private function computeSlugs(HostingAccount $hostingAccount): array
+    {
+        $slugs = [];
+
+        $serverType = strtolower(trim((string) ($hostingAccount->server?->server_type ?? '')));
+        if (ComputeTemplateCatalog::supports($serverType)) {
+            $slugs[] = $serverType;
+        }
+
+        $rawModule = strtolower(trim((string) ($hostingAccount->product?->provisioning_module ?? '')));
+        if (ComputeTemplateCatalog::supports($rawModule)) {
+            $slugs[] = $rawModule;
+        }
+
+        try {
+            $links = $hostingAccount->product?->relationLoaded('moduleLinks')
+                ? $hostingAccount->product->moduleLinks
+                : $hostingAccount->product?->moduleLinks()->get();
+
+            foreach ($links ?? [] as $link) {
+                if (! (bool) ($link->enabled ?? false)) {
+                    continue;
+                }
+
+                $slug = strtolower(trim((string) ($link->module_slug ?? '')));
+
+                if (ComputeTemplateCatalog::supports($slug)) {
+                    $slugs[] = $slug;
+                }
+            }
+        } catch (\Throwable) {
+            // Relation unavailable — the candidates above still apply.
+        }
+
+        return array_values(array_unique(array_filter($slugs, static fn (string $slug): bool => $slug !== '')));
     }
 
     private function findServiceForStatus(HostingAccount $hostingAccount): ?ServiceInstance

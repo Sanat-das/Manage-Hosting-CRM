@@ -9,9 +9,19 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOneThrough;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
-#[Fillable(['customer_id', 'catalog_product_id', 'order_id', 'server_id', 'service_tag', 'username', 'domain', 'password_hash', 'provisioning_method', 'provisioning_config', 'provisioning_adapter_id', 'external_id', 'status', 'suspension_reason', 'suspended_at', 'terminated_at', 'next_billing_date'])]
+#[Fillable(['customer_id', 'catalog_product_id', 'order_id', 'server_id', 'service_tag', 'username', 'domain', 'password_hash', 'provisioning_method', 'provisioning_config', 'provisioning_adapter_id', 'external_id', 'status', 'provision_status', 'suspension_reason', 'suspended_at', 'terminated_at', 'next_billing_date'])]
 class ServiceInstance extends Model
 {
+    /**
+     * Module-side provisioning state, distinct from the lifecycle `status`.
+     *
+     * Single source of truth for the allowed values: the controller validates
+     * against it and the service screens render it, so the two can never drift.
+     *
+     * @var list<string>
+     */
+    public const PROVISION_STATUSES = ['pending', 'provisioning', 'provisioned', 'failed', 'suspended', 'terminated'];
+
     use SoftDeletes;
 
     protected $table = 'service_instances';

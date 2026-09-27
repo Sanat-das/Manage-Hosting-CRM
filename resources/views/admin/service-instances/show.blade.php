@@ -58,13 +58,73 @@
                         @endforeach
                     </x-adminlte-select>
                     <x-adminlte-select name="provision_status" label="Provision Status">
-                        @foreach (['pending','provisioning','provisioned','failed','suspended'] as $s)
+                        @foreach (\App\Models\ServiceInstance::PROVISION_STATUSES as $s)
                             <option value="{{ $s }}" @selected($serviceInstance->provision_status === $s)>{{ ucfirst($s) }}</option>
                         @endforeach
                     </x-adminlte-select>
                     <button type="submit" class="btn btn-primary w-100">Update</button>
                 </form>
             </x-adminlte-card>
+            <x-adminlte-card icon="bi bi-arrow-left-right" title="Move to another server">
+                @if (($moveTargets ?? collect())->isEmpty())
+                    <p class="text-muted small mb-0">
+                        No other active {{ $serviceInstance->provisioning_method }} server is available to move this
+                        service onto.
+                    </p>
+                @else
+                    <form method="POST" action="{{ route('admin.service-instances.move', $serviceInstance) }}">
+                        @csrf @method('PUT')
+                        <x-adminlte-select name="server_id" label="Target server">
+                            @foreach ($moveTargets as $target)
+                                <option value="{{ $target->id }}">
+                                    {{ $target->name }} ({{ $target->server_type }})
+                                </option>
+                            @endforeach
+                        </x-adminlte-select>
+
+                        @if (($machineState ?? null) === true)
+                            <div class="alert alert-warning small py-2 mb-2">
+                                This service already has a machine
+                                {{ $serviceInstance->server ? 'on "'.$serviceInstance->server->name.'"' : '' }}.
+                                Every suspend/terminate resolves its driver from the server below, so migrate or destroy
+                                that machine first — otherwise those actions would target a server that does not hold it.
+                            </div>
+                            <div class="form-check mb-2">
+                                <input class="form-check-input" type="checkbox" value="1"
+                                       id="confirm_machine_handled" name="confirm_machine_handled">
+                                <label class="form-check-label small" for="confirm_machine_handled">
+                                    The machine has been migrated or destroyed — move the service anyway.
+                                </label>
+                            </div>
+                        @elseif (($machineState ?? null) === null)
+                            <div class="alert alert-secondary small py-2 mb-2">
+                                Whether this service still has a machine could not be verified
+                                {{ $serviceInstance->server ? 'on "'.$serviceInstance->server->name.'"' : '' }},
+                                so it is treated as present. Tick below to move it regardless.
+                            </div>
+                            <div class="form-check mb-2">
+                                <input class="form-check-input" type="checkbox" value="1"
+                                       id="confirm_machine_handled" name="confirm_machine_handled">
+                                <label class="form-check-label small" for="confirm_machine_handled">
+                                    Move anyway — I understand lifecycle actions will target the new server.
+                                </label>
+                            </div>
+                        @else
+                            <div class="alert alert-success small py-2 mb-2">
+                                No machine is recorded on the host for this service, so it can be moved freely.
+                            </div>
+                        @endif
+
+                        <button type="submit" class="btn btn-outline-primary w-100">
+                            <i class="bi bi-arrow-left-right me-1"></i> Move service
+                        </button>
+                    </form>
+                    <p class="text-muted small mb-0 mt-2">
+                        Moves the service record only. Nothing is built or destroyed on either server.
+                    </p>
+                @endif
+            </x-adminlte-card>
+
             <x-adminlte-card icon="bi bi-exclamation-triangle" title="Actions" class="mt-3">
                 @if (in_array($serviceInstance->provision_status, ['failed', 'pending'], true) || $serviceInstance->status === 'pending')
                     <button type="button" class="btn btn-success w-100 mb-2" data-bs-toggle="modal" data-bs-target="#provision-service-modal">

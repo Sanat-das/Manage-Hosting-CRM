@@ -125,6 +125,9 @@ Route::middleware(['web', 'auth', 'admin', 'throttle:admin'])->prefix('admin')->
     Route::put('servers/{server}', [ServerController::class, 'update'])
         ->middleware('permission:hosting.manage')
         ->name('servers.update');
+    Route::delete('servers/{server}', [ServerController::class, 'destroy'])
+        ->middleware('permission:hosting.manage')
+        ->name('servers.destroy');
     Route::post('servers/{server}/test-connection', [ServerController::class, 'testConnection'])
         ->middleware('permission:hosting.manage')
         ->name('servers.test-connection');

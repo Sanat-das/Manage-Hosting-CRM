@@ -7,11 +7,13 @@ namespace App\Modules\Virtualizor;
 use App\Contracts\Integrations\AbstractPanelModule;
 use App\Contracts\Integrations\PanelException;
 use App\Contracts\Integrations\PanelProvisionRequest;
+use App\Contracts\Integrations\ProvisioningResult;
 use App\Contracts\Integrations\ServerConnectionResult;
 use App\Contracts\Integrations\ServerInfoDTO;
 use App\Contracts\Integrations\TestableServerModule;
 use App\Models\PanelAccount;
 use App\Models\Server;
+use App\Models\ServiceInstance;
 use App\Modules\Virtualizor\Services\VirtualizorClient;
 
 /**
@@ -74,12 +76,12 @@ final class Virtualizor extends AbstractPanelModule implements TestableServerMod
             return ServerConnectionResult::ok(
                 message: 'Connected to Virtualizor',
                 latencyMs: $latency,
-                meta: static::capMeta(static::successProvenance('listvs')),
+                meta: self::capMeta(self::successProvenance('listvs')),
             );
         } catch (PanelException $e) {
             $latency = (int) (microtime(true) * 1000) - $start;
 
-            return ServerConnectionResult::fail($e->getMessage(), $latency, static::errorMeta($e->getMessage()));
+            return ServerConnectionResult::fail($e->getMessage(), $latency, self::errorMeta($e->getMessage()));
         }
     }
 
@@ -111,7 +113,7 @@ final class Virtualizor extends AbstractPanelModule implements TestableServerMod
                 latencyMs: $latency,
                 // Todo 13: error-only raw — totals ride the DTO top level;
                 // the VS list never persists on success.
-                meta: static::successProvenance(
+                meta: self::successProvenance(
                     'listvs',
                     isset($data['version']) && is_scalar($data['version']) && trim((string) $data['version']) !== '' ? (string) $data['version'] : null,
                     trim((string) ($server->api_url ?: $server->ip_address)) !== '' ? trim((string) ($server->api_url ?: $server->ip_address)) : null,
@@ -126,7 +128,7 @@ final class Virtualizor extends AbstractPanelModule implements TestableServerMod
                 ipAddress: (string) $server->ip_address,
                 totalAccounts: 0,
                 latencyMs: $latency,
-                meta: static::errorMeta($e->getMessage()),
+                meta: self::errorMeta($e->getMessage()),
             );
         }
     }
@@ -225,6 +227,107 @@ final class Virtualizor extends AbstractPanelModule implements TestableServerMod
     protected function terminateRemote(PanelAccount $account, Server $server, array $config): void
     {
         $this->client($server, $config)->call('vs', ['delete' => $this->vpsId($account)]);
+    }
+
+    /**
+     * Every OS template a VPS can be built from, for the server curation UI.
+     * Empty on any failure so a panel hiccup cannot break the page.
+     *
+     * @return list<array{osid: string, name: string, type: string}>
+     */
+    public function discoverOsTemplates(Server $server): array
+    {
+        try {
+            return (new VirtualizorClient($server, verifyTls: true))->listOsTemplates();
+        } catch (\Throwable) {
+            return [];
+        }
+    }
+
+    /**
+     * Is the VPS behind this panel account still on its server?
+     *
+     * Same hook contract as HyperV/Proxmox: `true`/`false` are verified
+     * answers, `null` means the panel could not be reached and callers must
+     * treat it as unknown (fail safe).
+     *
+     * @return array{exists: bool|null, status?: string, error?: string}
+     */
+    public function recordedVmState(PanelAccount $account): array
+    {
+        $id = trim((string) ($account->external_id ?? ''));
+
+        if ($id === '' || (int) $id <= 0) {
+            return ['exists' => false];
+        }
+
+        $server = $account->server_id !== null ? Server::find($account->server_id) : null;
+
+        if ($server === null) {
+            return ['exists' => null, 'error' => 'The server this VPS was built on no longer exists.'];
+        }
+
+        try {
+            $state = (new VirtualizorClient($server, verifyTls: true))->vpsState((int) $id);
+        } catch (\Throwable $e) {
+            return ['exists' => null, 'error' => $e->getMessage()];
+        }
+
+        if ($state === null) {
+            return ['exists' => false];
+        }
+
+        return ['exists' => true, 'status' => $state];
+    }
+
+    /**
+     * Restart the VPS. NOT part of ProvisioningModule — called directly by
+     * HostingController::moduleAction() / the client vmPower endpoint after
+     * confirmation, mirroring HyperV::restart().
+     */
+    public function restart(ServiceInstance $service, array $config): ProvisioningResult
+    {
+        $account = $this->accountFor($service);
+
+        if ($account === null) {
+            return ProvisioningResult::fail('No Virtualizor VPS is recorded for this service.');
+        }
+
+        $server = $service->server;
+
+        if ($server === null || ! $this->serverIsConfigured($server)) {
+            return ProvisioningResult::fail(sprintf(
+                'Server "%s" is not configured for virtualizor (%s).',
+                $server?->name ?? $service->server_id,
+                $this->credentialHint(),
+            ));
+        }
+
+        try {
+            $id = (int) $this->vpsId($account);
+            $client = $this->client($server, $config);
+
+            // A restart signal on a stopped VPS would start it — refused
+            // explicitly, matching the UI's "only a running VM is rebooted".
+            if ($client->vpsState($id) !== 'running') {
+                return ProvisioningResult::fail(sprintf(
+                    'Virtualizor VPS %d is not running — restart is refused. Start it first.',
+                    $id,
+                ));
+            }
+
+            $client->restartVps($id);
+        } catch (PanelException $e) {
+            return ProvisioningResult::fail($e->getMessage());
+        } catch (\Throwable $e) {
+            return ProvisioningResult::fail('Virtualizor restart failed unexpectedly: '.$e->getMessage());
+        }
+
+        return ProvisioningResult::ok("Virtualizor VPS {$id} restarted", [
+            'username' => $account->username,
+            'external_id' => (string) $id,
+            'state' => 'Running',
+        ]);
     }
 
     /**

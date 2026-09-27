@@ -136,6 +136,11 @@
                                class="btn btn-sm btn-outline-secondary btn-icon" title="Edit" aria-label="Edit">
                                 <i class="bi bi-pencil"></i>
                             </a>
+                            <button type="button" class="btn btn-sm btn-outline-danger btn-icon"
+                                    title="Delete" aria-label="Delete"
+                                    data-bs-toggle="modal" data-bs-target="#delete-server-{{ $server->id }}">
+                                <i class="bi bi-trash"></i>
+                            </button>
                         @endcan
                     </div>
                 </td>
@@ -148,4 +153,20 @@
             </tr>
         @endforelse
     </x-adminlte.partials.datatable>
+
+    {{-- Per-row delete confirmations, rendered outside the table (see confirm-modal docs). --}}
+    @can('hosting.manage')
+        @foreach ($servers as $server)
+            <x-adminlte.partials.confirm-modal
+                :id="'delete-server-' . $server->id"
+                title="Delete server"
+                :message="'Delete ' . $server->name . '? This removes the server record and its group memberships.'"
+                :action="route('admin.servers.destroy', $server)"
+            >
+                Servers still in use cannot be deleted — if this one has hosting accounts,
+                services, panel accounts or resource pools attached, the delete will be
+                refused and tell you what to remove first.
+            </x-adminlte.partials.confirm-modal>
+        @endforeach
+    @endcan
 @stop

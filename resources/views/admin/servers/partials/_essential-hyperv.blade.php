@@ -78,7 +78,13 @@
                 <div class="text-muted small mb-1" style="font-size:var(--text-xs); text-transform:uppercase;">Switches ({{ $switchCount }})</div>
                 <div class="d-flex flex-wrap gap-1" id="hvSwitches">
                     @foreach ($switchList as $i => $sw)
-                        <span class="badge text-bg-light border fw-normal hv-switch {{ $i >= 8 ? 'd-none' : '' }}" style="font-size:var(--text-xs);" @if(!empty($sw['type'])) title="{{ $sw['type'] }}" @endif>{{ $sw['name'] }}@if(!empty($sw['type']))<span class="text-muted"> · {{ $sw['type'] }}</span>@endif</span>
+                        @php
+                            // "internal · Internal" said the same thing twice: the type is
+                            // only worth printing when it adds something to the name.
+                            $swType = trim((string) ($sw['type'] ?? ''));
+                            $swShowType = $swType !== '' && strcasecmp($swType, trim((string) $sw['name'])) !== 0;
+                        @endphp
+                        <span class="badge text-bg-light border fw-normal hv-switch {{ $i >= 8 ? 'd-none' : '' }}" style="font-size:var(--text-xs);" @if(!empty($sw['type'])) title="{{ $sw['type'] }}" @endif>{{ $sw['name'] }}@if($swShowType)<span class="text-muted"> · {{ $swType }}</span>@endif</span>
                     @endforeach
                 </div>
                 @if ($switchCount > 8)

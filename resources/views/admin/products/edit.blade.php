@@ -315,45 +315,84 @@
                     <p class="text-muted mb-0">No modules available.</p>
                 @endforelse
 
-                {{-- Hyper-V templates (this product) — dedicated card with its own merge-save endpoint --}}
-                @php $hypervUnionOptions = $hypervUnionOptions ?? []; $hypervAllowedTemplates = $hypervAllowedTemplates ?? []; $hypervIsHypervProduct = $hypervIsHypervProduct ?? false; $hypervHasLink = $hypervHasLink ?? false; @endphp
+                {{-- Template restrictions (this product) — shared card, one per module.
+                     Each has its own merge-save endpoint; the JS below wires every
+                     card generically via the data-prefix hook. --}}
+                @php
+                    $hypervUnionOptions = $hypervUnionOptions ?? [];
+                    $hypervAllowedTemplates = $hypervAllowedTemplates ?? [];
+                    $hypervIsHypervProduct = $hypervIsHypervProduct ?? false;
+                    $hypervHasLink = $hypervHasLink ?? false;
+                @endphp
                 @if ($hypervIsHypervProduct)
-                    <div class="border rounded p-3 mb-3" id="hyperv-templates-card">
-                        <h6 class="mb-2"><i class="bi bi-hdd-stack me-1"></i> Hyper-V templates (this product)</h6>
-                        @if (! $hypervHasLink)
-                            <p class="text-muted small mb-0">Save the product with the Hyper-V provisioning module first.</p>
-                        @else
-                            @php $isRestricted = ! empty($hypervAllowedTemplates); @endphp
-                            <div class="mb-2">
-                                <div class="form-check">
-                                    <input class="form-check-input" type="radio" name="hyperv_template_mode" id="hyperv-mode-all" value="all" {{ ! $isRestricted ? 'checked' : '' }}>
-                                    <label class="form-check-label" for="hyperv-mode-all">All curated templates</label>
-                                </div>
-                                <div class="form-check">
-                                    <input class="form-check-input" type="radio" name="hyperv_template_mode" id="hyperv-mode-restrict" value="restrict" {{ $isRestricted ? 'checked' : '' }}>
-                                    <label class="form-check-label" for="hyperv-mode-restrict">Restrict to selected</label>
-                                </div>
-                            </div>
-                            @if (empty($hypervUnionOptions))
-                                <p class="text-muted small mb-0">No Hyper-V templates are curated on any active server.</p>
-                            @else
-                                <div id="hyperv-templates-checkboxes" class="border rounded p-2 mb-2" style="max-height: 220px; overflow-y: auto;">
-                                    @foreach ($hypervUnionOptions as $opt)
-                                        @php $isChecked = in_array($opt['name'], $hypervAllowedTemplates, true); @endphp
-                                        <div class="form-check">
-                                            <input class="form-check-input hyperv-template-checkbox" type="checkbox" value="{{ $opt['name'] }}" id="hyperv-tpl-{{ $loop->index }}" {{ $isChecked ? 'checked' : '' }}>
-                                            <label class="form-check-label" for="hyperv-tpl-{{ $loop->index }}">{{ $opt['label'] }} <span class="text-muted small">({{ $opt['name'] }})</span></label>
-                                        </div>
-                                    @endforeach
-                                </div>
-                                <div id="hyperv-templates-error" class="text-danger small mb-2" style="display:none;"></div>
-                            @endif
-                            <button type="button" class="btn btn-sm btn-primary" id="hyperv-templates-save" data-url="{{ route('admin.products.modules.templates', [$product, 'hyperv']) }}">
-                                <i class="bi bi-save me-1"></i> Save template restriction
-                            </button>
-                        @endif
-                    </div>
+                    @include('admin.products.partials._template-restriction', [
+                        'prefix' => 'hyperv',
+                        'title' => 'Hyper-V templates (this product)',
+                        'options' => array_map(
+                            static fn (array $o): array => ['value' => (string) $o['name'], 'label' => (string) $o['label'], 'meta' => null],
+                            $hypervUnionOptions,
+                        ),
+                        'allowed' => $hypervAllowedTemplates,
+                        'saveUrl' => route('admin.products.modules.templates', [$product, 'hyperv']),
+                        'needsLink' => ! $hypervHasLink,
+                        'linkHint' => 'Save the product with the Hyper-V provisioning module first.',
+                        'emptyHint' => 'No Hyper-V templates are curated on any active server.',
+                    ])
                 @endif
+
+                @php
+                    $proxmoxUnionOptions = $proxmoxUnionOptions ?? [];
+                    $proxmoxAllowedTemplates = $proxmoxAllowedTemplates ?? [];
+                    $proxmoxIsProxmoxProduct = $proxmoxIsProxmoxProduct ?? false;
+                    $proxmoxHasLink = $proxmoxHasLink ?? false;
+                @endphp
+                @if ($proxmoxIsProxmoxProduct)
+                    @include('admin.products.partials._template-restriction', [
+                        'prefix' => 'proxmox',
+                        'title' => 'Proxmox VE templates (this product)',
+                        'options' => array_map(
+                            static fn (array $t): array => [
+                                'value' => (string) $t['vmid'],
+                                'label' => (string) $t['label'],
+                                'meta' => trim((string) ($t['node'] ?? '')) !== '' ? (string) $t['node'] : null,
+                            ],
+                            $proxmoxUnionOptions,
+                        ),
+                        'allowed' => $proxmoxAllowedTemplates,
+                        'saveUrl' => route('admin.products.modules.templates', [$product, 'proxmox']),
+                        'needsLink' => ! $proxmoxHasLink,
+                        'linkHint' => 'Save the product with the Proxmox VE provisioning module first.',
+                        'emptyHint' => 'No Proxmox VE templates are curated on any active server. Curate them on the server\'s edit page first.',
+                    ])
+                @endif
+
+                @php
+                    $virtualizorUnionOptions = $virtualizorUnionOptions ?? [];
+                    $virtualizorAllowedTemplates = $virtualizorAllowedTemplates ?? [];
+                    $virtualizorIsVirtualizorProduct = $virtualizorIsVirtualizorProduct ?? false;
+                    $virtualizorHasLink = $virtualizorHasLink ?? false;
+                @endphp
+                @if ($virtualizorIsVirtualizorProduct)
+                    @include('admin.products.partials._template-restriction', [
+                        'prefix' => 'virtualizor',
+                        'title' => 'Virtualizor OS templates (this product)',
+                        'options' => array_map(
+                            static fn (array $o): array => ['value' => (string) $o['id'], 'label' => (string) $o['label'], 'meta' => null],
+                            $virtualizorUnionOptions,
+                        ),
+                        'allowed' => $virtualizorAllowedTemplates,
+                        'saveUrl' => route('admin.products.modules.templates', [$product, 'virtualizor']),
+                        'needsLink' => ! $virtualizorHasLink,
+                        'linkHint' => 'Save the product with the Virtualizor provisioning module first.',
+                        'emptyHint' => 'No Virtualizor OS templates are curated on any active server. Curate them on the server\'s edit page first.',
+                    ])
+                @endif
+
+                {{-- Product-level default template per compute module (Proxmox VE,
+                     Virtualizor). Merge-saves only the module's template key. --}}
+                @foreach (($computeTemplateDefaults ?? []) as $default)
+                    @include('admin.products.partials._compute-default-template', $default)
+                @endforeach
             </div>
         </div>
     </x-adminlte.partials.form-card>
@@ -513,17 +552,22 @@
                     });
                 });
 
-                // Hyper-V per-product template restriction save (own fetch PUT, merge-save)
-                var hypervSaveBtn = document.getElementById('hyperv-templates-save');
-                if (hypervSaveBtn) {
-                    hypervSaveBtn.addEventListener('click', function () {
+                // Per-product template restriction save (own fetch PUT, merge-save).
+                // Generic over every restriction card on the page, so Hyper-V and
+                // Proxmox VE share one code path.
+                document.querySelectorAll('[data-template-restriction]').forEach(function (card) {
+                    var prefix = card.dataset.prefix;
+                    var saveBtn = card.querySelector('#' + prefix + '-templates-save');
+                    if (!saveBtn) return;
+
+                    saveBtn.addEventListener('click', function () {
                         if (!confirmDiscard()) return;
-                        var modeAll = document.getElementById('hyperv-mode-all');
+                        var modeAll = document.getElementById(prefix + '-mode-all');
                         var isAll = modeAll && modeAll.checked;
-                        var errorEl = document.getElementById('hyperv-templates-error');
+                        var errorEl = document.getElementById(prefix + '-templates-error');
                         if (errorEl) { errorEl.style.display = 'none'; errorEl.textContent = ''; }
                         if (!isAll) {
-                            var checked = document.querySelectorAll('.hyperv-template-checkbox:checked');
+                            var checked = card.querySelectorAll('.' + prefix + '-template-checkbox:checked');
                             if (checked.length === 0) {
                                 if (errorEl) { errorEl.textContent = 'Select at least one template or choose "All curated templates".'; errorEl.style.display = 'block'; }
                                 return;
@@ -533,12 +577,12 @@
                         data.append('_token', csrf);
                         data.append('_method', 'PUT');
                         if (!isAll) {
-                            document.querySelectorAll('.hyperv-template-checkbox:checked').forEach(function (cb) { data.append('allowed_templates[]', cb.value); });
+                            card.querySelectorAll('.' + prefix + '-template-checkbox:checked').forEach(function (cb) { data.append('allowed_templates[]', cb.value); });
                         }
-                        fetch(hypervSaveBtn.dataset.url, { method: 'POST', body: data, redirect: 'manual' })
+                        fetch(saveBtn.dataset.url, { method: 'POST', body: data, redirect: 'manual' })
                             .finally(function () { window.location.href = '{{ route('admin.products.edit', $product) }}'; });
                     });
-                }
+                });
             });
         </script>
     @endpush

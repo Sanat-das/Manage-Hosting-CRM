@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
-use App\Jobs\ProvisionHypervVm;
+use App\Jobs\ProvisionComputeVm;
 use App\Services\Modules\ModuleManager;
 use FreeDSx\Snmp\Oid;
 use Illuminate\Console\Scheduling\Schedule;
@@ -607,7 +607,7 @@ final class SnmpPollingPipelineTest extends TestCase
 
         $batch = new PollHostBatch([1]);
         $rollup = new RollupHourlyAggregates;
-        $vmBuild = new ProvisionHypervVm(1, 1, null, false, null, null);
+        $vmBuild = new ProvisionComputeVm(1, 1, null, false, null, null);
 
         $this->assertSame('snmp-poll', $batch->queue);
         $this->assertSame(1, $batch->tries);

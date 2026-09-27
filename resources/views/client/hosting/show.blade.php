@@ -33,10 +33,13 @@
                 </table>
             </x-adminlte-card>
 
-            {{-- Manual VM Provisioning (Hyper-V curated templates) --}}
+            {{-- Manual VM Provisioning (compute modules with curated templates) --}}
             @php
-                $provisionCard = $provisionCard ?? ['isHyperv' => false, 'templates' => [], 'default' => null];
+                $provisionCard = $provisionCard ?? ['isCompute' => false, 'isHyperv' => false, 'templates' => [], 'default' => null];
+                $isCompute = (bool) ($provisionCard['isCompute'] ?? false);
                 $isHyperv = (bool) ($provisionCard['isHyperv'] ?? false);
+                $provisionTemplateKey = (string) ($provisionCard['templateKey'] ?? 'template');
+                $provisionTemplateLabel = (string) ($provisionCard['templateLabel'] ?? 'Template');
                 $clientTemplates = $provisionCard['templates'] ?? [];
                 $clientDefault = $provisionCard['default'] ?? null;
                 $clientCuratedCount = $provisionCard['curatedCount'] ?? 0;
@@ -62,7 +65,7 @@
                 } elseif (is_string($clientVmStateRaw) && $clientVmStateRaw !== '') {
                     $clientVmLow = strtolower(trim($clientVmStateRaw));
                     if ($clientVmLow === 'running') { $clientVmStateLabel = 'Running'; $clientVmStateTheme = 'success'; }
-                    elseif ($clientVmLow === 'off') { $clientVmStateLabel = 'Off'; $clientVmStateTheme = 'secondary'; }
+                    elseif ($clientVmLow === 'off' || $clientVmLow === 'stopped') { $clientVmStateLabel = 'Off'; $clientVmStateTheme = 'secondary'; }
                     elseif ($clientVmLow === 'saved') { $clientVmStateLabel = 'Saved'; $clientVmStateTheme = 'warning'; }
                     else { $clientVmStateLabel = $clientVmStateRaw; $clientVmStateTheme = 'secondary'; }
                 } else {
@@ -73,7 +76,7 @@
             {{-- An active account with no VM on the host is waiting for
                  self-provisioning (hyperv-manual orders activate before the
                  VM exists) — the card follows the VM, not the billing status. --}}
-            @if ($isHyperv && in_array($account->status, ['pending', 'active'], true) && ($clientVm['exists'] ?? null) === false)
+            @if ($isCompute && in_array($account->status, ['pending', 'active'], true) && ($clientVm['exists'] ?? null) === false)
                 <x-adminlte-card icon="bi bi-hdd" title="Provisioning">
                     {{-- Progress panel — visible only while a build runs --}}
                     <div id="client-vm-progress" class="{{ $clientIsRunning ? '' : 'd-none' }}"
@@ -107,18 +110,21 @@
                         <form id="client-provision-form" method="POST" action="{{ route('client.hosting.provision', $account) }}">
                             @csrf
                             <div style="margin-bottom: 8px;">
-                                <label for="client-template-vm" class="form-label small mb-1">Template VM</label>
-                                <select id="client-template-vm" name="template_vm" class="form-select form-select-sm" required aria-label="Template VM">
+                                <label for="client-template-vm" class="form-label small mb-1">{{ $provisionTemplateLabel }}</label>
+                                <select id="client-template-vm" name="{{ $provisionTemplateKey }}" class="form-select form-select-sm" required aria-label="{{ $provisionTemplateLabel }}">
                                     @foreach ($clientTemplates as $opt)
                                         @php
-                                            $optName = is_array($opt) ? ($opt['name'] ?? '') : $opt;
-                                            $optLabel = is_array($opt) ? ($opt['label'] ?? $optName) : $opt;
+                                            $optId = is_array($opt) ? (string) ($opt['id'] ?? '') : (string) $opt;
+                                            $optLabel = is_array($opt) ? (string) ($opt['label'] ?? $optId) : $optId;
                                         @endphp
-                                        <option value="{{ $optName }}" @selected($optName === $clientDefault)>{{ $optLabel }}</option>
+                                        <option value="{{ $optId }}" @selected($optId === (string) $clientDefault)>{{ $optLabel }}</option>
                                     @endforeach
                                 </select>
-                                <div class="form-text small">Template must be shut down (Off)</div>
+                                <div class="form-text small">{{ $provisionTemplateKey === 'template_vm' ? 'Template must be shut down (Off)' : 'The VM is cloned from this template' }}</div>
                                 @error('template_vm')
+                                    <div class="invalid-feedback d-block">{{ $message }}</div>
+                                @enderror
+                                @error('template')
                                     <div class="invalid-feedback d-block">{{ $message }}</div>
                                 @enderror
                             </div>
@@ -190,7 +196,7 @@
                 @if ($account->status === 'active')
                     <a href="#" class="btn btn-outline-warning w-100 mb-2 disabled" title="Coming soon"><i class="bi bi-pause-circle me-1"></i> Suspend</a>
                 @endif
-                @if ($isHyperv)
+                @if ($isCompute)
                     <button type="button" class="btn btn-outline-success w-100 mb-2" data-client-hv-action="start"
                             @if(! $clientCanStart || $clientPowerRunning) disabled title="{{ $clientStartReason !== '' ? $clientStartReason : 'Start is not available right now.' }}" @endif
                     ><i class="bi bi-play-circle me-1"></i> Start VM</button>
@@ -208,11 +214,13 @@
                         @csrf
                         <input type="hidden" name="action" value="start">
                     </form>
+                @endif
+                @if ($isHyperv)
                     <button type="button" class="btn btn-outline-info w-100 mb-2" data-client-hv-action="reset_password"
                             data-bs-toggle="modal" data-bs-target="#client-reset-password-modal"
                             @if(! $clientCanReset) disabled title="{{ $clientResetReason !== '' ? $clientResetReason : 'Password reset is not available right now.' }}" @endif
                     ><i class="bi bi-key me-1"></i> Reset Administrator password</button>
-                @else
+                @elseif (! $isCompute)
                     <a href="#" class="btn btn-outline-info w-100 mb-2 disabled" title="Coming soon"><i class="bi bi-key me-1"></i> Change Password</a>
                 @endif
                 <a href="#" class="btn btn-outline-info w-100 mb-2 disabled" title="Coming soon"><i class="bi bi-envelope me-1"></i> Manage Emails</a>
@@ -238,9 +246,9 @@
                 </x-adminlte.partials.confirm-modal>
             @endif
 
-            @if ($isHyperv)
+            @if ($isCompute)
                 <x-adminlte.partials.confirm-modal id="client-vm-stop-modal" title="Stop VM"
-                    :message="'Gracefully shut down this VM? The guest OS is asked to shut down — no force is sent.'"
+                    :message="'Shut down this VM? The guest OS is asked to shut down first.'"
                     :action="route('client.hosting.vm-power', $account)" method="POST"
                     confirm-label="Stop VM" confirm-theme="warning">
                     <x-slot name="fields">
@@ -249,7 +257,7 @@
                 </x-adminlte.partials.confirm-modal>
             @endif
 
-            @if ($isHyperv)
+            @if ($isCompute)
                 <x-adminlte.partials.confirm-modal id="client-vm-restart-modal" title="Restart VM"
                     :message="'Reboot this VM? Only a RUNNING VM is rebooted — a stopped VM is refused, never surprise-started. Type ' . $account->host_name . ' to confirm.'"
                     :action="route('client.hosting.vm-power', $account)" method="POST"
@@ -314,10 +322,10 @@
 @push('js')
 <script>
 document.addEventListener('DOMContentLoaded', function () {
-    var statusUrl = @json($isHyperv ? route('client.hosting.vm-status', $account) : null);
+    var statusUrl = @json($isCompute ? route('client.hosting.vm-status', $account) : null);
     var resetUrl = @json($isHyperv ? route('client.hosting.reset-vm-password', $account) : null);
-    var powerUrl = @json($isHyperv ? route('client.hosting.vm-power', $account) : null);
-    var initialRunning = @json($isHyperv ? $clientIsRunning : false);
+    var powerUrl = @json($isCompute ? route('client.hosting.vm-power', $account) : null);
+    var initialRunning = @json($isCompute ? $clientIsRunning : false);
     var csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || @json(csrf_token());
 
     var progressPanel = document.getElementById('client-vm-progress');
@@ -362,7 +370,7 @@ document.addEventListener('DOMContentLoaded', function () {
         var raw = (vm.state || '').toString();
         var low = raw.toLowerCase().trim();
         if (low === 'running') return { label: 'Running', theme: 'success' };
-        if (low === 'off') return { label: 'Off', theme: 'secondary' };
+        if (low === 'off' || low === 'stopped') return { label: 'Off', theme: 'secondary' };
         if (low === 'saved') return { label: 'Saved', theme: 'warning' };
         if (raw) return { label: raw, theme: 'secondary' };
         return { label: 'Unknown', theme: 'secondary' };

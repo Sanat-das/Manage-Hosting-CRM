@@ -383,7 +383,7 @@ class ClientHostingVmActionsTest extends TestCase
         $this->assertStringContainsString('data-client-hv-action="start"', $content);
         $this->assertStringContainsString('data-client-hv-action="stop"', $content);
         $this->assertStringContainsString('id="client-vm-stop-modal"', $content);
-        $this->assertStringContainsString('Gracefully shut down this VM?', $content);
+        $this->assertStringContainsString('Shut down this VM? The guest OS is asked to shut down first.', $content);
         // No VM yet — both power buttons disabled with the frozen reason.
         $this->assertMatchesRegularExpression('/<button[^>]*data-client-hv-action="start"[^>]*disabled[^>]*>/', $content);
         $this->assertMatchesRegularExpression('/<button[^>]*data-client-hv-action="stop"[^>]*disabled[^>]*>/', $content);

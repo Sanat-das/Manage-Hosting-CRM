@@ -94,6 +94,10 @@ Route::middleware(['web', 'auth', 'admin', 'throttle:admin'])->prefix('admin')->
         ->middleware('permission:products.edit')
         ->name('products.modules.templates');
 
+    Route::put('products/{product}/modules/{moduleSlug}/template-default', [ProductModuleController::class, 'updateTemplateDefault'])
+        ->middleware('permission:products.edit')
+        ->name('products.modules.template-default');
+
     // Product groups
     Route::get('product-groups', [ProductGroupController::class, 'index'])
         ->middleware('permission:products.groups')

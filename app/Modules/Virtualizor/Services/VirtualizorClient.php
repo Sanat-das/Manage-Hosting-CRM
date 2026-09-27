@@ -94,6 +94,116 @@ class VirtualizorClient
     }
 
     /**
+     * OS templates a VPS can be created from.
+     *
+     * `act=ostemplates` answers with several maps (`oses`, `oslist`,
+     * `ostemplates`); `ostemplates` is the flat, current list. Normalised to
+     * [{osid, name, type}], deduped by osid and sorted by name so the picker
+     * is stable.
+     *
+     * @return list<array{osid: string, name: string, type: string}>
+     *
+     * @throws PanelException
+     */
+    public function listOsTemplates(): array
+    {
+        $body = $this->call('ostemplates');
+
+        $raw = $body['ostemplates'] ?? $body['oses'] ?? [];
+
+        if (! is_array($raw)) {
+            return [];
+        }
+
+        $out = [];
+        $seen = [];
+
+        foreach ($raw as $entry) {
+            if (! is_array($entry)) {
+                continue;
+            }
+
+            $rawId = $entry['osid'] ?? null;
+
+            if (! is_numeric($rawId)) {
+                continue;
+            }
+
+            $osid = (string) (int) $rawId;
+
+            if ((int) $osid <= 0 || isset($seen[$osid])) {
+                continue;
+            }
+
+            $seen[$osid] = true;
+
+            $name = trim((string) ($entry['name'] ?? ''));
+            $out[] = [
+                'osid' => $osid,
+                'name' => $name !== '' ? mb_substr($name, 0, 80) : $osid,
+                'type' => mb_substr(trim((string) ($entry['type'] ?? '')), 0, 32),
+            ];
+
+            if (count($out) >= 200) {
+                break;
+            }
+        }
+
+        usort($out, static fn (array $a, array $b): int => strcasecmp($a['name'], $b['name']));
+
+        return $out;
+    }
+
+    /**
+     * Live power state for one VPS: 'running' | 'stopped', or null when the
+     * panel does not list it (treated as gone by the caller).
+     *
+     * Transport/auth failures throw PanelException, so callers can fail closed
+     * instead of reading an outage as a deleted machine.
+     *
+     * @throws PanelException
+     */
+    public function vpsState(int $vpsId): ?string
+    {
+        if ($vpsId <= 0) {
+            return null;
+        }
+
+        $body = $this->call('vs', ['vs_status' => (string) $vpsId]);
+
+        // Documented shape: { "123": {status: 1, ...} }; tolerate a nested
+        // `status` wrapper because panels differ by version.
+        $rows = $body['status'] ?? $body;
+
+        if (! is_array($rows)) {
+            return null;
+        }
+
+        $row = $rows[(string) $vpsId] ?? $rows[$vpsId] ?? null;
+
+        if ($row === null) {
+            return null;
+        }
+
+        if (is_array($row)) {
+            $row = $row['status'] ?? null;
+        }
+
+        return (string) $row === '1' ? 'running' : 'stopped';
+    }
+
+    /**
+     * Restart a VPS — the `restart` signal on the `vs` action, mirroring the
+     * existing suspend/unsuspend/delete verbs.
+     *
+     * @throws PanelException
+     */
+    public function restartVps(int $vpsId): void
+    {
+        $this->call('vs', ['restart' => (string) $vpsId]);
+    }
+
+    /**
      * Virtualizor returns errors as a string, a list, or a field => message
      * map depending on the action. Flatten all three to one line.
      */

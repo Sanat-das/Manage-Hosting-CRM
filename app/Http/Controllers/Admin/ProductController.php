@@ -14,6 +14,7 @@ use App\Models\ProductOptionGroup;
 use App\Models\ServerGroup;
 use App\Services\Integrations\IntegrationRegistry;
 use App\Services\ProductOptionLinkService;
+use App\Services\Provisioning\ComputeTemplateCatalog;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -148,6 +149,77 @@ class ProductController extends Controller
         $hypervIsHypervProduct = trim((string) ($product->provisioning_module ?? '')) === 'hyperv' || ($hypervLink && (bool) $hypervLink->enabled);
         $hypervHasLink = $hypervLink !== null;
 
+        // Proxmox VE per-product template restriction data (mirrors Hyper-V).
+        $proxmoxUnionOptions = \App\Services\Provisioning\ProxmoxTemplateCatalog::unionOptions();
+        $proxmoxLink = $product->moduleLinks->firstWhere('module_slug', 'proxmox');
+        $proxmoxAllowedTemplates = [];
+        if ($proxmoxLink) {
+            try {
+                $decrypted = $registry->decryptConfigFor('proxmox', is_array($proxmoxLink->config) ? $proxmoxLink->config : []);
+                $raw = $decrypted['allowed_templates'] ?? [];
+                $proxmoxAllowedTemplates = \App\Services\Provisioning\ProxmoxTemplateCatalog::sanitizeAllowed(is_array($raw) ? $raw : []);
+            } catch (\Throwable) {
+                $proxmoxAllowedTemplates = [];
+            }
+        }
+        $proxmoxIsProxmoxProduct = trim((string) ($product->provisioning_module ?? '')) === 'proxmox' || ($proxmoxLink && (bool) $proxmoxLink->enabled);
+        $proxmoxHasLink = $proxmoxLink !== null;
+
+        // Virtualizor per-product OS-template restriction (same shared card).
+        $virtualizorUnionOptions = ComputeTemplateCatalog::unionOptions('virtualizor');
+        $virtualizorLink = $product->moduleLinks->firstWhere('module_slug', 'virtualizor');
+        $virtualizorAllowedTemplates = [];
+        if ($virtualizorLink) {
+            try {
+                $decrypted = $registry->decryptConfigFor('virtualizor', is_array($virtualizorLink->config) ? $virtualizorLink->config : []);
+                $raw = $decrypted['allowed_templates'] ?? [];
+                $virtualizorAllowedTemplates = ComputeTemplateCatalog::sanitizeAllowed('virtualizor', is_array($raw) ? $raw : []);
+            } catch (\Throwable) {
+                $virtualizorAllowedTemplates = [];
+            }
+        }
+        $virtualizorIsVirtualizorProduct = trim((string) ($product->provisioning_module ?? '')) === 'virtualizor' || ($virtualizorLink && (bool) $virtualizorLink->enabled);
+        $virtualizorHasLink = $virtualizorLink !== null;
+
+        // Product-level default template per compute module (Proxmox VE,
+        // Virtualizor; Hyper-V has no such field). The picker cannot know which
+        // server a service lands on, so it offers the union across active
+        // servers — the same set provisioning validates against.
+        $computeTemplateDefaults = [];
+        foreach ($product->moduleLinks as $link) {
+            $slug = strtolower(trim((string) ($link->module_slug ?? '')));
+            $templateKey = ComputeTemplateCatalog::templateKey($slug);
+
+            if (! (bool) $link->enabled || $templateKey === null) {
+                continue;
+            }
+
+            $schema = $registry->configSchemaFor($slug);
+            $hasField = collect($schema['fields'] ?? [])->contains(
+                static fn (array $field): bool => (string) ($field['key'] ?? '') === $templateKey,
+            );
+
+            if (! $hasField) {
+                continue;
+            }
+
+            try {
+                $cfg = $registry->decryptConfigFor($slug, is_array($link->config) ? $link->config : []);
+            } catch (\Throwable) {
+                $cfg = [];
+            }
+
+            $computeTemplateDefaults[$slug] = [
+                'slug' => $slug,
+                'name' => $registry->nameFor($slug),
+                'templateKey' => $templateKey,
+                'templateLabel' => ComputeTemplateCatalog::templateLabel($slug),
+                'options' => ComputeTemplateCatalog::unionOptions($slug),
+                'current' => (string) ($cfg[$templateKey] ?? ''),
+                'saveUrl' => route('admin.products.modules.template-default', [$product, $slug]),
+            ];
+        }
+
         return view('admin.products.edit', array_merge([
             'product' => $product,
             'availableGroups' => $availableGroups,
@@ -159,6 +231,16 @@ class ProductController extends Controller
             'hypervIsHypervProduct' => $hypervIsHypervProduct,
             'hypervHasLink' => $hypervHasLink,
             'hypervLink' => $hypervLink,
+            'proxmoxUnionOptions' => $proxmoxUnionOptions,
+            'proxmoxAllowedTemplates' => $proxmoxAllowedTemplates,
+            'proxmoxIsProxmoxProduct' => $proxmoxIsProxmoxProduct,
+            'proxmoxHasLink' => $proxmoxHasLink,
+            'proxmoxLink' => $proxmoxLink,
+            'virtualizorUnionOptions' => $virtualizorUnionOptions,
+            'virtualizorAllowedTemplates' => $virtualizorAllowedTemplates,
+            'virtualizorIsVirtualizorProduct' => $virtualizorIsVirtualizorProduct,
+            'virtualizorHasLink' => $virtualizorHasLink,
+            'computeTemplateDefaults' => $computeTemplateDefaults,
         ], $this->formData()));
     }
 

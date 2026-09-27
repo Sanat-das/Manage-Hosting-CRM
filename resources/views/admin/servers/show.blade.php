@@ -213,6 +213,31 @@
         @include('admin.servers.partials._winrm-guide', ['serverType' => 'hyperv', 'server' => $server, 'typeSlug' => 'hyperv'])
     @endif
 
+    @can('hosting.manage')
+        {{-- Danger zone: deleting a misconfigured server. Refused while the
+             server is still referenced, so this is safe to expose here. --}}
+        <x-adminlte-card title="Danger zone" icon="bi bi-exclamation-octagon" theme="danger" class="mt-3">
+            <div class="d-flex flex-wrap align-items-start justify-content-between gap-3">
+                <p class="text-muted small mb-0" style="max-width: 60ch;">
+                    Deleting removes the server record and its group memberships. It is refused while
+                    hosting accounts, services, panel accounts or resource pools still reference this
+                    server — move or terminate those first.
+                </p>
+                <button type="button" class="btn btn-outline-danger btn-sm flex-shrink-0"
+                        data-bs-toggle="modal" data-bs-target="#delete-server-{{ $server->id }}">
+                    <i class="bi bi-trash me-1"></i> Delete server
+                </button>
+            </div>
+        </x-adminlte-card>
+
+        <x-adminlte.partials.confirm-modal
+            :id="'delete-server-' . $server->id"
+            title="Delete server"
+            :message="'Delete ' . $server->name . '? This removes the server record and its group memberships.'"
+            :action="route('admin.servers.destroy', $server)"
+        />
+    @endcan
+
 @push('js')
 <script>
 document.addEventListener('DOMContentLoaded', function () {

@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
-use App\Jobs\ProvisionHypervVm;
+use App\Jobs\ProvisionComputeVm;
 use App\Models\Customer;
 use App\Models\HostingAccount;
 use App\Models\PanelAccount;
@@ -16,7 +16,7 @@ use App\Models\Role;
 use App\Models\Server;
 use App\Models\ServiceInstance;
 use App\Models\User;
-use App\Services\Provisioning\HypervVmBuildDispatcher;
+use App\Services\Provisioning\VmBuildDispatcher;
 use App\Services\Provisioning\VmStatusPresenter;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
@@ -52,16 +52,16 @@ class HypervStrandedBuildRecoveryTest extends TestCase
 
         $this->assertTrue($stale->isStaleRunning(), 'Setup did not create a stale event');
 
-        $dispatcher = app(HypervVmBuildDispatcher::class);
+        $dispatcher = app(VmBuildDispatcher::class);
         $this->assertFalse($dispatcher->isBuildRunning($account), 'Stale running event should not block a new build');
 
         Queue::fake();
 
         $newEvent = $dispatcher->dispatch($account, null, false, null, null);
 
-        Queue::assertPushedOn('provisioning', ProvisionHypervVm::class);
+        Queue::assertPushedOn('provisioning', ProvisionComputeVm::class);
         // Also ensure normal push queue assertion passes
-        Queue::assertPushed(ProvisionHypervVm::class, 1);
+        Queue::assertPushed(ProvisionComputeVm::class, 1);
 
         $stale->refresh();
         $this->assertSame('failed', $stale->status);
@@ -95,7 +95,7 @@ class HypervStrandedBuildRecoveryTest extends TestCase
             'payload' => ['module' => 'hyperv', 'action' => 'create', 'stage' => 'cloning', 'hosting_account_id' => $account->id],
         ]);
 
-        $dispatcher = app(HypervVmBuildDispatcher::class);
+        $dispatcher = app(VmBuildDispatcher::class);
         $this->assertTrue($dispatcher->isBuildRunning($account), 'Fresh running event must still return true');
         // Do not assert that dispatch() throws — the controller guard is what
         // blocks; the dispatcher itself reconciles only stale rows.
@@ -116,7 +116,7 @@ class HypervStrandedBuildRecoveryTest extends TestCase
             'payload' => ['module' => 'hyperv', 'action' => 'create', 'stage' => 'credentials'],
         ]);
 
-        (new ProvisionHypervVm($event->id, $account->id, null, false, null, null))->failed(new \RuntimeException('worker stopped'));
+        (new ProvisionComputeVm($event->id, $account->id, null, false, null, null))->failed(new \RuntimeException('worker stopped'));
 
         $event->refresh();
         $this->assertSame('failed', $event->status);
@@ -125,7 +125,7 @@ class HypervStrandedBuildRecoveryTest extends TestCase
         $this->assertStringContainsString('worker stopped', (string) $event->last_error);
 
         // Calling failed() again must be a no-op and must not throw.
-        (new ProvisionHypervVm($event->id, $account->id, null, false, null, null))->failed(new \RuntimeException('worker stopped again'));
+        (new ProvisionComputeVm($event->id, $account->id, null, false, null, null))->failed(new \RuntimeException('worker stopped again'));
         $event->refresh();
         $this->assertSame('failed', $event->status);
 
@@ -140,12 +140,12 @@ class HypervStrandedBuildRecoveryTest extends TestCase
             'result' => ['message' => 'done'],
         ]);
 
-        (new ProvisionHypervVm($completed->id, $account->id, null, false, null, null))->failed(new \RuntimeException('worker stopped'));
+        (new ProvisionComputeVm($completed->id, $account->id, null, false, null, null))->failed(new \RuntimeException('worker stopped'));
         $completed->refresh();
         $this->assertSame('completed', $completed->status);
 
         // Missing event must not throw.
-        (new ProvisionHypervVm(999999, $account->id, null, false, null, null))->failed(new \RuntimeException('missing'));
+        (new ProvisionComputeVm(999999, $account->id, null, false, null, null))->failed(new \RuntimeException('missing'));
         $this->assertTrue(true);
 
         // Null exception → worker stopped fallback.
@@ -157,7 +157,7 @@ class HypervStrandedBuildRecoveryTest extends TestCase
             'event_status' => 'running',
             'payload' => ['module' => 'hyperv', 'action' => 'create', 'stage' => 'queued'],
         ]);
-        (new ProvisionHypervVm($event2->id, $account->id, null, false, null, null))->failed(null);
+        (new ProvisionComputeVm($event2->id, $account->id, null, false, null, null))->failed(null);
         $event2->refresh();
         $this->assertSame('failed', $event2->status);
         $this->assertStringContainsString('worker stopped', strtolower((string) $event2->last_error));
@@ -254,12 +254,12 @@ class HypervStrandedBuildRecoveryTest extends TestCase
 
         Queue::fake();
 
-        $dispatcher = app(HypervVmBuildDispatcher::class);
+        $dispatcher = app(VmBuildDispatcher::class);
         $dispatcher->dispatch($account, null, false, null, null);
 
-        Queue::assertPushedOn('provisioning', ProvisionHypervVm::class);
+        Queue::assertPushedOn('provisioning', ProvisionComputeVm::class);
 
-        $job = new ProvisionHypervVm(1, $account->id, null, false, null, null);
+        $job = new ProvisionComputeVm(1, $account->id, null, false, null, null);
         $this->assertSame('provisioning', $job->queue);
     }
 
@@ -293,12 +293,12 @@ class HypervStrandedBuildRecoveryTest extends TestCase
         ]);
         $nullCreated = ProvisioningEvent::find($id);
         $this->assertFalse($nullCreated->isStaleRunning(), 'Null created_at must return false');
-        $this->assertFalse(app(HypervVmBuildDispatcher::class)->isBuildRunning($account) && $nullCreated->isStaleRunning() ? true : $nullCreated->isStaleRunning(), 'Null created_at stale check');
+        $this->assertFalse(app(VmBuildDispatcher::class)->isBuildRunning($account) && $nullCreated->isStaleRunning() ? true : $nullCreated->isStaleRunning(), 'Null created_at stale check');
         // Sanity: isBuildRunning for null-created row should still consider it running (not stale)
         // because isStaleRunning false → the contains should treat it as blocking.
         // To avoid cross-pollution, delete other running rows and test isolated.
         ProvisioningEvent::where('hosting_account_id', $account->id)->where('id', '!=', $id)->delete();
-        $this->assertTrue(app(HypervVmBuildDispatcher::class)->isBuildRunning($account), 'Null created_at running event should still block (not considered stale)');
+        $this->assertTrue(app(VmBuildDispatcher::class)->isBuildRunning($account), 'Null created_at running event should still block (not considered stale)');
     }
 
     // ─────────────────────────── helpers ───────────────────────────

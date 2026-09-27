@@ -18,9 +18,10 @@ use Tests\TestCase;
  * uptime,bootTime,cpuLoadPercent}, vms[{Name,Count}], switches[{Name,
  * SwitchType}], storageTotal/Used/Free and volumes[{name,total,used,free}].
  *
- * The live WinRM SOAP reply embeds that JSON as command-output text, so
- * parseInfoBody() must accept both plain JSON (Http::fake style) and a SOAP
- * envelope embedding the same JSON as a {...} fragment. Both variants must
+ * The payload travels through the shared invokeRemote transport (SOAP under
+ * Http::fake, native PowerShell remoting on a Windows host) as command-output
+ * text, so extractJson() must accept both plain JSON (Http::fake style) and a
+ * SOAP envelope embedding the same JSON as a {...} fragment. Both variants must
  * surface via testConnection()->ok with the DTO meta intact.
  */
 class HyperVFetchInfoTest extends TestCase
