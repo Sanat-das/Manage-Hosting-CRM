@@ -130,6 +130,7 @@ trait BuildsEmailVariables
     {
         // Keep links readable: <a href="...">text</a> -> text (url)
         $text = preg_replace('/<a\s[^>]*href=["\']([^"\']+)["\'][^>]*>(.*?)<\/a>/i', '$2 ($1)', $html) ?? $html;
+        $text = preg_replace('/<br\s*\/?>/i', "\n", $text) ?? $text;
         $text = strip_tags($text);
         $text = html_entity_decode($text, ENT_QUOTES | ENT_HTML5);
         $text = preg_replace('/[ \t]+/', ' ', $text) ?? $text;

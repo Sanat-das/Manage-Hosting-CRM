@@ -109,46 +109,494 @@ class NotificationEmailSeeder extends Seeder
      */
     private const TEMPLATES = [
         [
-            'name'    => 'welcome',
+            'name' => 'welcome',
             'subject' => 'Welcome to Demo Hosting — Your Account Is Ready',
-            'status'  => 'active',
-            'body'    => "Hi {{name}},\n\nThank you for choosing Demo Hosting. Your account has been created and is ready to use.\n\nYou can log in at any time using the link below:\n{{login_url}}\n\nIf you have any questions, our support team is always happy to help.\n\nWarm regards,\nThe Demo Hosting Team\n\n---\nAvailable variables: {{name}}, {{app_name}}, {{login_url}}",
+            'status' => 'active',
+            'body' => <<<'BODY'
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="x-apple-disable-message-reformatting">
+</head>
+<body style="margin:0;padding:0;background:#f1f5f9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;-webkit-text-size-adjust:100%;">
+<table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;background:#f1f5f9;padding:32px 16px;">
+<tr><td align="center">
+<!-- Card -->
+<table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;max-width:600px;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #e8ecf1;box-shadow:0 2px 16px rgba(15,23,42,0.05);">
+
+<!-- ── Brand header ─────────────────────────────────────────── -->
+<tr><td style="background:#ffffff;border-bottom:1px solid #eef2f7;padding:28px 40px;text-align:center;">
+<img src="{{app_logo_url}}" alt="{{app_name}}" width="140" style="max-width:140px;height:auto;display:block;margin:0 auto 14px;">
+<div style="font-size:20px;font-weight:800;color:#0f172a;letter-spacing:-0.02em;line-height:1.2;">{{app_name}}</div>
+<div style="font-size:11px;color:#94a3b8;margin-top:6px;letter-spacing:0.12em;text-transform:uppercase;">{{company_name}}</div>
+</td></tr>
+
+<!-- ── Hero ─────────────────────────────────────────────────── -->
+<tr><td style="background:#eff6ff;padding:36px 40px;text-align:center;">
+<div style="font-size:11px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;color:{{primary_color}};margin-bottom:10px;">Your account is ready</div>
+<div style="font-size:26px;font-weight:900;color:#0f172a;letter-spacing:-0.02em;line-height:1.25;">Welcome to Demo Hosting</div>
+<div style="margin-top:14px;font-size:13px;color:#475569;">Everything is set up — log in to get started.</div>
+</td></tr>
+
+<!-- ── Greeting ─────────────────────────────────────────────── -->
+<tr><td style="padding:36px 40px 0;">
+<p style="margin:0 0 10px;font-size:18px;font-weight:700;color:#0f172a;line-height:1.3;">Hi {{name}},</p>
+<p style="margin:0;font-size:14px;line-height:1.75;color:#475569;">Thank you for choosing Demo Hosting. Your account has been created and is ready to use — you can log in at any time with the button below.</p>
+</td></tr>
+
+<!-- ── CTA button ────────────────────────────────────────────── -->
+<tr><td style="padding:28px 40px 16px;text-align:center;">
+<a href="{{login_url}}" style="display:inline-block;background:{{primary_color}};color:#ffffff;text-decoration:none;font-size:16px;font-weight:800;padding:18px 56px;border-radius:12px;letter-spacing:0.01em;">Log In to Your Account &rarr;</a>
+</td></tr>
+
+<!-- ── Note ─────────────────────────────────────────────────── -->
+<tr><td style="padding:0 40px 32px;">
+<table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;"><tr><td style="border-top:1px solid #f1f5f9;padding-top:22px;">
+<p style="margin:0;font-size:13px;line-height:1.75;color:#64748b;">If you have any questions, our support team is always happy to help.</p>
+</td></tr></table>
+</td></tr>
+
+<!-- ── Footer ───────────────────────────────────────────────── -->
+<tr><td style="background:#f8fafc;border-top:1px solid #e2e8f0;padding:24px 40px;text-align:center;">
+<div style="font-size:13px;font-weight:700;color:#334155;margin-bottom:4px;">{{company_name}}</div>
+<div style="font-size:12px;color:#64748b;line-height:1.7;">{{company_address}}<br>{{company_email}}<br>{{company_phone}}</div>
+<div style="margin-top:10px;font-size:11px;color:#94a3b8;">{{footer_text}} &nbsp;·&nbsp; <a href="{{app_url}}" style="color:#94a3b8;text-decoration:none;">{{app_url}}</a></div>
+</td></tr>
+
+</table>
+<!-- Sub-footer -->
+<p style="margin:16px auto 0;font-size:11px;color:#94a3b8;text-align:center;max-width:480px;line-height:1.6;">You received this because you have an account at {{app_name}}. Manage your email preferences in the <a href="{{login_url}}" style="color:#94a3b8;">client portal</a>.</p>
+</td></tr>
+</table>
+</body>
+</html>
+
+---
+Available variables: {{name}}, {{app_name}}, {{app_logo_url}}, {{login_url}}, {{primary_color}}, {{company_name}}, {{company_email}}, {{company_phone}}, {{company_address}}, {{footer_text}}, {{app_url}}
+BODY,
         ],
         [
-            'name'    => 'order_confirmation',
+            'name' => 'order_confirmation',
             'subject' => 'Order #{{order_no}} Confirmed — Thank You!',
-            'status'  => 'active',
-            'body'    => "Hi {{name}},\n\nGreat news — we have received your order and it is now being processed.\n\n  Order number : #{{order_no}}\n  Order total  : {{currency}}{{total}}\n\nYou will receive a separate email once your service is activated.\n\nThank you for your business!\n\nRegards,\nThe Demo Hosting Team\n\n---\nAvailable variables: {{name}}, {{app_name}}, {{order_no}}, {{total}}, {{currency}}",
+            'status' => 'active',
+            'body' => <<<'BODY'
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="x-apple-disable-message-reformatting">
+</head>
+<body style="margin:0;padding:0;background:#f1f5f9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;-webkit-text-size-adjust:100%;">
+<table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;background:#f1f5f9;padding:32px 16px;">
+<tr><td align="center">
+<!-- Card -->
+<table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;max-width:600px;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #e8ecf1;box-shadow:0 2px 16px rgba(15,23,42,0.05);">
+
+<!-- ── Brand header ─────────────────────────────────────────── -->
+<tr><td style="background:#ffffff;border-bottom:1px solid #eef2f7;padding:28px 40px;text-align:center;">
+<img src="{{app_logo_url}}" alt="{{app_name}}" width="140" style="max-width:140px;height:auto;display:block;margin:0 auto 14px;">
+<div style="font-size:20px;font-weight:800;color:#0f172a;letter-spacing:-0.02em;line-height:1.2;">{{app_name}}</div>
+<div style="font-size:11px;color:#94a3b8;margin-top:6px;letter-spacing:0.12em;text-transform:uppercase;">{{company_name}}</div>
+</td></tr>
+
+<!-- ── Hero: order total ────────────────────────────────────── -->
+<tr><td style="background:#eff6ff;padding:36px 40px;text-align:center;">
+<div style="font-size:11px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;color:{{primary_color}};margin-bottom:10px;">Order received</div>
+<div style="font-size:48px;font-weight:900;color:#0f172a;letter-spacing:-0.03em;line-height:1.05;">{{currency}}{{total}}</div>
+<div style="margin-top:14px;font-size:13px;color:#475569;">Order #{{order_no}}</div>
+</td></tr>
+
+<!-- ── Greeting ─────────────────────────────────────────────── -->
+<tr><td style="padding:36px 40px 0;">
+<p style="margin:0 0 10px;font-size:18px;font-weight:700;color:#0f172a;line-height:1.3;">Hi {{name}},</p>
+<p style="margin:0;font-size:14px;line-height:1.75;color:#475569;">Great news — we have received your order and it is now being processed.</p>
+</td></tr>
+
+<!-- ── Order details ────────────────────────────────────────── -->
+<tr><td style="padding:28px 40px 0;">
+<table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;border:1px solid #e2e8f0;border-radius:14px;overflow:hidden;">
+<tr style="background:#f8fafc;">
+<td style="padding:12px 18px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#64748b;width:44%;border-bottom:1px solid #e2e8f0;">Order Number</td>
+<td style="padding:12px 18px;font-size:14px;font-weight:700;color:#0f172a;border-bottom:1px solid #e2e8f0;">#{{order_no}}</td>
+</tr>
+<tr>
+<td style="padding:12px 18px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#64748b;width:44%;">Order Total</td>
+<td style="padding:12px 18px;font-size:14px;color:#334155;">{{currency}}{{total}}</td>
+</tr>
+</table>
+</td></tr>
+
+<!-- ── CTA button ────────────────────────────────────────────── -->
+<tr><td style="padding:28px 40px 16px;text-align:center;">
+<a href="{{order_url}}" style="display:inline-block;background:{{primary_color}};color:#ffffff;text-decoration:none;font-size:16px;font-weight:800;padding:18px 56px;border-radius:12px;letter-spacing:0.01em;">View Order</a>
+</td></tr>
+
+<!-- ── Note ─────────────────────────────────────────────────── -->
+<tr><td style="padding:0 40px 32px;">
+<table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;"><tr><td style="border-top:1px solid #f1f5f9;padding-top:22px;">
+<p style="margin:0;font-size:13px;line-height:1.75;color:#64748b;">You will receive a separate email once your service is activated. Thank you for your business!</p>
+</td></tr></table>
+</td></tr>
+
+<!-- ── Footer ───────────────────────────────────────────────── -->
+<tr><td style="background:#f8fafc;border-top:1px solid #e2e8f0;padding:24px 40px;text-align:center;">
+<div style="font-size:13px;font-weight:700;color:#334155;margin-bottom:4px;">{{company_name}}</div>
+<div style="font-size:12px;color:#64748b;line-height:1.7;">{{company_address}}<br>{{company_email}}<br>{{company_phone}}</div>
+<div style="margin-top:10px;font-size:11px;color:#94a3b8;">{{footer_text}} &nbsp;·&nbsp; <a href="{{app_url}}" style="color:#94a3b8;text-decoration:none;">{{app_url}}</a></div>
+</td></tr>
+
+</table>
+<!-- Sub-footer -->
+<p style="margin:16px auto 0;font-size:11px;color:#94a3b8;text-align:center;max-width:480px;line-height:1.6;">You received this because you have an account at {{app_name}}. Manage your email preferences in the <a href="{{login_url}}" style="color:#94a3b8;">client portal</a>.</p>
+</td></tr>
+</table>
+</body>
+</html>
+
+---
+Available variables: {{name}}, {{app_name}}, {{app_logo_url}}, {{login_url}}, {{primary_color}}, {{company_name}}, {{company_email}}, {{company_phone}}, {{company_address}}, {{footer_text}}, {{app_url}}, {{order_no}}, {{total}}, {{currency}}, {{order_url}}
+BODY,
         ],
         [
-            'name'    => 'invoice_created',
+            'name' => 'invoice_created',
             'subject' => 'Invoice {{invoice_no}} — Payment Due {{due_date}}',
-            'status'  => 'active',
-            'body'    => "Hi {{name}},\n\nYour invoice is ready. Please arrange payment before the due date to avoid any service interruption.\n\n  Invoice number : {{invoice_no}}\n  Order number   : #{{order_no}}\n  Amount due     : {{currency}}{{total}}\n  Payment due    : {{due_date}}\n\nLog in to your account to pay online.\n\nRegards,\nThe Demo Hosting Team\n\n---\nAvailable variables: {{name}}, {{app_name}}, {{invoice_no}}, {{order_no}}, {{total}}, {{due_date}}, {{currency}}",
+            'status' => 'active',
+            'body' => <<<'BODY'
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="x-apple-disable-message-reformatting">
+</head>
+<body style="margin:0;padding:0;background:#f1f5f9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;-webkit-text-size-adjust:100%;">
+<table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;background:#f1f5f9;padding:32px 16px;">
+<tr><td align="center">
+<!-- Card -->
+<table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;max-width:600px;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #e8ecf1;box-shadow:0 2px 16px rgba(15,23,42,0.05);">
+
+<!-- ── Brand header ─────────────────────────────────────────── -->
+<tr><td style="background:#ffffff;border-bottom:1px solid #eef2f7;padding:28px 40px;text-align:center;">
+<img src="{{app_logo_url}}" alt="{{app_name}}" width="140" style="max-width:140px;height:auto;display:block;margin:0 auto 14px;">
+<div style="font-size:20px;font-weight:800;color:#0f172a;letter-spacing:-0.02em;line-height:1.2;">{{app_name}}</div>
+<div style="font-size:11px;color:#94a3b8;margin-top:6px;letter-spacing:0.12em;text-transform:uppercase;">{{company_name}}</div>
+</td></tr>
+
+<!-- ── Hero: amount due ──────────────────────────────────────── -->
+<tr><td style="background:#eff6ff;padding:36px 40px;text-align:center;">
+<div style="font-size:11px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;color:{{primary_color}};margin-bottom:10px;">Amount Due</div>
+<div style="font-size:48px;font-weight:900;color:#0f172a;letter-spacing:-0.03em;line-height:1.05;">{{currency}}{{total}}</div>
+<div style="margin-top:14px;font-size:13px;color:#475569;">Invoice {{invoice_no}} &nbsp;·&nbsp; Due {{due_date}}</div>
+</td></tr>
+
+<!-- ── Greeting ─────────────────────────────────────────────── -->
+<tr><td style="padding:36px 40px 0;">
+<p style="margin:0 0 10px;font-size:18px;font-weight:700;color:#0f172a;line-height:1.3;">Hi {{name}},</p>
+<p style="margin:0;font-size:14px;line-height:1.75;color:#475569;">Your invoice is ready. Please arrange payment before the due date to avoid any service interruption.</p>
+</td></tr>
+
+<!-- ── Invoice details ──────────────────────────────────────── -->
+<tr><td style="padding:28px 40px 0;">
+<table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;border:1px solid #e2e8f0;border-radius:14px;overflow:hidden;">
+<tr style="background:#f8fafc;">
+<td style="padding:12px 18px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#64748b;width:44%;border-bottom:1px solid #e2e8f0;">Invoice Number</td>
+<td style="padding:12px 18px;font-size:14px;font-weight:700;color:#0f172a;border-bottom:1px solid #e2e8f0;">{{invoice_no}}</td>
+</tr>
+<tr>
+<td style="padding:12px 18px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#64748b;width:44%;border-bottom:1px solid #f1f5f9;">Order Number</td>
+<td style="padding:12px 18px;font-size:14px;color:#334155;border-bottom:1px solid #f1f5f9;">#{{order_no}}</td>
+</tr>
+<tr style="background:#f8fafc;">
+<td style="padding:12px 18px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#64748b;width:44%;border-bottom:1px solid #e2e8f0;">Payment Due</td>
+<td style="padding:12px 18px;font-size:14px;font-weight:700;color:#dc2626;border-bottom:1px solid #e2e8f0;">{{due_date}}</td>
+</tr>
+<tr style="background:#f0fdf4;">
+<td style="padding:16px 18px;font-size:13px;font-weight:800;color:#166534;">Amount Due</td>
+<td style="padding:16px 18px;font-size:20px;font-weight:900;color:#166534;">{{currency}}{{total}}</td>
+</tr>
+</table>
+</td></tr>
+
+<!-- ── CTA button ────────────────────────────────────────────── -->
+<tr><td style="padding:28px 40px 16px;text-align:center;">
+<a href="{{pay_url}}" style="display:inline-block;background:{{primary_color}};color:#ffffff;text-decoration:none;font-size:16px;font-weight:800;padding:18px 56px;border-radius:12px;letter-spacing:0.01em;">Pay Invoice Now &rarr;</a>
+</td></tr>
+
+<!-- ── Secondary links ──────────────────────────────────────── -->
+<tr><td style="padding:0 40px 28px;text-align:center;">
+<a href="{{invoice_url}}" style="color:#475569;text-decoration:none;font-size:13px;margin:0 10px;padding:8px 14px;border:1px solid #e2e8f0;border-radius:8px;display:inline-block;">View Invoice</a>
+</td></tr>
+
+<!-- ── Footer ───────────────────────────────────────────────── -->
+<tr><td style="background:#f8fafc;border-top:1px solid #e2e8f0;padding:24px 40px;text-align:center;">
+<div style="font-size:13px;font-weight:700;color:#334155;margin-bottom:4px;">{{company_name}}</div>
+<div style="font-size:12px;color:#64748b;line-height:1.7;">{{company_address}}<br>{{company_email}}<br>{{company_phone}}</div>
+<div style="margin-top:10px;font-size:11px;color:#94a3b8;">{{footer_text}} &nbsp;·&nbsp; <a href="{{app_url}}" style="color:#94a3b8;text-decoration:none;">{{app_url}}</a></div>
+</td></tr>
+
+</table>
+<!-- Sub-footer -->
+<p style="margin:16px auto 0;font-size:11px;color:#94a3b8;text-align:center;max-width:480px;line-height:1.6;">You received this because you have an account at {{app_name}}. Manage your email preferences in the <a href="{{login_url}}" style="color:#94a3b8;">client portal</a>.</p>
+</td></tr>
+</table>
+</body>
+</html>
+
+---
+Available variables: {{name}}, {{app_name}}, {{app_logo_url}}, {{login_url}}, {{primary_color}}, {{company_name}}, {{company_email}}, {{company_phone}}, {{company_address}}, {{footer_text}}, {{app_url}}, {{invoice_no}}, {{order_no}}, {{total}}, {{due_date}}, {{currency}}, {{pay_url}}, {{invoice_url}}
+BODY,
         ],
         [
-            'name'    => 'invoice_overdue_reminder',
+            'name' => 'invoice_overdue_reminder',
             'subject' => 'Action Required: Invoice {{invoice_no}} Is Overdue',
-            'status'  => 'active',
-            'body'    => "Hi {{name}},\n\nThis is a reminder that the following invoice is now overdue. To avoid suspension of your services, please arrange payment as soon as possible.\n\n  Invoice number : {{invoice_no}}\n  Amount due     : {{currency}}{{total}}\n  Original due   : {{due_date}}\n\nLog in to your account to make a payment.\n\nRegards,\nThe Demo Hosting Team\n\n---\nAvailable variables: {{name}}, {{app_name}}, {{invoice_no}}, {{total}}, {{due_date}}, {{currency}}",
+            'status' => 'active',
+            'body' => <<<'BODY'
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="x-apple-disable-message-reformatting">
+</head>
+<body style="margin:0;padding:0;background:#f1f5f9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;-webkit-text-size-adjust:100%;">
+<table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;background:#f1f5f9;padding:32px 16px;">
+<tr><td align="center">
+<!-- Card -->
+<table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;max-width:600px;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #e8ecf1;box-shadow:0 2px 16px rgba(15,23,42,0.05);">
+
+<!-- ── Brand header ─────────────────────────────────────────── -->
+<tr><td style="background:#ffffff;border-bottom:1px solid #eef2f7;padding:28px 40px;text-align:center;">
+<img src="{{app_logo_url}}" alt="{{app_name}}" width="140" style="max-width:140px;height:auto;display:block;margin:0 auto 14px;">
+<div style="font-size:20px;font-weight:800;color:#0f172a;letter-spacing:-0.02em;line-height:1.2;">{{app_name}}</div>
+<div style="font-size:11px;color:#94a3b8;margin-top:6px;letter-spacing:0.12em;text-transform:uppercase;">{{company_name}}</div>
+</td></tr>
+
+<!-- ── Hero: amount overdue ──────────────────────────────────── -->
+<tr><td style="background:#fef2f2;padding:36px 40px;text-align:center;">
+<div style="font-size:11px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;color:#dc2626;margin-bottom:10px;">Overdue notice</div>
+<div style="font-size:48px;font-weight:900;color:#0f172a;letter-spacing:-0.03em;line-height:1.05;">{{currency}}{{total}}</div>
+<div style="margin-top:14px;font-size:13px;color:#475569;">Invoice {{invoice_no}} &nbsp;·&nbsp; Due {{due_date}}</div>
+</td></tr>
+
+<!-- ── Greeting ─────────────────────────────────────────────── -->
+<tr><td style="padding:36px 40px 0;">
+<p style="margin:0 0 10px;font-size:18px;font-weight:700;color:#0f172a;line-height:1.3;">Hi {{name}},</p>
+<p style="margin:0;font-size:14px;line-height:1.75;color:#475569;">This is a reminder that the following invoice is now overdue. To avoid suspension of your services, please arrange payment as soon as possible.</p>
+</td></tr>
+
+<!-- ── Invoice details ──────────────────────────────────────── -->
+<tr><td style="padding:28px 40px 0;">
+<table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;border:1px solid #e2e8f0;border-radius:14px;overflow:hidden;">
+<tr style="background:#f8fafc;">
+<td style="padding:12px 18px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#64748b;width:44%;border-bottom:1px solid #e2e8f0;">Invoice Number</td>
+<td style="padding:12px 18px;font-size:14px;font-weight:700;color:#0f172a;border-bottom:1px solid #e2e8f0;">{{invoice_no}}</td>
+</tr>
+<tr>
+<td style="padding:12px 18px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#64748b;width:44%;border-bottom:1px solid #f1f5f9;">Original Due</td>
+<td style="padding:12px 18px;font-size:14px;font-weight:700;color:#dc2626;border-bottom:1px solid #f1f5f9;">{{due_date}}</td>
+</tr>
+<tr style="background:#fef2f2;">
+<td style="padding:16px 18px;font-size:13px;font-weight:800;color:#991b1b;">Amount Due</td>
+<td style="padding:16px 18px;font-size:20px;font-weight:900;color:#dc2626;">{{currency}}{{total}}</td>
+</tr>
+</table>
+</td></tr>
+
+<!-- ── CTA button ────────────────────────────────────────────── -->
+<tr><td style="padding:28px 40px 16px;text-align:center;">
+<a href="{{pay_url}}" style="display:inline-block;background:#dc2626;color:#ffffff;text-decoration:none;font-size:16px;font-weight:800;padding:18px 56px;border-radius:12px;letter-spacing:0.01em;">Pay Now &rarr;</a>
+</td></tr>
+
+<!-- ── Note ─────────────────────────────────────────────────── -->
+<tr><td style="padding:0 40px 32px;">
+<table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;"><tr><td style="border-top:1px solid #f1f5f9;padding-top:22px;">
+<p style="margin:0;font-size:13px;line-height:1.75;color:#64748b;">If you have already paid, please disregard this notice and thank you.</p>
+</td></tr></table>
+</td></tr>
+
+<!-- ── Footer ───────────────────────────────────────────────── -->
+<tr><td style="background:#f8fafc;border-top:1px solid #e2e8f0;padding:24px 40px;text-align:center;">
+<div style="font-size:13px;font-weight:700;color:#334155;margin-bottom:4px;">{{company_name}}</div>
+<div style="font-size:12px;color:#64748b;line-height:1.7;">{{company_address}}<br>{{company_email}}<br>{{company_phone}}</div>
+<div style="margin-top:10px;font-size:11px;color:#94a3b8;">{{footer_text}} &nbsp;·&nbsp; <a href="{{app_url}}" style="color:#94a3b8;text-decoration:none;">{{app_url}}</a></div>
+</td></tr>
+
+</table>
+<!-- Sub-footer -->
+<p style="margin:16px auto 0;font-size:11px;color:#94a3b8;text-align:center;max-width:480px;line-height:1.6;">You received this because you have an account at {{app_name}}. Manage your email preferences in the <a href="{{login_url}}" style="color:#94a3b8;">client portal</a>.</p>
+</td></tr>
+</table>
+</body>
+</html>
+
+---
+Available variables: {{name}}, {{app_name}}, {{app_logo_url}}, {{login_url}}, {{primary_color}}, {{company_name}}, {{company_email}}, {{company_phone}}, {{company_address}}, {{footer_text}}, {{app_url}}, {{invoice_no}}, {{total}}, {{due_date}}, {{currency}}, {{pay_url}}
+BODY,
         ],
         [
-            'name'    => 'payment_received',
+            'name' => 'payment_received',
             'subject' => 'Payment Received — Invoice {{invoice_no}} Settled',
-            'status'  => 'active',
-            'body'    => "Hi {{name}},\n\nWe have received your payment. Thank you!\n\n  Invoice number : {{invoice_no}}\n  Amount paid    : {{currency}}{{amount}}\n  Payment date   : {{payment_date}}\n\nYour account is up to date.\n\nRegards,\nThe Demo Hosting Team\n\n---\nAvailable variables: {{name}}, {{app_name}}, {{invoice_no}}, {{amount}}, {{payment_date}}, {{currency}}",
+            'status' => 'active',
+            'body' => <<<'BODY'
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="x-apple-disable-message-reformatting">
+</head>
+<body style="margin:0;padding:0;background:#f1f5f9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;-webkit-text-size-adjust:100%;">
+<table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;background:#f1f5f9;padding:32px 16px;">
+<tr><td align="center">
+<!-- Card -->
+<table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;max-width:600px;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #e8ecf1;box-shadow:0 2px 16px rgba(15,23,42,0.05);">
+
+<!-- ── Brand header ─────────────────────────────────────────── -->
+<tr><td style="background:#ffffff;border-bottom:1px solid #eef2f7;padding:28px 40px;text-align:center;">
+<img src="{{app_logo_url}}" alt="{{app_name}}" width="140" style="max-width:140px;height:auto;display:block;margin:0 auto 14px;">
+<div style="font-size:20px;font-weight:800;color:#0f172a;letter-spacing:-0.02em;line-height:1.2;">{{app_name}}</div>
+<div style="font-size:11px;color:#94a3b8;margin-top:6px;letter-spacing:0.12em;text-transform:uppercase;">{{company_name}}</div>
+</td></tr>
+
+<!-- ── Hero: amount received ─────────────────────────────────── -->
+<tr><td style="background:#f0fdf4;padding:36px 40px;text-align:center;">
+<div style="font-size:11px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;color:#166534;margin-bottom:10px;">Payment confirmed</div>
+<div style="font-size:48px;font-weight:900;color:#0f172a;letter-spacing:-0.03em;line-height:1.05;">{{currency}}{{amount}}</div>
+<div style="margin-top:14px;font-size:13px;color:#475569;">Invoice {{invoice_no}} &nbsp;·&nbsp; {{payment_date}}</div>
+</td></tr>
+
+<!-- ── Greeting ─────────────────────────────────────────────── -->
+<tr><td style="padding:36px 40px 0;">
+<p style="margin:0 0 10px;font-size:18px;font-weight:700;color:#0f172a;line-height:1.3;">Hi {{name}},</p>
+<p style="margin:0;font-size:14px;line-height:1.75;color:#475569;">We have received your payment. Thank you!</p>
+</td></tr>
+
+<!-- ── Payment details ──────────────────────────────────────── -->
+<tr><td style="padding:28px 40px 0;">
+<table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;border:1px solid #e2e8f0;border-radius:14px;overflow:hidden;">
+<tr style="background:#f8fafc;">
+<td style="padding:12px 18px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#64748b;width:44%;border-bottom:1px solid #e2e8f0;">Invoice Number</td>
+<td style="padding:12px 18px;font-size:14px;font-weight:700;color:#0f172a;border-bottom:1px solid #e2e8f0;">{{invoice_no}}</td>
+</tr>
+<tr>
+<td style="padding:12px 18px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#64748b;width:44%;border-bottom:1px solid #f1f5f9;">Payment Date</td>
+<td style="padding:12px 18px;font-size:14px;color:#334155;border-bottom:1px solid #f1f5f9;">{{payment_date}}</td>
+</tr>
+<tr style="background:#f0fdf4;">
+<td style="padding:16px 18px;font-size:13px;font-weight:800;color:#166534;">Amount Paid</td>
+<td style="padding:16px 18px;font-size:20px;font-weight:900;color:#166534;">{{currency}}{{amount}}</td>
+</tr>
+</table>
+</td></tr>
+
+<!-- ── Secondary links ──────────────────────────────────────── -->
+<tr><td style="padding:28px 40px 28px;text-align:center;">
+<a href="{{invoices_url}}" style="color:#475569;text-decoration:none;font-size:13px;margin:0 10px;padding:8px 14px;border:1px solid #e2e8f0;border-radius:8px;display:inline-block;">My Invoices</a>
+</td></tr>
+
+<!-- ── Note ─────────────────────────────────────────────────── -->
+<tr><td style="padding:0 40px 32px;">
+<table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;"><tr><td style="border-top:1px solid #f1f5f9;padding-top:22px;">
+<p style="margin:0;font-size:13px;line-height:1.75;color:#64748b;">Your account is up to date. Thank you for your business!</p>
+</td></tr></table>
+</td></tr>
+
+<!-- ── Footer ───────────────────────────────────────────────── -->
+<tr><td style="background:#f8fafc;border-top:1px solid #e2e8f0;padding:24px 40px;text-align:center;">
+<div style="font-size:13px;font-weight:700;color:#334155;margin-bottom:4px;">{{company_name}}</div>
+<div style="font-size:12px;color:#64748b;line-height:1.7;">{{company_address}}<br>{{company_email}}<br>{{company_phone}}</div>
+<div style="margin-top:10px;font-size:11px;color:#94a3b8;">{{footer_text}} &nbsp;·&nbsp; <a href="{{app_url}}" style="color:#94a3b8;text-decoration:none;">{{app_url}}</a></div>
+</td></tr>
+
+</table>
+<!-- Sub-footer -->
+<p style="margin:16px auto 0;font-size:11px;color:#94a3b8;text-align:center;max-width:480px;line-height:1.6;">You received this because you have an account at {{app_name}}. Manage your email preferences in the <a href="{{login_url}}" style="color:#94a3b8;">client portal</a>.</p>
+</td></tr>
+</table>
+</body>
+</html>
+
+---
+Available variables: {{name}}, {{app_name}}, {{app_logo_url}}, {{login_url}}, {{primary_color}}, {{company_name}}, {{company_email}}, {{company_phone}}, {{company_address}}, {{footer_text}}, {{app_url}}, {{invoice_no}}, {{amount}}, {{payment_date}}, {{currency}}, {{invoices_url}}
+BODY,
         ],
         [
-            'name'    => 'password_reset',
+            'name' => 'password_reset',
             'subject' => 'Reset Your Demo Hosting Password',
-            'status'  => 'inactive',
-            'body'    => "Hi {{name}},\n\nWe received a request to reset the password for your account. Click the link below to choose a new password. This link expires in 60 minutes.\n\n{{reset_link}}\n\nIf you did not request a password reset, you can safely ignore this email.\n\nRegards,\nThe Demo Hosting Team\n\n---\nAvailable variables: {{name}}, {{app_name}}, {{reset_link}}",
+            'status' => 'inactive',
+            'body' => <<<'BODY'
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="x-apple-disable-message-reformatting">
+</head>
+<body style="margin:0;padding:0;background:#f1f5f9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;-webkit-text-size-adjust:100%;">
+<table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;background:#f1f5f9;padding:32px 16px;">
+<tr><td align="center">
+<!-- Card -->
+<table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;max-width:600px;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #e8ecf1;box-shadow:0 2px 16px rgba(15,23,42,0.05);">
+
+<!-- ── Brand header ─────────────────────────────────────────── -->
+<tr><td style="background:#ffffff;border-bottom:1px solid #eef2f7;padding:28px 40px;text-align:center;">
+<img src="{{app_logo_url}}" alt="{{app_name}}" width="140" style="max-width:140px;height:auto;display:block;margin:0 auto 14px;">
+<div style="font-size:20px;font-weight:800;color:#0f172a;letter-spacing:-0.02em;line-height:1.2;">{{app_name}}</div>
+<div style="font-size:11px;color:#94a3b8;margin-top:6px;letter-spacing:0.12em;text-transform:uppercase;">{{company_name}}</div>
+</td></tr>
+
+<!-- ── Hero ─────────────────────────────────────────────────── -->
+<tr><td style="background:#eff6ff;padding:36px 40px;text-align:center;">
+<div style="font-size:11px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;color:{{primary_color}};margin-bottom:10px;">Password reset</div>
+<div style="font-size:26px;font-weight:900;color:#0f172a;letter-spacing:-0.02em;line-height:1.25;">Choose a new password</div>
+<div style="margin-top:14px;font-size:13px;color:#475569;">This link expires in 60 minutes.</div>
+</td></tr>
+
+<!-- ── Greeting ─────────────────────────────────────────────── -->
+<tr><td style="padding:36px 40px 0;">
+<p style="margin:0 0 10px;font-size:18px;font-weight:700;color:#0f172a;line-height:1.3;">Hi {{name}},</p>
+<p style="margin:0;font-size:14px;line-height:1.75;color:#475569;">We received a request to reset the password for your account. Click the button below to choose a new password.</p>
+</td></tr>
+
+<!-- ── CTA button ────────────────────────────────────────────── -->
+<tr><td style="padding:28px 40px 16px;text-align:center;">
+<a href="{{reset_link}}" style="display:inline-block;background:{{primary_color}};color:#ffffff;text-decoration:none;font-size:16px;font-weight:800;padding:18px 56px;border-radius:12px;letter-spacing:0.01em;">Reset Password &rarr;</a>
+</td></tr>
+
+<!-- ── Note ─────────────────────────────────────────────────── -->
+<tr><td style="padding:0 40px 32px;">
+<table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;"><tr><td style="border-top:1px solid #f1f5f9;padding-top:22px;">
+<p style="margin:0;font-size:13px;line-height:1.75;color:#64748b;">If you did not request a password reset, you can safely ignore this email — your password will not be changed.</p>
+</td></tr></table>
+</td></tr>
+
+<!-- ── Footer ───────────────────────────────────────────────── -->
+<tr><td style="background:#f8fafc;border-top:1px solid #e2e8f0;padding:24px 40px;text-align:center;">
+<div style="font-size:13px;font-weight:700;color:#334155;margin-bottom:4px;">{{company_name}}</div>
+<div style="font-size:12px;color:#64748b;line-height:1.7;">{{company_address}}<br>{{company_email}}<br>{{company_phone}}</div>
+<div style="margin-top:10px;font-size:11px;color:#94a3b8;">{{footer_text}} &nbsp;·&nbsp; <a href="{{app_url}}" style="color:#94a3b8;text-decoration:none;">{{app_url}}</a></div>
+</td></tr>
+
+</table>
+<!-- Sub-footer -->
+<p style="margin:16px auto 0;font-size:11px;color:#94a3b8;text-align:center;max-width:480px;line-height:1.6;">You received this because you have an account at {{app_name}}. Manage your email preferences in the <a href="{{login_url}}" style="color:#94a3b8;">client portal</a>.</p>
+</td></tr>
+</table>
+</body>
+</html>
+
+---
+Available variables: {{name}}, {{app_name}}, {{app_logo_url}}, {{login_url}}, {{primary_color}}, {{company_name}}, {{company_email}}, {{company_phone}}, {{company_address}}, {{footer_text}}, {{app_url}}, {{reset_link}}
+BODY,
         ],
         [
-            'name'    => 'support_ticket_reply',
+            'name' => 'support_ticket_reply',
             'subject' => 'New Reply on Support Ticket #{{ticket_no}}',
-            'status'  => 'active',
-            'body'    => "Hi {{name}},\n\nThere is a new reply on your support ticket. Please log in to your account to read the full response and continue the conversation.\n\n  Ticket number : #{{ticket_no}}\n  Subject       : {{subject}}\n  Department    : {{department}}\n\nRegards,\nThe Demo Hosting Support Team\n\n---\nAvailable variables: {{name}}, {{app_name}}, {{ticket_no}}, {{subject}}, {{department}}",
+            'status' => 'active',
+            'body' => "Hi {{name}},\n\nThere is a new reply on your support ticket. Please log in to your account to read the full response and continue the conversation.\n\n  Ticket number : #{{ticket_no}}\n  Subject       : {{subject}}\n  Department    : {{department}}\n\nRegards,\nThe Demo Hosting Support Team\n\n---\nAvailable variables: {{name}}, {{app_name}}, {{ticket_no}}, {{subject}}, {{department}}",
         ],
     ];
 

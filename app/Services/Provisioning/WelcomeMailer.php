@@ -321,7 +321,8 @@ class WelcomeMailer
             );
         }
 
-        return '<table role="presentation" cellpadding="0" cellspacing="0" '
+        return '<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#64748b;margin-bottom:8px;">Your service credentials</div>'
+            .'<table role="presentation" cellpadding="0" cellspacing="0" '
             .'style="border:1px solid #e2e8f0;border-radius:8px;margin:18px 0;">'
             .$cells
             .'</table>'
@@ -382,6 +383,7 @@ class WelcomeMailer
     private function toPlainText(string $html): string
     {
         $text = preg_replace('/<a\s[^>]*href=["\']([^"\']+)["\'][^>]*>(.*?)<\/a>/i', '$2 ($1)', $html) ?? $html;
+        $text = preg_replace('/<br\s*\/?>/i', "\n", $text) ?? $text;
         $text = preg_replace('/<\/(tr|p|div|h[1-6])>/i', "\n", $text) ?? $text;
         $text = preg_replace('/<\/td>/i', ' ', $text) ?? $text;
         $text = strip_tags($text);

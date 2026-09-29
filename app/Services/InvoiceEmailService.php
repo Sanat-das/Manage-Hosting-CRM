@@ -6,7 +6,9 @@ use App\Jobs\SendEmail;
 use App\Models\EmailTemplate;
 use App\Models\Invoice;
 use App\Services\Concerns\BuildsEmailVariables;
+use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
 
 /**
  * Sends invoice emails to the customer from the admin-managed
@@ -30,7 +32,12 @@ final class InvoiceEmailService
     /**
      * Dispatch the invoice email for the given invoice.
      *
-     * @param string $templateName allow reuse for invoice_created / invoice_overdue_reminder / payment_received
+     * Attaches a rendered PDF of the invoice (admin.invoices.pdf) to every
+     * send. The PDF is deterministic — re-sends overwrite the same file on
+     * the local disk. If the PDF cannot be rendered or stored, the email is
+     * still sent without the attachment (logged).
+     *
+     * @param  string  $templateName  allow reuse for invoice_created / invoice_overdue_reminder / payment_received
      * @return bool true when the email was queued, false when skipped
      */
     public function send(Invoice $invoice, string $templateName = 'invoice_created'): bool
@@ -73,7 +80,33 @@ final class InvoiceEmailService
             $plainBody = $this->toPlainText($body);
         }
 
-        SendEmail::dispatch($email, $subject, $plainBody, null, [], [], [], $htmlBody);
+        // Render the invoice PDF once, per send. A render/storage failure must
+        // never stop the email — it degrades to no attachment (logged).
+        $attachments = [];
+        try {
+            $invoice->loadMissing(['items', 'customer.user']);
+            $pdf = Pdf::loadView('admin.invoices.pdf', [
+                'invoice' => $invoice,
+                'gstBreakdown' => $invoice->gst_breakdown,
+            ])->setPaper('a4');
+            $path = 'invoice-emails/invoice-'.$invoice->invoice_no.'.pdf';
+            Storage::disk('local')->put($path, $pdf->output());
+            $attachments[] = [
+                'disk' => 'local',
+                'path' => $path,
+                'filename' => 'invoice-'.$invoice->invoice_no.'.pdf',
+                'mimeType' => 'application/pdf',
+                'isInline' => false,
+                'contentId' => null,
+            ];
+        } catch (\Throwable $e) {
+            Log::info('Invoice PDF attachment failed — email sent without it.', [
+                'invoice_id' => $invoice->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        SendEmail::dispatch($email, $subject, $plainBody, null, [], [], [], $htmlBody, $attachments);
 
         return true;
     }
@@ -106,7 +139,7 @@ final class InvoiceEmailService
         // --- Invoice / Order ---
         $invoiceNo = (string) $invoice->invoice_no;
         $orderNo = $invoice->order?->order_number ?? '';
-        $orderNoHashed = $orderNo !== '' ? '#' . ltrim($orderNo, '#') : '';
+        $orderNoHashed = $orderNo !== '' ? '#'.ltrim($orderNo, '#') : '';
         $status = (string) $invoice->status;
         $statusLabel = $invoice->status_label ?? ucfirst($status);
 
@@ -124,15 +157,15 @@ final class InvoiceEmailService
         $amountDue = $balance;
 
         // Currency-formatted variants
-        $totalFormatted = $currencySymbol . $total;
-        $balanceFormatted = $currencySymbol . $balance;
-        $subtotalFormatted = $currencySymbol . $subtotal;
+        $totalFormatted = $currencySymbol.$total;
+        $balanceFormatted = $currencySymbol.$balance;
+        $subtotalFormatted = $currencySymbol.$subtotal;
 
         // --- URLs (client portal) ---
-        $invoiceUrl = $this->safeRoute('client.invoices.show', $invoice->id, $appUrl . '/client/invoices/' . $invoice->id);
-        $payUrl = $this->safeRoute('client.invoices.pay', $invoice->id, $invoiceUrl . '/pay');
-        $pdfUrl = $this->safeRoute('client.invoices.pdf', $invoice->id, $appUrl . '/client/invoices/' . $invoice->id . '/pdf');
-        $invoicesUrl = $this->safeRoute('client.invoices.index', null, $appUrl . '/client/invoices');
+        $invoiceUrl = $this->safeRoute('client.invoices.show', $invoice->id, $appUrl.'/client/invoices/'.$invoice->id);
+        $payUrl = $this->safeRoute('client.invoices.pay', $invoice->id, $invoiceUrl.'/pay');
+        $pdfUrl = $this->safeRoute('client.invoices.pdf', $invoice->id, $appUrl.'/client/invoices/'.$invoice->id.'/pdf');
+        $invoicesUrl = $this->safeRoute('client.invoices.index', null, $appUrl.'/client/invoices');
 
         return $branding + [
             // Customer (aliases for template flexibility)

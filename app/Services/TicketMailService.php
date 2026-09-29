@@ -444,6 +444,13 @@ final class TicketMailService
             $intro = "Hi {$name},\n\nThere is an update on your support ticket {$ticket->ticket_no} ({$ticket->subject}).";
         }
 
+        // Strip the admin-only "Available variables:" footer some stored
+        // templates carry — the customer must never see it.
+        $intro = preg_replace('/\n---\s*Available variables:.*$/is', '', $intro) ?? $intro;
+        $intro = preg_replace('/\n--\s*Available variables:.*$/is', '', $intro) ?? $intro;
+        $intro = preg_replace('/<!--\s*Available variables:.*?-->/is', '', $intro) ?? $intro;
+        $intro = rtrim($intro);
+
         $parts = [$intro];
 
         // Only append the message when the template did not already place it,
