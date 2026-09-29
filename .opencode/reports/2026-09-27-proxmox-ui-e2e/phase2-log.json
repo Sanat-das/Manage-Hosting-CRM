@@ -1,0 +1,52 @@
+[
+  {
+    "at": "+4s",
+    "step": "login.ok"
+  },
+  {
+    "at": "+6s",
+    "step": "phase2.baseline",
+    "state": "Running"
+  },
+  {
+    "at": "+24s",
+    "step": "power.restart",
+    "state": "Running",
+    "hostName": "host-i0syymhi",
+    "feedback": []
+  },
+  {
+    "at": "+43s",
+    "step": "power.stop",
+    "state": "Off"
+  },
+  {
+    "at": "+59s",
+    "step": "power.start",
+    "state": "Running"
+  },
+  {
+    "at": "+69s",
+    "step": "service.suspend",
+    "flash": [
+      "Product/Service #22 suspended (module synced)."
+    ]
+  },
+  {
+    "at": "+71s",
+    "step": "service.suspend.vm-state",
+    "state": "Off"
+  },
+  {
+    "at": "+75s",
+    "step": "service.unsuspend",
+    "flash": [
+      "Product/Service #22 reactivated (module synced)."
+    ]
+  },
+  {
+    "at": "+439s",
+    "step": "FAILED",
+    "error": "Compute state did not reach \"Running\" within 360s (last=\"Off\")"
+  }
+]

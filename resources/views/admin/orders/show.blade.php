@@ -51,6 +51,7 @@
     $tabs = [
         ['id' => 'order-info', 'label' => 'Order Info', 'icon' => 'bi bi-receipt'],
         ['id' => 'items', 'label' => 'Items', 'icon' => 'bi bi-box-seam', 'badge' => $order->items->count()],
+        ['id' => 'addons', 'label' => 'Add-ons', 'icon' => 'bi bi-puzzle', 'badge' => $order->items->whereNotNull('product_addon_id')->count()],
         ['id' => 'status-history', 'label' => 'Status History', 'icon' => 'bi bi-clock-history', 'badge' => $statusHistory->count()],
     ];
 
@@ -64,6 +65,13 @@
     ];
     $cycleLabel = $billingCycleLabels[$order->billing_cycle] ?? ucfirst(str_replace('_', ' ', (string) $order->billing_cycle));
 
+    // Add-on rows live on the order's items. A recurring row with no
+    // next_billing_date has been cancelled at period end; one_time rows (a
+    // setup fee, a one-time add-on) are unscheduled by design and have no
+    // schedule to cancel.
+    $addonRows = $order->items->whereNotNull('product_addon_id');
+    $liveAddons = $addonRows->filter(fn (\App\Models\OrderItem $item) => $item->next_billing_date !== null);
+
     $paymentMethodLabels = [
         'bank_transfer' => 'Bank Transfer',
         'razorpay' => 'Razorpay',
@@ -75,21 +83,7 @@
 @endphp
 
 @section('content')
-    @if (session('success'))
-        <x-adminlte-alert theme="success" dismissible>{{ session('success') }}</x-adminlte-alert>
-    @endif
-    @if (session('error'))
-        <x-adminlte-alert theme="danger" dismissible>{{ session('error') }}</x-adminlte-alert>
-    @endif
-    @if ($errors->any())
-        <x-adminlte-alert theme="danger" dismissible>
-            <ul class="mb-0">
-                @foreach ($errors->all() as $error)
-                    <li>{{ $error }}</li>
-                @endforeach
-            </ul>
-        </x-adminlte-alert>
-    @endif
+    <x-adminlte.partials.flash-alert />
 
     {{-- Order header --}}
     <x-adminlte-card>
@@ -293,7 +287,7 @@
                                     <td>{{ $item->next_billing_date?->format('M j, Y') ?? '—' }}</td>
                                 </tr>
                             @empty
-                                <tr><td colspan="7" class="text-center text-muted py-3">No items on this order.</td></tr>
+                                <x-ui.empty-table-row colSpan="7" icon="bi bi-box-seam" title="No items on this order." />
                             @endforelse
                         </tbody>
                         @if ($order->items->isNotEmpty())
@@ -306,6 +300,104 @@
                         @endif
                     </table>
                 </div>
+            </div>
+
+            {{-- Add-ons (live add-on rows + post-signup attach) --}}
+            <div class="tab-pane fade {{ $activeTab === 'addons' ? 'show active' : '' }}" id="addons"
+                 role="tabpanel" aria-labelledby="addons-tab">
+                <div class="table-responsive">
+                    <table class="table table-sm align-middle mb-0">
+                        <thead>
+                            <tr>
+                                <th>Add-on</th>
+                                <th>Cycle</th>
+                                <th class="text-end">Qty</th>
+                                <th class="text-end">Unit price</th>
+                                <th>Next billing</th>
+                                <th class="text-end">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @forelse ($addonRows as $item)
+                                <tr>
+                                    <td>{{ $item->product_name }}</td>
+                                    <td>{{ $billingCycleLabels[$item->billing_cycle] ?? ucfirst(str_replace('_', ' ', (string) $item->billing_cycle)) }}</td>
+                                    <td class="text-end">{{ $item->quantity }}</td>
+                                    <td class="text-end">₹{{ number_format((float) $item->unit_price, 2) }}</td>
+                                    <td>
+                                        @if ($item->next_billing_date)
+                                            {{ $item->next_billing_date->format('M j, Y') }}
+                                        @elseif ((\App\Models\Order::CYCLE_MONTHS[$item->billing_cycle] ?? 0) > 0)
+                                            <x-adminlte.partials.status-badge status="cancelled" />
+                                        @else
+                                            <span class="text-muted">—</span>
+                                        @endif
+                                    </td>
+                                    <td class="text-end">
+                                        @if ($item->next_billing_date)
+                                            @can('orders.edit')
+                                                <button type="button" class="btn btn-sm btn-outline-danger"
+                                                        data-bs-toggle="modal" data-bs-target="#cancel-addon-{{ $item->id }}">
+                                                    <i class="bi bi-x-circle me-1"></i>Cancel
+                                                </button>
+                                            @endcan
+                                        @else
+                                            <span class="text-muted">—</span>
+                                        @endif
+                                    </td>
+                                </tr>
+                            @empty
+                                <x-ui.empty-table-row colSpan="6" icon="bi bi-puzzle" title="No add-ons on this order." />
+                            @endforelse
+                        </tbody>
+                    </table>
+                </div>
+
+                {{-- Attach: live orders only — AddOnService enforces the same
+                     rule server-side, this keeps the form honest. --}}
+                @if (in_array($order->status, [\App\Models\Order::STATUS_ACTIVE, \App\Models\Order::STATUS_SUSPENDED], true))
+                    @can('orders.edit')
+                        <div class="border-top mt-3 pt-3">
+                            <h6 class="text-muted text-uppercase small mb-2"><i class="bi bi-plus-circle me-1"></i> Attach Add-on</h6>
+                            @if ($applicableAddons->isEmpty())
+                                <p class="text-muted small mb-0">No active add-ons are available for this product.</p>
+                            @else
+                                <form method="POST" action="{{ route('admin.orders.addons.store', $order) }}" class="row g-2">
+                                    @csrf
+                                    <div class="col-md-6">
+                                        <label class="form-label small text-muted" for="addon-attach-id">Add-on</label>
+                                        <select name="addon_id" id="addon-attach-id"
+                                                class="form-select form-select-sm @error('addon_id') is-invalid @enderror" required>
+                                            <option value="">Select an add-on…</option>
+                                            @foreach ($applicableAddons as $addon)
+                                                <option value="{{ $addon->id }}" @selected(old('addon_id') == $addon->id)>
+                                                    {{ $addon->name }} — ₹{{ number_format((float) $addon->price, 2) }} / {{ $billingCycleLabels[$addon->billing_cycle] ?? ucfirst(str_replace('_', ' ', (string) $addon->billing_cycle)) }}
+                                                </option>
+                                            @endforeach
+                                        </select>
+                                        @error('addon_id')
+                                            <div class="invalid-feedback">{{ $message }}</div>
+                                        @enderror
+                                    </div>
+                                    <div class="col-md-2">
+                                        <label class="form-label small text-muted" for="addon-attach-quantity">Quantity</label>
+                                        <input type="number" name="quantity" id="addon-attach-quantity"
+                                               class="form-control form-control-sm @error('quantity') is-invalid @enderror"
+                                               value="{{ old('quantity', 1) }}" min="1" max="{{ \App\Models\Order::MAX_QUANTITY }}" required>
+                                        @error('quantity')
+                                            <div class="invalid-feedback">{{ $message }}</div>
+                                        @enderror
+                                    </div>
+                                    <div class="col-12">
+                                        <button type="submit" class="btn btn-sm btn-primary">
+                                            <i class="bi bi-plus-lg me-1"></i>Attach Add-on
+                                        </button>
+                                    </div>
+                                </form>
+                            @endif
+                        </div>
+                    @endcan
+                @endif
             </div>
 
             {{-- Status History (order.* activity trail) --}}
@@ -330,7 +422,7 @@
                                     <td class="text-muted">{{ $entry->user?->full_name ?? 'System' }}</td>
                                 </tr>
                             @empty
-                                <tr><td colspan="4" class="text-center text-muted py-3">No status history recorded.</td></tr>
+                                <x-ui.empty-table-row colSpan="4" icon="bi bi-clock-history" title="No status history recorded." />
                             @endforelse
                         </tbody>
                     </table>
@@ -340,6 +432,28 @@
     </x-adminlte-card>
 
     @can('orders.edit')
+        {{-- Per-row cancel confirmations for live add-on rows. Rendered
+             outside the table, per the confirm-modal component contract; the
+             optional reason is submitted with the DELETE form. --}}
+        @foreach ($liveAddons as $item)
+            <x-adminlte.partials.confirm-modal
+                :id="'cancel-addon-' . $item->id"
+                title="Cancel add-on"
+                :message="'Cancel ' . $item->product_name . ' on ' . $order->order_no . '? It stops renewing at the end of the current period — the current period is neither refunded nor voided.'"
+                method="DELETE"
+                :action="route('admin.orders.addons.destroy', [$order, $item])"
+                confirm-label="Cancel add-on"
+            >
+                <x-slot name="fields">
+                    <div class="mt-3">
+                        <label class="form-label small text-muted" for="cancel-addon-reason-{{ $item->id }}">Reason <span class="fw-normal">(optional)</span></label>
+                        <input type="text" class="form-control form-control-sm" id="cancel-addon-reason-{{ $item->id }}"
+                               name="reason" maxlength="500" placeholder="Why is this add-on being cancelled?">
+                    </div>
+                </x-slot>
+            </x-adminlte.partials.confirm-modal>
+        @endforeach
+
         @foreach ($allowedTransitions as $target => $label)
             @php $meta = $transitionMeta($target); @endphp
             <x-adminlte.partials.confirm-modal

@@ -7,7 +7,7 @@
 @stop
 
 @section('content')
-    @if (session('success')) <x-adminlte-alert theme="success" dismissible>{{ session('success') }}</x-adminlte-alert> @endif
+    <x-adminlte.partials.flash-alert />
     <div class="d-flex justify-content-end mb-3">
         <a href="{{ route('admin.licenses.edit', $license) }}" class="btn btn-sm btn-outline-primary"><i class="bi bi-pencil me-1"></i> Edit</a>
     </div>

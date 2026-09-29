@@ -30,7 +30,7 @@
                 <td><x-adminlte.partials.status-badge :status="$log->status" /></td>
             </tr>
         @empty
-            <tr><td colspan="4" class="text-center text-muted py-4">No email logs.</td></tr>
+            <x-ui.empty-table-row colSpan="4" title="No email logs." />
         @endforelse
     </x-adminlte.partials.datatable>
 @stop

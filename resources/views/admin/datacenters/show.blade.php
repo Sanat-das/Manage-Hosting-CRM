@@ -8,7 +8,7 @@
     ]" />
 @stop
 @section('content')
-    @if (session('success')) <x-adminlte-alert theme="success" dismissible>{{ session('success') }}</x-adminlte-alert> @endif
+    <x-adminlte.partials.flash-alert />
     <div class="d-flex justify-content-end mb-3">
         <a href="{{ route('admin.datacenters.edit', $datacenter) }}" class="btn btn-sm btn-outline-primary"><i class="bi bi-pencil me-1"></i> Edit</a>
     </div>
@@ -43,7 +43,7 @@
                             <td><x-adminlte.partials.status-badge :status="$rack->status" /></td>
                         </tr>
                     @empty
-                        <tr><td colspan="5" class="text-center text-muted py-4">No racks in this datacenter.</td></tr>
+                        <x-ui.empty-table-row colSpan="5" title="No racks in this datacenter." />
                     @endforelse
                 </tbody>
             </table>
@@ -62,7 +62,7 @@
                             <td><span class="badge text-bg-info">{{ ucfirst($subnet->network_type) }}</span></td>
                         </tr>
                     @empty
-                        <tr><td colspan="3" class="text-center text-muted py-4">No subnets in this datacenter.</td></tr>
+                        <x-ui.empty-table-row colSpan="3" title="No subnets in this datacenter." />
                     @endforelse
                 </tbody>
             </table>

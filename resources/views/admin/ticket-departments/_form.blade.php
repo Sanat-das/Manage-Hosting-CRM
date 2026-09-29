@@ -7,8 +7,8 @@
     <div class="col-md-3">
         @if ($department->exists)
             <div class="mb-3">
-                <label class="form-label">Key</label>
-                <input type="text" class="form-control" value="{{ $department->slug }}" disabled>
+                <label class="form-label" for="slug_display">Key</label>
+                <input type="text" id="slug_display" class="form-control" value="{{ $department->slug }}" disabled>
                 <small class="form-text text-muted">Fixed — existing tickets are stored against it</small>
             </div>
         @else

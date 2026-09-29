@@ -9,6 +9,7 @@ use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Product;
 use App\Models\ProductGroup;
+use App\Services\Billing\AddOnService;
 use App\Services\Billing\BillingService;
 use App\Services\OptionPricingResolver;
 use App\Services\OrderActivityLogger;
@@ -40,6 +41,7 @@ class CartController extends Controller
         private readonly OrderNumberService $orderNumbers,
         private readonly ProductBundlePricingService $bundlePricing,
         private readonly BillingService $billing,
+        private readonly AddOnService $addons,
         private readonly OrderConfigSnapshot $snapshot,
         private readonly OptionPricingResolver $optionPricing,
     ) {}
@@ -87,6 +89,9 @@ class CartController extends Controller
             'product_id' => ['required', 'integer', Rule::exists('products', 'id')->where('status', 'active')],
             'billing_cycle' => ['nullable', 'string', Rule::in(Order::BILLING_CYCLES)],
             'domain' => ['nullable', 'string', 'max:255'],
+            'addons' => ['sometimes', 'array', 'max:20'],
+            'addons.*.addon_id' => ['required', 'integer', 'exists:product_addons,id'],
+            'addons.*.quantity' => ['required', 'integer', 'min:1', 'max:'.Order::MAX_QUANTITY],
         ]);
         $cart = $this->sanitizeCart();
 
@@ -94,6 +99,20 @@ class CartController extends Controller
         $cycle = $validated['billing_cycle'] ?? $product->billing_cycle ?? 'monthly';
         if (! in_array($cycle, Order::BILLING_CYCLES, true)) {
             $cycle = 'monthly';
+        }
+
+        // Server-side defence: an add-on is orderable here only when it is
+        // active and scoped to this product (or global). Never trust the form.
+        // Bundle-expanded lines carry no add-on UI, so selections only apply
+        // to the single-product path below.
+        $addonSelections = $this->normalizeAddonSelections($validated['addons'] ?? []);
+        if ($addonSelections !== [] && $product !== null) {
+            $orderableIds = $this->addons->applicableFor($product)->pluck('id')->map(fn ($id) => (int) $id)->all();
+            foreach ($addonSelections as $selection) {
+                if (! in_array((int) $selection['addon_id'], $orderableIds, true)) {
+                    return back()->withErrors(['addons' => 'The selected add-on is not available for this product.'])->withInput();
+                }
+            }
         }
 
         if ($product !== null && $product->isBundle()) {
@@ -118,10 +137,13 @@ class CartController extends Controller
             }
         } else {
             // Single-unit products are sold one unit per order — force qty 1
-            // into the cart entry too.
+            // into the cart entry too. The add-on set rides on the entry
+            // (default []) so the resolver can materialize it at order time.
+            // This cart is append-only (no merge identity), so each entry
+            // keeps its own add-on set.
             $cart[] = array_merge($validated, $product !== null && $product->isSingleUnit()
                 ? ['quantity' => 1]
-                : []);
+                : [], ['addons' => $addonSelections]);
         }
 
         session()->put('cart', $cart);
@@ -145,6 +167,22 @@ class CartController extends Controller
     {
         $cart = $this->sanitizeCart();
         $items = $this->resolveCartItems($cart);
+
+        // The add-on selections riding on a cart entry are charged at order
+        // time by AddOnService::materialize(). Expand them into preview rows
+        // here too — recurring plus setup — or the operator approves a total
+        // below what the customer is billed.
+        $previewRows = [];
+        foreach ($items as $item) {
+            if (($item['addons'] ?? []) === []) {
+                continue;
+            }
+
+            $previewRows[] = $this->addons->previewLinesFor($item['product'], $item['cycle'], $item['addons']);
+        }
+
+        $items = array_merge($items, ...$previewRows);
+
         $customers = Customer::query()
             ->with('user:id,email,first_name,last_name')
             ->where('status', 'active')
@@ -194,7 +232,7 @@ class CartController extends Controller
                         'domain_name' => $item['domain'] ?? null,
                     ]);
 
-                    OrderItem::create([
+                    $parentItem = OrderItem::create([
                         'order_id' => $order->id,
                         'product_id' => $item['product']->id,
                         'product_name' => $item['product']->name,
@@ -208,8 +246,18 @@ class CartController extends Controller
                         'config_options' => $this->snapshot->capture($item['product'], null, [], $item['cycle']),
                     ]);
 
+                    // Order-time add-on selections become their own order
+                    // items BEFORE the draft invoice is created below.
+                    $this->addons->materialize($order, $parentItem, $item['addons'] ?? []);
+
+                    // The add-on rows above are billable lines too: the order
+                    // total is the sum of ALL its rows (relation query, so it
+                    // never depends on a loaded relation).
+                    $order->update(['total' => round((float) $order->items()->sum('total'), 2)]);
+
                     // Same draft-invoice convention as the admin order form and
                     // the client storefront: each order is immediately billable.
+                    $order->load('items');
                     $this->billing->createInvoiceForOrder($order);
 
                     // Customer-facing trail: every cart order writes the same
@@ -242,7 +290,7 @@ class CartController extends Controller
      * total. Only active, orderable (show_in_order) products are kept.
      *
      * @param  array<int, array<string, mixed>>  $cart
-     * @return array<int, array{product: Product, cycle: string, quantity: int, unit_price: float, total: float, domain: ?string}>
+     * @return array<int, array{product: Product, cycle: string, quantity: int, unit_price: float, total: float, domain: ?string, addons: array}>
      */
     private function resolveCartItems(array $cart): array
     {
@@ -284,6 +332,7 @@ class CartController extends Controller
                     'unit_price' => $unitPrice,
                     'total' => $resolvedTotal,
                     'domain' => $entry['domain'] ?? null,
+                    'addons' => $entry['addons'] ?? [],
                 ];
 
                 continue;
@@ -308,9 +357,29 @@ class CartController extends Controller
                 'unit_price' => round($unitPrice, 2),
                 'total' => round($unitPrice * $quantity, 2),
                 'domain' => $entry['domain'] ?? null,
+                'addons' => $entry['addons'] ?? [],
             ];
         }
 
         return $items;
+    }
+
+    /**
+     * Normalize an add-on selection set for storage: integer-cast, keyed
+     * shape, sorted by addon_id (order-insensitive).
+     *
+     * @param  array<int, array<string, mixed>>  $selections
+     * @return array<int, array{addon_id: int, quantity: int}>
+     */
+    private function normalizeAddonSelections(array $selections): array
+    {
+        $normalized = array_map(fn (array $selection) => [
+            'addon_id' => (int) ($selection['addon_id'] ?? 0),
+            'quantity' => max(1, (int) ($selection['quantity'] ?? 1)),
+        ], array_values($selections));
+
+        usort($normalized, fn (array $a, array $b) => $a['addon_id'] <=> $b['addon_id']);
+
+        return $normalized;
     }
 }

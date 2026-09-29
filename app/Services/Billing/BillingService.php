@@ -13,7 +13,9 @@ use App\Models\InvoiceItem;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Payment;
+use App\Services\OrderNumberService;
 use App\Services\OrderService;
+use App\Support\AppSettings;
 use App\Support\GstStateCodes;
 use Carbon\CarbonImmutable;
 use DateTimeInterface;
@@ -35,15 +37,13 @@ class BillingService
     public function __construct(private readonly OrderService $orderService) {}
 
     /**
-     * Generate the next invoice number: INV-{year}-{seq} padded to 5.
-     * Port of InvoiceModel::generateNumber L18-26.
+     * Generate the next invoice number: INV-{FY}-{seq} padded to 5, scoped to
+     * the Indian financial year (Apr–Mar) and race-safe via the sequences
+     * row-lock counter. Port of InvoiceModel::generateNumber L18-26.
      */
     public function generateNumber(): string
     {
-        $year = date('Y');
-        $seq = Invoice::whereYear('created_at', $year)->count() + 1;
-
-        return sprintf('INV-%s-%s', $year, str_pad((string) $seq, 5, '0', STR_PAD_LEFT));
+        return app(OrderNumberService::class)->nextForFinancialYear('INV', now());
     }
 
     /**
@@ -66,8 +66,8 @@ class BillingService
         $discount = (float) ($invoiceData['discount'] ?? 0);
         $invoiceTax = $computed['invoice'];
 
-        return DB::transaction(function () use ($invoiceData, $computed, $amount, $discount, $invoiceTax) {
-            $invoice = Invoice::create(array_merge($invoiceData, [
+        return DB::transaction(function () use ($invoiceData, $computed, $amount, $discount, $invoiceTax, $customerStateCode) {
+            $attributes = array_merge($invoiceData, [
                 'invoice_no' => $this->generateNumber(),
                 'tax' => $invoiceTax['tax'],
                 'gst_enabled' => $invoiceTax['gst_enabled'],
@@ -78,7 +78,15 @@ class BillingService
                 'igst_rate' => $invoiceTax['igst_rate'],
                 'igst_amount' => $invoiceTax['igst_amount'],
                 'total' => round($amount + $invoiceTax['tax'] - $discount, 2),
-            ]));
+            ]);
+
+            // Snapshot the place of supply on the document; a null caller
+            // value leaves the column null (nothing to record).
+            if ($customerStateCode !== null) {
+                $attributes['place_of_supply_code'] = $customerStateCode;
+            }
+
+            $invoice = Invoice::create($attributes);
 
             foreach ($computed['items'] as $item) {
                 InvoiceItem::create([
@@ -134,8 +142,8 @@ class BillingService
         $discount = (float) ($invoiceData['discount'] ?? 0);
         $invoiceTax = $computed['invoice'];
 
-        DB::transaction(function () use ($invoice, $invoiceData, $computed, $amount, $discount, $invoiceTax) {
-            $invoice->update(array_merge($invoiceData, [
+        DB::transaction(function () use ($invoice, $invoiceData, $computed, $amount, $discount, $invoiceTax, $customerStateCode) {
+            $attributes = array_merge($invoiceData, [
                 'tax' => $invoiceTax['tax'],
                 'gst_enabled' => $invoiceTax['gst_enabled'],
                 'cgst_rate' => $invoiceTax['cgst_rate'],
@@ -145,7 +153,15 @@ class BillingService
                 'igst_rate' => $invoiceTax['igst_rate'],
                 'igst_amount' => $invoiceTax['igst_amount'],
                 'total' => round($amount + $invoiceTax['tax'] - $discount, 2),
-            ]));
+            ]);
+
+            // Re-snapshot the place of supply when the caller resolved one;
+            // null leaves the stored code untouched.
+            if ($customerStateCode !== null) {
+                $attributes['place_of_supply_code'] = $customerStateCode;
+            }
+
+            $invoice->update($attributes);
 
             $invoice->items()->delete();
 
@@ -309,20 +325,9 @@ class BillingService
         // carry several items, each described with its own product and cycle
         // (order_items.billing_cycle falls back to the order's cycle for
         // legacy lines). Single-item orders render exactly as before.
-        $items = $order->items->map(function (OrderItem $item) use ($order) {
-            $lineCycle = $item->billing_cycle ?? $order->billing_cycle;
-
-            return [
-                'description' => $item->product_name.' — '.ucfirst(str_replace('_', ' ', (string) $lineCycle)),
-                'quantity' => (int) $item->quantity,
-                'unit_price' => (float) $item->unit_price,
-                'total' => (float) $item->total,
-                'product_id' => $item->product_id,
-                // The configuration travels with the line, so the invoice can
-                // show the RAM / storage / support it is charging for.
-                'config_options' => $item->config_options,
-            ];
-        })->all();
+        $items = $order->items
+            ->map(fn (OrderItem $item) => $this->linePayload($item, (string) $order->billing_cycle))
+            ->all();
 
         return $this->createWithItems([
             'customer_id' => $order->customer_id,
@@ -332,6 +337,65 @@ class BillingService
             'due_date' => now()->addDays(7)->toDateString(),
             'notes' => $notes ?? "Invoice for order {$order->order_number} — {$productName} ({$order->billing_cycle})",
         ], $items, $this->resolveCustomerStateCode((int) $order->customer_id));
+    }
+
+    /**
+     * Create the immediate charge invoice for an add-on attached to a live
+     * order (WHMCS-style post-signup attach, no proration).
+     *
+     * One line per charge: the recurring add-on row, plus the setup-fee row
+     * when one exists. Lines reuse the order-invoice description convention;
+     * the invoice is issued immediately (status sent, due in seven days) with
+     * the customer's place of supply resolved for GST.
+     *
+     * @param  OrderItem  $addonItem  The add-on's recurring order_items row.
+     * @param  OrderItem|null  $setupFeeItem  The one-time setup row, when one was created.
+     * @param  string|null  $notes  Invoice note override.
+     */
+    public function createAddonChargeInvoice(OrderItem $addonItem, ?OrderItem $setupFeeItem = null, ?string $notes = null): Invoice
+    {
+        $order = $addonItem->order;
+        $fallbackCycle = (string) $order->billing_cycle;
+
+        $chargeItems = [$addonItem];
+
+        if ($setupFeeItem !== null) {
+            $chargeItems[] = $setupFeeItem;
+        }
+
+        $items = array_map(fn (OrderItem $item) => $this->linePayload($item, $fallbackCycle), $chargeItems);
+
+        return $this->createWithItems([
+            'customer_id' => $order->customer_id,
+            'order_id' => $addonItem->order_id,
+            'amount' => round(array_sum(array_column($items, 'total')), 2),
+            'status' => Invoice::STATUS_SENT,
+            'due_date' => now()->addDays(7)->toDateString(),
+            'notes' => $notes ?? "Add-on charge — {$addonItem->product_name}",
+        ], $items, $this->resolvePlaceOfSupply((int) $order->customer_id));
+    }
+
+    /**
+     * One invoice-line payload for an order item, using the same
+     * "{product_name} — {Cycle label}" description convention everywhere a
+     * line is built (order invoice, add-on charge).
+     *
+     * @return array{description:string,quantity:int,unit_price:float,total:float,product_id:?int,config_options:?array}
+     */
+    private function linePayload(OrderItem $item, string $fallbackCycle): array
+    {
+        $lineCycle = $item->billing_cycle ?? $fallbackCycle;
+
+        return [
+            'description' => $item->product_name.' — '.ucfirst(str_replace('_', ' ', (string) $lineCycle)),
+            'quantity' => (int) $item->quantity,
+            'unit_price' => (float) $item->unit_price,
+            'total' => (float) $item->total,
+            'product_id' => $item->product_id,
+            // The configuration travels with the line, so the invoice can
+            // show the RAM / storage / support it is charging for.
+            'config_options' => $item->config_options,
+        ];
     }
 
     /**
@@ -541,17 +605,30 @@ class BillingService
      * each order item (the purchased product/service) renews on its OWN
      * billing cycle with its own amount and next-due date. The renewal pass:
      *
-     *  - fetches active orders whose summary next_billing_date is due (the
-     *    order-level date is the earliest item date, kept as a summary for the
-     *    orders list);
+     *  - fetches active orders whose summary next_billing_date is due — where
+     *    "due" means on or before today + the `renewal_invoice_days` window,
+     *    boundary inclusive (0 = on the due date, the historical behaviour;
+     *    up to 90 days early);
      *  - within each order, bills ONLY the items that are actually due (item
-     *    cycle consumes months, item next_billing_date <= today, total > 0,
-     *    and the item's recurring-cycles limit is not exhausted) — one invoice
-     *    per order with one line per due item;
-     *  - advances each billed item's next_billing_date by ITS cycle months and
-     *    bumps its billing_cycles_count;
+     *    cycle consumes months, item next_billing_date <= today + window, not
+     *    already billed within its current cycle, total > 0, and the item's
+     *    recurring-cycles limit is not exhausted) —
+     *    one invoice per order with one line per due item; a due item with
+     *    total <= 0 is never invoiced but still advances on its own schedule;
+     *  - issues the invoice due on the EARLIEST due item's own next_billing_date
+     *    (not today + 7), so generating early does not shift the due date;
+     *  - advances each billed item's next_billing_date by ITS cycle months FROM
+     *    ITS OWN due date (not from the run date) and bumps its
+     *    billing_cycles_count, so an early-generation window never drifts the
+     *    billing anniversary;
      *  - recomputes the order-level next_billing_date as the earliest
      *    remaining item date (null when no item is still recurring).
+     *
+     * A null item next_billing_date means "intentionally ended" (cancelled
+     * add-on, exhausted cycle limit, elapsed fixed term) — such items are
+     * never re-armed from the order summary. Only legacy items (created before
+     * the per-item billing columns, billing_cycles_count NULL) fall back to
+     * the order-level date.
      *
      * Legacy items created before the per-item billing columns existed have
      * NULL billing state and fall back to the order's billing_cycle and
@@ -559,8 +636,9 @@ class BillingService
      * billed they adopt their own schedule.
      *
      * @param  DateTimeInterface|null  $asOf  Reference date (defaults to today,
-     *                                        Asia/Kolkata); due_date and the next
-     *                                        cycle advance from this date.
+     *                                        Asia/Kolkata); the generation window
+     *                                        and cycle advances are measured from
+     *                                        this date.
      * @return array{invoices_generated:int,errors:int}
      */
     public function processRecurringBilling(?DateTimeInterface $asOf = null): array
@@ -569,13 +647,15 @@ class BillingService
             ? CarbonImmutable::today('Asia/Kolkata')
             : CarbonImmutable::parse($asOf)->setTimezone('Asia/Kolkata')->startOfDay();
 
-        $gstSettings = GstTaxService::loadSettings(GstSetting::find(1));
-        $companyStateCode = (string) ($gstSettings['state_code'] ?? '');
+        // Renewal invoice generation window (WHMCS "generate X days before
+        // due"): 0 = bill on the due date, the historical behaviour.
+        $generateDays = max(0, (int) AppSettings::get('renewal_invoice_days', '0'));
+        $windowEnd = $today->addDays($generateDays);
 
         $orders = Order::query()
             ->where('status', 'active')
             ->whereNotNull('next_billing_date')
-            ->where('next_billing_date', '<=', $today->toDateString())
+            ->whereDate('next_billing_date', '<=', $windowEnd->toDateString())
             ->with(['items.product', 'product', 'customer'])
             ->get();
 
@@ -586,6 +666,7 @@ class BillingService
             try {
                 // Which of this order's items are due for renewal?
                 $dueItems = [];
+                $zeroDueItems = [];
 
                 foreach ($order->items as $item) {
                     $cycle = $item->billing_cycle ?? $order->billing_cycle;
@@ -596,24 +677,38 @@ class BillingService
                         continue;
                     }
 
-                    // The item's own due date; legacy items fall back to the
-                    // order's summary date.
-                    $dueDate = $item->next_billing_date ?? $order->next_billing_date;
-                    if ($dueDate === null || CarbonImmutable::parse($dueDate) > $today) {
+                    // The item's own due date; legacy items (created before the
+                    // per-item billing columns, counter NULL) fall back to the
+                    // order's summary date. A null date on a NON-legacy item
+                    // means the schedule was intentionally ended (cancel /
+                    // cycle limit / fixed term) — never re-arm it from the
+                    // order summary, or a cancelled add-on gets re-billed.
+                    $dueDate = $item->next_billing_date
+                        ?? ($item->billing_cycles_count === null ? $order->next_billing_date : null);
+
+                    // Date-string comparison: a date-cast value is stored with a
+                    // time component on SQLite, and a timezone-aware Carbon
+                    // comparison excludes the window boundary. Comparing Y-m-d
+                    // strings makes "due exactly N days early" inclusive on
+                    // every driver.
+                    if ($dueDate === null || CarbonImmutable::parse($dueDate)->toDateString() > $windowEnd->toDateString()) {
+                        continue;
+                    }
+
+                    // Once-per-cycle guard: when the window is wider than the
+                    // item's cycle, the advanced date is still inside the window
+                    // on the next run. Skip an item already billed within its
+                    // current cycle; legacy items (no last_billing_date) stay
+                    // eligible, and a long-overdue item still catches up one
+                    // period per run (last + cycle <= today).
+                    if ($item->last_billing_date !== null
+                        && CarbonImmutable::parse($item->last_billing_date)->addMonths($cycleMonths)->gt($today)) {
                         continue;
                     }
 
                     // Quantity-aware total: the renewal line must reflect the
                     // qty actually ordered, not a hardcoded unit.
                     $total = round((float) $item->unit_price * (int) ($item->quantity ?? 1), 2);
-
-                    // Free / zero-value lines produce nothing — billing nothing
-                    // for a null total would create a 0-value sent invoice.
-                    if ($total <= 0) {
-                        $errors++;
-
-                        continue;
-                    }
 
                     // Recurring cycles limit. New items carry a per-item
                     // snapshot (billing_cycles_count is set at creation); the
@@ -638,13 +733,42 @@ class BillingService
                         }
                     }
 
-                    $dueItems[] = ['item' => $item, 'cycle' => $cycle, 'cycleMonths' => $cycleMonths, 'total' => $total];
+                    // Free / zero-value lines are never invoiced (a 0-value
+                    // sent invoice is worse than none) — but they must not
+                    // stay stuck due either: collect them so their schedule
+                    // advances exactly like a billed item's, minus the
+                    // invoice (review F7).
+                    if ($total <= 0) {
+                        $zeroDueItems[] = [
+                            'item' => $item,
+                            'cycleMonths' => $cycleMonths,
+                            'advanceFrom' => $dueDate,
+                        ];
+
+                        continue;
+                    }
+
+                    $dueItems[] = ['item' => $item, 'cycle' => $cycle, 'cycleMonths' => $cycleMonths, 'total' => $total, 'dueDate' => $dueDate];
+                }
+
+                // Advance the schedule of every due-but-free item from its OWN
+                // due date, so its billing anniversary is preserved without an
+                // invoice and without an error.
+                foreach ($zeroDueItems as $due) {
+                    $item = $due['item'];
+                    $item->update([
+                        'next_billing_date' => CarbonImmutable::parse($due['advanceFrom'])->addMonths($due['cycleMonths'])->toDateString(),
+                        'last_billing_date' => $today->toDateString(),
+                        'billing_cycles_count' => $item->billing_cycles_count !== null
+                            ? (int) $item->billing_cycles_count + 1
+                            : null,
+                    ]);
                 }
 
                 if ($dueItems === []) {
-                    // No item due (or every due item was skipped) — but a
-                    // skipped limit-exhausted item may have dropped the only
-                    // remaining schedule; keep the summary in sync.
+                    // No billable item — but a limit-exhausted item may have
+                    // dropped the only remaining schedule, and a zero-value
+                    // item has just advanced; keep the summary in sync.
                     $this->syncOrderSummary($order);
 
                     continue;
@@ -656,6 +780,9 @@ class BillingService
                     'quantity' => (int) $due['item']->quantity,
                     'unit_price' => (float) $due['item']->unit_price,
                     'total' => $due['total'],
+                    // The product link drives per-product GST; without it a
+                    // per_product-mode line would silently bill tax-free.
+                    'product_id' => $due['item']->product_id,
                     // A renewal bills the same configuration as the original
                     // order, so the renewal invoice states it too.
                     'config_options' => $due['item']->config_options,
@@ -663,26 +790,38 @@ class BillingService
 
                 // RENEWAL-IGST FIX (decisions.md #6): the reference passed a null
                 // customer state → every renewal was inter-state → IGST. Resolve
-                // the customer's state first and fall back to the company state
-                // (intra-state) when it is unknown, so renewals never default to
+                // the place of supply first (customer state, else the company
+                // state as intra-state fallback) so renewals never default to
                 // the higher IGST rate.
-                $customerStateCode = $this->resolveCustomerStateCode((int) $order->customer_id) ?? $companyStateCode;
+                $customerStateCode = $this->resolvePlaceOfSupply((int) $order->customer_id);
+
+                // The invoice is due on the earliest due item's OWN date: an
+                // early-generation window must not shift the due date.
+                $earliestDueDate = null;
+                foreach ($dueItems as $due) {
+                    $candidate = CarbonImmutable::parse($due['dueDate']);
+                    if ($earliestDueDate === null || $candidate->lt($earliestDueDate)) {
+                        $earliestDueDate = $candidate;
+                    }
+                }
 
                 $this->createWithItems([
                     'customer_id' => $order->customer_id,
                     'order_id' => $order->id,
                     'amount' => $invoiceAmount,
                     'status' => Invoice::STATUS_SENT,
-                    'due_date' => $today->addDays(7)->toDateString(),
+                    'due_date' => $earliestDueDate->toDateString(),
                     'notes' => 'Auto-generated renewal invoice',
                 ], $items, $customerStateCode);
 
-                // Advance each billed item on ITS cycle; the order summary
-                // date becomes the earliest remaining item date.
+                // Advance each billed item on ITS cycle FROM ITS OWN due date
+                // (not the run date) so an early-generation window never drifts
+                // the billing anniversary; the order summary date becomes the
+                // earliest remaining item date.
                 foreach ($dueItems as $due) {
                     $item = $due['item'];
                     $item->update([
-                        'next_billing_date' => $today->addMonths($due['cycleMonths'])->toDateString(),
+                        'next_billing_date' => CarbonImmutable::parse($due['dueDate'])->addMonths($due['cycleMonths'])->toDateString(),
                         'last_billing_date' => $today->toDateString(),
                         'billing_cycles_count' => $item->billing_cycles_count !== null
                             ? (int) $item->billing_cycles_count + 1
@@ -706,7 +845,7 @@ class BillingService
      * next_billing_date is the earliest item next date (null when no item is
      * still recurring), and last_billing_date records the most recent billing.
      */
-    private function syncOrderSummary(Order $order, ?string $lastBillingDate = null): void
+    public function syncOrderSummary(Order $order, ?string $lastBillingDate = null): void
     {
         $nextDates = $order->items()
             ->whereNotNull('next_billing_date')
@@ -743,6 +882,24 @@ class BillingService
         $customer = Customer::find($customerId);
 
         return $customer === null ? null : GstStateCodes::normalize($customer->state_code);
+    }
+
+    /**
+     * Resolve the place of supply for an invoice: the normalized customer
+     * state code, else the company state code (intra-state fallback), else
+     * '27'. Never null, so callers never default to the higher IGST rate.
+     */
+    public function resolvePlaceOfSupply(int $customerId): string
+    {
+        $customerCode = $this->resolveCustomerStateCode($customerId);
+
+        if ($customerCode !== null && $customerCode !== '') {
+            return $customerCode;
+        }
+
+        $companyCode = (string) (GstTaxService::loadSettings(GstSetting::find(1))['state_code'] ?? '');
+
+        return $companyCode !== '' ? $companyCode : '27';
     }
 
     /**

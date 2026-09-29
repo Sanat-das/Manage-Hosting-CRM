@@ -37,8 +37,10 @@
         <form method="POST" action="{{ route('two-factor.confirm') }}">
             @csrf
             <div class="input-group mb-3">
-                <input type="text" name="code" class="form-control @error('code', 'confirmTwoFactorAuthentication') is-invalid @enderror"
-                       placeholder="6-digit code" inputmode="numeric" maxlength="6" required autocomplete="one-time-code">
+                <label class="visually-hidden" for="two-factor-confirm-code">6-digit code</label>
+                <input type="text" id="two-factor-confirm-code" name="code" class="form-control @error('code', 'confirmTwoFactorAuthentication') is-invalid @enderror"
+                       placeholder="6-digit code" inputmode="numeric" maxlength="6" required autocomplete="one-time-code"
+                       aria-label="6-digit code">
                 <button type="submit" class="btn btn-success">
                     <i class="bi bi-check-lg me-1" aria-hidden="true"></i> Confirm
                 </button>

@@ -7,9 +7,7 @@
 @stop
 
 @section('content')
-    @if ($errors->any())
-        <x-adminlte-alert theme="danger" dismissible><ul class="mb-0">@foreach ($errors->all() as $error)<li>{{ $error }}</li>@endforeach</ul></x-adminlte-alert>
-    @endif
+    <x-adminlte.partials.flash-alert />
 
     <x-adminlte.partials.form-card icon="bi bi-key" title="Edit License" :action="route('admin.licenses.update', $license)" submit-label="Update License" :cancel-url="route('admin.licenses.show', $license)">
         @method('PUT')

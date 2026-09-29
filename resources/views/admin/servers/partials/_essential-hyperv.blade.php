@@ -84,11 +84,11 @@
                             $swType = trim((string) ($sw['type'] ?? ''));
                             $swShowType = $swType !== '' && strcasecmp($swType, trim((string) $sw['name'])) !== 0;
                         @endphp
-                        <span class="badge text-bg-light border fw-normal hv-switch {{ $i >= 8 ? 'd-none' : '' }}" style="font-size:var(--text-xs);" @if(!empty($sw['type'])) title="{{ $sw['type'] }}" @endif>{{ $sw['name'] }}@if($swShowType)<span class="text-muted"> · {{ $swType }}</span>@endif</span>
+                        <span class="badge text-bg-secondary border fw-normal hv-switch {{ $i >= 8 ? 'd-none' : '' }}" style="font-size:var(--text-xs);" @if(!empty($sw['type'])) title="{{ $sw['type'] }}" @endif>{{ $sw['name'] }}@if($swShowType)<span class="text-muted"> · {{ $swType }}</span>@endif</span>
                     @endforeach
                 </div>
                 @if ($switchCount > 8)
-                    <button type="button" class="btn btn-link btn-sm p-0 mt-1" style="font-size:var(--text-xs);" onclick="var h=this.closest('div').querySelectorAll('.hv-switch.d-none');var hidden=h.length>0;h.forEach(function(e){e.classList.toggle('d-none');});this.textContent=hidden?'Show less':'Show all ({{ $switchCount }})';">Show all ({{ $switchCount }})</button>
+                    <button type="button" class="btn btn-link btn-sm p-0 mt-1" style="font-size:var(--text-xs);" data-expand-toggle=".hv-switch" data-label-show="Show all ({{ $switchCount }})">Show all ({{ $switchCount }})</button>
                 @endif
             </div>
         </div>

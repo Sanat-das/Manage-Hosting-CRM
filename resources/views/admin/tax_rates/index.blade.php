@@ -7,7 +7,7 @@
 @stop
 
 @section('content')
-    @if (session('success')) <x-adminlte-alert theme="success" dismissible>{{ session('success') }}</x-adminlte-alert> @endif
+    <x-adminlte.partials.flash-alert />
 
     <x-adminlte.partials.datatable
         icon="bi bi-percent"
@@ -40,7 +40,7 @@
                 </td>
             </tr>
         @empty
-            <tr><td colspan="4" class="text-center text-muted py-4">No tax rates found.</td></tr>
+            <x-ui.empty-table-row colSpan="4" title="No tax rates found." />
         @endforelse
     </x-adminlte.partials.datatable>
 @stop

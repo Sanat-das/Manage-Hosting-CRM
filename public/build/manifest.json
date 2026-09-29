@@ -47,7 +47,7 @@
     "src": "node_modules/bootstrap-icons/font/fonts/bootstrap-icons.woff2"
   },
   "resources/css/adminlte.css": {
-    "file": "assets/adminlte-CV5keGZ9.css",
+    "file": "assets/adminlte-BlZbsTrZ.css",
     "name": "adminlte",
     "names": [
       "adminlte.css"
@@ -60,7 +60,7 @@
     ]
   },
   "resources/css/app.css": {
-    "file": "assets/app-D4lCesWK.css",
+    "file": "assets/app-DuGK_MgR.css",
     "name": "app",
     "names": [
       "app.css"
@@ -69,7 +69,7 @@
     "isEntry": true
   },
   "resources/css/branding.css": {
-    "file": "assets/branding-AOw7ubVS.css",
+    "file": "assets/branding-2W40I6yo.css",
     "name": "branding",
     "names": [
       "branding.css"
@@ -96,7 +96,7 @@
     "isEntry": true
   },
   "resources/js/adminlte.js": {
-    "file": "assets/adminlte-Dja0xY7n.js",
+    "file": "assets/adminlte-BEpwpAYo.js",
     "name": "adminlte",
     "src": "resources/js/adminlte.js",
     "isEntry": true,

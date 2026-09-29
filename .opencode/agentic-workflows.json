@@ -1,0 +1,267 @@
+{
+  "version": 2,
+  "generatedAt": "2026-09-27",
+  "generatedBy": "workflow reconciliation + hardening pass executed by build",
+  "project": {
+    "label": "ManageHostingCRM",
+    "path": "C:\\Users\\Administrator\\Local Sites\\managehosting\\app",
+    "openchamberProjectId": "path_QzovVXNlcnMvQWRtaW5pc3RyYXRvci9Mb2NhbCBTaXRlcy9tYW5hZ2Vob3N0aW5nL2FwcA"
+  },
+  "scope": {
+    "purpose": "Agent, skill, and MCP wiring for this repo: workflow configuration only.",
+    "neverTouch": [
+      "app/",
+      "routes/",
+      "database/",
+      "resources/",
+      "tests/",
+      "modules/",
+      "config/",
+      "public/",
+      ".env*",
+      ".omo/",
+      ".codegraph/",
+      ".openchamber/"
+    ],
+    "additiveOnly": true
+  },
+  "stack": {
+    "php": "^8.3",
+    "laravel": "^13.8",
+    "frontend": "Blade + AdminLTE 4.1 + Bootstrap 5.3 + Tailwind CSS 4 + Sass + Vite 8",
+    "auth": "Fortify (2FA) + Sanctum (API) + policies/granular permissions",
+    "realtime": "Reverb + Echo",
+    "data": "132 migrations; spatie/laravel-settings typed settings; sqlite test DB",
+    "tests": "PHPUnit 12 (tests/Unit, tests/Feature), Laravel Dusk (tests/Dusk, tests/Browser)",
+    "ci": "php artisan test + SeederIntegrityTest + scripts/seed-smoke.sh + node .opencode/scripts/validate-workflows.mjs",
+    "modules": {
+      "app": ["Cpanel", "DirectAdmin", "HyperV", "Plesk", "Proxmox", "Virtualizor"],
+      "packages": ["rdp-console", "snmp-monitor", "ssh-console"]
+    }
+  },
+  "agents": [
+    {
+      "name": "build",
+      "mode": "primary",
+      "role": "orchestrator",
+      "description": "Default coding orchestrator — runs workflow commands, delegates to explore/general, verifies results.",
+      "file": "~/.config/opencode/agents/build.md",
+      "model": "opencode-go/deepseek-v4.1-flash#max",
+      "tools": "opencode-default-full"
+    },
+    {
+      "name": "plan",
+      "mode": "primary",
+      "role": "planner",
+      "description": "Read-only planner for complex work (>3 files, migrations, auth/billing/permission changes).",
+      "file": "~/.config/opencode/agents/plan.md",
+      "model": "opencode-go/deepseek-v4.1-flash#max",
+      "tools": "builtin-read-only-no-edits"
+    },
+    {
+      "name": "explore",
+      "mode": "subagent",
+      "role": "code-search",
+      "description": "Fast read-only code search — locates files and symbols and maps flows.",
+      "file": "~/.config/opencode/agents/explore.md",
+      "model": "opencode-go/muse-spark-1.3-contributor#xhigh",
+      "tools": "read-only-edit-denied"
+    },
+    {
+      "name": "general",
+      "mode": "subagent",
+      "role": "parallel-work-unit",
+      "description": "General-purpose subagent for multi-step work units and parallel slices.",
+      "file": "~/.config/opencode/agents/general.md",
+      "model": "opencode-go/muse-spark-1.3-contributor#xhigh",
+      "tools": "opencode-default-full"
+    }
+  ],
+  "skills": {
+    "catalog": [
+      { "name": "managehosting-workflows", "class": "core", "trigger": "implementation/fix/review work in this repo — guardrails + verification recipes" },
+      { "name": "frontend-design", "class": "core", "trigger": "UI/Blade/AdminLTE design or redesign work" },
+      { "name": "webapp-testing", "class": "core", "trigger": "verifying a local web UI with Playwright-style automation" },
+      { "name": "mcp-builder", "class": "conditional", "trigger": "building or changing an MCP server/endpoints" },
+      { "name": "web-artifacts-builder", "class": "conditional", "trigger": "standalone multi-component HTML artifacts (demos, not app UI)" },
+      { "name": "theme-factory", "class": "conditional", "trigger": "styling docs/slides/report artifacts" },
+      { "name": "brand-guidelines", "class": "rare", "trigger": "Anthropic-branded artifacts only" },
+      { "name": "canvas-design", "class": "rare", "trigger": "posters/static art files" },
+      { "name": "algorithmic-art", "class": "rare", "trigger": "generative art requests" },
+      { "name": "discernment-nudge", "class": "meta", "trigger": "at most once per conversation, on actionable conclusions (triage/review)" }
+    ],
+    "perWorkflow": {
+      "triage": {
+        "required": [],
+        "conditional": [
+          { "skill": "discernment-nudge", "when": "triage conclusions are actionable" }
+        ]
+      },
+      "explore": { "required": [], "conditional": [] },
+      "feature": {
+        "required": [],
+        "conditional": [
+          { "skill": "frontend-design", "when": "UI/Blade/AdminLTE work" },
+          { "skill": "webapp-testing", "when": "UI change needs browser verification" },
+          { "skill": "mcp-builder", "when": "building or changing an MCP server" }
+        ]
+      },
+      "bugfix": {
+        "required": [],
+        "conditional": [
+          { "skill": "webapp-testing", "when": "bug must be reproduced/verified in a browser" },
+          { "skill": "frontend-design", "when": "fix changes visual design" }
+        ]
+      },
+      "parallel": { "required": [], "conditional": [] },
+      "review": {
+        "required": [],
+        "conditional": [
+          { "skill": "discernment-nudge", "when": "review conclusions are actionable" },
+          { "skill": "frontend-design", "when": "UI consistency is in scope" }
+        ]
+      }
+    },
+    "notInstalled": {
+      "doc-coauthoring": "Not installed. Substitute: write docs inline in existing docs/ style; use theme-factory only for styled artifacts.",
+      "skill-creator": "Not installed. Create new skills by hand following the existing SKILL.md format."
+    }
+  },
+  "mcp": {
+    "servers": [
+      {
+        "name": "codegraph",
+        "scope": "project",
+        "type": "local",
+        "command": "codegraph serve --mcp",
+        "enabled": true,
+        "class": "prod",
+        "config": "app/opencode.jsonc",
+        "use": "First stop for code questions in this repo; loads only when the session runs in the repo directory; read-only exploration.",
+        "observed": "MCP tool codegraph_explore + shell 'codegraph explore'; .codegraph/ index present; binary on PATH (codegraph.cmd)"
+      },
+      {
+        "name": "everything",
+        "scope": "global",
+        "type": "local",
+        "command": "npx -y @modelcontextprotocol/server-everything",
+        "class": "demo",
+        "config": "~/.config/opencode/opencode.jsonc",
+        "use": "Smoke-test only, skip unless a demo:// URI is explicitly referenced. Never surface get-env output in logs or reports.",
+        "observed": "7 static docs + 2 dynamic templates, all demo://resource/...; sample doc read OK"
+      }
+    ],
+    "perWorkflow": {
+      "triage": ["codegraph"],
+      "explore": ["codegraph"],
+      "feature": ["codegraph"],
+      "bugfix": ["codegraph"],
+      "parallel": ["codegraph"],
+      "review": ["codegraph"]
+    },
+    "rules": [
+      "codegraph is available only to sessions whose directory is the repo root; fall back to grep/read otherwise.",
+      "everything is demo-only: use only for explicit demo:// URI smoke tests; never dump get-env output."
+    ]
+  },
+  "enforcement": {
+    "config": "opencode.jsonc (project)",
+    "projectPermissions": [
+      "edit .env* => ask (except .env.example => allow)",
+      "shell *migrate:fresh* => ask",
+      "shell *db:wipe* => ask",
+      "shell *migrate:reset* => ask"
+    ],
+    "agentPermissions": {
+      "explore": "edit deny *",
+      "plan": "OpenCode plan semantics: no edits to normal project files"
+    },
+    "defaultAgent": "build",
+    "gate": "node .opencode/scripts/validate-workflows.mjs (wired into CI)"
+  },
+  "evidence": ".opencode/reports/<YYYY-MM-DD>-<slug>/ (plan.md, verification.md, review.md)",
+  "router": {
+    "entryPoints": ["build", "plan"],
+    "rules": [
+      "Only primary agents may start sessions: build (default), plan (planning-first). Project config pins default_agent to build.",
+      "Subagents (explore, general) are reachable only via the subagent tool from a primary session.",
+      "Complexity gate: >3 files OR migration/schema change OR auth/billing/permission/security surface => plan first (workflow-feature starts with plan).",
+      "Route to one workflow command: triage, explore, feature, bugfix, parallel, review.",
+      "Load skills only when their trigger matches (see skills.perWorkflow); never as defaults.",
+      "MCP: codegraph first for repo code questions; everything is demo-only, skip unless a demo:// URI is explicitly referenced.",
+      "Parallel work: contracts-first, max 4 general subagents, disjoint file ownership, never parallel migrations on the same table.",
+      "No workflow completes without its verification gates (see workflows.*.verify).",
+      "Workflow maintenance is additive and never edits app code or user work."
+    ]
+  },
+  "maintenance": {
+    "reconcile": ".opencode/RECONCILE.md",
+    "validator": ".opencode/scripts/validate-workflows.mjs",
+    "schedule": "monthly, cron 0 9 1 * * (Asia/Kolkata), via OpenChamber"
+  },
+  "workflows": {
+    "triage": {
+      "command": ".opencode/commands/workflow-triage.md",
+      "purpose": "Classify a request and route it; emits Workflow | Agents | Skills | MCP | First step.",
+      "entry": ["build"],
+      "output": ["Workflow", "Agents", "Skills", "MCP", "First step"],
+      "verify": ["No edits made; routing table is complete and names only registered agents/skills/servers."]
+    },
+    "explore": {
+      "command": ".opencode/commands/workflow-explore.md",
+      "purpose": "Read-only understanding: files, symbols, data flow, tests, risks.",
+      "entry": ["build"],
+      "subagents": ["explore"],
+      "verify": ["No writes occurred; findings reference real paths and symbols."]
+    },
+    "feature": {
+      "command": ".opencode/commands/workflow-feature.md",
+      "purpose": "Plan and implement a new capability end-to-end.",
+      "entry": ["plan", "build"],
+      "subagents": ["general"],
+      "verify": [
+        "vendor/bin/pint --dirty",
+        "php artisan test --filter=<new tests>",
+        "php artisan test",
+        "npm run build (if assets changed)",
+        "bash scripts/seed-smoke.sh (if migrations/seeders changed)",
+        "php artisan test --filter SeederIntegrityTest (if permissions/seeders changed)",
+        "node .opencode/scripts/validate-workflows.mjs (if workflow artifacts changed)"
+      ]
+    },
+    "bugfix": {
+      "command": ".opencode/commands/workflow-bugfix.md",
+      "purpose": "Reproduce, fix, and lock in a regression test.",
+      "entry": ["build"],
+      "subagents": ["explore"],
+      "verify": [
+        "Failing test existed before the fix and passes after",
+        "vendor/bin/pint --dirty",
+        "php artisan test"
+      ]
+    },
+    "parallel": {
+      "command": ".opencode/commands/workflow-parallel.md",
+      "purpose": "Independent slices executed by up to 4 general subagents, contracts-first.",
+      "entry": ["build"],
+      "subagents": ["general"],
+      "guardrails": [
+        "contracts frozen before dispatch",
+        "max 4 concurrent subagents",
+        "disjoint file ownership",
+        "never parallel migrations on the same table"
+      ],
+      "verify": ["Integration in build; single full verification pass after merge."]
+    },
+    "review": {
+      "command": ".opencode/commands/workflow-review.md",
+      "purpose": "Audit a diff/deliverable against repo guardrails; findings by severity.",
+      "entry": ["build"],
+      "verify": [
+        "vendor/bin/pint --test",
+        "Relevant test suite for the reviewed code",
+        "Each finding has file:line and a concrete fix"
+      ]
+    }
+  }
+}

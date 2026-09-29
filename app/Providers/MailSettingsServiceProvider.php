@@ -28,6 +28,16 @@ class MailSettingsServiceProvider extends ServiceProvider
     public function register(): void
     {
         $this->app->afterResolving('mail.manager', function () {
+            // An explicit MailSettings::apply() call wins: it writes the mailer
+            // config BEFORE forgetting the resolved manager, so when this hook
+            // fires on the fresh resolution the config is already present and
+            // must not be overwritten with the default arguments (which would
+            // silently reset a caller-supplied timeout). Only supply the stored
+            // configuration when nothing has supplied it yet in this process.
+            if (config('mail.mailers.'.MailSettings::MAILER) !== null) {
+                return;
+            }
+
             MailSettings::apply();
         });
     }

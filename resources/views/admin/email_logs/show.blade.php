@@ -24,7 +24,7 @@
         </div>
         <div class="col-lg-6">
             <x-adminlte-card icon="bi bi-code-slash" title="Body">
-                <div style="white-space: pre-wrap; background: var(--color-bg-subtle, var(--bs-tertiary-bg, #f8fafc)); padding: 1rem; border-radius: var(--radius-md); max-height: 400px; overflow-y: auto; border: 1px solid var(--color-border);">{{ $log->body ?? '—' }}</div>
+                <div style="white-space: pre-wrap; background: var(--color-bg-subtle, var(--bs-tertiary-bg)); padding: 1rem; border-radius: var(--radius-md); max-height: 400px; overflow-y: auto; border: 1px solid var(--color-border);">{{ $log->body ?? '—' }}</div>
             </x-adminlte-card>
         </div>
     </div>

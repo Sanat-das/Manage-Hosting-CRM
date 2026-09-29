@@ -36,7 +36,7 @@
                 <td class="text-muted small">{{ $log->ip_address ?? '—' }}</td>
             </tr>
         @empty
-            <tr><td colspan="6" class="text-center text-muted py-4">No activity logged.</td></tr>
+            <x-ui.empty-table-row colSpan="6" title="No activity logged." />
         @endforelse
     </x-adminlte.partials.datatable>
 @stop

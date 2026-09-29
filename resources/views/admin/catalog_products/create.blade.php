@@ -11,9 +11,7 @@
 @stop
 
 @section('content')
-    @if ($errors->any())
-        <x-adminlte-alert theme="danger" dismissible><ul class="mb-0">@foreach ($errors->all() as $error)<li>{{ $error }}</li>@endforeach</ul></x-adminlte-alert>
-    @endif
+    <x-adminlte.partials.flash-alert />
 
     <x-adminlte.partials.form-card icon="bi bi-box-seam" title="New Catalog Product" :action="route('admin.catalog-products.store')" submit-label="Save Product" :cancel-url="route('admin.catalog-products.index')">
         <div class="row">
@@ -60,12 +58,12 @@
             <div class="col-md-4">
                 <div class="mt-4">
                     <div class="form-check">
-                        <input class="form-check-input" type="checkbox" name="require_domain" value="1" @checked(old('require_domain'))>
-                        <label class="form-check-label">Require Domain</label>
+                        <input class="form-check-input" type="checkbox" name="require_domain" id="require_domain" value="1" @checked(old('require_domain'))>
+                        <label class="form-check-label" for="require_domain">Require Domain</label>
                     </div>
                     <div class="form-check">
-                        <input class="form-check-input" type="checkbox" name="show_in_order" value="1" @checked(old('show_in_order', true))>
-                        <label class="form-check-label">Show in Order Form</label>
+                        <input class="form-check-input" type="checkbox" name="show_in_order" id="show_in_order" value="1" @checked(old('show_in_order', true))>
+                        <label class="form-check-label" for="show_in_order">Show in Order Form</label>
                     </div>
                 </div>
             </div>

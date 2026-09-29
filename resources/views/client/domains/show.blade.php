@@ -3,16 +3,11 @@
 @section('title', $domain->name)
 
 @section('content_header')
-    <div class="row">
-        <div class="col-sm-6"><h1 class="m-0">{{ $domain->name }}</h1></div>
-        <div class="col-sm-6">
-            <ol class="breadcrumb float-sm-end">
-                <li class="breadcrumb-item"><a href="{{ url('/') }}">{{ __('adminlte.home') }}</a></li>
-                <li class="breadcrumb-item"><a href="{{ route('client.domains.index') }}">Domains</a></li>
-                <li class="breadcrumb-item active">{{ $domain->name }}</li>
-            </ol>
-        </div>
-    </div>
+    <x-ui.page-header :title="$domain->name" :breadcrumbs="[
+        ['label' => __('adminlte.home'), 'url' => url('/')],
+        ['label' => 'Domains', 'url' => route('client.domains.index')],
+        ['label' => $domain->name, 'active' => true],
+    ]" />
 @stop
 
 @section('content')
@@ -46,7 +41,17 @@
         <div class="col-lg-4">
             <x-adminlte-card icon="bi bi-shield-lock" title="Security & Locks">
                 <ul class="list-unstyled mb-0">
-                    <li class="mb-2">Domain lock: <strong>{{ $domain->lock_status ? '🔒 Locked' : '🔓 Unlocked' }}</strong></li>
+                    {{-- Directives stay on their own lines: Blade's directive
+                         regexes are anchored on a non-word boundary, so a
+                         directive glued to a preceding word character is left
+                         as literal text instead of being compiled. --}}
+                    <li class="mb-2">Domain lock: <strong>
+                        @if ($domain->lock_status)
+                            <i class="bi bi-lock-fill me-1" aria-hidden="true"></i>{{ __('Locked') }}
+                        @else
+                            <i class="bi bi-unlock me-1" aria-hidden="true"></i>{{ __('Unlocked') }}
+                        @endif
+                    </strong></li>
                     <li class="mb-2">Privacy protection: <strong>{{ $domain->privacy_enabled ? 'On' : 'Off' }}</strong></li>
                     <li>DNS management: <strong>{{ $domain->dns_management ? 'Included' : '—' }}</strong></li>
                 </ul>

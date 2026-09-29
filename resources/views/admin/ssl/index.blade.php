@@ -16,12 +16,7 @@
 @endphp
 
 @section('content')
-    @if (session('success'))
-        <x-adminlte-alert theme="success" dismissible>{{ session('success') }}</x-adminlte-alert>
-    @endif
-    @if (session('error'))
-        <x-adminlte-alert theme="danger" dismissible>{{ session('error') }}</x-adminlte-alert>
-    @endif
+    <x-adminlte.partials.flash-alert />
 
     <x-adminlte.partials.datatable
         icon="bi bi-shield-lock"
@@ -106,11 +101,7 @@
                 </td>
             </tr>
         @empty
-            <tr>
-                <td colspan="7" class="text-center text-muted py-4">
-                    No SSL certificates found.
-                </td>
-            </tr>
+            <x-ui.empty-table-row colSpan="7" title="No SSL certificates found." />
         @endforelse
     </x-adminlte.partials.datatable>
 

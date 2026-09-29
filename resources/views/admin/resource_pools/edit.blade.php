@@ -4,7 +4,7 @@
     <x-ui.page-header title="Edit: {{ $resourcePool->name }}" subtitle="Update resource pool details" :breadcrumbs="[['label' => __('adminlte.home'), 'url' => url('/')],['label' => 'Resource Pools','url' => route('admin.resource-pools.index')],['label' => 'Edit','active' => true]]" />
 @stop
 @section('content')
-    @if ($errors->any()) <x-adminlte-alert theme="danger" dismissible><ul class="mb-0">@foreach ($errors->all() as $error)<li>{{ $error }}</li>@endforeach</ul></x-adminlte-alert> @endif
+    <x-adminlte.partials.flash-alert />
     <x-adminlte.partials.form-card icon="bi bi-collection" title="Edit Resource Pool" :action="route('admin.resource-pools.update', $resourcePool)" submit-label="Update" :cancel-url="route('admin.resource-pools.show', $resourcePool)">
         @method('PUT')
         <div class="row">

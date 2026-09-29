@@ -3,22 +3,15 @@
 @section('title', 'Products/Services')
 
 @section('content_header')
-    <div class="row">
-        <div class="col-sm-6"><h1 class="m-0">Products/Services</h1></div>
-        <div class="col-sm-6">
-            <ol class="breadcrumb float-sm-end">
-                <li class="breadcrumb-item"><a href="{{ url('/') }}">{{ __('adminlte.home') }}</a></li>
-                <li class="breadcrumb-item"><a href="{{ route('client.dashboard') }}">Dashboard</a></li>
-                <li class="breadcrumb-item active">Products/Services</li>
-            </ol>
-        </div>
-    </div>
+    <x-ui.page-header title="Products/Services" :breadcrumbs="[
+        ['label' => __('adminlte.home'), 'url' => url('/')],
+        ['label' => 'Dashboard', 'url' => route('client.dashboard')],
+        ['label' => 'Products/Services', 'active' => true],
+    ]" />
 @stop
 
 @section('content')
-    @if (session('success'))
-        <x-adminlte-alert theme="success" dismissible>{{ session('success') }}</x-adminlte-alert>
-    @endif
+    <x-adminlte.partials.flash-alert />
 
     {{-- Status summary cards (click to filter) --}}
     @php
@@ -86,7 +79,7 @@
                         </td>
                         <td>
                             @if ($info && $info['amount'] !== null)
-                                <div><strong>{{ number_format((float) $info['amount'], 2) }}</strong></div>
+                                <div><strong><x-adminlte.partials.currency :value="$info['amount']" /></strong></div>
                                 <div class="text-muted small">{{ $cycleLabels[$info['cycle']] ?? ($info['cycle'] ?? '—') }}</div>
                             @else
                                 <span class="text-muted">—</span>
@@ -106,17 +99,9 @@
                     </tr>
                 @empty
                     @if ($search !== '' || $status !== null)
-                        <tr><td colspan="8" class="text-center text-muted py-4">No products/services match your filters.</td></tr>
+                        <x-ui.empty-table-row colSpan="8" icon="bi bi-hdd-stack" title="No products/services match your filters." />
                     @else
-                        <tr>
-                            <td colspan="8" class="text-center py-5">
-                                <i class="bi bi-hdd-stack fs-1 text-muted d-block mb-2"></i>
-                                <p class="text-muted mb-3">You don't have any products or services yet.</p>
-                                <a href="{{ route('client.store.index') }}" class="btn btn-primary">
-                                    <i class="bi bi-shop me-1"></i>Browse the Store
-                                </a>
-                            </td>
-                        </tr>
+                        <x-ui.empty-table-row colSpan="8" icon="bi bi-hdd-stack" title="You don't have any products or services yet." actionLabel="Browse the Store" :actionUrl="route('client.store.index')" />
                     @endif
                 @endforelse
     </x-adminlte.partials.datatable>

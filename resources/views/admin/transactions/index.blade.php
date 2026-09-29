@@ -7,9 +7,7 @@
 @stop
 
 @section('content')
-    @if (session('success'))
-        <x-adminlte-alert theme="success" dismissible>{{ session('success') }}</x-adminlte-alert>
-    @endif
+    <x-adminlte.partials.flash-alert />
 
     <x-adminlte.partials.datatable icon="bi bi-arrow-left-right" title="All Transactions"
         :search-value="$search" search-placeholder="Search transaction ID or customer..."
@@ -39,7 +37,7 @@
                 <td class="text-muted">{{ $tx->created_at?->format('M j, Y') }}</td>
             </tr>
         @empty
-            <tr><td colspan="9" class="text-center text-muted py-4">No transactions found.</td></tr>
+            <x-ui.empty-table-row colSpan="9" title="No transactions found." />
         @endforelse
     </x-adminlte.partials.datatable>
 @stop

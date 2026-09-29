@@ -53,7 +53,7 @@
                             </span>
 
                             @if ($chatVia !== null)
-                                <span class="badge text-bg-light border">via {{ $chatVia }}</span>
+                                <span class="badge text-bg-secondary border">via {{ $chatVia }}</span>
                             @endif
 
                             @if ($chatMessage->isEdited())

@@ -3,16 +3,11 @@
 @section('title', 'Store')
 
 @section('content_header')
-    <div class="row">
-        <div class="col-sm-6"><h1 class="m-0">Store</h1></div>
-        <div class="col-sm-6">
-            <ol class="breadcrumb float-sm-end">
-                <li class="breadcrumb-item"><a href="{{ url('/') }}">{{ __('adminlte.home') }}</a></li>
-                <li class="breadcrumb-item"><a href="{{ route('client.dashboard') }}">Dashboard</a></li>
-                <li class="breadcrumb-item active">Store</li>
-            </ol>
-        </div>
-    </div>
+    <x-ui.page-header title="Store" :breadcrumbs="[
+        ['label' => __('adminlte.home'), 'url' => url('/')],
+        ['label' => 'Dashboard', 'url' => route('client.dashboard')],
+        ['label' => 'Store', 'active' => true],
+    ]" />
 @stop
 
 @section('content')

@@ -24,21 +24,7 @@
 @endphp
 
 @section('content')
-    @if (session('success'))
-        <x-adminlte-alert theme="success" dismissible>{{ session('success') }}</x-adminlte-alert>
-    @endif
-    @if (session('error'))
-        <x-adminlte-alert theme="danger" dismissible>{{ session('error') }}</x-adminlte-alert>
-    @endif
-    @if ($errors->any())
-        <x-adminlte-alert theme="danger" dismissible>
-            <ul class="mb-0">
-                @foreach ($errors->all() as $error)
-                    <li>{{ $error }}</li>
-                @endforeach
-            </ul>
-        </x-adminlte-alert>
-    @endif
+    <x-adminlte.partials.flash-alert />
 
     {{-- Domain header card --}}
     <x-adminlte-card>
@@ -231,19 +217,19 @@
                         <h6 class="text-muted mb-0"><i class="bi bi-diagram-3 me-1"></i> Nameservers</h6>
                         <span class="text-muted small">{{ collect(preg_split('/\r\n|\r|\n/', (string) $domain->nameservers))->filter()->count() }} entries</span>
                     </div>
-                    <div class="border rounded p-3 bg-light" style="font-family: var(--font-mono, monospace); font-size: var(--text-sm);">
+                    <div class="border rounded p-3 bg-body-tertiary" style="font-family: var(--font-mono, monospace); font-size: var(--text-sm);">
                         <pre class="mb-0" style="white-space: pre-wrap; word-break: break-all; background: transparent; border: 0; padding: 0; margin: 0; font-family: inherit;">{{ $domain->nameservers }}</pre>
                     </div>
                     @if ($domain->dns_records)
                         <div class="mt-3">
                             <h6 class="text-muted mb-2"><i class="bi bi-hdd-network me-1"></i> DNS records</h6>
-                            <div class="border rounded p-3 bg-light" style="font-family: var(--font-mono, monospace); font-size: var(--text-sm);">
+                            <div class="border rounded p-3 bg-body-tertiary" style="font-family: var(--font-mono, monospace); font-size: var(--text-sm);">
                                 <pre class="mb-0" style="white-space: pre-wrap; word-break: break-all; background: transparent; border: 0; padding: 0; margin: 0; font-family: inherit;">{{ $domain->dns_records }}</pre>
                             </div>
                         </div>
                     @endif
                 @else
-                    <div class="text-center py-4 border rounded bg-light">
+                    <div class="text-center py-4 border rounded bg-body-tertiary">
                         <i class="bi bi-diagram-3 text-muted" style="font-size: 1.5rem;"></i>
                         <p class="text-muted mb-1 mt-2">No nameservers configured.</p>
                         <p class="text-muted small mb-0">Nameservers will appear here once the domain is provisioned.</p>
@@ -301,7 +287,7 @@
                                 <x-adminlte.partials.status-badge :status="$relatedHosting->status" />
                             </div>
                         @else
-                            <div class="text-center py-4 border rounded bg-light">
+                            <div class="text-center py-4 border rounded bg-body-tertiary">
                                 <i class="bi bi-hdd-stack text-muted" style="font-size: 1.5rem;"></i>
                                 <p class="text-muted mb-0 mt-2">No hosting account linked.</p>
                                 <p class="text-muted small mb-0">A hosting account will appear here when linked via an order.</p>
@@ -383,7 +369,7 @@
                                     <td class="text-muted">{{ $entry->user?->full_name ?? $entry->user?->email ?? 'System' }}</td>
                                 </tr>
                             @empty
-                                <tr><td colspan="4" class="text-center text-muted py-3">No history recorded.</td></tr>
+                                <x-ui.empty-table-row colSpan="4" icon="bi bi-clock-history" title="No history recorded." />
                             @endforelse
                         </tbody>
                     </table>
@@ -393,7 +379,7 @@
                 @endif
                 {{-- Fallback timeline when no history relation exists --}}
                 @if ($historyCollection->isEmpty())
-                    <div class="mt-3 border rounded p-3 bg-light">
+                    <div class="mt-3 border rounded p-3 bg-body-tertiary">
                         <div class="row g-2 small">
                             <div class="col-md-4">
                                 <span class="text-muted">Created</span>

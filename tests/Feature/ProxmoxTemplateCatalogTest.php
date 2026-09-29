@@ -545,6 +545,39 @@ final class ProxmoxTemplateCatalogTest extends TestCase
         $this->assertArrayNotHasKey('api_password', $fresh->connection_meta);
     }
 
+    /**
+     * The edit form renders no transport inputs for Proxmox (port/auth_type/
+     * verify_tls come from the create schema), so a real save from
+     * /admin/servers/{id}/edit carries the curation payload only. The meta gate
+     * used to require a transport key, which made the picked default vanish on
+     * every save from that page.
+     */
+    public function test_the_edit_form_saves_the_default_template_without_transport_fields(): void
+    {
+        $server = $this->server();
+
+        $this->actingAs($this->adminWith(['hosting.manage']))
+            ->put(route('admin.servers.update', $server), [
+                'name' => $server->name,
+                'status' => 'active',
+                'server_type' => 'proxmox',
+                'ip_address' => '10.100.1.30',
+                'proxmox_templates_present' => '1',
+                'proxmox_templates_selected' => ['110', '113'],
+                'proxmox_nodes' => ['110' => 'pve1', '113' => 'pve2'],
+                'proxmox_labels' => ['110' => 'Alma Gold', '113' => ''],
+                'proxmox_template_default' => '110',
+            ])
+            ->assertRedirect();
+
+        $fresh = $server->fresh();
+
+        $this->assertSame('110', $fresh->proxmoxDefaultTemplate());
+        // Transport prefs saved earlier must survive a curation-only save.
+        $this->assertSame(8006, $fresh->connection_meta['port'] ?? null);
+        $this->assertSame('token', $fresh->connection_meta['auth_type'] ?? null);
+    }
+
     public function test_clearing_the_curation_removes_templates_and_the_default(): void
     {
         $server = $this->server([
@@ -622,6 +655,35 @@ final class ProxmoxTemplateCatalogTest extends TestCase
             ->assertSee('proxmox_templates_selected[]', false)
             // A non-template guest must never be offered as a clone source.
             ->assertDontSee('not-a-template', false);
+    }
+
+    /**
+     * The default picker must not offer a discovered-but-uncurated template:
+     * proxmoxConnectionMeta() drops a default outside the curated list, so the
+     * option would vanish after the save with no error shown.
+     */
+    public function test_the_default_template_picker_only_offers_curated_templates(): void
+    {
+        Http::preventStrayRequests();
+        Http::fake([
+            '*/api2/json/nodes' => Http::response(['data' => [['node' => 'pve1', 'status' => 'online']]]),
+            '*/api2/json/access/permissions' => Http::response(['data' => ['/vms' => ['VM.Audit' => 1]]]),
+            '*/api2/json/nodes/pve1/qemu' => Http::response(['data' => [
+                ['vmid' => 110, 'name' => 'Alma9Template', 'status' => 'stopped', 'template' => 1],
+                ['vmid' => 113, 'name' => 'Copy-of-VM', 'status' => 'stopped', 'template' => 1],
+            ]]),
+            '*/api2/json/cluster/resources*' => Http::response(['data' => []]),
+        ]);
+
+        $server = $this->server(['proxmox_templates' => [
+            ['vmid' => '110', 'node' => 'pve1', 'label' => 'Alma Gold'],
+        ]]);
+
+        $this->actingAs($this->adminWith(['hosting.manage']))
+            ->get(route('admin.servers.edit', $server))
+            ->assertOk()
+            ->assertSee('<option value="110"', false)
+            ->assertDontSee('<option value="113"', false);
     }
 
     /**

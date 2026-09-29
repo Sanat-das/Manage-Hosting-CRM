@@ -10,12 +10,12 @@
 .et-editor-tabs button{border:1px solid transparent; border-bottom:0; background:transparent; padding:.4rem .75rem; border-radius:.4rem .4rem 0 0; font-size:.85rem; font-weight:600; color:var(--bs-secondary-color);}
 .et-editor-tabs button.active{background:var(--bs-body-bg); border-color:var(--bs-border-color); color:var(--bs-body-color);}
 .et-var-chip{display:inline-flex; align-items:center; gap:.25rem; padding:.2rem .5rem; font-size:.78rem; border:1px solid var(--bs-border-color); border-radius:999px; background:var(--bs-tertiary-bg); cursor:pointer; user-select:none;}
-.et-var-chip:hover{background:var(--bs-primary); color:#fff; border-color:var(--bs-primary);}
-.et-preview-frame{width:100%; min-height:420px; border:0; background:#fff;}
+.et-var-chip:hover{background:var(--bs-primary); color:var(--color-neutral-0); border-color:var(--bs-primary);}
+.et-preview-frame{width:100%; min-height:420px; border:0; background:#fff;} /* email canvas is white by design */
 .et-toolbar{display:flex; flex-wrap:wrap; gap:.35rem; padding:.5rem; border-bottom:1px solid var(--bs-border-color); background:var(--bs-body-bg);}
 .et-toolbar button{border:1px solid var(--bs-border-color); background:var(--bs-tertiary-bg); border-radius:.35rem; padding:.25rem .5rem; font-size:.8rem;}
 .et-toolbar button:hover{background:var(--bs-secondary-bg);}
-#quillEditor{height:380px; background:#fff;}
+#quillEditor{height:380px; background:#fff;} /* rich-text canvas is white by design */
 #quillEditor .ql-editor{font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size:13px;}
 /* z-index fix: sticky Variables card (1020) was covering Load starter dropdown (1000) */
 .dropdown-menu{z-index:1040 !important;}
@@ -28,11 +28,7 @@
 @stop
 
 @section('content')
-    @if ($errors->any())
-        <x-adminlte-alert theme="danger" dismissible>
-            <ul class="mb-0">@foreach ($errors->all() as $error)<li>{{ $error }}</li>@endforeach</ul>
-        </x-adminlte-alert>
-    @endif
+    <x-adminlte.partials.flash-alert />
 
     {{-- Top actions --}}
     <div class="d-flex flex-wrap gap-2 justify-content-end mb-3">
@@ -40,7 +36,7 @@
             <button class="btn btn-outline-secondary btn-sm dropdown-toggle" data-bs-toggle="dropdown"><i class="bi bi-collection me-1"></i> Load starter</button>
             <ul class="dropdown-menu dropdown-menu-end" style="max-height:320px; overflow:auto;">
                 @foreach($defaults as $key => $def)
-                    <li><a class="dropdown-item small starter-item" href="#" data-name="{{ $key }}" data-subject="{{ $def['subject'] }}">{{ $key }} <span class="text-muted">— {{ Str::limit($def['subject'], 36) }}</span></a></li>
+                    <li><button type="button" class="dropdown-item small starter-item w-100 text-start" data-name="{{ $key }}" data-subject="{{ $def['subject'] }}">{{ $key }} <span class="text-muted">— {{ Str::limit($def['subject'], 36) }}</span></button></li>
                 @endforeach
             </ul>
         </div>
@@ -54,13 +50,13 @@
 
                     <div class="row">
                         <div class="col-md-6 mb-3">
-                            <label class="form-label fw-semibold">Template Name (slug) <span class="text-danger">*</span></label>
-                            <input type="text" name="name" value="{{ old('name') }}" class="form-control" required placeholder="e.g. invoice_created">
+                            <label class="form-label fw-semibold" for="templateName">Template Name (slug) <span class="text-danger">*</span></label>
+                            <input type="text" id="templateName" name="name" value="{{ old('name') }}" class="form-control" required placeholder="e.g. invoice_created">
                             <div class="form-text">Lowercase, underscores. Used in code to trigger this template.</div>
                         </div>
                         <div class="col-md-3 mb-3">
-                            <label class="form-label fw-semibold">Status</label>
-                            <select name="status" class="form-select">
+                            <label class="form-label fw-semibold" for="templateStatus">Status</label>
+                            <select id="templateStatus" name="status" class="form-select">
                                 <option value="active" @selected(old('status', 'active') === 'active')>Active</option>
                                 <option value="inactive" @selected(old('status') === 'inactive')>Inactive</option>
                             </select>
@@ -68,7 +64,7 @@
                     </div>
 
                     <div class="mb-3">
-                        <label class="form-label fw-semibold d-flex justify-content-between">
+                        <label class="form-label fw-semibold d-flex justify-content-between" for="subjectInput">
                             Subject <span class="text-danger">*</span>
                             <small class="text-muted">click a variable to insert</small>
                         </label>
@@ -77,7 +73,7 @@
                     </div>
 
                     <div class="mb-2 d-flex justify-content-between align-items-center">
-                        <label class="form-label fw-semibold mb-0">Body (HTML) <span class="text-danger">*</span></label>
+                        <label class="form-label fw-semibold mb-0" for="bodyTextarea">Body (HTML) <span class="text-danger">*</span></label>
                         <small class="text-muted">Variables insert at cursor • HTML tables supported</small>
                     </div>
 
@@ -99,15 +95,15 @@
                         </div>
                         {{-- Visual pane (Quill) --}}
                         <div id="pane-visual" class="d-none">
-                            <div id="quillToolbar" class="et-toolbar">
-                                <button type="button" data-q="bold"><b>B</b></button>
-                                <button type="button" data-q="italic"><i>I</i></button>
-                                <button type="button" data-q="underline"><u>U</u></button>
-                                <button type="button" data-q="h2">H2</button>
-                                <button type="button" data-q="link">🔗</button>
-                                <button type="button" data-q="list-ordered">1.</button>
-                                <button type="button" data-q="list-bullet">•</button>
-                                <button type="button" data-q="clean">✕</button>
+                            <div id="quillToolbar" class="et-toolbar" role="toolbar" aria-label="Formatting">
+                                <button type="button" data-q="bold" aria-label="Bold"><b>B</b></button>
+                                <button type="button" data-q="italic" aria-label="Italic"><i>I</i></button>
+                                <button type="button" data-q="underline" aria-label="Underline"><u>U</u></button>
+                                <button type="button" data-q="h2" aria-label="Heading">H2</button>
+                                <button type="button" data-q="link" aria-label="Insert link">🔗</button>
+                                <button type="button" data-q="list-ordered" aria-label="Ordered list">1.</button>
+                                <button type="button" data-q="list-bullet" aria-label="Bullet list">•</button>
+                                <button type="button" data-q="clean" aria-label="Clear formatting">✕</button>
                             </div>
                             <div id="quillEditor"></div>
                         </div>
@@ -125,7 +121,8 @@
             {{-- Variable palette --}}
             <x-adminlte-card icon="bi bi-braces" title="Variables — click to insert" class="sticky-top" style="top:1rem;">
                 <div class="mb-2">
-                    <input type="search" id="varSearch" class="form-control form-control-sm" placeholder="Filter variables...">
+                    <label class="visually-hidden" for="varSearch">Filter variables</label>
+                    <input type="search" id="varSearch" class="form-control form-control-sm" placeholder="Filter variables..." aria-label="Filter variables">
                 </div>
                 <div style="max-height:560px; overflow:auto;" id="varPalette">
                     @foreach($variableGroups as $group => $vars)
@@ -139,12 +136,12 @@
                         </div>
                     @endforeach
                 </div>
-                <div class="small text-muted mt-2">Click a chip to insert at cursor. <a href="#" data-bs-toggle="modal" data-bs-target="#varsHelpModal">Full reference</a></div>
+                <div class="small text-muted mt-2">Click a chip to insert at cursor. <button type="button" class="btn btn-link btn-sm p-0" data-bs-toggle="modal" data-bs-target="#varsHelpModal">Full reference</button></div>
             </x-adminlte-card>
         </div>
     </div>
 
-    <div class="modal fade" id="varsHelpModal" tabindex="-1"><div class="modal-dialog modal-lg"><div class="modal-content"><div class="modal-header"><h5 class="modal-title">All variables</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body" style="max-height:70vh; overflow:auto;">
+    <div class="modal fade" id="varsHelpModal" tabindex="-1"><div class="modal-dialog modal-lg"><div class="modal-content"><div class="modal-header"><h5 class="modal-title">All variables</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div><div class="modal-body" style="max-height:70vh; overflow:auto;">
         @foreach($variableGroups as $g => $vars)
             <h6 class="mt-3">{{ $g }}</h6>
             <table class="table table-sm"><thead><tr><th>Key</th><th>Label</th><th>Desc</th></tr></thead><tbody>

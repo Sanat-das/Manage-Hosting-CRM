@@ -7,6 +7,7 @@ use App\Http\Requests\OrderRequest;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Product;
+use App\Services\Billing\AddOnService;
 use App\Services\Billing\BillingService;
 use App\Services\OrderActivityLogger;
 use App\Services\OrderConfigSnapshot;
@@ -36,6 +37,7 @@ class OrderController extends Controller
     public function __construct(
         private readonly OrderService $orders,
         private readonly BillingService $billing,
+        private readonly AddOnService $addons,
         private readonly OrderNumberService $orderNumbers,
         private readonly OrderConfigSnapshot $snapshot,
     ) {}
@@ -117,7 +119,7 @@ class OrderController extends Controller
             ]);
 
             foreach ($prepared as [$product, $line, $unitPrice, $lineTotal]) {
-                OrderItem::create([
+                $parentItem = OrderItem::create([
                     'order_id' => $order->id,
                     'product_id' => $product->id,
                     'product_name' => $product->name,
@@ -130,7 +132,16 @@ class OrderController extends Controller
                     'total' => $lineTotal,
                     'config_options' => $this->snapshot->capture($product, null, $line['options'] ?? [], $line['billing_cycle']),
                 ]);
+
+                // Order-time add-on selections become their own order items
+                // BEFORE the draft invoice is created below.
+                $this->addons->materialize($order, $parentItem, $line['addons'] ?? []);
             }
+
+            // The add-on rows above are billable lines too: the order total
+            // is the sum of ALL its rows (relation query, so it never depends
+            // on a loaded relation).
+            $order->update(['total' => round((float) $order->items()->sum('total'), 2)]);
 
             // Customer-facing trail: the API path writes the same order_created
             // row as the admin UI, the storefront and the admin cart.
@@ -138,6 +149,7 @@ class OrderController extends Controller
 
             // Draft invoice through the shared GST engine so the order is
             // immediately billable — same convention as the admin paths.
+            $order->load('items');
             $this->billing->createInvoiceForOrder($order);
 
             return $order;

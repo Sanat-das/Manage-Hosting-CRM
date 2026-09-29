@@ -9,6 +9,7 @@ use App\Models\Product;
 use App\Models\ProductAddon;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\View\View;
 
 /**
@@ -61,16 +62,22 @@ class AddonController extends Controller
         $validated = $request->validated();
 
         try {
-            $addon = ProductAddon::create([
-                'product_id' => $validated['product_id'] ?? null,
-                'name' => $validated['name'],
-                'description' => $validated['description'] ?? null,
-                'billing_cycle' => $validated['billing_cycle'],
-                'setup_fee' => $validated['setup_fee'] ?? 0,
-                'price' => $validated['price'] ?? 0,
-                'welcome_email_template_id' => $validated['welcome_email_template_id'] ?? null,
-                'status' => $validated['status'],
-            ]);
+            $addon = DB::transaction(function () use ($validated) {
+                $addon = ProductAddon::create([
+                    'product_id' => $validated['product_id'] ?? null,
+                    'name' => $validated['name'],
+                    'description' => $validated['description'] ?? null,
+                    'billing_cycle' => $validated['billing_cycle'],
+                    'setup_fee' => $validated['setup_fee'] ?? 0,
+                    'price' => $validated['price'] ?? 0,
+                    'welcome_email_template_id' => $validated['welcome_email_template_id'] ?? null,
+                    'status' => $validated['status'],
+                ]);
+
+                $this->syncPricingMatrix($addon, $validated['pricing'] ?? []);
+
+                return $addon;
+            });
         } catch (\Throwable $e) {
             return back()->withInput()->withErrors(['error' => 'Could not create add-on: '.$e->getMessage()]);
         }
@@ -90,16 +97,20 @@ class AddonController extends Controller
         $validated = $request->validated();
 
         try {
-            $addon->update([
-                'product_id' => $validated['product_id'] ?? null,
-                'name' => $validated['name'],
-                'description' => $validated['description'] ?? null,
-                'billing_cycle' => $validated['billing_cycle'],
-                'setup_fee' => $validated['setup_fee'] ?? 0,
-                'price' => $validated['price'] ?? 0,
-                'welcome_email_template_id' => $validated['welcome_email_template_id'] ?? null,
-                'status' => $validated['status'],
-            ]);
+            DB::transaction(function () use ($addon, $validated) {
+                $addon->update([
+                    'product_id' => $validated['product_id'] ?? null,
+                    'name' => $validated['name'],
+                    'description' => $validated['description'] ?? null,
+                    'billing_cycle' => $validated['billing_cycle'],
+                    'setup_fee' => $validated['setup_fee'] ?? 0,
+                    'price' => $validated['price'] ?? 0,
+                    'welcome_email_template_id' => $validated['welcome_email_template_id'] ?? null,
+                    'status' => $validated['status'],
+                ]);
+
+                $this->syncPricingMatrix($addon, $validated['pricing'] ?? []);
+            });
         } catch (\Throwable $e) {
             return back()->withInput()->withErrors(['error' => 'Could not update add-on: '.$e->getMessage()]);
         }
@@ -119,6 +130,24 @@ class AddonController extends Controller
     }
 
     /**
+     * Replace the add-on's per-cycle price matrix with the submitted rows.
+     *
+     * @param  array<int, array{billing_cycle: string, price: float|int|string, setup_fee?: float|int|string|null}>  $rows
+     */
+    private function syncPricingMatrix(ProductAddon $addon, array $rows): void
+    {
+        $addon->pricing()->delete();
+
+        foreach ($rows as $row) {
+            $addon->pricing()->create([
+                'billing_cycle' => $row['billing_cycle'],
+                'price' => $row['price'],
+                'setup_fee' => $row['setup_fee'] ?? 0,
+            ]);
+        }
+    }
+
+    /**
      * Shared select-list data for the create/edit forms.
      *
      * @return array<string, mixed>
@@ -133,6 +162,7 @@ class AddonController extends Controller
                 'quarterly' => 'Quarterly',
                 'semi_annual' => 'Semi-Annual',
                 'annual' => 'Annual',
+                'biennial' => 'Biennial',
             ],
             'emailTemplates' => EmailTemplate::query()
                 ->where('status', 'active')

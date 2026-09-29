@@ -995,3 +995,148 @@ textarea.form-control { min-height: 76px; resize: vertical; line-height: var(--l
     .hardening-grid .form-label { min-height: 0; }
     .hardening-grid .form-text { min-height: 0; }
 }
+
+/* ── Module actions card (admin hosting show, 2026-09-28) ───────────────
+   Risk-grouped compute controls + single status strip. Tokens only
+   (var()/color-mix) so dark mode remaps automatically; additive and
+   namespaced (.mh-module-*) — safe for every other admin page sharing
+   this file. ─────────────────────────────────────────────────────────── */
+/* One aligned group row: Lifecycle · Access · Danger share a single flex
+   row with a consistent gap, labels on the same baseline, buttons below.
+   Lifecycle and Access may shrink (their button rows wrap internally);
+   Danger never shrinks, so it can never collapse into a squeezed side
+   column. Below the tablet breakpoint the row wraps with each group
+   full-width and left-aligned. */
+.mh-module-actions {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: var(--space-3);
+    align-items: flex-start;
+    justify-content: flex-start;
+}
+.mh-module-group {
+    flex: 0 1 auto;
+    min-width: 0;
+}
+.mh-module-group--danger {
+    flex: 0 0 auto;
+}
+@media (max-width: 767.98px) {
+    .mh-module-actions { flex-wrap: wrap; }
+    .mh-module-actions .mh-module-group { flex: 1 1 100%; }
+}
+.mh-module-group__title {
+    font-size: var(--text-xs);
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--color-text-muted);
+    margin-bottom: var(--space-1);
+}
+/* Console-gateway reason: its own muted line inside the Access group,
+   next to VM Console — never inline with the buttons, where its width
+   pushed Danger off the row. */
+.mh-module-group__note {
+    margin-top: var(--space-1);
+    font-size: var(--text-xs);
+    line-height: var(--leading-normal);
+    color: var(--bs-secondary-color);
+    max-width: 22rem;
+}
+.mh-module-actions .btn {
+    min-height: 31px;
+    display: inline-flex;
+    align-items: center;
+}
+.mh-module-notice {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-2);
+    font-size: var(--text-sm);
+    line-height: var(--leading-normal);
+}
+.mh-module-notice[hidden] { display: none; }
+/* Strip hierarchy: the state message leads; a recorded failure follows
+   on its own muted line, still prefixed "Last action failed:". */
+.mh-module-notice__body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    min-width: 0;
+}
+.mh-module-notice__failure {
+    display: block;
+    font-size: var(--text-xs);
+    line-height: var(--leading-normal);
+    color: var(--bs-secondary-color);
+}
+.mh-module-create {
+    border: 1px solid var(--bs-border-color);
+    border-radius: var(--radius-md);
+    background: var(--color-bg-subtle);
+    padding: var(--space-3);
+}
+.mh-module-create .form-select { max-width: 28rem; }
+.mh-module-group--danger {
+    border: 1px solid color-mix(in srgb, var(--color-danger) 35%, transparent);
+    border-radius: var(--radius-md);
+    background: var(--color-danger-subtle);
+    padding: var(--space-2);
+}
+@media (prefers-reduced-motion: reduce) {
+    .mh-module-actions .btn { transition: none; }
+}
+
+/* ================================================================== *
+ *  Colour-mode switch — token-styled segmented control used by       *
+ *  layouts with no navbar dropdown to host one (auth, error pages).  *
+ *  Buttons carry [data-bs-theme-value], the hook the colour-mode JS  *
+ *  in adminlte.js wires and marks .active.                           *
+ * ================================================================== */
+.theme-switch {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    padding: 3px;
+    border: 1px solid var(--bs-border-color);
+    border-radius: var(--radius-full);
+    background: var(--color-surface);
+    box-shadow: var(--shadow-sm);
+}
+.theme-switch--floating {
+    position: fixed;
+    top: var(--space-3);
+    inset-inline-end: var(--space-3);
+    z-index: var(--z-fixed);
+}
+.theme-switch__btn {
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 0;
+    border-radius: var(--radius-full);
+    background: transparent;
+    color: var(--color-text-muted);
+    font-size: 0.82rem;
+    line-height: 1;
+    transition: background var(--duration-fast) var(--ease-default),
+        color var(--duration-fast) var(--ease-default);
+}
+.theme-switch__btn:hover {
+    background: var(--color-bg-muted);
+    color: var(--color-text);
+}
+.theme-switch__btn.active {
+    background: var(--color-primary);
+    color: #fff;
+}
+.theme-switch__btn:focus-visible {
+    outline: 2px solid var(--color-focus-ring);
+    outline-offset: 1px;
+}
+@media (prefers-reduced-motion: reduce) {
+    .theme-switch__btn { transition: none; }
+}

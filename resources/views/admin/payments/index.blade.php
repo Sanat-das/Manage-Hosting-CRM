@@ -7,9 +7,7 @@
 @stop
 
 @section('content')
-    @if (session('success'))
-        <x-adminlte-alert theme="success" dismissible>{{ session('success') }}</x-adminlte-alert>
-    @endif
+    <x-adminlte.partials.flash-alert />
 
     <x-adminlte.partials.datatable icon="bi bi-credit-card" title="All Payments"
         :search-value="$search" search-placeholder="Search transaction ID or invoice..."
@@ -25,7 +23,7 @@
         <x-slot name="tools">
             <form method="GET" action="{{ url()->current() }}" class="d-inline-flex align-items-center gap-2 me-2">
                 <input type="hidden" name="search" value="{{ $search }}">
-                <select name="method" class="form-select form-select-sm" onchange="this.form.submit()">
+                <select name="method" class="form-select form-select-sm" onchange="this.form.submit()" aria-label="Filter by method">
                     <option value="">All methods</option>
                     @foreach ($methods as $k => $v)
                         <option value="{{ $k }}" @selected($method === $k)>{{ $v }}</option>
@@ -48,7 +46,7 @@
                 <td class="text-muted">{{ $payment->created_at?->format('M j, Y H:i') }}</td>
             </tr>
         @empty
-            <tr><td colspan="7" class="text-center text-muted py-4">No payments found.</td></tr>
+            <x-ui.empty-table-row colSpan="7" title="No payments found." />
         @endforelse
     </x-adminlte.partials.datatable>
 @stop

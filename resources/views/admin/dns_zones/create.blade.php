@@ -8,7 +8,7 @@
     ]" />
 @stop
 @section('content')
-    @if ($errors->any()) <x-adminlte-alert theme="danger" dismissible><ul class="mb-0">@foreach ($errors->all() as $error)<li>{{ $error }}</li>@endforeach</ul></x-adminlte-alert> @endif
+    <x-adminlte.partials.flash-alert />
     <x-adminlte.partials.form-card icon="bi bi-globe" title="New DNS Zone" :action="route('admin.dns-zones.store')" submit-label="Save Zone" :cancel-url="route('admin.dns-zones.index')">
         <div class="row">
             <div class="col-md-6"><x-adminlte-input name="domain" label="Domain" placeholder="e.g. example.com" value="{{ old('domain') }}" required /></div>

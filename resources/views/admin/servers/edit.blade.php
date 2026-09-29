@@ -12,15 +12,7 @@
 @stop
 
 @section('content')
-    @if ($errors->any())
-        <x-adminlte-alert theme="danger" dismissible>
-            <ul class="mb-0">
-                @foreach ($errors->all() as $error)
-                    <li>{{ $error }}</li>
-                @endforeach
-            </ul>
-        </x-adminlte-alert>
-    @endif
+    <x-adminlte.partials.flash-alert />
 
     {{-- todo-12 transport prefill (scope only): camel-aware value resolution --}}
     @php
@@ -335,6 +327,13 @@
                 if ($oldSelected !== null) {
                     $selectedVmIds = array_map(static fn ($v): string => (string) $v, (array) $oldSelected);
                 }
+                // The default picker offers curated rows only: proxmoxConnectionMeta()
+                // discards a default outside the curated list, so listing an
+                // unchecked template would drop the operator's pick on save.
+                $curatedRows = array_filter(
+                    $rows,
+                    static fn (array $row): bool => in_array($row['vmid'], $selectedVmIds, true),
+                );
                 $oldLabels = old('proxmox_labels');
                 $oldDefault = old('proxmox_template_default', $server->proxmoxDefaultTemplate() ?? '');
             @endphp
@@ -396,7 +395,7 @@
                     <label for="field_proxmox_template_default" class="form-label fw-medium">Default template</label>
                     <select id="field_proxmox_template_default" name="proxmox_template_default" class="form-select" style="max-width: 360px;">
                         <option value="">— None —</option>
-                        @foreach ($rows as $row)
+                        @foreach ($curatedRows as $row)
                             <option value="{{ $row['vmid'] }}" @selected((string) $oldDefault === $row['vmid'])>
                                 {{ $row['name'] !== '' ? $row['name'] : 'VMID '.$row['vmid'] }}
                             </option>
@@ -440,6 +439,12 @@
                 if ($oldSelected !== null) {
                     $selectedOsIds = array_map(static fn ($v): string => (string) $v, (array) $oldSelected);
                 }
+                // Mirrors the Proxmox picker: only curated rows may be chosen as
+                // the default, because the save discards anything else.
+                $curatedRows = array_filter(
+                    $rows,
+                    static fn (array $row): bool => in_array($row['osid'], $selectedOsIds, true),
+                );
                 $oldLabels = old('virtualizor_labels');
                 $oldDefault = old('virtualizor_template_default', $server->virtualizorDefaultOs() ?? '');
             @endphp
@@ -495,7 +500,7 @@
                     <label for="field_virtualizor_template_default" class="form-label fw-medium">Default OS template</label>
                     <select id="field_virtualizor_template_default" name="virtualizor_template_default" class="form-select" style="max-width: 360px;">
                         <option value="">— None —</option>
-                        @foreach ($rows as $row)
+                        @foreach ($curatedRows as $row)
                             <option value="{{ $row['osid'] }}" @selected((string) $oldDefault === $row['osid'])>
                                 {{ $row['name'] !== '' ? $row['name'] : 'OSID '.$row['osid'] }}
                             </option>

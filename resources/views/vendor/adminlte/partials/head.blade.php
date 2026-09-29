@@ -6,6 +6,28 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
 <meta name="csrf-token" content="{{ csrf_token() }}">
 
+{{-- Colour scheme, resolved before first paint.
+     The server can only mirror an explicit light/dark cookie; "auto" needs
+     prefers-color-scheme, which exists only here. Running inline ahead of the
+     stylesheets means the first painted frame is already in the right theme —
+     the Vite bundle repeats this in adminlte.js for in-page switches, but it
+     loads too late to stop the flash on a hard navigation. --}}
+<script>
+    (function () {
+        try {
+            var match = document.cookie.match(/(?:^|;\s*)mh_theme=([^;]+)/);
+            var preference = localStorage.getItem('adminlte.colorMode')
+                || (match ? decodeURIComponent(match[1]) : 'auto');
+            var resolved = preference === 'auto'
+                ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+                : preference;
+            document.documentElement.setAttribute('data-bs-theme', resolved);
+        } catch (e) {
+            /* Storage blocked (private mode) — the server-rendered value stands. */
+        }
+    })();
+</script>
+
 @php
     // Fallback title when caller didn't prepare one (e.g. direct include).
     if (! isset($title)) {

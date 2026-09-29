@@ -51,11 +51,12 @@
                     <div class="text-danger small mb-2">{{ $message }}</div>
                 @enderror
 
-                <div class="d-flex flex-wrap align-items-center gap-2 mb-3 p-3 rounded-3 border bg-light-subtle" style="background:var(--bs-tertiary-bg);">
+                <div class="d-flex flex-wrap align-items-center gap-2 mb-3 p-3 rounded-3 border bg-body-tertiary">
                     <div class="flex-grow-1" style="min-width:240px; max-width:420px;">
                         <div class="input-group input-group-sm">
-                            <span class="input-group-text bg-body"><i class="bi bi-search"></i></span>
-                            <input type="search" id="perm-search" class="form-control" placeholder="Filter permissions… (e.g. DNS, invoice, hosting)" autocomplete="off">
+                            <span class="input-group-text bg-body"><i class="bi bi-search" aria-hidden="true"></i></span>
+                            <label class="visually-hidden" for="perm-search">Filter permissions</label>
+                            <input type="search" id="perm-search" class="form-control" placeholder="Filter permissions… (e.g. DNS, invoice, hosting)" autocomplete="off" aria-label="Filter permissions">
                         </div>
                     </div>
                     <div class="d-flex align-items-center gap-2 ms-auto">
@@ -87,8 +88,8 @@
                                 <span class="badge rounded-pill ms-2 perm-group-count {{ $groupSelected > 0 ? 'text-bg-primary' : 'text-bg-secondary' }}"
                                       data-group="{{ $groupId }}">{{ $groupSelected }}/{{ $groupTotal }}</span>
                                 <span class="text-muted small ms-1 d-none d-md-inline">{{ $groupTotal }} permissions</span>
-                                <button type="button" class="btn btn-sm btn-link ms-auto text-decoration-none p-0" data-bs-toggle="collapse" data-bs-target="#{{ $groupId }}-body" aria-expanded="true">
-                                    <i class="bi bi-chevron-down small"></i>
+                                <button type="button" class="btn btn-sm btn-link ms-auto text-decoration-none p-0" data-bs-toggle="collapse" data-bs-target="#{{ $groupId }}-body" aria-expanded="true" aria-label="Toggle {{ $groupName }} permissions" aria-controls="{{ $groupId }}-body">
+                                    <i class="bi bi-chevron-down small" aria-hidden="true"></i>
                                 </button>
                             </div>
                             <div id="{{ $groupId }}-body" class="collapse show">

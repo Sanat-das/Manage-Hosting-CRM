@@ -20,23 +20,12 @@
 @stop
 
 @section('content')
-    @if (session('success'))
-        <x-adminlte-alert theme="success" dismissible>{{ session('success') }}</x-adminlte-alert>
-    @endif
+    <x-adminlte.partials.flash-alert />
     @if ($errors->has('send'))
         <x-adminlte-alert theme="danger" dismissible>{{ $errors->first('send') }}</x-adminlte-alert>
     @endif
     @if ($errors->has('payment'))
         <x-adminlte-alert theme="danger" dismissible>{{ $errors->first('payment') }}</x-adminlte-alert>
-    @endif
-    @if ($errors->any() && ! $errors->has('send') && ! $errors->has('payment'))
-        <x-adminlte-alert theme="danger" dismissible>
-            <ul class="mb-0">
-                @foreach ($errors->all() as $error)
-                    <li>{{ $error }}</li>
-                @endforeach
-            </ul>
-        </x-adminlte-alert>
     @endif
 
     {{-- Header card --}}
@@ -182,7 +171,7 @@
                                     <td class="text-end fw-bold">{{ number_format((float) $item->total, 2) }}</td>
                                 </tr>
                             @empty
-                                <tr><td colspan="4" class="text-center text-muted py-3">No items.</td></tr>
+                                <x-ui.empty-table-row colSpan="4" icon="bi bi-list-ul" title="No items." />
                             @endforelse
                         </tbody>
                         @if ($invoice->items->isNotEmpty())
@@ -240,7 +229,7 @@
                             </div>
                         @endif
                     </div>
-                    <div class="mt-3 border rounded p-3 bg-light">
+                    <div class="mt-3 border rounded p-3 bg-body-tertiary">
                         <div class="row g-2 small text-center">
                             <div class="col-md-3"><span class="text-muted">Subtotal</span><div class="fw-semibold">₹{{ number_format((float) $invoice->amount, 2) }}</div></div>
                             <div class="col-md-3"><span class="text-muted">Tax</span><div class="fw-semibold">₹{{ number_format((float) $invoice->tax, 2) }}</div></div>
@@ -249,10 +238,16 @@
                         </div>
                     </div>
                 @else
-                    <div class="text-center py-4 border rounded bg-light">
+                    <div class="text-center py-4 border rounded bg-body-tertiary">
                         <i class="bi bi-percent text-muted" style="font-size: 1.5rem;"></i>
                         <p class="text-muted mb-1 mt-2">No GST applied.</p>
                         <p class="text-muted small mb-0">GST breakdown will appear here when tax is calculated.</p>
+                    </div>
+                @endif
+                @if ($invoice->place_of_supply_code)
+                    <div class="mt-3 small">
+                        <span class="text-muted">Place of Supply</span>
+                        <div class="fw-semibold">{{ $invoice->place_of_supply_code }}</div>
                     </div>
                 @endif
             </div>
@@ -277,7 +272,7 @@
                                     <td class="text-end fw-bold">₹{{ number_format((float) $payment->amount, 2) }}</td>
                                 </tr>
                             @empty
-                                <tr><td colspan="4" class="text-center text-muted py-3">No payments recorded.</td></tr>
+                                <x-ui.empty-table-row colSpan="4" icon="bi bi-cash-coin" title="No payments recorded." />
                             @endforelse
                         </tbody>
                     </table>
@@ -304,6 +299,9 @@
                                         @endif
                                     </td>
                                 </tr>
+                                @if ($invoice->customer?->tax_id)
+                                    <tr><th class="text-muted">GSTIN</th><td>{{ $invoice->customer->tax_id }}</td></tr>
+                                @endif
                                 <tr><th class="text-muted">Subtotal</th><td class="text-end">₹{{ number_format((float) $invoice->amount, 2) }}</td></tr>
                                 <tr><th class="text-muted">Tax</th><td class="text-end">₹{{ number_format((float) $invoice->tax, 2) }}</td></tr>
                                 <tr><th class="text-muted">Discount</th><td class="text-end">-₹{{ number_format((float) $invoice->discount, 2) }}</td></tr>
@@ -322,11 +320,11 @@
                     <div class="col-md-6">
                         <h6 class="text-muted mb-3"><i class="bi bi-sticky me-1"></i> Notes &amp; Details</h6>
                         @if ($invoice->notes)
-                            <div class="border rounded p-3 bg-light mb-3">
+                            <div class="border rounded p-3 bg-body-tertiary mb-3">
                                 <p class="mb-0" style="white-space: pre-wrap;">{{ $invoice->notes }}</p>
                             </div>
                         @else
-                            <div class="text-center py-4 border rounded bg-light mb-3">
+                            <div class="text-center py-4 border rounded bg-body-tertiary mb-3">
                                 <i class="bi bi-sticky text-muted" style="font-size: 1.5rem;"></i>
                                 <p class="text-muted mb-0 mt-2">No notes.</p>
                             </div>

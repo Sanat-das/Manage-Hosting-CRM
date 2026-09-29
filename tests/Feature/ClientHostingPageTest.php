@@ -85,9 +85,11 @@ class ClientHostingPageTest extends TestCase
 
         $response->assertSee('Products/Services');
         // Shipped unfiltered empty state: friendly copy plus store CTA.
-        // Raw needle: assertSee HTML-encodes its argument by default and the
-        // apostrophe in "don't" must match the view's literal output.
-        $response->assertSee("You don't have any products or services yet.", false);
+        // assertSeeText escapes the needle and strips tags from the response, so
+        // the apostrophe matches under both encodings — previously this used a
+        // raw needle, which only worked while the copy was literal template text
+        // rather than a component prop escaped by Blade (ENT_QUOTES).
+        $response->assertSeeText("You don't have any products or services yet.");
         $response->assertSee('Browse the Store');
     }
 }

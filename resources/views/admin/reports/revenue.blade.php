@@ -11,7 +11,7 @@
         <form method="GET" class="d-flex gap-2 align-items-end">
             <x-adminlte-input name="from" type="date" label="From" value="{{ $from }}" />
             <x-adminlte-input name="to" type="date" label="To" value="{{ $to }}" />
-            <button class="btn btn-primary"><i class="bi bi-search me-1"></i> Filter</button>
+            <button type="submit" class="btn btn-primary"><i class="bi bi-search me-1"></i> Filter</button>
         </form>
     </x-adminlte-card>
 
@@ -30,7 +30,7 @@
                         <td class="text-end fw-bold">₹{{ number_format($inv->total, 2) }}</td>
                     </tr>
                 @empty
-                    <tr><td colspan="4" class="text-center text-muted py-4">No invoices in this period.</td></tr>
+                    <x-ui.empty-table-row colSpan="4" title="No invoices in this period." />
                 @endforelse
             </tbody>
         </table>

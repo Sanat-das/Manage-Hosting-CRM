@@ -11,7 +11,7 @@
 @stop
 
 @section('content')
-    @if (session('success')) <x-adminlte-alert theme="success" dismissible>{{ session('success') }}</x-adminlte-alert> @endif
+    <x-adminlte.partials.flash-alert />
     @if ($errors->has('assign')) <x-adminlte-alert theme="danger" dismissible>{{ $errors->first('assign') }}</x-adminlte-alert> @endif
 
     <div class="d-flex justify-content-end gap-2 mb-3">

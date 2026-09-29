@@ -28,3 +28,7 @@ jobs:
         # Full migrate:fresh --seed on a scratch sqlite file - exercises the exact
         # path that wipes prod if seeders are not idempotent. See scripts/seed-smoke.sh
         run: bash scripts/seed-smoke.sh
+      - name: Agentic workflow wiring (static validation)
+        # Fails when .opencode/agentic-workflows.json references agents, skills,
+        # servers, or workflow command files that no longer exist.
+        run: node .opencode/scripts/validate-workflows.mjs

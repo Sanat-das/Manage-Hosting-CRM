@@ -3,16 +3,11 @@
 @section('title', $product->name)
 
 @section('content_header')
-    <div class="row">
-        <div class="col-sm-6"><h1 class="m-0">{{ $product->name }}</h1></div>
-        <div class="col-sm-6">
-            <ol class="breadcrumb float-sm-end">
-                <li class="breadcrumb-item"><a href="{{ url('/') }}">{{ __('adminlte.home') }}</a></li>
-                <li class="breadcrumb-item"><a href="{{ route('client.store.index') }}">Store</a></li>
-                <li class="breadcrumb-item active">{{ $product->name }}</li>
-            </ol>
-        </div>
-    </div>
+    <x-ui.page-header :title="$product->name" :breadcrumbs="[
+        ['label' => __('adminlte.home'), 'url' => url('/')],
+        ['label' => 'Store', 'url' => route('client.store.index')],
+        ['label' => $product->name, 'active' => true],
+    ]" />
 @stop
 
 @section('content')
@@ -144,7 +139,7 @@
 
                     @if ($cycleTiers->isNotEmpty())
                         <div class="mb-3">
-                            <label class="form-label fw-bold">Billing Cycle</label>
+                            <span class="form-label fw-bold d-block">Billing Cycle</span>
                             @foreach ($cycleTiers as $tier)
                                 <div class="form-check">
                                     <input class="form-check-input" type="radio" name="billing_cycle"
@@ -168,27 +163,27 @@
                     @endif
 
                     <div class="mb-3">
-                        <label class="form-label fw-bold">Quantity</label>
+                        <label class="form-label fw-bold" for="product-quantity">Quantity</label>
                         @if ($product->isSingleUnit())
-                            <input type="number" name="quantity" class="form-control" min="1" max="1" value="1" disabled>
+                            <input type="number" id="product-quantity" name="quantity" class="form-control" min="1" max="1" value="1" disabled aria-label="Quantity (single unit)">
                             <input type="hidden" name="quantity" value="1">
                             <div class="form-text text-muted">Sold as a single unit per order.</div>
                         @else
-                            <input type="number" name="quantity" class="form-control" min="1" max="99" value="1">
+                            <input type="number" id="product-quantity" name="quantity" class="form-control" min="1" max="99" value="1" aria-label="Quantity">
                         @endif
                     </div>
 
                     @if ($product->require_domain)
                         <div class="mb-3">
-                            <label class="form-label fw-bold">Domain</label>
-                            <input type="text" name="domain" class="form-control" placeholder="example.com">
+                            <label class="form-label fw-bold" for="product-domain">Domain</label>
+                            <input type="text" id="product-domain" name="domain" class="form-control" placeholder="example.com" autocomplete="off">
                         </div>
                     @endif
 
                     {{-- Customer-editable option links render per-type controls inside the form. --}}
                     @if ($editableLinks->isNotEmpty())
                         <div class="mb-3">
-                            <label class="form-label fw-bold">Configuration Options</label>
+                            <span class="form-label fw-bold d-block">Configuration Options</span>
                             @foreach ($editableLinks as $link)
                                 @php
                                     $optionType = $link->group?->type ?? 'dropdown';
@@ -286,6 +281,78 @@
                                         @endswitch
                                     </div>
                                 @endif
+                            @endforeach
+                        </div>
+                    @endif
+
+                    {{-- Optional add-ons applicable to this product. Each checked
+                         add-on posts addons[i][addon_id] plus its
+                         addons[i][quantity] to the cart form below. --}}
+                    @if (($addons ?? collect())->isNotEmpty())
+                        @php
+                            // Display rule (frozen): the cycle the customer has
+                            // selected is the first pricing tier (always the
+                            // checked radio), unless the product's own cycle is
+                            // offered too — then that tier is the checked one.
+                            // An add-on priced for that cycle shows the matrix
+                            // row price — the amount the server charges — not
+                            // its base price. window.storeAddons carries the
+                            // same matrix so the labels follow a cycle switch.
+                            $addonSelectedCycle = $cycleTiers->firstWhere('billing_cycle', $product->billing_cycle)?->billing_cycle
+                                ?? $cycleTiers->first()?->billing_cycle
+                                ?? ($product->billing_cycle ?? 'monthly');
+
+                            $addonPricingData = [];
+                            foreach ($addons as $addon) {
+                                $addonPricingData[(int) $addon->id] = $addon->pricing
+                                    ->mapWithKeys(fn ($row) => [(string) $row->billing_cycle => [
+                                        'price' => (float) $row->price,
+                                        'setup_fee' => (float) $row->setup_fee,
+                                    ]])
+                                    ->all();
+                            }
+                        @endphp
+                        <div class="mb-3" id="product-addons">
+                            <span class="form-label fw-bold d-block">Available Add-ons</span>
+                            @foreach ($addons as $i => $addon)
+                                @php
+                                    $submittedAddon = collect(old('addons', []))->firstWhere('addon_id', $addon->id);
+                                    $addonChecked = $submittedAddon !== null;
+                                    $addonQty = (int) ($submittedAddon['quantity'] ?? 1);
+
+                                    $addonRow = $addonPricingData[(int) $addon->id][$addonSelectedCycle] ?? null;
+                                    $addonPrice = (float) ($addonRow['price'] ?? $addon->price);
+                                    $addonSetup = (float) ($addonRow['setup_fee'] ?? $addon->setup_fee);
+                                    $addonCycleLabel = ucfirst(str_replace('_', ' ', (string) $addon->billing_cycle));
+                                @endphp
+                                <div class="product-addon-row mb-2" data-addon-id="{{ $addon->id }}"
+                                     data-addon-price="{{ number_format((float) $addon->price, 2) }}"
+                                     data-addon-setup-fee="{{ number_format((float) $addon->setup_fee, 2) }}"
+                                     data-addon-cycle="{{ $addonCycleLabel }}">
+                                    <div class="form-check">
+                                        <input class="form-check-input product-addon-check" type="checkbox"
+                                               name="addons[{{ $i }}][addon_id]" value="{{ $addon->id }}"
+                                               id="product-addon-{{ $addon->id }}" @checked($addonChecked)>
+                                        <label class="form-check-label" for="product-addon-{{ $addon->id }}">
+                                            {{ $addon->name }} —
+                                            <span class="product-addon-price">₹{{ number_format($addonPrice, 2) }}
+                                                @if ($addonRow !== null)
+                                                    <span class="text-muted small">— billed with product cycle</span>
+                                                @else
+                                                    <span class="text-muted small">({{ $addonCycleLabel }})</span>
+                                                @endif
+                                            </span>
+                                            <span class="product-addon-setup text-muted small @if ($addonSetup <= 0) d-none @endif">(+₹{{ number_format($addonSetup, 2) }} setup)</span>
+                                        </label>
+                                    </div>
+                                    <div class="ms-4 mt-1 d-flex align-items-center gap-2">
+                                        <label class="small text-muted mb-0" for="product-addon-qty-{{ $i }}">Qty</label>
+                                        <input type="number" class="form-control form-control-sm product-addon-qty" style="max-width: 90px;"
+                                               id="product-addon-qty-{{ $i }}" name="addons[{{ $i }}][quantity]"
+                                               min="1" max="99" value="{{ $addonQty }}" @disabled(! $addonChecked)
+                                               aria-label="Quantity for {{ $addon->name }}">
+                                    </div>
+                                </div>
                             @endforeach
                         </div>
                     @endif
@@ -440,6 +507,64 @@
                     inputs.forEach(function (input) { input.addEventListener('change', sync); });
                     sync();
                 });
+            })();
+        </script>
+        <script>
+            // Add-on labels show the price the customer is actually charged:
+            // the matrix row for the selected product cycle wins, else the
+            // add-on's base price and its own cycle label (same rule the
+            // server applies in AddOnService::resolveCycleAndPrice).
+            window.storeAddons = @json($addonPricingData ?? []);
+            (function () {
+                const addonPricing = window.storeAddons || {};
+
+                function selectedCycle() {
+                    const checked = document.querySelector('input[name="billing_cycle"]:checked');
+                    if (checked) return checked.value;
+                    const hidden = document.querySelector('input[name="billing_cycle"]');
+                    return hidden ? hidden.value : 'monthly';
+                }
+
+                function syncAddonPrices() {
+                    const cycle = selectedCycle();
+
+                    document.querySelectorAll('.product-addon-row').forEach(function (row) {
+                        const priced = (addonPricing[row.dataset.addonId] || {})[cycle] || null;
+                        const priceEl = row.querySelector('.product-addon-price');
+                        const setupEl = row.querySelector('.product-addon-setup');
+
+                        if (priceEl) {
+                            const price = Number(priced ? priced.price : (row.dataset.addonPrice || 0));
+                            priceEl.innerHTML = '₹' + price.toFixed(2) + ' ' + (priced
+                                ? '<span class="text-muted small">— billed with product cycle</span>'
+                                : '<span class="text-muted small">(' + row.dataset.addonCycle + ')</span>');
+                        }
+
+                        if (setupEl) {
+                            const setup = Number(priced ? priced.setup_fee : (row.dataset.addonSetupFee || 0));
+                            setupEl.textContent = '(+₹' + setup.toFixed(2) + ' setup)';
+                            setupEl.classList.toggle('d-none', setup <= 0);
+                        }
+                    });
+                }
+
+                document.querySelectorAll('input[name="billing_cycle"]').forEach(function (el) {
+                    el.addEventListener('change', syncAddonPrices);
+                });
+
+                // Add-on quantities ride with their checkbox: a qty box stays
+                // disabled (and therefore unsubmitted) until its add-on is
+                // ticked, so unchecked add-ons never post a quantity-only entry.
+                document.querySelectorAll('.product-addon-row').forEach(function (row) {
+                    var check = row.querySelector('.product-addon-check');
+                    var qty = row.querySelector('.product-addon-qty');
+                    if (!check || !qty) return;
+                    check.addEventListener('change', function () {
+                        qty.disabled = !check.checked;
+                    });
+                });
+
+                syncAddonPrices();
             })();
         </script>
     @endpush

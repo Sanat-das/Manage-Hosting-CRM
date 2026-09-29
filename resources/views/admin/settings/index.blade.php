@@ -332,15 +332,15 @@
                         <div class="col-md-3 d-flex align-items-end">
                             <div class="w-100">
                                 <label class="form-label">Preview</label>
-                                <div id="branding-preview-card" class="rounded d-flex align-items-center gap-2 px-3 py-2" style="background:#0F172A;color:#fff;min-height:44px;border:1px solid #1e293b;">
+                                <div id="branding-preview-card" class="rounded d-flex align-items-center gap-2 px-3 py-2" style="background:var(--color-surface);color:var(--color-text);min-height:44px;border:1px solid var(--color-border);">
                                     <picture>
                                         <source srcset="{{ $brandingLogoWebpUrl }}" type="image/webp">
-                                        <img id="branding-preview-logo" src="{{ $brandingLogoUrl }}" alt="Logo preview" style="height:24px;width:auto;object-fit:contain;background:rgba(255,255,255,0.08);border-radius:4px;padding:2px;">
+                                        <img id="branding-preview-logo" src="{{ $brandingLogoUrl }}" alt="Logo preview" style="height:24px;width:auto;object-fit:contain;background:color-mix(in srgb, var(--color-text) 8%, transparent);border-radius:4px;padding:2px;">
                                     </picture>
                                     <span id="branding-preview-name" class="fw-semibold small">{{ old('settings.branding_app_name', $settings['branding_app_name'] ?? 'HostVexa') }}</span>
                                     <span class="ms-auto d-inline-flex gap-1">
-                                        <span id="branding-preview-primary" class="rounded-circle d-inline-block" style="width:18px;height:18px;background:{{ $brandingPrimary }};border:2px solid rgba(255,255,255,0.5);" title="Primary"></span>
-                                        <span id="branding-preview-accent" class="rounded-circle d-inline-block" style="width:18px;height:18px;background:{{ $brandingAccent }};border:2px solid rgba(255,255,255,0.5);" title="Accent"></span>
+                                        <span id="branding-preview-primary" class="rounded-circle d-inline-block" style="width:18px;height:18px;background:{{ $brandingPrimary }};border:2px solid var(--color-border-strong);" title="Primary"></span>
+                                        <span id="branding-preview-accent" class="rounded-circle d-inline-block" style="width:18px;height:18px;background:{{ $brandingAccent }};border:2px solid var(--color-border-strong);" title="Accent"></span>
                                     </span>
                                 </div>
                                 <small class="form-text text-muted">How logo + colors look in the header.</small>
@@ -349,11 +349,11 @@
                     </div>
                     <div class="row mt-2">
                         <div class="col-md-6">
-                            <label class="form-label">Logo</label>
-                            <div class="d-flex align-items-center gap-3 mb-2 p-2 border rounded" style="background:var(--bs-tertiary-bg, #f8f9fa);">
+                            <label for="branding_logo" class="form-label">Logo</label>
+                            <div class="d-flex align-items-center gap-3 mb-2 p-2 border rounded" style="background:var(--bs-tertiary-bg);">
                                 <picture>
                                     <source srcset="{{ $brandingLogoWebpUrl }}" type="image/webp">
-                                    <img src="{{ $brandingLogoUrl }}" alt="Current logo" style="height:36px;width:auto;max-width:140px;object-fit:contain;background:#fff;border-radius:4px;padding:4px;border:1px solid #dee2e6;">
+                                    <img src="{{ $brandingLogoUrl }}" alt="Current logo" style="height:36px;width:auto;max-width:140px;object-fit:contain;background:var(--bs-white);border-radius:4px;padding:4px;border:1px solid var(--bs-border-color);">
                                 </picture>
                                 <div class="small text-muted">
                                     Current: <code class="small">{{ $settings['branding_logo_path'] ?? '' ?: \App\Support\Branding::DEFAULT_LOGO.' (default)' }}</code><br>
@@ -387,11 +387,11 @@
                             <small class="text-muted d-block mt-1" style="font-size:0.72rem;">If checked, the stored file is deleted from <code>storage/app/public/branding</code> on Save. Uploading a new file takes priority over this checkbox.</small>
                         </div>
                         <div class="col-md-6">
-                            <label class="form-label">Favicon</label>
-                            <div class="d-flex align-items-center gap-3 mb-2 p-2 border rounded" style="background:var(--bs-tertiary-bg, #f8f9fa);">
+                            <label for="branding_favicon" class="form-label">Favicon</label>
+                            <div class="d-flex align-items-center gap-3 mb-2 p-2 border rounded" style="background:var(--bs-tertiary-bg);">
                                 <picture>
                                     <source srcset="{{ $brandingFaviconWebpUrl }}" type="image/webp">
-                                    <img src="{{ $brandingFaviconUrl }}" alt="Current favicon" style="height:32px;width:32px;object-fit:contain;background:#fff;border-radius:4px;padding:4px;border:1px solid #dee2e6;">
+                                    <img src="{{ $brandingFaviconUrl }}" alt="Current favicon" style="height:32px;width:32px;object-fit:contain;background:var(--bs-white);border-radius:4px;padding:4px;border:1px solid var(--bs-border-color);">
                                 </picture>
                                 <div class="small text-muted">
                                     Current: <code class="small">{{ $settings['branding_favicon_path'] ?? '' ?: \App\Support\Branding::DEFAULT_FAVICON.' (default)' }}</code><br>
@@ -620,7 +620,7 @@
                     @endphp
                     {{-- Company Phone — customer phone-input parity (code select + number) --}}
                     <div class="mb-3" id="company-phone-field">
-                        <label class="form-label fw-semibold">Mobile / Phone <span class="text-muted fw-normal">(Company)</span></label>
+                        <label for="company_phone_number" class="form-label fw-semibold">Mobile / Phone <span class="text-muted fw-normal">(Company)</span></label>
                         <div class="input-group" style="flex-wrap: nowrap;">
                             <select id="company_phone_code" name="settings[company_phone_code]" class="form-select" style="max-width: 160px; flex: 0 0 160px; cursor: pointer; border-top-right-radius: 0; border-bottom-right-radius: 0;" aria-label="Country code">
                                 @foreach($cpCountries as $c)
@@ -649,7 +649,7 @@
                             <i class="bi bi-info-circle me-1"></i> Migrating from legacy address: <code>{{ Str::limit($caLegacy, 120) }}</code> — split it into the fields below and save. It will replace the legacy line on invoices.
                         </div>
                     @endif
-                    <div class="border rounded p-3 mb-3 bg-light-subtle">
+                    <div class="border rounded p-3 mb-3 bg-body-tertiary">
                         <div class="d-flex align-items-center gap-2 mb-3">
                             <i class="bi bi-geo-alt text-primary"></i>
                             <h6 class="mb-0 fw-semibold">Company Address</h6>
@@ -704,12 +704,12 @@
                     </div>
 
                     {{-- Live invoice header preview — mirrors InvoiceEmailService handling --}}
-                    <div class="mt-3 p-3 border rounded-3" id="company-preview" style="background: var(--bs-tertiary-bg, #f8f9fa);">
+                    <div class="mt-3 p-3 border rounded-3" id="company-preview" style="background: var(--bs-tertiary-bg);">
                         <div class="d-flex justify-content-between align-items-center mb-2">
                             <small class="text-uppercase fw-semibold text-muted" style="letter-spacing:0.06em;font-size:0.7rem;">Invoice header preview</small>
                             <small class="text-muted" style="font-size:0.7rem;"><i class="bi bi-eye me-1"></i>How it looks on invoices</small>
                         </div>
-                        <div class="bg-white border rounded p-3 shadow-sm" style="font-size:0.9rem;line-height:1.5;">
+                        <div class="bg-body border rounded p-3 shadow-sm" style="font-size:0.9rem;line-height:1.5;">
                             <div class="fw-bold" id="preview_company_name">{{ $settings['company_name'] ?? 'Your Company Name' }}</div>
                             <div class="text-muted small" id="preview_company_address" style="white-space: pre-line;">{{ ($settings['company_address'] ?? '') !== '' ? $settings['company_address'] : (trim(implode(', ', array_filter([$settings['company_address_line1'] ?? null, $settings['company_address_line2'] ?? null, $settings['company_city'] ?? null, $settings['company_state'] ?? null, $settings['company_postcode'] ?? null, $settings['company_country'] ?? null]))) ?: '123 Business Park, Mumbai, Maharashtra — 400001, India') }}</div>
                             <div class="small mt-1 text-muted">
@@ -890,6 +890,12 @@
                                 <x-adminlte-input name="settings[tax_rate]" label="Tax Rate (%)" type="number" min="0" max="100" step="0.01"
                                     value="{{ old('settings.tax_rate', $settings['tax_rate'] ?? '18') }}">
                                     <small class="form-text text-muted">0 – 100 %</small>
+                                </x-adminlte-input>
+                            </div>
+                            <div class="col-md-3">
+                                <x-adminlte-input name="settings[renewal_invoice_days]" label="Renewal Invoice Lead Days" type="number" min="0" max="90"
+                                    value="{{ old('settings.renewal_invoice_days', $settings['renewal_invoice_days'] ?? '0') }}">
+                                    <small class="form-text text-muted">Days before the due date; 0 = on the due date</small>
                                 </x-adminlte-input>
                             </div>
                             <div class="col-md-3">
@@ -2503,15 +2509,15 @@
                 font-weight: 600;
                 letter-spacing: 0.02em;
                 text-transform: uppercase;
-                color: var(--bs-secondary-color, #6c757d);
+                color: var(--bs-secondary-color);
                 margin: 0 0 0.75rem;
                 padding-bottom: 0.35rem;
-                border-bottom: 1px solid var(--bs-border-color, #dee2e6);
+                border-bottom: 1px solid var(--bs-border-color);
             }
 
             /* Sidebar layout */
             .settings-sidebar {
-                border-right: 1px solid var(--bs-border-color, #dee2e6);
+                border-right: 1px solid var(--bs-border-color);
             }
             .settings-nav .nav-link {
                 padding: 0.35rem 0.75rem;
@@ -2521,10 +2527,10 @@
             }
             .settings-nav .nav-link.active {
                 background-color: var(--bs-primary);
-                color: #fff;
+                color: var(--bs-white);
             }
             .settings-nav .nav-link:hover:not(.active) {
-                background-color: var(--bs-tertiary-bg, #f8f9fa);
+                background-color: var(--bs-tertiary-bg);
             }
             .settings-nav-group-label {
                 display: block;
@@ -2532,7 +2538,7 @@
                 font-weight: 600;
                 letter-spacing: 0.07em;
                 text-transform: uppercase;
-                color: var(--bs-secondary-color, #6c757d);
+                color: var(--bs-secondary-color);
                 padding: 0.5rem 0.75rem 0.15rem;
             }
             .settings-nav-group:not(:first-child) {
@@ -2540,14 +2546,14 @@
             }
             /* Keyboard focus indicator on active pane */
             .tab-pane:focus-visible {
-                outline: 2px solid rgba(13, 110, 253, 0.5);
+                outline: 2px solid color-mix(in srgb, var(--color-primary) 50%, transparent);
                 outline-offset: 2px;
             }
             /* Responsive: stack sidebar above content on small screens */
             @media (max-width: 991.98px) {
                 .settings-sidebar {
                     border-right: none;
-                    border-bottom: 1px solid var(--bs-border-color, #dee2e6);
+                    border-bottom: 1px solid var(--bs-border-color);
                     margin-bottom: 1rem;
                     max-height: none !important;
                     overflow-y: visible !important;

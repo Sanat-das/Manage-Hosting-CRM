@@ -8,7 +8,7 @@
   $panelIp = \App\Support\EgressIp::forDisplay(isset($server) ? ($server->ip_address ?? null) : null);
 @endphp
 <div class="card border mt-3" id="winrmGuideCard">
-  <div class="card-header bg-light d-flex align-items-center justify-content-between" style="cursor:pointer" data-bs-toggle="collapse" data-bs-target="#winrmGuideBody" aria-expanded="false">
+  <div class="card-header bg-body-secondary d-flex align-items-center justify-content-between" style="cursor:pointer" data-bs-toggle="collapse" data-bs-target="#winrmGuideBody" aria-expanded="false">
     <div class="d-flex align-items-center gap-2">
       <i class="bi bi-life-preserver text-primary"></i>
       <strong style="font-size: var(--text-sm)">Hyper-V WinRM setup guide</strong>
@@ -35,7 +35,7 @@
         </li>
       </ul>
 
-      <div class="tab-content border rounded p-3 bg-white">
+      <div class="tab-content border rounded p-3 bg-body">
         {{-- Windows host tab --}}
         <div class="tab-pane fade show active" id="winrm-win" role="tabpanel">
           <p class="fw-semibold mb-2">Run PowerShell <em>as Administrator</em> on <code>{{ $host }}</code>:</p>

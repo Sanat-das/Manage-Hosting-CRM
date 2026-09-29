@@ -12,15 +12,7 @@
 @stop
 
 @section('content')
-    @if ($errors->any())
-        <x-adminlte-alert theme="danger" dismissible>
-            <ul class="mb-0">
-                @foreach ($errors->all() as $error)
-                    <li>{{ $error }}</li>
-                @endforeach
-            </ul>
-        </x-adminlte-alert>
-    @endif
+    <x-adminlte.partials.flash-alert />
 
     @php
         $schemaFields = $schema['fields'] ?? $schema ?? [];
@@ -59,14 +51,14 @@
         <x-adminlte-card icon="bi bi-server" title="New Server — {{ $moduleName ?? $serverType }}">
             <div class="row g-3">
                 <div class="col-md-6">
-                    <label class="form-label fw-medium">Name <span class="text-danger">*</span></label>
-                    <input type="text" name="name" value="{{ old('name') }}" class="form-control @error('name') is-invalid @enderror" placeholder="e.g. Web-01" required>
+                    <label for="server-name" class="form-label fw-medium">Name <span class="text-danger">*</span></label>
+                    <input type="text" id="server-name" name="name" value="{{ old('name') }}" class="form-control @error('name') is-invalid @enderror" placeholder="e.g. Web-01" required>
                     @error('name')<div class="invalid-feedback">{{ $message }}</div>@enderror
                 </div>
                 @php $isHyperV = ($serverType ?? '') === 'hyperv'; @endphp
                 <div class="col-md-6">
-                    <label class="form-label fw-medium">IP address @if(!$isHyperV)<span class="text-danger">*</span>@endif</label>
-                    <input type="text" name="ip_address" value="{{ old('ip_address') }}" class="form-control @error('ip_address') is-invalid @enderror" placeholder="e.g. 192.168.1.10" @if(!$isHyperV) required @endif>
+                    <label for="server-ip" class="form-label fw-medium">IP address @if(!$isHyperV)<span class="text-danger">*</span>@endif</label>
+                    <input type="text" id="server-ip" name="ip_address" value="{{ old('ip_address') }}" class="form-control @error('ip_address') is-invalid @enderror" placeholder="e.g. 192.168.1.10" @if(!$isHyperV) required @endif>
                     @if($isHyperV)<div class="form-text">For Hyper-V you can fill either this or Host below.</div>@endif
                     @error('ip_address')<div class="invalid-feedback">{{ $message }}</div>@enderror
                 </div>
@@ -74,13 +66,13 @@
 
             <div class="row g-3 mt-1">
                 <div class="col-md-6">
-                    <label class="form-label fw-medium">Max accounts <span class="text-muted fw-normal">(0 = unlimited)</span></label>
-                    <input type="number" name="max_accounts" value="{{ old('max_accounts', 0) }}" min="0" step="1" class="form-control @error('max_accounts') is-invalid @enderror">
+                    <label for="server-max-accounts" class="form-label fw-medium">Max accounts <span class="text-muted fw-normal">(0 = unlimited)</span></label>
+                    <input type="number" id="server-max-accounts" name="max_accounts" value="{{ old('max_accounts', 0) }}" min="0" step="1" class="form-control @error('max_accounts') is-invalid @enderror">
                     @error('max_accounts')<div class="invalid-feedback">{{ $message }}</div>@enderror
                 </div>
                 <div class="col-md-6">
-                    <label class="form-label fw-medium">Status <span class="text-danger">*</span></label>
-                    <select name="status" class="form-select @error('status') is-invalid @enderror">
+                    <label for="server-status" class="form-label fw-medium">Status <span class="text-danger">*</span></label>
+                    <select id="server-status" name="status" class="form-select @error('status') is-invalid @enderror">
                         <option value="active" @selected(old('status', 'active') === 'active')>Active</option>
                         <option value="inactive" @selected(old('status') === 'inactive')>Inactive</option>
                     </select>
@@ -91,8 +83,8 @@
             {{-- Server Group filtered to same allowed_server_type --}}
             <div class="row g-3 mt-1">
                 <div class="col-md-6">
-                    <label class="form-label fw-medium">Server Group <span class="text-muted fw-normal">(optional)</span></label>
-                    <select name="server_group_id" class="form-select @error('server_group_id') is-invalid @enderror">
+                    <label for="server-group" class="form-label fw-medium">Server Group <span class="text-muted fw-normal">(optional)</span></label>
+                    <select id="server-group" name="server_group_id" class="form-select @error('server_group_id') is-invalid @enderror">
                         <option value="">— No group —</option>
                         @foreach ($groupOptions as $group)
                             <option value="{{ $group->id }}" @selected((string) old('server_group_id') === (string) $group->id)>{{ $group->name }}</option>
@@ -168,7 +160,7 @@
                             <div class="col-md-6">
                                 <label for="{{ $fieldId }}" class="form-label fw-medium">
                                     {{ $label }} @if ($required)<span class="text-danger">*</span>@endif
-                                    @if ($encrypted)<span class="badge text-bg-light border fw-normal ms-1" style="font-size:var(--text-xs);">encrypted</span>@endif
+                                    @if ($encrypted)<span class="badge text-bg-secondary border fw-normal ms-1" style="font-size:var(--text-xs);">encrypted</span>@endif
                                 </label>
                                 <input type="password" id="{{ $fieldId }}" name="{{ $key }}" value="{{ old($key) }}" class="form-control @error($key) is-invalid @enderror" placeholder="••••••••" @if($required) required @endif autocomplete="new-password">
                                 @if ($help)<div class="form-text">{{ $help }}</div>@endif

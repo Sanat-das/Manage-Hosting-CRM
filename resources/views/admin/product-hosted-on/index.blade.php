@@ -44,7 +44,7 @@
                             <td class="text-muted">{{ $relationship->notes ?? '—' }}</td>
                         </tr>
                     @empty
-                        <tr><td colspan="5" class="text-center text-muted py-4">No hosted-on relationships found for this product.</td></tr>
+                        <x-ui.empty-table-row colSpan="5" icon="bi bi-diagram-3" title="No hosted-on relationships found for this product." />
                     @endforelse
                 </tbody>
             </table>

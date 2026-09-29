@@ -7,9 +7,7 @@
 @stop
 
 @section('content')
-    @if (session('success'))
-        <x-adminlte-alert theme="success" dismissible>{{ session('success') }}</x-adminlte-alert>
-    @endif
+    <x-adminlte.partials.flash-alert />
 
     <div class="d-flex flex-wrap gap-2 mb-3">
         <a href="{{ route('admin.email-templates.edit', $template) }}" class="btn btn-outline-primary btn-sm"><i class="bi bi-pencil me-1"></i> Edit</a>
@@ -44,7 +42,7 @@
                     <button type="button" class="btn btn-sm btn-outline-secondary py-0" id="btnRefresh"><i class="bi bi-arrow-clockwise"></i> Refresh</button>
                 </div>
                 <div id="previewSubjectBadge" class="small fw-semibold p-2 bg-body-tertiary border rounded mb-2 text-truncate"></div>
-                <iframe id="previewFrame" style="width:100%; min-height:480px; border:1px solid var(--bs-border-color); border-radius:.4rem; background:#fff;"></iframe>
+                <iframe id="previewFrame" title="Email preview" style="width:100%; min-height:480px; border:1px solid var(--bs-border-color); border-radius:.4rem; background:#fff;"></iframe> {{-- email canvas is white by design --}}
                 <div id="previewError" class="small text-danger mt-1 d-none"></div>
             </x-adminlte-card>
         </div>
@@ -53,10 +51,11 @@
     {{-- Send test modal --}}
     <div class="modal fade" id="sendTestModal" tabindex="-1">
         <div class="modal-dialog"><div class="modal-content">
-            <div class="modal-header"><h5 class="modal-title">Send test email</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+            <div class="modal-header"><h5 class="modal-title">Send test email</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div>
             <div class="modal-body">
                 <p class="small text-muted">Renders this template with sample invoice data and sends to:</p>
-                <input type="email" id="testEmail" class="form-control" value="{{ auth()->user()->email }}" placeholder="you@example.com">
+                <label class="visually-hidden" for="testEmail">Test email address</label>
+                <input type="email" id="testEmail" class="form-control" value="{{ auth()->user()->email }}" placeholder="you@example.com" aria-label="Test email address">
                 <div id="testResult" class="small mt-2"></div>
             </div>
             <div class="modal-footer">

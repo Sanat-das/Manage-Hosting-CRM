@@ -3,16 +3,11 @@
 @section('title', 'My Wallet')
 
 @section('content_header')
-    <div class="row">
-        <div class="col-sm-6"><h1 class="m-0">My Wallet</h1></div>
-        <div class="col-sm-6">
-            <ol class="breadcrumb float-sm-end">
-                <li class="breadcrumb-item"><a href="{{ url('/') }}">{{ __('adminlte.home') }}</a></li>
-                <li class="breadcrumb-item"><a href="{{ route('client.dashboard') }}">Dashboard</a></li>
-                <li class="breadcrumb-item active">Wallet</li>
-            </ol>
-        </div>
-    </div>
+    <x-ui.page-header title="My Wallet" :breadcrumbs="[
+        ['label' => __('adminlte.home'), 'url' => url('/')],
+        ['label' => 'Dashboard', 'url' => route('client.dashboard')],
+        ['label' => 'Wallet', 'active' => true],
+    ]" />
 @stop
 
 @section('content')
@@ -22,7 +17,7 @@
             <x-adminlte-card icon="bi bi-wallet2" title="Balance">
                 <div class="text-center py-3">
                     <div class="fs-2 fw-bold {{ $customer->balance < 0 ? 'text-danger' : 'text-success' }}">
-                        {{ number_format($customer->balance, 2) }}
+                        <x-adminlte.partials.currency :value="$customer->balance" />
                     </div>
                     <div class="text-muted">Current balance</div>
                 </div>
@@ -32,7 +27,7 @@
             <x-adminlte-card icon="bi bi-credit-card" title="Credit">
                 <div class="text-center py-3">
                     <div class="fs-2 fw-bold text-info">
-                        {{ number_format($customer->credit, 2) }}
+                        <x-adminlte.partials.currency :value="$customer->credit" />
                     </div>
                     <div class="text-muted">Available credit</div>
                 </div>
@@ -60,11 +55,11 @@
                 <td><span class="badge text-bg-info">{{ ucfirst($txn->type ?? 'transaction') }}</span></td>
                 <td>{{ $txn->description ?? '—' }}</td>
                 <td class="grid-numeric fw-bold {{ ($txn->amount ?? 0) < 0 ? 'text-danger' : 'text-success' }}">
-                    {{ number_format(abs($txn->amount ?? 0), 2) }}
+                    <x-adminlte.partials.currency :value="abs($txn->amount ?? 0)" />
                 </td>
             </tr>
         @empty
-            <tr><td colspan="4" class="text-center text-muted py-4">No transactions yet.</td></tr>
+            <x-ui.empty-table-row colSpan="4" icon="bi bi-clock-history" title="No transactions yet." />
         @endforelse
     </x-adminlte.partials.datatable>
 @stop

@@ -23,21 +23,7 @@
 @stop
 
 @section('content')
-    @if (session('success'))
-        <x-adminlte-alert theme="success" dismissible>{{ session('success') }}</x-adminlte-alert>
-    @endif
-    @if (session('error'))
-        <x-adminlte-alert theme="danger" dismissible>{{ session('error') }}</x-adminlte-alert>
-    @endif
-    @if ($errors->any())
-        <x-adminlte-alert theme="danger" dismissible>
-            <ul class="mb-0">
-                @foreach ($errors->all() as $error)
-                    <li>{{ $error }}</li>
-                @endforeach
-            </ul>
-        </x-adminlte-alert>
-    @endif
+    <x-adminlte.partials.flash-alert />
 
     <x-adminlte-card>
         <x-adminlte.partials.detail-tabs :tabs="$tabs" :active-tab="$activeTab">
@@ -203,8 +189,9 @@
                                     <form method="POST" action="{{ route('admin.hosting.suspend', $hostingAccount) }}">
                                         @csrf
                                         <div class="mb-2">
-                                            <textarea name="reason" class="form-control form-control-sm" rows="2"
-                                                      placeholder="Suspension reason (optional)"></textarea>
+                                            <label class="visually-hidden" for="suspend-reason">Suspension reason</label>
+                                            <textarea id="suspend-reason" name="reason" class="form-control form-control-sm" rows="2"
+                                                      placeholder="Suspension reason (optional)" aria-label="Suspension reason (optional)"></textarea>
                                         </div>
                                         <button type="submit" class="btn btn-warning btn-sm">
                                             <i class="bi bi-pause me-1"></i> Suspend
@@ -241,7 +228,8 @@
                                     <form method="POST" action="{{ route('admin.hosting.change-package', $hostingAccount) }}">
                                         @csrf
                                         <div class="mb-2">
-                                            <select name="product_id" class="form-select form-select-sm" required>
+                                            <label class="visually-hidden" for="change-package">New package</label>
+                                            <select id="change-package" name="product_id" class="form-select form-select-sm" required aria-label="New package">
                                                 @foreach ($packages as $package)
                                                     <option value="{{ $package->id }}" @selected($package->id === $hostingAccount->product_id)>
                                                         {{ $package->name }} — {{ number_format($package->price, 2) }}
@@ -265,12 +253,14 @@
                                     <form method="POST" action="{{ route('admin.hosting.change-password', $hostingAccount) }}">
                                         @csrf
                                         <div class="mb-2">
-                                            <input type="password" name="password" class="form-control form-control-sm"
-                                                   placeholder="New panel password" minlength="8" required>
+                                            <label class="visually-hidden" for="new-panel-password">New panel password</label>
+                                            <input type="password" id="new-panel-password" name="password" class="form-control form-control-sm"
+                                                   placeholder="New panel password" minlength="8" required aria-label="New panel password">
                                         </div>
                                         <div class="mb-2">
-                                            <input type="password" name="password_confirmation" class="form-control form-control-sm"
-                                                   placeholder="Confirm new password" minlength="8" required>
+                                            <label class="visually-hidden" for="confirm-panel-password">Confirm new password</label>
+                                            <input type="password" id="confirm-panel-password" name="password_confirmation" class="form-control form-control-sm"
+                                                   placeholder="Confirm new password" minlength="8" required aria-label="Confirm new password">
                                         </div>
                                         <button type="submit" class="btn btn-outline-secondary btn-sm">
                                             <i class="bi bi-shield-lock me-1"></i> Change Password
@@ -355,8 +345,8 @@
                                 </select>
                             </div>
                             <div class="input-group input-group-sm mb-2">
-                                <span class="input-group-text"><i class="bi bi-search"></i></span>
-                                <input type="search" id="ip-search" class="form-control" placeholder="Search in selected subnet — e.g. 10.1.3.133" autocomplete="off">
+                                <span class="input-group-text"><i class="bi bi-search" aria-hidden="true"></i></span>
+                                <input type="search" id="ip-search" class="form-control" placeholder="Search in selected subnet — e.g. 10.1.3.133" autocomplete="off" aria-label="Search available IPs">
                                 <button type="button" class="btn btn-outline-secondary" id="ip-search-clear" title="Clear">×</button>
                             </div>
                             <div id="selected-ips" class="mb-2 d-none">
@@ -555,7 +545,7 @@
                             row.className = 'form-check d-flex align-items-center gap-2';
                             var label = ip.subnet_cidr || ip.subnet_name || 'no subnet';
                             if (ip.subnet_cidr && ip.subnet_name) label = ip.subnet_cidr + ' (' + ip.subnet_name + ')';
-                            var vBadge = ip.ip_version ? '<span class="badge text-bg-light border ms-1" style="font-size:0.65rem">IPv' + ip.ip_version + '</span>' : '';
+                            var vBadge = ip.ip_version ? '<span class="badge text-bg-secondary border ms-1" style="font-size:0.65rem">IPv' + ip.ip_version + '</span>' : '';
                             row.innerHTML = '<input class="form-check-input" type="checkbox" value="' + ip.id + '" id="avail-ip-' + ip.id + '"' + (isSel ? ' checked' : '') + '><label class="form-check-label small w-100 d-flex flex-wrap align-items-center gap-1" for="avail-ip-' + ip.id + '"><code>' + ip.ip_address + '</code>' + vBadge + statusBadge(ip.type) + ' <span class="text-muted">— ' + label + (ip.ptr_record ? ' · ' + ip.ptr_record : '') + '</span></label>';
                             var cb = row.querySelector('input');
                             cb.addEventListener('change', function () {

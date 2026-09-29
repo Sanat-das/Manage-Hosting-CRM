@@ -15,11 +15,14 @@
     $_authTagline = $_authBranding['tagline'] ?? \App\Support\Branding::tagline();
 @endphp
 <!DOCTYPE html>
-<html lang="{{ str_replace('_', '-', app()->getLocale()) }}" dir="{{ $rtl ? 'rtl' : 'ltr' }}">
+<html lang="{{ str_replace('_', '-', app()->getLocale()) }}" dir="{{ $rtl ? 'rtl' : 'ltr' }}"
+      @if (! empty($themeResolved)) data-bs-theme="{{ $themeResolved }}" @endif>
 <head>
     @include('adminlte::partials.head')
 </head>
 <body class="{{ $authType }}-page bg-body-secondary">
+    @include('partials._theme-switch', ['variant' => 'floating'])
+
     <div class="{{ $authType }}-box">
         <div class="card card-outline card-primary">
             <div class="card-header text-center py-3">

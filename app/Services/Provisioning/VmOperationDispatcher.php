@@ -122,6 +122,8 @@ class VmOperationDispatcher
         // database-queue worker must never race an uncommitted event row.
         RunVmOperation::dispatch($event->id, $account->id, $verb, Crypt::encryptString(json_encode($options)), $actorId);
 
+        $this->recorder->handOff($event);
+
         return $event;
     }
 
@@ -228,6 +230,8 @@ class VmOperationDispatcher
         // Dispatched AFTER the transaction commits, never inside it: a
         // database-queue worker must never race an uncommitted event row.
         RunVmOperation::dispatch($event->id, null, $verb, Crypt::encryptString(json_encode($options)), $actorId, $service->id);
+
+        $this->recorder->handOff($event);
 
         return $event;
     }

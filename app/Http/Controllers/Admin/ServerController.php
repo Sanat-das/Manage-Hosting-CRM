@@ -1713,7 +1713,9 @@ class ServerController extends Controller
         // the destroy on `provisioning`. The server page has no progress UI
         // for this event (flash-only) — the row exists for the audit trail.
         try {
-            $event = app(ProvisioningEventRecorder::class)->begin(
+            $recorder = app(ProvisioningEventRecorder::class);
+
+            $event = $recorder->begin(
                 'terminate',
                 [
                     'module' => 'proxmox',
@@ -1729,6 +1731,8 @@ class ServerController extends Controller
             );
 
             RunUnrecordedVmDestroy::dispatch($event->id, $server->id, $vmidInt, $node);
+
+            $recorder->handOff($event);
         } catch (\Throwable $e) {
             Log::warning('Admin unrecorded Proxmox VE VM destroy could not be queued', [
                 'server_id' => $server->id,

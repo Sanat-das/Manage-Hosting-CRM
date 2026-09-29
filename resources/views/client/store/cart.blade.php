@@ -3,16 +3,11 @@
 @section('title', 'Your Cart')
 
 @section('content_header')
-    <div class="row">
-        <div class="col-sm-6"><h1 class="m-0">Your Cart</h1></div>
-        <div class="col-sm-6">
-            <ol class="breadcrumb float-sm-end">
-                <li class="breadcrumb-item"><a href="{{ url('/') }}">{{ __('adminlte.home') }}</a></li>
-                <li class="breadcrumb-item"><a href="{{ route('client.store.index') }}">Store</a></li>
-                <li class="breadcrumb-item active">Cart</li>
-            </ol>
-        </div>
-    </div>
+    <x-ui.page-header title="Your Cart" :breadcrumbs="[
+        ['label' => __('adminlte.home'), 'url' => url('/')],
+        ['label' => 'Store', 'url' => route('client.store.index')],
+        ['label' => 'Cart', 'active' => true],
+    ]" />
 @stop
 
 @section('content')
@@ -26,7 +21,7 @@
 
     <x-adminlte-card icon="bi bi-cart" title="{{ count($items) }} item(s) in cart">
         @if ($items === [])
-            <x-adminlte-alert theme="info">Your cart is empty. <a href="{{ route('client.store.index') }}">Browse the store</a>.</x-adminlte-alert>
+            <x-adminlte.partials.empty-state icon="bi bi-cart" title="Your cart is empty" message="Your cart is empty, so there is nothing to check out yet. Browse the store to add a product." actionLabel="Browse the Store" :actionUrl="route('client.store.index')" />
         @else
             <div class="table-responsive">
                 <table class="table table-hover align-middle mb-0">
@@ -35,6 +30,18 @@
                     </thead>
                     <tbody>
                         @foreach ($items as $idx => $item)
+                            @if ($item['preview_addon'] ?? false)
+                                <tr>
+                                    <td><strong>{{ $item['product_name'] }}</strong> <span class="badge text-bg-warning ms-1">Add-on</span></td>
+                                    <td><span class="badge text-bg-info">{{ ucfirst(str_replace('_', ' ', $item['billing_cycle'])) }}</span></td>
+                                    <td>—</td>
+                                    <td>₹{{ number_format($item['unit_price'], 2) }}</td>
+                                    <td>{{ $item['quantity'] }}</td>
+                                    <td class="text-end">₹{{ number_format($item['total'], 2) }}</td>
+                                    <td></td>
+                                </tr>
+                                @continue
+                            @endif
                             <tr>
                                 <td><strong>{{ $item['product']->name }}</strong></td>
                                 <td><span class="badge text-bg-info">{{ ucfirst(str_replace('_', ' ', $item['cycle'])) }}</span></td>
@@ -47,8 +54,8 @@
                                         <form method="POST" action="{{ route('client.store.cart.update') }}" class="d-flex align-items-center gap-1">
                                             @csrf
                                             <input type="hidden" name="index" value="{{ $idx }}">
-                                            <input type="number" name="quantity" value="{{ $item['quantity'] }}" min="1" max="99" class="form-control form-control-sm" style="width:70px">
-                                            <button type="submit" class="btn btn-sm btn-outline-primary" aria-label="Update quantity"><i class="bi bi-arrow-repeat"></i></button>
+                                            <input type="number" name="quantity" value="{{ $item['quantity'] }}" min="1" max="99" class="form-control form-control-sm" style="width:70px" aria-label="Quantity for {{ $item['product']->name }}">
+                                            <button type="submit" class="btn btn-sm btn-outline-primary" aria-label="Update quantity for {{ $item['product']->name }}"><i class="bi bi-arrow-repeat" aria-hidden="true"></i></button>
                                         </form>
                                     @endif
                                 </td>
@@ -57,7 +64,7 @@
                                     <form method="POST" action="{{ route('client.store.cart.remove') }}" class="d-inline">
                                         @csrf
                                         <input type="hidden" name="index" value="{{ $idx }}">
-                                        <button type="submit" class="btn btn-sm btn-outline-danger" aria-label="Remove item"><i class="bi bi-trash"></i></button>
+                                        <button type="submit" class="btn btn-sm btn-outline-danger" aria-label="Remove {{ $item['product']->name }} from cart"><i class="bi bi-trash" aria-hidden="true"></i></button>
                                     </form>
                                 </td>
                             </tr>

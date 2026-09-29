@@ -7,15 +7,7 @@
 @stop
 
 @section('content')
-    @if (session('success'))
-        <x-adminlte-alert theme="success" dismissible>{{ session('success') }}</x-adminlte-alert>
-    @endif
-    @if (session('error'))
-        <x-adminlte-alert theme="danger" dismissible>{{ session('error') }}</x-adminlte-alert>
-    @endif
-    @if (session('warning'))
-        <x-adminlte-alert theme="warning" dismissible>{{ session('warning') }}</x-adminlte-alert>
-    @endif
+    <x-adminlte.partials.flash-alert />
 
     <x-adminlte-card icon="bi bi-puzzle" title="Modules">
         <x-slot name="tools">
@@ -116,9 +108,7 @@
                 </div>
             </div>
         @empty
-            <p class="text-muted mb-0">
-                No modules installed yet. Upload a module ZIP above to get started.
-            </p>
+            <x-adminlte.partials.empty-state icon="bi bi-puzzle" title="No modules installed yet." message="Upload a module ZIP above to get started." size="sm" />
         @endforelse
         </div>
     </x-adminlte-card>

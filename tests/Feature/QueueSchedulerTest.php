@@ -194,9 +194,9 @@ class QueueSchedulerTest extends TestCase
             'amount' => 499.00,
         ]);
 
-        // The cycle advanced by one month.
+        // The cycle advanced by one month from the item's own due date.
         $this->assertSame(
-            now()->addMonth()->toDateString(),
+            now()->subDay()->addMonth()->toDateString(),
             $order->fresh()->next_billing_date->toDateString()
         );
     }

@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Tests\Feature;
 
 use App\Contracts\Integrations\ProvisioningResult;
+use App\Jobs\ProvisionComputeVm;
+use App\Jobs\RunVmOperation;
 use App\Models\Customer;
 use App\Models\HostingAccount;
 use App\Models\Module;
@@ -21,8 +23,11 @@ use App\Services\Modules\ModuleManager;
 use App\Services\Provisioning\ManualProvisioner;
 use App\Services\Provisioning\ProvisioningDispatcher;
 use App\Services\Provisioning\ProvisioningEventRecorder;
+use App\Services\Provisioning\VmBuildDispatcher;
+use App\Services\Provisioning\VmOperationDispatcher;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Schema;
 use Tests\Concerns\InteractsWithModuleFixtures;
 use Tests\Fixtures\Modules\OkModule\OkModule;
@@ -115,6 +120,110 @@ class ProvisioningEventRecorderTest extends TestCase
         $this->assertSame('completed', $row->status);
         $this->assertSame('VM stopped', $row->result['message']);
         $this->assertNull($row->last_error);
+    }
+
+    public function test_flush_open_events_fails_still_running_rows(): void
+    {
+        $recorder = app(ProvisioningEventRecorder::class);
+
+        $event = $recorder->begin('suspend', ['module' => 'proxmox']);
+
+        // The extracted shutdown-guard body: still-tracked rows fail with the
+        // interrupted verdict instead of staying `running`.
+        ProvisioningEventRecorder::flushOpenEvents();
+
+        $row = $event->fresh();
+        $this->assertSame('failed', $row->status);
+        $this->assertSame('failed', $row->event_status);
+        $this->assertSame(ProvisioningEventRecorder::INTERRUPTED_MESSAGE, $row->last_error);
+        $this->assertSame(ProvisioningEventRecorder::INTERRUPTED_MESSAGE, $row->result['error']);
+        $this->assertNull($row->completed_at);
+    }
+
+    public function test_hand_off_keeps_the_row_running_through_the_guard(): void
+    {
+        $recorder = app(ProvisioningEventRecorder::class);
+
+        $event = $recorder->begin('provision', ['module' => 'hyperv', 'action' => 'create', 'stage' => 'queued']);
+
+        // Ownership moves to the queued job: the request-teardown guard must
+        // no longer touch the row.
+        $recorder->handOff($event);
+        $recorder->handOff($event->fresh());
+
+        ProvisioningEventRecorder::flushOpenEvents();
+
+        $row = $event->fresh();
+        $this->assertSame('running', $row->status);
+        $this->assertSame('running', $row->event_status);
+        $this->assertNull($row->last_error);
+    }
+
+    public function test_build_dispatch_hands_off_so_the_guard_keeps_the_row_running(): void
+    {
+        Queue::fake();
+
+        $server = $this->hypervServer(['template_vms' => ['gold-win01'], 'template_vm' => 'gold-win01']);
+        $product = $this->productWithHypervLink(['cpu' => 2, 'ram' => 2048, 'disk' => 50, 'switch' => 'Default Switch', 'generation' => 2]);
+        $customer = $this->customer();
+        $order = $this->activeOrderFor($product, $customer->id);
+        $account = $this->hostingAccount($product, $server, $customer->id, $order->id, 'testvm1');
+
+        $event = app(VmBuildDispatcher::class)->dispatch($account->fresh(), 'gold-win01');
+
+        Queue::assertPushed(ProvisionComputeVm::class, fn (ProvisionComputeVm $job): bool => $job->eventId === $event->id);
+
+        // Request teardown must not fail the queued build.
+        ProvisioningEventRecorder::flushOpenEvents();
+
+        $this->assertSame('running', $event->fresh()->status);
+    }
+
+    public function test_operation_dispatch_hands_off_so_the_guard_keeps_the_row_running(): void
+    {
+        Queue::fake();
+
+        $server = $this->hypervServer(['template_vms' => ['gold-win01'], 'template_vm' => 'gold-win01']);
+        $product = $this->productWithHypervLink(['cpu' => 2, 'ram' => 2048, 'disk' => 50, 'switch' => 'Default Switch', 'generation' => 2]);
+        $customer = $this->customer();
+        $order = $this->activeOrderFor($product, $customer->id);
+        $account = $this->hostingAccount($product, $server, $customer->id, $order->id, 'testvm1');
+
+        $event = app(VmOperationDispatcher::class)->dispatch($account->fresh(), 'start', [], null, 'hyperv');
+
+        Queue::assertPushed(RunVmOperation::class, fn (RunVmOperation $job): bool => $job->eventId === $event->id);
+
+        ProvisioningEventRecorder::flushOpenEvents();
+
+        $this->assertSame('running', $event->fresh()->status);
+    }
+
+    public function test_operation_dispatch_for_service_hands_off_so_the_guard_keeps_the_row_running(): void
+    {
+        Queue::fake();
+
+        $server = $this->hypervServer(['template_vms' => ['gold-win01'], 'template_vm' => 'gold-win01']);
+        $product = $this->productWithHypervLink(['cpu' => 2, 'ram' => 2048, 'disk' => 50, 'switch' => 'Default Switch', 'generation' => 2]);
+        $customer = $this->customer();
+        $order = $this->activeOrderFor($product, $customer->id);
+        $account = $this->hostingAccount($product, $server, $customer->id, $order->id, 'testvm1');
+        $service = ServiceInstance::create([
+            'customer_id' => $customer->id,
+            'order_id' => $order->id,
+            'server_id' => $server->id,
+            'service_tag' => 'HOST-'.$account->id,
+            'username' => 'testvm1',
+            'provisioning_method' => 'hyperv',
+            'status' => 'active',
+        ]);
+
+        $event = app(VmOperationDispatcher::class)->dispatchForService($service->fresh(), 'start', [], null, 'hyperv');
+
+        Queue::assertPushed(RunVmOperation::class, fn (RunVmOperation $job): bool => $job->eventId === $event->id);
+
+        ProvisioningEventRecorder::flushOpenEvents();
+
+        $this->assertSame('running', $event->fresh()->status);
     }
 
     // ── b. hosting_account_id link ──

@@ -3,16 +3,11 @@
 @section('title', 'Checkout')
 
 @section('content_header')
-    <div class="row">
-        <div class="col-sm-6"><h1 class="m-0">Checkout</h1></div>
-        <div class="col-sm-6">
-            <ol class="breadcrumb float-sm-end">
-                <li class="breadcrumb-item"><a href="{{ url('/') }}">{{ __('adminlte.home') }}</a></li>
-                <li class="breadcrumb-item"><a href="{{ route('client.store.cart') }}">Cart</a></li>
-                <li class="breadcrumb-item active">Checkout</li>
-            </ol>
-        </div>
-    </div>
+    <x-ui.page-header title="Checkout" :breadcrumbs="[
+        ['label' => __('adminlte.home'), 'url' => url('/')],
+        ['label' => 'Cart', 'url' => route('client.store.cart')],
+        ['label' => 'Checkout', 'active' => true],
+    ]" />
 @stop
 
 @section('content')
@@ -24,6 +19,9 @@
     @endphp
     @foreach ($items as $item) @php $total += $item['total']; @endphp @endforeach
 
+    @if ($items === [])
+        <x-adminlte.partials.empty-state icon="bi bi-cart" title="Your cart is empty" message="Your cart is empty, so there is nothing to check out yet. Browse the store to add a product." actionLabel="Browse the Store" :actionUrl="route('client.store.index')" />
+    @else
     <x-adminlte-card icon="bi bi-credit-card" title="Order Summary">
         <div class="table-responsive">
             <table class="table table-hover align-middle mb-0">
@@ -32,6 +30,17 @@
                 </thead>
                 <tbody>
                     @foreach ($items as $item)
+                        @if ($item['preview_addon'] ?? false)
+                            <tr>
+                                <td><strong>{{ $item['product_name'] }}</strong> <span class="badge text-bg-warning ms-1">Add-on</span></td>
+                                <td><span class="badge text-bg-info">{{ ucfirst(str_replace('_', ' ', $item['billing_cycle'])) }}</span></td>
+                                <td>—</td>
+                                <td>{{ $item['quantity'] }}</td>
+                                <td>₹{{ number_format($item['unit_price'], 2) }}</td>
+                                <td class="text-end">₹{{ number_format($item['total'], 2) }}</td>
+                            </tr>
+                            @continue
+                        @endif
                         <tr>
                             <td><strong>{{ $item['product']->name }}</strong></td>
                             <td><span class="badge text-bg-info">{{ ucfirst(str_replace('_', ' ', $item['cycle'])) }}</span></td>
@@ -114,7 +123,7 @@
         @php $u = auth()->user(); @endphp
         <div class="row g-3">
             <div class="col-md-6">
-                <div class="border rounded p-3 h-100 bg-light-subtle">
+                <div class="border rounded p-3 h-100 bg-body-tertiary">
                     <div class="small text-muted text-uppercase fw-semibold mb-1">Bill to</div>
                     <div class="fw-semibold">{{ $u->full_name }}</div>
                     <div class="text-muted small">{{ $u->email }}</div>
@@ -151,7 +160,8 @@
         <a href="{{ route('client.store.cart') }}" class="btn btn-outline-secondary">Back to Cart</a>
         <form method="POST" action="{{ route('client.store.checkout.post') }}" class="d-inline">
             @csrf
-            <button type="submit" class="btn btn-primary btn-lg ms-2"><i class="bi bi-check-circle me-1"></i> Place Order</button>
+            <button type="submit" class="btn btn-primary btn-lg ms-2"><i class="bi bi-check-circle me-1" aria-hidden="true"></i> Place Order</button>
         </form>
     </div>
+    @endif
 @stop

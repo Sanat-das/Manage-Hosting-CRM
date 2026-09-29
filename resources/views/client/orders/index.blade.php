@@ -3,16 +3,11 @@
 @section('title', 'My Orders')
 
 @section('content_header')
-    <div class="row">
-        <div class="col-sm-6"><h1 class="m-0">My Orders</h1></div>
-        <div class="col-sm-6">
-            <ol class="breadcrumb float-sm-end">
-                <li class="breadcrumb-item"><a href="{{ url('/') }}">{{ __('adminlte.home') }}</a></li>
-                <li class="breadcrumb-item"><a href="{{ route('client.dashboard') }}">Dashboard</a></li>
-                <li class="breadcrumb-item active">Orders</li>
-            </ol>
-        </div>
-    </div>
+    <x-ui.page-header title="My Orders" :breadcrumbs="[
+        ['label' => __('adminlte.home'), 'url' => url('/')],
+        ['label' => 'Dashboard', 'url' => route('client.dashboard')],
+        ['label' => 'Orders', 'active' => true],
+    ]" />
 @stop
 
 @section('content')
@@ -88,17 +83,9 @@
             </tr>
         @empty
             @if ($search !== '' || $status !== null)
-                <tr><td colspan="7" class="text-center text-muted py-4">No orders match your filters.</td></tr>
+                <x-ui.empty-table-row colSpan="7" icon="bi bi-bag-check" title="No orders match your filters." />
             @else
-                <tr>
-                    <td colspan="7" class="text-center py-5">
-                        <i class="bi bi-bag fs-1 text-muted d-block mb-2"></i>
-                        <p class="text-muted mb-3">You haven't placed any orders yet.</p>
-                        <a href="{{ route('client.store.index') }}" class="btn btn-primary">
-                            <i class="bi bi-shop me-1"></i>Browse the Store
-                        </a>
-                    </td>
-                </tr>
+                <x-ui.empty-table-row colSpan="7" icon="bi bi-bag" title="You haven't placed any orders yet." actionLabel="Browse the Store" :actionUrl="route('client.store.index')" />
             @endif
         @endforelse
     </x-adminlte.partials.datatable>

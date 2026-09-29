@@ -7,9 +7,7 @@
 @stop
 
 @section('content')
-    @if (session('success'))
-        <x-adminlte-alert theme="success" dismissible>{{ session('success') }}</x-adminlte-alert>
-    @endif
+    <x-adminlte.partials.flash-alert />
 
     <x-adminlte.partials.metric-cards :items="[
         ['title' => $stats->get('draft', 0), 'text' => 'Draft', 'icon' => 'bi bi-pencil', 'theme' => 'secondary'],
@@ -42,7 +40,7 @@
                 <td class="text-end"><span class="text-muted">—</span></td>
             </tr>
         @empty
-            <tr><td colspan="7" class="text-center text-muted py-4">No quotes found.</td></tr>
+            <x-ui.empty-table-row colSpan="7" icon="bi bi-file-text" title="No quotes found." />
         @endforelse
     </x-adminlte.partials.datatable>
 @stop

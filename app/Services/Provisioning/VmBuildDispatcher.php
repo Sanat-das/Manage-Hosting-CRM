@@ -68,6 +68,8 @@ class VmBuildDispatcher
             $moduleSlug,
         );
 
+        $this->recorder->handOff($event);
+
         return $event;
     }
 

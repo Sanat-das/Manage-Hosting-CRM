@@ -48,11 +48,7 @@
                             <td class="text-muted">{{ $relationship->notes ?? '—' }}</td>
                         </tr>
                     @empty
-                        <tr>
-                            <td colspan="5" class="text-center text-muted py-4">
-                                No hosting tree relationships found for this server.
-                            </td>
-                        </tr>
+                        <x-ui.empty-table-row colSpan="5" title="No hosting tree relationships found for this server." />
                     @endforelse
                 </tbody>
             </table>

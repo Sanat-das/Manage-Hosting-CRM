@@ -8,7 +8,7 @@
     ]" />
 @stop
 @section('content')
-    @if (session('success')) <x-adminlte-alert theme="success" dismissible>{{ session('success') }}</x-adminlte-alert> @endif
+    <x-adminlte.partials.flash-alert />
     <div class="row">
         <div class="col-md-8">
             <x-adminlte-card icon="bi bi-info-circle" title="Details">
@@ -38,10 +38,10 @@
                                     <td><a href="{{ route('admin.provisioning-events.show', $event) }}">{{ $event->created_at?->format('Y-m-d H:i') }}</a></td>
                                     <td><span class="badge text-bg-info">{{ $event->event_type }}</span></td>
                                     <td><x-adminlte.partials.status-badge :status="$event->event_status" /></td>
-                                    <td class="text-end"><a href="{{ route('admin.provisioning-events.show', $event) }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-eye"></i></a></td>
+                                    <td class="text-end"><a href="{{ route('admin.provisioning-events.show', $event) }}" class="btn btn-sm btn-outline-secondary" aria-label="View provisioning event"><i class="bi bi-eye"></i></a></td>
                                 </tr>
                             @empty
-                                <tr><td colspan="4" class="text-center text-muted py-3">No provisioning events.</td></tr>
+                                <x-ui.empty-table-row colSpan="4" title="No provisioning events." />
                             @endforelse
                         </tbody>
                     </table>

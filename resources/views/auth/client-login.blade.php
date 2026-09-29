@@ -17,7 +17,7 @@
                    class="form-control @error('email') is-invalid @enderror"
                    placeholder="{{ __('adminlte.email') }}" required autofocus
                    autocomplete="email" aria-label="{{ __('adminlte.email') }}">
-            <div class="input-group-text"><span class="bi bi-envelope"></span></div>
+            <div class="input-group-text"><span class="bi bi-envelope" aria-hidden="true"></span></div>
             @error('email')<div class="invalid-feedback d-block">{{ $message }}</div>@enderror
         </div>
 
@@ -26,7 +26,7 @@
                    class="form-control @error('password') is-invalid @enderror"
                    placeholder="{{ __('adminlte.password') }}" required
                    autocomplete="current-password" aria-label="{{ __('adminlte.password') }}">
-            <div class="input-group-text"><span class="bi bi-lock-fill"></span></div>
+            <div class="input-group-text"><span class="bi bi-lock-fill" aria-hidden="true"></span></div>
             @error('password')<div class="invalid-feedback d-block">{{ $message }}</div>@enderror
         </div>
 

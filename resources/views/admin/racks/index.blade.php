@@ -10,9 +10,7 @@
 @stop
 
 @section('content')
-    @if (session('success'))
-        <x-adminlte-alert theme="success" dismissible>{{ session('success') }}</x-adminlte-alert>
-    @endif
+    <x-adminlte.partials.flash-alert />
 
     <x-adminlte.partials.datatable
         icon="bi bi-hdd-stack"
@@ -64,7 +62,7 @@
                 </td>
             </tr>
         @empty
-            <tr><td colspan="8" class="text-center text-muted py-4">No racks found.</td></tr>
+            <x-ui.empty-table-row colSpan="8" title="No racks found." />
         @endforelse
     </x-adminlte.partials.datatable>
 @stop

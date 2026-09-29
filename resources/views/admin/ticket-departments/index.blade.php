@@ -10,12 +10,7 @@
 @stop
 
 @section('content')
-    @if (session('success'))
-        <x-adminlte-alert theme="success" dismissible>{{ session('success') }}</x-adminlte-alert>
-    @endif
-    @if (session('error'))
-        <x-adminlte-alert theme="danger" dismissible>{{ session('error') }}</x-adminlte-alert>
-    @endif
+    <x-adminlte.partials.flash-alert />
 
     <x-adminlte.partials.datatable
         icon="bi bi-diagram-2"
@@ -66,27 +61,30 @@
                                class="btn btn-sm btn-outline-secondary btn-icon" title="Edit" aria-label="Edit">
                                 <i class="bi bi-pencil"></i>
                             </a>
-                            <form method="POST" action="{{ route('admin.ticket-departments.destroy', $department) }}"
-                                  class="d-inline"
-                                  onsubmit="return confirm('Delete {{ $department->name }}? Departments that still have tickets cannot be deleted.');">
-                                @csrf
-                                @method('DELETE')
-                                <button type="submit" class="btn btn-sm btn-outline-danger btn-icon" title="Delete" aria-label="Delete">
-                                    <i class="bi bi-trash"></i>
-                                </button>
-                            </form>
+                            <button type="button" class="btn btn-sm btn-outline-danger btn-icon" title="Delete" aria-label="Delete"
+                                    data-bs-toggle="modal" data-bs-target="#delete-department-{{ $department->id }}">
+                                <i class="bi bi-trash"></i>
+                            </button>
                         @endcan
                     </div>
                 </td>
             </tr>
         @empty
-            <tr>
-                <td colspan="7" class="text-center text-muted py-4">
-                    No departments found.
-                </td>
-            </tr>
+            <x-ui.empty-table-row colSpan="7" title="No departments found." />
         @endforelse
     </x-adminlte.partials.datatable>
+
+    @foreach ($departments as $department)
+        @can('settings.manage')
+            <x-adminlte.partials.confirm-modal
+                :id="'delete-department-' . $department->id"
+                title="Delete department"
+                :message="'Delete ' . $department->name . '? Departments that still have tickets cannot be deleted.'"
+                :action="route('admin.ticket-departments.destroy', $department)"
+                confirm-label="Delete department"
+            />
+        @endcan
+    @endforeach
 
     <p class="text-muted small mt-2 mb-0">
         <i class="bi bi-info-circle me-1" aria-hidden="true"></i>

@@ -4,7 +4,7 @@
     <x-ui.page-header title="Add Domain Pricing" subtitle="Add a new domain pricing entry" :breadcrumbs="[['label' => __('adminlte.home'), 'url' => url('/')],['label' => 'Domain Pricing','url' => route('admin.domain-pricing.index')],['label' => 'Add Domain Pricing','active' => true]]" />
 @stop
 @section('content')
-    @if ($errors->any()) <x-adminlte-alert theme="danger" dismissible><ul class="mb-0">@foreach ($errors->all() as $error)<li>{{ $error }}</li>@endforeach</ul></x-adminlte-alert> @endif
+    <x-adminlte.partials.flash-alert />
     <x-adminlte.partials.form-card icon="bi bi-globe" title="New Domain Pricing" :action="route('admin.domain-pricing.store')" submit-label="Save" :cancel-url="route('admin.domain-pricing.index')">
         <div class="row">
             <div class="col-md-3"><x-adminlte-input name="tld" label="TLD" placeholder="e.g. com" value="{{ old('tld') }}" required /></div>

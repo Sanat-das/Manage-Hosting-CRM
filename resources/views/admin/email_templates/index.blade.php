@@ -7,9 +7,7 @@
 @stop
 
 @section('content')
-    @if (session('success'))
-        <x-adminlte-alert theme="success" dismissible>{{ session('success') }}</x-adminlte-alert>
-    @endif
+    <x-adminlte.partials.flash-alert />
 
     <x-adminlte.partials.datatable icon="bi bi-envelope" title="Email Templates"
         :search-value="$search" search-placeholder="Search templates..."
@@ -35,7 +33,7 @@
                 </td>
             </tr>
         @empty
-            <tr><td colspan="4" class="text-center text-muted py-4">No email templates.</td></tr>
+            <x-ui.empty-table-row colSpan="4" icon="bi bi-envelope" title="No email templates." message="Create one to get started." />
         @endforelse
 
         <x-slot name="pagination">{{ $templates->links() }}</x-slot>

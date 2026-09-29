@@ -1,0 +1,21 @@
+[
+  {
+    "at": "+4s",
+    "step": "login.ok"
+  },
+  {
+    "at": "+18s",
+    "step": "phase3.baseline",
+    "state": "Running"
+  },
+  {
+    "at": "+36s",
+    "step": "power.stop-before-delete",
+    "state": "Off"
+  },
+  {
+    "at": "+109s",
+    "step": "FAILED",
+    "error": "Compute state did not reach \"Not created\" within 60s (last=\"Off\")"
+  }
+]

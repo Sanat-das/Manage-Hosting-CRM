@@ -3,16 +3,11 @@
 @section('title', 'Order ' . $order->order_no)
 
 @section('content_header')
-    <div class="row">
-        <div class="col-sm-6"><h1 class="m-0">Order {{ $order->order_no }}</h1></div>
-        <div class="col-sm-6">
-            <ol class="breadcrumb float-sm-end">
-                <li class="breadcrumb-item"><a href="{{ url('/') }}">{{ __('adminlte.home') }}</a></li>
-                <li class="breadcrumb-item"><a href="{{ route('client.orders.index') }}">Orders</a></li>
-                <li class="breadcrumb-item active">{{ $order->order_no }}</li>
-            </ol>
-        </div>
-    </div>
+    <x-ui.page-header :title="'Order ' . $order->order_no" :breadcrumbs="[
+        ['label' => __('adminlte.home'), 'url' => url('/')],
+        ['label' => 'Orders', 'url' => route('client.orders.index')],
+        ['label' => $order->order_no, 'active' => true],
+    ]" />
 @stop
 
 @section('content')
@@ -88,7 +83,7 @@
                                 <td class="text-end">₹{{ number_format((float) $item->total, 2) }}</td>
                             </tr>
                         @empty
-                            <tr><td colspan="4" class="text-center text-muted py-3">No line items recorded on this order.</td></tr>
+                            <x-ui.empty-table-row colSpan="4" icon="bi bi-bag-check" title="No line items recorded on this order." />
                         @endforelse
                     </tbody>
                     <tfoot>

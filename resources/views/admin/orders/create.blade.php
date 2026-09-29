@@ -3,18 +3,7 @@
 @section('title', 'New Order')
 
 @section('content_header')
-    <div class="row">
-        <div class="col-sm-6">
-            <h1 class="m-0">New Order</h1>
-        </div>
-        <div class="col-sm-6">
-            <ol class="breadcrumb float-sm-end">
-                <li class="breadcrumb-item"><a href="{{ url('/') }}">{{ __('adminlte.home') }}</a></li>
-                <li class="breadcrumb-item"><a href="{{ route('admin.orders.index') }}">Orders</a></li>
-                <li class="breadcrumb-item active" aria-current="page">New Order</li>
-            </ol>
-        </div>
-    </div>
+    <x-ui.page-header title="New Order" subtitle="Create a new order" :breadcrumbs="[['label' => __('adminlte.home'), 'url' => url('/')], ['label' => 'Orders', 'url' => route('admin.orders.index')], ['label' => 'New Order', 'active' => true]]" />
 @stop
 
 @php
@@ -140,15 +129,7 @@
 @endphp
 
 @section('content')
-    @if ($errors->any())
-        <x-adminlte-alert theme="danger" dismissible>
-            <ul class="mb-0">
-                @foreach ($errors->all() as $error)
-                    <li>{{ $error }}</li>
-                @endforeach
-            </ul>
-        </x-adminlte-alert>
-    @endif
+    <x-adminlte.partials.flash-alert />
 
     <x-adminlte.partials.form-card
         icon="bi bi-cart-plus"
@@ -204,7 +185,8 @@
                         $lineError = fn (string $key) => $errors->first("lines.$index.$key");
                     @endphp
                     <div class="order-line border rounded mb-2 overflow-hidden" data-line-index="{{ $index }}"
-                         data-submitted-options='{{ json_encode($line['options'] ?? []) }}'>
+                         data-submitted-options='{{ json_encode($line['options'] ?? []) }}'
+                         data-submitted-addons='{{ json_encode($line['addons'] ?? []) }}'>
                         <div class="d-flex align-items-center justify-content-between gap-2 flex-wrap px-2 py-1 bg-body-secondary border-bottom">
                             <div class="small fw-semibold text-muted">
                                 <i class="bi bi-box-seam me-1" aria-hidden="true"></i><span class="line-service-label">Service {{ $index + 1 }}</span>
@@ -284,6 +266,7 @@
                             </div>
                             <div class="line-info small text-muted mt-2 d-none"></div>
                             <div class="line-options mt-2 d-none"></div>
+                            <div class="line-addons mt-2"></div>
                         </div>
                     </div>
                 @endforeach
@@ -403,7 +386,7 @@
                             <div class="col-md-6">
                                 <label class="form-label small" for="qc-phone_number">Phone Number</label>
                                 <div class="input-group input-group-sm" id="qc-phone-group" style="flex-wrap: nowrap;">
-                                    <select id="qc-phone_code" name="phone_code" class="form-select form-select-sm" style="max-width: 110px; flex: 0 0 110px;">
+                                    <select id="qc-phone_code" name="phone_code" class="form-select form-select-sm" style="max-width: 110px; flex: 0 0 110px;" aria-label="Country calling code">
                                         <option value="+91" selected>🇮🇳 India +91</option>
                                         <option value="+1">🇺🇸 US +1</option>
                                         <option value="+44">🇬🇧 UK +44</option>
@@ -467,13 +450,13 @@
                                     </div>
                                     <div class="row g-2">
                                         <div class="col-12">
-                                            <input type="text" name="address_line1" class="form-control form-control-sm" placeholder="Street address — House no., street, area" autocomplete="off">
+                                            <input type="text" name="address_line1" class="form-control form-control-sm" placeholder="Street address — House no., street, area" aria-label="Street address" autocomplete="off">
                                         </div>
                                         <div class="col-12">
-                                            <input type="text" name="address_line2" class="form-control form-control-sm" placeholder="Apartment, suite, landmark (optional)" autocomplete="off">
+                                            <input type="text" name="address_line2" class="form-control form-control-sm" placeholder="Apartment, suite, landmark (optional)" aria-label="Apartment, suite, landmark" autocomplete="off">
                                         </div>
                                         <div class="col-6">
-                                            <input type="text" name="city" class="form-control form-control-sm" placeholder="City" autocomplete="off">
+                                            <input type="text" name="city" class="form-control form-control-sm" placeholder="City" aria-label="City" autocomplete="off">
                                         </div>
                                         <div class="col-6">
                                             <x-state-field id="qc_state" country-id="qc_country"
@@ -482,7 +465,7 @@
                                                            placeholder="State / Province" />
                                         </div>
                                         <div class="col-6">
-                                            <input type="text" name="postcode" class="form-control form-control-sm" placeholder="Postcode / ZIP" autocomplete="off">
+                                            <input type="text" name="postcode" class="form-control form-control-sm" placeholder="Postcode / ZIP" aria-label="Postcode or ZIP" autocomplete="off">
                                         </div>
                                         <div class="col-6">
                                             <x-country-select id="qc_country" :label="null" size="sm" wrapper-class="" autocomplete="off" />
@@ -505,7 +488,7 @@
 
     {{-- JS template for an order line; __INDEX__ is replaced on clone. --}}
     <template id="order-line-template">
-        <div class="order-line border rounded mb-2 overflow-hidden" data-line-index="__INDEX__" data-submitted-options="">
+        <div class="order-line border rounded mb-2 overflow-hidden" data-line-index="__INDEX__" data-submitted-options="" data-submitted-addons="">
             <div class="d-flex align-items-center justify-content-between gap-2 px-2 py-1 bg-body-secondary border-bottom">
                 <div class="small fw-semibold text-muted">
                     <i class="bi bi-box-seam me-1" aria-hidden="true"></i><span class="line-service-label">Service</span>
@@ -567,6 +550,7 @@
                 </div>
                 <div class="line-info small text-muted mt-2 d-none"></div>
                 <div class="line-options mt-2 d-none"></div>
+                <div class="line-addons mt-2"></div>
             </div>
         </div>
     </template>
@@ -579,6 +563,7 @@
         </style>
         <script>
             window.orderProducts = @json($productMap);
+            window.orderAddons = @json($addonsByProduct ?? []);
             window.billingCycleLabels = @json($billingCycles);
             window.gstSettings = @json($gstSettings);
             window.customerQuickStoreUrl = @json(route('admin.customers.quick-store'));
@@ -860,6 +845,142 @@
                     });
                 }
 
+                // ───────────────────────── Add-on picker ─────────────────────────
+
+                function addonFieldName(el, j, key) {
+                    return 'lines[' + el.dataset.lineIndex + '][addons][' + j + '][' + key + ']';
+                }
+
+                // Checkbox list (+ qty) of the line's product orderable
+                // add-ons, sourced from window.orderAddons (product-scoped +
+                // global actives, same shape the server validates). Names are
+                // derived from the line's live data-line-index, so cloned
+                // lines (the __INDEX__ template) always submit under their
+                // own index. A qty box stays disabled until its add-on is
+                // ticked, so unchecked add-ons never post a quantity-only
+                // entry. Checked rows bill as their own order items (not as
+                // option adjustments) and are included in the summary totals
+                // by lineAddonsTotal(). The price shown is
+                // the one the server charges for the line's cycle — a matrix
+                // row for that cycle wins over the add-on's base price
+                // (AddOnService::resolveCycleAndPrice).
+                function renderAddons(el) {
+                    const box = el.querySelector('.line-addons');
+                    if (!box) return;
+                    // Keep the operator's current ticks (and quantities) when
+                    // the box is re-rendered by a product/cycle change.
+                    const previous = {};
+                    box.querySelectorAll('.line-addon-row').forEach((row) => {
+                        const check = row.querySelector('.line-addon-check');
+                        if (check && check.checked) {
+                            const qty = row.querySelector('.line-addon-qty');
+                            previous[check.value] = qty ? qty.value : 1;
+                        }
+                    });
+                    const hadRows = box.querySelector('.line-addon-row') !== null;
+                    box.innerHTML = '';
+                    const select = el.querySelector('.line-product');
+                    const list = (select?.value && window.orderAddons) ? (window.orderAddons[select.value] ?? []) : [];
+                    if (!list.length) return;
+
+                    const lineCycle = el.querySelector('.line-cycle')?.value;
+
+                    let html = '<div class="border-top pt-2"><div class="small fw-bold mb-1">Add-ons</div>';
+                    list.forEach((addon, j) => {
+                        const cid = addonFieldName(el, j, 'addon_id').replace(/[\[\]]/g, '-') + '-' + addon.id;
+                        const cycle = window.billingCycleLabels?.[addon.billing_cycle] ?? addon.billing_cycle;
+                        const priced = (lineCycle && addon.pricing) ? (addon.pricing[lineCycle] ?? null) : null;
+                        const price = Number(priced ? priced.price : (addon.price ?? 0));
+                        const setup = Number(priced ? priced.setup_fee : (addon.setup_fee ?? 0));
+                        html += '<div class="line-addon-row mb-1">' +
+                            '<div class="form-check">' +
+                            '<input class="form-check-input line-addon-check" type="checkbox" name="' + addonFieldName(el, j, 'addon_id') + '" id="' + cid + '" value="' + addon.id + '">' +
+                            '<label class="form-check-label small" for="' + cid + '">' + addon.name +
+                            ' — ₹' + price.toFixed(2) + ' ' + (priced
+                                ? '<span class="text-muted">— billed with product cycle</span>'
+                                : '<span class="text-muted">(' + cycle + ')</span>') +
+                            (setup > 0 ? ' <span class="text-muted small">(+₹' + setup.toFixed(2) + ' setup)</span>' : '') +
+                            '</label></div>' +
+                            '<div class="ms-4 mt-1 d-flex align-items-center gap-2">' +
+                            '<label class="small text-muted mb-0" for="' + cid + '-qty">Qty</label>' +
+                            '<input type="number" class="form-control form-control-sm line-addon-qty" style="max-width: 90px;" id="' + cid + '-qty" name="' + addonFieldName(el, j, 'quantity') + '" min="1" max="99" value="1" disabled>' +
+                            '</div></div>';
+                    });
+                    html += '</div>';
+                    box.innerHTML = html;
+
+                    if (hadRows) {
+                        // Re-render: the operator's live selection is newer than
+                        // the submitted one.
+                        box.querySelectorAll('.line-addon-row').forEach((row) => {
+                            const check = row.querySelector('.line-addon-check');
+                            if (!check || previous[check.value] === undefined) return;
+                            check.checked = true;
+                            const qty = row.querySelector('.line-addon-qty');
+                            if (qty) {
+                                qty.disabled = false;
+                                qty.value = previous[check.value];
+                            }
+                        });
+                        return;
+                    }
+
+                    restoreSubmittedAddons(el, box);
+                }
+
+                // After a validation error the form re-renders with old()
+                // add-on selections — re-check them so they survive the
+                // round-trip. Runs before any cap/total sync by callers.
+                function restoreSubmittedAddons(el, box) {
+                    const raw = el.dataset.submittedAddons;
+                    if (!raw) return;
+                    let submitted;
+                    try { submitted = JSON.parse(raw); } catch (e) { return; }
+                    if (!Array.isArray(submitted)) submitted = Object.values(submitted ?? {});
+                    (box || el).querySelectorAll('.line-addon-check').forEach((check) => {
+                        const row = submitted.find((s) => String(s?.addon_id) === String(check.value));
+                        if (!row) return;
+                        check.checked = true;
+                        const qty = check.closest('.line-addon-row')?.querySelector('.line-addon-qty');
+                        if (qty) {
+                            qty.disabled = false;
+                            qty.value = row.quantity ?? 1;
+                        }
+                    });
+                }
+
+                // First-invoice charge of the line's checked add-ons: each
+                // bills as its own order item at the unit price the server
+                // resolves for the line's cycle (a matrix row for that cycle
+                // wins over the add-on's base price) times its own quantity,
+                // plus the one-time setup fee when present
+                // (AddOnService::resolveCycleAndPrice + materialize).
+                function lineAddonsTotal(el) {
+                    const box = el.querySelector('.line-addons');
+                    const select = el.querySelector('.line-product');
+                    const list = (box && select?.value && window.orderAddons)
+                        ? (window.orderAddons[select.value] ?? [])
+                        : [];
+                    if (!list.length) return 0;
+
+                    const lineCycle = el.querySelector('.line-cycle')?.value;
+                    let total = 0;
+
+                    box.querySelectorAll('.line-addon-check:checked').forEach((check) => {
+                        const addon = list.find((a) => String(a.id) === String(check.value));
+                        if (!addon) return;
+
+                        const priced = (lineCycle && addon.pricing) ? (addon.pricing[lineCycle] ?? null) : null;
+                        const unit = Number(priced ? priced.price : (addon.price ?? 0));
+                        const setup = Number(priced ? priced.setup_fee : (addon.setup_fee ?? 0));
+                        const qty = parseFloat(check.closest('.line-addon-row')?.querySelector('.line-addon-qty')?.value) || 1;
+
+                        total += unit * qty + (setup > 0 ? setup : 0);
+                    });
+
+                    return total;
+                }
+
                 // ───────────────────────── Totals + GST estimate ─────────────────────────
 
                 function customerState() {
@@ -1008,6 +1129,11 @@
                         const lineTotal = effectiveUnitPrice(el) * qty;
                         subtotal += lineTotal;
                         gst += gstForLine(lineTotal, data).amount;
+
+                        // Checked add-ons are on the first invoice as well.
+                        const addonTotal = lineAddonsTotal(el);
+                        subtotal += addonTotal;
+                        gst += gstForLine(addonTotal, data).amount;
                     });
                     const subtotalEl = document.getElementById('gst-subtotal');
                     const gstEl = document.getElementById('gst-amount');
@@ -1061,6 +1187,7 @@
                     refreshQuantity(el);
                     refreshDomain(el);
                     renderOptions(el);
+                    renderAddons(el);
                     if (!init && !isOverriding(el)) refreshPrice(el);
                     refreshLineTotal(el);
                     refreshTotals();
@@ -1074,6 +1201,7 @@
                             refreshQuantity(el);
                             refreshDomain(el);
                             renderOptions(el);
+                            renderAddons(el);
                             refreshLineTotal(el);
                             refreshTotals();
                             return;
@@ -1081,9 +1209,11 @@
                         refreshLine(el, false);
                     });
                     el.querySelector('.line-cycle')?.addEventListener('change', function () {
-                        // Re-render the option controls so their price labels
-                        // follow the new cycle, then recompute the totals.
+                        // Re-render the option controls and the add-on prices
+                        // so their labels follow the new cycle, then recompute
+                        // the totals.
                         renderOptions(el);
+                        renderAddons(el);
                         if (!isOverriding(el)) refreshPrice(el);
                         refreshLineTotal(el);
                         refreshTotals();
@@ -1118,6 +1248,24 @@
                         });
                         optionsBox.addEventListener('input', function () {
                             refreshLineTotal(el);
+                            refreshTotals();
+                        });
+                    }
+                    // Add-on qty boxes enable only with their checkbox, and
+                    // ticking or re-quantifying an add-on changes the summary
+                    // (the container persists across per-product re-renders,
+                    // so one delegated listener per line is enough).
+                    const addonsBox = el.querySelector('.line-addons');
+                    if (addonsBox) {
+                        addonsBox.addEventListener('change', function (e) {
+                            const check = e.target?.closest ? e.target.closest('.line-addon-check') : null;
+                            if (check) {
+                                const qty = check.closest('.line-addon-row')?.querySelector('.line-addon-qty');
+                                if (qty) qty.disabled = !check.checked;
+                            }
+                            refreshTotals();
+                        });
+                        addonsBox.addEventListener('input', function () {
                             refreshTotals();
                         });
                     }

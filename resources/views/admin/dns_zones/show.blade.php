@@ -35,21 +35,7 @@
 @endphp
 
 @section('content')
-    @if (session('success'))
-        <x-adminlte-alert theme="success" dismissible>{{ session('success') }}</x-adminlte-alert>
-    @endif
-    @if (session('error'))
-        <x-adminlte-alert theme="danger" dismissible>{{ session('error') }}</x-adminlte-alert>
-    @endif
-    @if ($errors->any())
-        <x-adminlte-alert theme="danger" dismissible>
-            <ul class="mb-0">
-                @foreach ($errors->all() as $error)
-                    <li>{{ $error }}</li>
-                @endforeach
-            </ul>
-        </x-adminlte-alert>
-    @endif
+    <x-adminlte.partials.flash-alert />
 
     {{-- Header card --}}
     <x-adminlte-card>
@@ -173,19 +159,19 @@
                                     <td class="text-muted">{{ $record->ttl ?? '—' }}</td>
                                     <td class="text-end">
                                         @if (\Illuminate\Support\Facades\Route::has('admin.dns-zones.records.show'))
-                                            <a href="{{ route('admin.dns-zones.records.show', [$dnsZone, $record]) }}" class="btn btn-sm btn-outline-secondary" title="View">
-                                                <i class="bi bi-eye"></i>
+                                            <a href="{{ route('admin.dns-zones.records.show', [$dnsZone, $record]) }}" class="btn btn-sm btn-outline-secondary" title="View" aria-label="View">
+                                                <i class="bi bi-eye" aria-hidden="true"></i>
                                             </a>
                                         @endif
                                         @if (\Illuminate\Support\Facades\Route::has('admin.dns-zones.records.edit'))
-                                            <a href="{{ route('admin.dns-zones.records.edit', [$dnsZone, $record]) }}" class="btn btn-sm btn-outline-primary" title="Edit">
-                                                <i class="bi bi-pencil"></i>
+                                            <a href="{{ route('admin.dns-zones.records.edit', [$dnsZone, $record]) }}" class="btn btn-sm btn-outline-primary" title="Edit" aria-label="Edit">
+                                                <i class="bi bi-pencil" aria-hidden="true"></i>
                                             </a>
                                         @endif
                                     </td>
                                 </tr>
                             @empty
-                                <tr><td colspan="5" class="text-center text-muted py-3">No records yet.</td></tr>
+                                <x-ui.empty-table-row colSpan="5" icon="bi bi-list-nested" title="No records yet." />
                             @endforelse
                         </tbody>
                     </table>
@@ -212,7 +198,7 @@
                         </tbody>
                     </table>
                 </div>
-                <div class="text-center py-4 border rounded bg-light">
+                <div class="text-center py-4 border rounded bg-body-tertiary">
                     <i class="bi bi-clock-history text-muted" style="font-size: 1.5rem;"></i>
                     <p class="text-muted mb-0 mt-1">No activity history yet.</p>
                     <small class="text-muted">Zone audit trail will appear here when available.</small>

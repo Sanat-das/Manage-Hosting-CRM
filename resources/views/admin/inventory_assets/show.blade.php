@@ -4,7 +4,7 @@
     <x-ui.page-header title="{{ $inventoryAsset->asset_tag }}" subtitle="View inventory asset details" :breadcrumbs="[['label' => __('adminlte.home'), 'url' => url('/')],['label' => 'Inventory','url' => route('admin.inventory-assets.index')],['label' => $inventoryAsset->asset_tag,'active' => true]]" />
 @stop
 @section('content')
-    @if (session('success')) <x-adminlte-alert theme="success" dismissible>{{ session('success') }}</x-adminlte-alert> @endif
+    <x-adminlte.partials.flash-alert />
     <div class="d-flex justify-content-end mb-3">
         <a href="{{ route('admin.inventory-assets.edit', $inventoryAsset) }}" class="btn btn-sm btn-outline-primary"><i class="bi bi-pencil me-1"></i> Edit</a>
     </div>

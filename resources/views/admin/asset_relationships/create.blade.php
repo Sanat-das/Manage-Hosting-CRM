@@ -4,7 +4,7 @@
     <x-ui.page-header title="Add Asset Relationship" subtitle="Add a new asset relationship" :breadcrumbs="[['label' => __('adminlte.home'), 'url' => url('/')],['label' => 'Asset Relationships','url' => route('admin.asset-relationships.index')],['label' => 'Add Asset Relationship','active' => true]]" />
 @stop
 @section('content')
-    @if ($errors->any()) <x-adminlte-alert theme="danger" dismissible><ul class="mb-0">@foreach ($errors->all() as $error)<li>{{ $error }}</li>@endforeach</ul></x-adminlte-alert> @endif
+    <x-adminlte.partials.flash-alert />
     <x-adminlte.partials.form-card icon="bi bi-diagram-3" title="New Asset Relationship" :action="route('admin.asset-relationships.store')" submit-label="Save" :cancel-url="route('admin.asset-relationships.index')">
         <div class="row">
             <div class="col-md-3">

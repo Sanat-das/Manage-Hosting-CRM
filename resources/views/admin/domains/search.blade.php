@@ -13,7 +13,7 @@
 @section('content')
     <x-adminlte-card icon="bi bi-search" title="Check Domain Availability">
         <form method="GET" action="{{ route('admin.domains.search') }}" class="d-flex gap-2">
-            <input type="text" name="q" class="form-control" placeholder="Enter domain name (e.g. example.com)" value="{{ $query }}">
+            <input type="text" name="q" class="form-control" placeholder="Enter domain name (e.g. example.com)" aria-label="Domain name to search" value="{{ $query }}">
             <button type="submit" class="btn btn-primary"><i class="bi bi-search me-1"></i> Check</button>
         </form>
     </x-adminlte-card>

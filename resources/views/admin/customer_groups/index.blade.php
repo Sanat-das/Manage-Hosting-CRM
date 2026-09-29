@@ -7,9 +7,7 @@
 @stop
 
 @section('content')
-    @if (session('success'))
-        <x-adminlte-alert theme="success" dismissible>{{ session('success') }}</x-adminlte-alert>
-    @endif
+    <x-adminlte.partials.flash-alert />
 
     <x-adminlte.partials.datatable icon="bi bi-folder" title="Customer Groups"
         :columns="[
@@ -31,11 +29,7 @@
                 <td>{{ $group->parent?->name ?? '—' }}</td>
                 <td>{{ $group->products_count }}</td>
                 <td>
-                    @if ($group->status === 'active')
-                        <span class="badge text-bg-success">Active</span>
-                    @else
-                        <span class="badge text-bg-secondary">Inactive</span>
-                    @endif
+                    <x-adminlte.partials.status-badge :status="$group->status" />
                 </td>
                 <td class="text-end">
 <div class="table-actions">
@@ -43,7 +37,7 @@
                 </td>
             </tr>
         @empty
-            <tr><td colspan="6" class="text-center text-muted py-4">No customer groups.</td></tr>
+            <x-ui.empty-table-row colSpan="6" title="No customer groups." />
         @endforelse
         <x-slot name="pagination">{{ $groups->links() }}</x-slot>
     </x-adminlte.partials.datatable>

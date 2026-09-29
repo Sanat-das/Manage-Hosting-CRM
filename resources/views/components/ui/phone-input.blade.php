@@ -82,7 +82,7 @@
         @if($required)<span class="text-danger">*</span>@endif
     </label>
     <div class="input-group phone-input-group @if($error) has-validation @endif" style="flex-wrap: nowrap;">
-        <select id="{{ $id }}_code" name="{{ $name }}_code" class="form-select phone-code-select" style="max-width: 140px; flex: 0 0 140px; background-color: #fff; cursor: pointer; border-top-right-radius: 0; border-bottom-right-radius: 0;" aria-label="Country code">
+        <select id="{{ $id }}_code" name="{{ $name }}_code" class="form-select phone-code-select" style="max-width: 140px; flex: 0 0 140px; background-color: var(--bs-body-bg); color: var(--bs-body-color); cursor: pointer; border-top-right-radius: 0; border-bottom-right-radius: 0;" aria-label="Country code">
             @foreach($countries as $c)
                 <option value="{{ $c['dial'] }}" @selected($selectedDial === $c['dial']) data-flag="{{ $c['flag'] }}">
                     {{ $c['flag'] }} {{ $c['name'] }}@if($c['native']) ({{ $c['native'] }})@endif {{ $c['dial'] }}
@@ -127,6 +127,7 @@ document.addEventListener('DOMContentLoaded', function() {
 </script>
 @endonce
 
+@once
 <style>
 .phone-code-select {
     font-size: 0.9rem;
@@ -138,12 +139,13 @@ document.addEventListener('DOMContentLoaded', function() {
     font-size: 0.9rem;
 }
 .phone-input-group:focus-within {
-    box-shadow: 0 0 0 0.25rem rgba(13,110,253,.25);
+    box-shadow: 0 0 0 0.25rem color-mix(in srgb, var(--color-primary) 25%, transparent);
     border-radius: 0.375rem;
 }
 .phone-input-group:focus-within .form-select,
 .phone-input-group:focus-within .form-control {
-    border-color: #86b7fe;
+    border-color: color-mix(in srgb, var(--color-primary) 50%, var(--bs-body-bg));
     box-shadow: none;
 }
 </style>
+@endonce

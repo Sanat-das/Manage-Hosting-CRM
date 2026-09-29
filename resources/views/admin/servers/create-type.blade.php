@@ -48,7 +48,7 @@
                         <i class="{{ $groupIcons[$groupKey] ?? 'bi bi-grid' }}"></i>
                     </span>
                     <h5 class="mb-0 fw-semibold" style="font-size:var(--text-base); letter-spacing:var(--tracking-tight);">{{ $groupLabel }}</h5>
-                    <span class="badge text-bg-light border fw-normal">{{ count($items) }} {{ Str::plural('type', count($items)) }}</span>
+                    <span class="badge text-bg-secondary border fw-normal">{{ count($items) }} {{ Str::plural('type', count($items)) }}</span>
                 </div>
                 @if (! empty($groupDescriptions[$groupKey]))
                     <p class="text-muted small mb-3" style="font-size:var(--text-sm);">{{ $groupDescriptions[$groupKey] }}</p>

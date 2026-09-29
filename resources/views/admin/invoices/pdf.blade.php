@@ -47,6 +47,9 @@
                 <div style="color:#555;">GSTIN: {{ $invoice->customer->tax_id }}</div>
             @endif
         @endif
+        @if ($invoice->place_of_supply_code)
+            <div style="color:#555;">Place of Supply: {{ $invoice->place_of_supply_code }}</div>
+        @endif
     </div>
 
     <table>

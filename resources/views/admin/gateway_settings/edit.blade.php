@@ -7,11 +7,7 @@
 @stop
 
 @section('content')
-    @if ($errors->any())
-        <x-adminlte-alert theme="danger" dismissible>
-            <ul class="mb-0">@foreach ($errors->all() as $error)<li>{{ $error }}</li>@endforeach</ul>
-        </x-adminlte-alert>
-    @endif
+    <x-adminlte.partials.flash-alert />
 
     @php
         $mask = fn (string $value): string => strlen($value) <= 8
@@ -38,9 +34,7 @@
             </div>
             <div class="col-md-4">
                 <label class="form-label d-block">Configuration</label>
-                <span class="badge text-bg-{{ $gateway->isConfigured() ? 'success' : 'secondary' }} mt-1">
-                    {{ $gateway->isConfigured() ? 'Configured' : 'Not configured' }}
-                </span>
+                <x-adminlte.partials.status-badge :status="$gateway->isConfigured() ? 'configured' : 'inactive'" :label="$gateway->isConfigured() ? 'Configured' : 'Not configured'" />
                 @if ($gateway->isOnline() && ! $gateway->isConfigured())
                     <small class="text-muted d-block mt-1">Configure the credentials below to enable this gateway.</small>
                 @endif

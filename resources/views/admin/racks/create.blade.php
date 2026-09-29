@@ -11,11 +11,7 @@
 @stop
 
 @section('content')
-    @if ($errors->any())
-        <x-adminlte-alert theme="danger" dismissible>
-            <ul class="mb-0">@foreach ($errors->all() as $error)<li>{{ $error }}</li>@endforeach</ul>
-        </x-adminlte-alert>
-    @endif
+    <x-adminlte.partials.flash-alert />
 
     <x-adminlte.partials.form-card icon="bi bi-racks" title="New Rack" :action="route('admin.racks.store')" submit-label="Save Rack" :cancel-url="route('admin.racks.index')">
         <div class="row">

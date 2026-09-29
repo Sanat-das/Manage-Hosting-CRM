@@ -119,7 +119,7 @@
                                     <td class="text-end">{{ number_format($row['average'], 2) }}</td>
                                 </tr>
                             @empty
-                                <tr><td colspan="3" class="text-center text-muted py-3">Nothing rated yet.</td></tr>
+                                <x-ui.empty-table-row colSpan="3" icon="bi bi-people" title="Nothing rated yet." />
                             @endforelse
                         </tbody>
                     </table>
@@ -149,7 +149,7 @@
                                     <td class="text-end">{{ number_format($row['average'], 2) }}</td>
                                 </tr>
                             @empty
-                                <tr><td colspan="3" class="text-center text-muted py-3">Nothing rated yet.</td></tr>
+                                <x-ui.empty-table-row colSpan="3" icon="bi bi-diagram-3" title="Nothing rated yet." />
                             @endforelse
                         </tbody>
                     </table>
@@ -197,7 +197,7 @@
                             </td>
                         </tr>
                     @empty
-                        <tr><td colspan="5" class="text-center text-muted py-4">No rated conversations in this range.</td></tr>
+                        <x-ui.empty-table-row colSpan="5" icon="bi bi-list-stars" title="No rated conversations in this range." />
                     @endforelse
                 </tbody>
             </table>

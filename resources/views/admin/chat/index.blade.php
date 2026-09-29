@@ -282,7 +282,7 @@
                                 <span class="badge text-bg-secondary">private</span>
                             @endif
                             @if ($selected->department)
-                                <span class="badge text-bg-light text-body">{{ $selected->department }}</span>
+                                <span class="badge text-bg-secondary">{{ $selected->department }}</span>
                             @endif
                             @if ($selected->topic)
                                 <span class="text-body-secondary small">{{ $selected->topic }}</span>
@@ -297,7 +297,7 @@
                             <div class="d-flex gap-2" role="group" aria-label="Conversation membership">
                                 <button type="button" class="btn btn-sm btn-outline-secondary" id="chat-members-open">
                                     <i class="bi bi-people me-1" aria-hidden="true"></i>Members
-                                    <span class="badge text-bg-light text-body" id="chat-members-count">{{ $selected->participants->count() }}</span>
+                                    <span class="badge text-bg-secondary" id="chat-members-count">{{ $selected->participants->count() }}</span>
                                 </button>
 
                                 @if ($selected->type === \App\Models\ChatConversation::TYPE_CHANNEL)

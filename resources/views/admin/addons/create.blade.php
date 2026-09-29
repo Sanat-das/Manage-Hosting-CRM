@@ -7,15 +7,7 @@
 @stop
 
 @section('content')
-    @if ($errors->any())
-        <x-adminlte-alert theme="danger" dismissible>
-            <ul class="mb-0">
-                @foreach ($errors->all() as $error)
-                    <li>{{ $error }}</li>
-                @endforeach
-            </ul>
-        </x-adminlte-alert>
-    @endif
+    <x-adminlte.partials.flash-alert />
 
     <x-adminlte.partials.form-card
         icon="bi bi-plus-square"
@@ -44,19 +36,83 @@
 
         <div class="row">
             <div class="col-md-4">
-                <x-adminlte-select name="billing_cycle" label="Billing cycle" required>
+                <x-adminlte-select name="billing_cycle" label="Billing cycle (default)" required>
                     @foreach (['one_time' => 'One Time', 'monthly' => 'Monthly', 'quarterly' => 'Quarterly', 'semi_annual' => 'Semi-Annual', 'annual' => 'Annual'] as $value => $label)
                         <option value="{{ $value }}" @selected(old('billing_cycle') === $value)>{{ $label }}</option>
                     @endforeach
                 </x-adminlte-select>
             </div>
             <div class="col-md-4">
-                <x-adminlte-input name="price" type="number" step="0.01" min="0" label="Price"
+                <x-adminlte-input name="price" type="number" step="0.01" min="0" label="Price (default)"
                                   value="{{ old('price', '0.00') }}" required />
             </div>
             <div class="col-md-4">
-                <x-adminlte-input name="setup_fee" type="number" step="0.01" min="0" label="Setup fee"
+                <x-adminlte-input name="setup_fee" type="number" step="0.01" min="0" label="Setup fee (default)"
                                   value="{{ old('setup_fee', '0.00') }}" />
+            </div>
+        </div>
+
+        @php
+            $pricingRows = collect();
+            $selectedCycles = is_array(old('pricing_cycles')) ? old('pricing_cycles') : [];
+        @endphp
+
+        <div class="border-top pt-3 mt-4">
+            <h6 class="mb-2"><i class="bi bi-diagram-3 me-1"></i>Per-cycle pricing</h6>
+            <p class="text-muted small mb-2">
+                <i class="bi bi-info-circle me-1" aria-hidden="true"></i>
+                The default cycle, price and setup fee above apply to any cycle without a row here.
+                Enable a cycle to give this add-on its own price and setup fee for that billing cycle.
+            </p>
+
+            <div class="table-responsive">
+                <table class="table table-sm align-middle mb-0">
+                    <thead>
+                        <tr>
+                            <th style="min-width: 140px;">Billing cycle</th>
+                            <th class="text-end" style="min-width: 130px;">Price</th>
+                            <th class="text-end" style="min-width: 130px;">Setup fee</th>
+                            <th class="text-center" style="width: 70px;">Enable</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach ($cycles as $cycle => $cycleLabel)
+                            <tr>
+                                <td><strong>{{ $cycleLabel }}</strong></td>
+                                <td class="text-end">
+                                    <div class="input-group input-group-sm">
+                                        <span class="input-group-text px-1">₹</span>
+                                        <input type="number" step="0.01" min="0"
+                                               name="pricing[{{ $cycle }}][price]"
+                                               class="form-control text-end"
+                                               value="{{ old("pricing.$cycle.price", $pricingRows[$cycle]->price ?? '') }}"
+                                               placeholder="0.00">
+                                    </div>
+                                </td>
+                                <td class="text-end">
+                                    <div class="input-group input-group-sm">
+                                        <span class="input-group-text px-1">₹</span>
+                                        <input type="number" step="0.01" min="0"
+                                               name="pricing[{{ $cycle }}][setup_fee]"
+                                               class="form-control text-end"
+                                               value="{{ old("pricing.$cycle.setup_fee", $pricingRows[$cycle]->setup_fee ?? '') }}"
+                                               placeholder="0.00">
+                                    </div>
+                                </td>
+                                <td class="text-center">
+                                    <div class="form-check form-switch d-inline-block mb-0">
+                                        <input class="form-check-input" type="checkbox" role="switch"
+                                               id="pricing-cycle-{{ $cycle }}"
+                                               name="pricing_cycles[]" value="{{ $cycle }}"
+                                               @checked(in_array($cycle, $selectedCycles, true))
+                                               title="Enable a per-cycle price for {{ $cycleLabel }}">
+                                        <label class="form-check-label" for="pricing-cycle-{{ $cycle }}"></label>
+                                    </div>
+                                </td>
+                            </tr>
+                        @endforeach
+                    </tbody>
+                </table>
             </div>
         </div>
 

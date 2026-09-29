@@ -14,73 +14,81 @@
         <div class="row">
             <div class="col-6">
                 <div class="input-group mb-3">
-                    <input type="text" name="first_name" value="{{ old('first_name') }}"
+                    <label class="visually-hidden" for="register-first-name">{{ __('adminlte.first_name') }}</label>
+                    <input type="text" id="register-first-name" name="first_name" value="{{ old('first_name') }}"
                            class="form-control @error('first_name') is-invalid @enderror"
                            placeholder="{{ __('adminlte.first_name') }}" required autofocus
                            autocomplete="given-name" aria-label="{{ __('adminlte.first_name') }}">
-                    <div class="input-group-text"><span class="bi bi-person"></span></div>
+                    <div class="input-group-text"><span class="bi bi-person" aria-hidden="true"></span></div>
                     @error('first_name')<div class="invalid-feedback d-block">{{ $message }}</div>@enderror
                 </div>
             </div>
             <div class="col-6">
                 <div class="input-group mb-3">
-                    <input type="text" name="last_name" value="{{ old('last_name') }}"
+                    <label class="visually-hidden" for="register-last-name">{{ __('adminlte.last_name') }}</label>
+                    <input type="text" id="register-last-name" name="last_name" value="{{ old('last_name') }}"
                            class="form-control @error('last_name') is-invalid @enderror"
                            placeholder="{{ __('adminlte.last_name') }}" required
                            autocomplete="family-name" aria-label="{{ __('adminlte.last_name') }}">
-                    <div class="input-group-text"><span class="bi bi-person"></span></div>
+                    <div class="input-group-text"><span class="bi bi-person" aria-hidden="true"></span></div>
                     @error('last_name')<div class="invalid-feedback d-block">{{ $message }}</div>@enderror
                 </div>
             </div>
         </div>
 
         <div class="input-group mb-3">
-            <input type="email" name="email" value="{{ old('email') }}"
+            <label class="visually-hidden" for="register-email">{{ __('adminlte.email') }}</label>
+            <input type="email" id="register-email" name="email" value="{{ old('email') }}"
                    class="form-control @error('email') is-invalid @enderror"
                    placeholder="{{ __('adminlte.email') }}" required
                    autocomplete="email" aria-label="{{ __('adminlte.email') }}">
-            <div class="input-group-text"><span class="bi bi-envelope"></span></div>
+            <div class="input-group-text"><span class="bi bi-envelope" aria-hidden="true"></span></div>
             @error('email')<div class="invalid-feedback d-block">{{ $message }}</div>@enderror
         </div>
 
         <x-ui.phone-input name="phone" label="Phone Number" :value="old('phone')" placeholder="98007 44827" />
 
         <div class="input-group mb-3">
-            <input type="password" name="password"
+            <label class="visually-hidden" for="register-password">{{ __('adminlte.password') }}</label>
+            <input type="password" id="register-password" name="password"
                    class="form-control @error('password') is-invalid @enderror"
                    placeholder="{{ __('adminlte.password') }}" required
                    autocomplete="new-password" aria-label="{{ __('adminlte.password') }}">
-            <div class="input-group-text"><span class="bi bi-lock-fill"></span></div>
+            <div class="input-group-text"><span class="bi bi-lock-fill" aria-hidden="true"></span></div>
             @error('password')<div class="invalid-feedback d-block">{{ $message }}</div>@enderror
         </div>
 
         <div class="input-group mb-3">
-            <input type="password" name="password_confirmation"
+            <label class="visually-hidden" for="register-password-confirm">{{ __('adminlte.confirm_password') }}</label>
+            <input type="password" id="register-password-confirm" name="password_confirmation"
                    class="form-control" placeholder="{{ __('adminlte.confirm_password') }}" required
                    autocomplete="new-password" aria-label="{{ __('adminlte.confirm_password') }}">
-            <div class="input-group-text"><span class="bi bi-lock-fill"></span></div>
+            <div class="input-group-text"><span class="bi bi-lock-fill" aria-hidden="true"></span></div>
         </div>
 
-        <div class="border rounded p-3 mb-3 bg-light">
+        <div class="border rounded p-3 mb-3 bg-body-tertiary">
             <div class="d-flex align-items-center gap-2 mb-2">
-                <i class="bi bi-geo-alt text-primary"></i>
+                <i class="bi bi-geo-alt text-primary" aria-hidden="true"></i>
                 <small class="fw-semibold text-muted">Billing Address <span class="fw-normal">(optional — for invoices)</span></small>
             </div>
             <div class="mb-2">
-                <input type="text" name="address_line1" value="{{ old('address_line1') }}"
+                <label class="visually-hidden" for="register-address1">Street address</label>
+                <input type="text" id="register-address1" name="address_line1" value="{{ old('address_line1') }}"
                        class="form-control form-control-sm @error('address_line1') is-invalid @enderror"
                        placeholder="Street address — House no., street, area" autocomplete="street-address">
                 @error('address_line1')<div class="invalid-feedback d-block">{{ $message }}</div>@enderror
             </div>
             <div class="mb-2">
-                <input type="text" name="address_line2" value="{{ old('address_line2') }}"
+                <label class="visually-hidden" for="register-address2">Apartment, suite, landmark (optional)</label>
+                <input type="text" id="register-address2" name="address_line2" value="{{ old('address_line2') }}"
                        class="form-control form-control-sm @error('address_line2') is-invalid @enderror"
                        placeholder="Apartment, suite, landmark (optional)" autocomplete="address-line2">
                 @error('address_line2')<div class="invalid-feedback d-block">{{ $message }}</div>@enderror
             </div>
             <div class="row g-2 mb-2">
                 <div class="col-6">
-                    <input type="text" name="city" value="{{ old('city') }}"
+                    <label class="visually-hidden" for="register-city">City</label>
+                    <input type="text" id="register-city" name="city" value="{{ old('city') }}"
                            class="form-control form-control-sm @error('city') is-invalid @enderror"
                            placeholder="City" autocomplete="address-level2">
                     @error('city')<div class="invalid-feedback d-block">{{ $message }}</div>@enderror
@@ -93,7 +101,8 @@
             </div>
             <div class="row g-2">
                 <div class="col-6">
-                    <input type="text" name="postcode" value="{{ old('postcode') }}"
+                    <label class="visually-hidden" for="register-postcode">Postcode / ZIP</label>
+                    <input type="text" id="register-postcode" name="postcode" value="{{ old('postcode') }}"
                            class="form-control form-control-sm @error('postcode') is-invalid @enderror"
                            placeholder="Postcode / ZIP" autocomplete="postal-code">
                     @error('postcode')<div class="invalid-feedback d-block">{{ $message }}</div>@enderror

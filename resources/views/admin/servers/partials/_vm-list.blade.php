@@ -126,7 +126,7 @@
                         @if($rowHostMatch)
                             <span class="badge text-bg-{{ $rowTheme }}" style="font-size:var(--text-xs);">{{ $r['liveState'] ?? '—' }}</span>
                         @elseif($rowHostPresence === 'absent')
-                            <span class="badge text-bg-light border text-muted fw-normal">{{ $rowAbsentLabel }}</span>
+                            <span class="badge text-bg-secondary border fw-normal">{{ $rowAbsentLabel }}</span>
                         @else
                             <span class="badge text-bg-warning" style="font-size:var(--text-xs);"><i class="bi bi-exclamation-triangle me-1"></i>not found on host</span>
                         @endif
@@ -143,7 +143,7 @@
                     <td class="text-muted small text-nowrap"@if($rowBuiltAbsolute) title="{{ $rowBuiltAbsolute }}"@endif>{{ $rowBuiltHuman ?? '—' }}</td>
                 </tr>
             @empty
-                <tr><td colspan="8" class="text-center text-muted py-3">No VMs built on this hypervisor yet. Order a <strong>Windows VPS - Hyper-V</strong> product to provision one.</td></tr>
+                <x-ui.empty-table-row :col-span="8" icon="bi bi-cpu" title="No VMs built on this hypervisor yet." message="Order a Windows VPS - Hyper-V product to provision one." />
             @endforelse
         </tbody>
     </table>
@@ -196,12 +196,12 @@
                                 <td class="small text-nowrap">{{ ($lvMemAssigned !== null && $lvMemAssigned !== '') ? \App\ViewModels\Admin\ServerDetailViewModel::fmtBytes($lvMemAssigned) : '—' }}@if($lvMemDemand !== null && $lvMemDemand !== '' && $lvMemDemand != $lvMemAssigned)<span class="text-muted"> · demand {{ \App\ViewModels\Admin\ServerDetailViewModel::fmtBytes($lvMemDemand) }}</span>@endif</td>
                                 <td class="text-muted small">{{ $lv['switchName'] ?: '—' }}</td>
                                 @if($isProxmox)
-                                    <td>@if($lvNode !== '')<span class="badge text-bg-light border fw-normal" style="font-size:var(--text-xs);">{{ $lvNode }}</span>@else<span class="text-muted">—</span>@endif</td>
+                                    <td>@if($lvNode !== '')<span class="badge text-bg-secondary border fw-normal" style="font-size:var(--text-xs);">{{ $lvNode }}</span>@else<span class="text-muted">—</span>@endif</td>
                                 @endif
                                 @if($canDestroyUnmatched)
                                     <td class="text-end">
                                         @if($lvTemplate)
-                                            <span class="badge text-bg-light border text-muted fw-normal">template</span>
+                                            <span class="badge text-bg-secondary border fw-normal">template</span>
                                         @elseif($lvVmId !== null && $lvVmId !== '' && $lvNode !== '')
                                             <form method="POST" action="{{ route('admin.servers.vms.destroy', [$server, $lvVmId]) }}"
                                                   class="d-inline-flex gap-1 align-items-center" data-vm-destroy-form

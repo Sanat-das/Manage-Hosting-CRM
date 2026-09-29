@@ -14,13 +14,13 @@
 .et-editor-tabs > button[data-tab]{border:1px solid transparent; border-bottom:0; background:transparent; padding:.4rem .75rem; border-radius:.4rem .4rem 0 0; font-size:.85rem; font-weight:600; color:var(--bs-secondary-color);}
 .et-editor-tabs > button[data-tab].active{background:var(--bs-body-bg); border-color:var(--bs-border-color); color:var(--bs-body-color);}
 .et-var-chip{display:inline-flex; align-items:center; gap:.25rem; padding:.2rem .5rem; font-size:.78rem; border:1px solid var(--bs-border-color); border-radius:999px; background:var(--bs-tertiary-bg); cursor:pointer; user-select:none;}
-.et-var-chip:hover{background:var(--bs-primary); color:#fff; border-color:var(--bs-primary);}
-.et-preview-frame{width:100%; min-height:420px; border:0; background:#fff; transition:width .2s;}
+.et-var-chip:hover{background:var(--bs-primary); color:var(--color-neutral-0); border-color:var(--bs-primary);}
+.et-preview-frame{width:100%; min-height:420px; border:0; background:#fff; transition:width .2s;} /* email canvas is white by design — clients have no dark mode */
 /* Code toolbar */
 .et-code-toolbar{display:flex; flex-wrap:wrap; align-items:center; gap:.3rem; padding:.45rem .5rem; border-bottom:1px solid var(--bs-border-color); background:var(--bs-body-bg);}
 .et-code-toolbar .tb{border:1px solid var(--bs-border-color); background:var(--bs-tertiary-bg); border-radius:.35rem; padding:.22rem .55rem; font-size:.78rem; line-height:1.3; color:var(--bs-body-color); cursor:pointer; white-space:nowrap;}
 .et-code-toolbar .tb:hover{background:var(--bs-secondary-bg);}
-.et-code-toolbar .tb.on{background:var(--bs-primary); color:#fff; border-color:var(--bs-primary);}
+.et-code-toolbar .tb.on{background:var(--bs-primary); color:var(--color-neutral-0); border-color:var(--bs-primary);}
 .et-code-toolbar .sep{width:1px; height:20px; background:var(--bs-border-color); margin:0 .2rem;}
 /* CodeMirror */
 .CodeMirror{height:480px; font-family:ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace; font-size:13px; line-height:1.6;}
@@ -34,13 +34,13 @@
 .cm-s-material-darker .cm-et-var{color:#c792ea; background:rgba(199,146,234,.14);}
 .cm-et-var-bad{color:#dc2626; background:rgba(220,38,38,.12); border-radius:3px; font-weight:700; text-decoration:underline wavy #dc2626;}
 /* Autosave badge */
-#autosaveBadge{display:none; font-size:.75rem; padding:.2rem .55rem; border-radius:999px; background:var(--bs-warning-bg-subtle,#fff3cd); color:var(--bs-warning-text,#664d03); border:1px solid var(--bs-warning-border-subtle,#ffc107);}
+#autosaveBadge{display:none; font-size:.75rem; padding:.2rem .55rem; border-radius:999px; background:var(--bs-warning-bg-subtle); color:var(--bs-warning-text); border:1px solid var(--bs-warning-border-subtle);}
 /* Viewport toggle */
 .vp-btn{border:1px solid var(--bs-border-color); background:var(--bs-tertiary-bg); border-radius:.35rem; padding:.18rem .5rem; font-size:.78rem; cursor:pointer;}
-.vp-btn.active{background:var(--bs-primary); color:#fff; border-color:var(--bs-primary);}
+.vp-btn.active{background:var(--bs-primary); color:var(--color-neutral-0); border-color:var(--bs-primary);}
 /* Status bar */
 .et-statusbar{display:flex; flex-wrap:wrap; align-items:center; gap:.75rem; padding:.35rem .6rem; border-top:1px solid var(--bs-border-color); background:var(--bs-tertiary-bg); font-size:.75rem; color:var(--bs-secondary-color);}
-.et-statusbar .ok{color:#16a34a;} .et-statusbar .bad{color:#dc2626;}
+.et-statusbar .ok{color:var(--color-success);} .et-statusbar .bad{color:var(--color-danger);}
 /* ── z-index fix ─────────────────────────────────────────────── */
 /* Bootstrap .sticky-top is 1020 and .dropdown-menu is 1000, so the
    Variables sticky card was painting over the Load starter dropdown.
@@ -62,14 +62,7 @@
 @stop
 
 @section('content')
-    @if ($errors->any())
-        <x-adminlte-alert theme="danger" dismissible>
-            <ul class="mb-0">@foreach ($errors->all() as $error)<li>{{ $error }}</li>@endforeach</ul>
-        </x-adminlte-alert>
-    @endif
-    @if (session('success'))
-        <x-adminlte-alert theme="success" dismissible>{{ session('success') }}</x-adminlte-alert>
-    @endif
+    <x-adminlte.partials.flash-alert />
 
     {{-- Top actions --}}
     <div class="d-flex flex-wrap gap-2 justify-content-between align-items-center mb-3">
@@ -85,7 +78,7 @@
                 <button class="btn btn-outline-secondary btn-sm dropdown-toggle" data-bs-toggle="dropdown"><i class="bi bi-collection me-1"></i> Load starter</button>
                 <ul class="dropdown-menu dropdown-menu-end" style="max-height:320px; overflow:auto;">
                     @foreach($defaults as $key => $def)
-                        <li><a class="dropdown-item small starter-item" href="#" data-name="{{ $key }}">{{ $key }} <span class="text-muted">— {{ Str::limit($def['subject'], 36) }}</span></a></li>
+                        <li><button type="button" class="dropdown-item small starter-item w-100 text-start" data-name="{{ $key }}">{{ $key }} <span class="text-muted">— {{ Str::limit($def['subject'], 36) }}</span></button></li>
                     @endforeach
                 </ul>
             </div>
@@ -100,12 +93,12 @@
 
                     <div class="row">
                         <div class="col-md-6 mb-3">
-                            <label class="form-label fw-semibold">Template Name <span class="text-danger">*</span></label>
-                            <input type="text" name="name" value="{{ old('name', $template->name) }}" class="form-control" required>
+                            <label class="form-label fw-semibold" for="templateName">Template Name <span class="text-danger">*</span></label>
+                            <input type="text" id="templateName" name="name" value="{{ old('name', $template->name) }}" class="form-control" required>
                         </div>
                         <div class="col-md-3 mb-3">
-                            <label class="form-label fw-semibold">Status</label>
-                            <select name="status" class="form-select">
+                            <label class="form-label fw-semibold" for="templateStatus">Status</label>
+                            <select id="templateStatus" name="status" class="form-select">
                                 <option value="active" @selected(old('status', $template->status) === 'active')>Active</option>
                                 <option value="inactive" @selected(old('status', $template->status) === 'inactive')>Inactive</option>
                             </select>
@@ -116,7 +109,7 @@
                     </div>
 
                     <div class="mb-3">
-                        <label class="form-label fw-semibold d-flex justify-content-between">
+                        <label class="form-label fw-semibold d-flex justify-content-between" for="subjectInput">
                             Subject <span class="text-danger">*</span>
                             <small class="text-muted">click a variable to insert</small>
                         </label>
@@ -125,7 +118,7 @@
                     </div>
 
                     <div class="mb-2 d-flex justify-content-between align-items-center">
-                        <label class="form-label fw-semibold mb-0">Body (HTML) <span class="text-danger">*</span></label>
+                        <label class="form-label fw-semibold mb-0" for="bodyTextarea">Body (HTML) <span class="text-danger">*</span></label>
                         <small class="text-muted">Ctrl+F find · Ctrl+Shift+F format · F11 fullscreen</small>
                     </div>
 
@@ -152,17 +145,17 @@
                                     <button type="button" class="tb dropdown-toggle" data-bs-toggle="dropdown" title="Insert an email HTML block"><i class="bi bi-puzzle"></i> Snippets</button>
                                     <ul class="dropdown-menu" style="min-width:210px;">
                                         <li><h6 class="dropdown-header">Layout</h6></li>
-                                        <li><a class="dropdown-item small" href="#" data-snippet="doc">Full document skeleton</a></li>
-                                        <li><a class="dropdown-item small" href="#" data-snippet="section">Section wrapper</a></li>
-                                        <li><a class="dropdown-item small" href="#" data-snippet="two-col">Two-column row</a></li>
-                                        <li><a class="dropdown-item small" href="#" data-snippet="hero">Hero / amount block</a></li>
+                                        <li><button type="button" class="dropdown-item small w-100 text-start" data-snippet="doc">Full document skeleton</button></li>
+                                        <li><button type="button" class="dropdown-item small w-100 text-start" data-snippet="section">Section wrapper</button></li>
+                                        <li><button type="button" class="dropdown-item small w-100 text-start" data-snippet="two-col">Two-column row</button></li>
+                                        <li><button type="button" class="dropdown-item small w-100 text-start" data-snippet="hero">Hero / amount block</button></li>
                                         <li><hr class="dropdown-divider"></li>
                                         <li><h6 class="dropdown-header">Elements</h6></li>
-                                        <li><a class="dropdown-item small" href="#" data-snippet="cta-pay">CTA — Pay now</a></li>
-                                        <li><a class="dropdown-item small" href="#" data-snippet="cta-view">CTA — View invoice</a></li>
-                                        <li><a class="dropdown-item small" href="#" data-snippet="divider">Divider line</a></li>
-                                        <li><a class="dropdown-item small" href="#" data-snippet="table-items">Line-items table</a></li>
-                                        <li><a class="dropdown-item small" href="#" data-snippet="footer">Footer block</a></li>
+                                        <li><button type="button" class="dropdown-item small w-100 text-start" data-snippet="cta-pay">CTA — Pay now</button></li>
+                                        <li><button type="button" class="dropdown-item small w-100 text-start" data-snippet="cta-view">CTA — View invoice</button></li>
+                                        <li><button type="button" class="dropdown-item small w-100 text-start" data-snippet="divider">Divider line</button></li>
+                                        <li><button type="button" class="dropdown-item small w-100 text-start" data-snippet="table-items">Line-items table</button></li>
+                                        <li><button type="button" class="dropdown-item small w-100 text-start" data-snippet="footer">Footer block</button></li>
                                     </ul>
                                 </div>
                                 <button type="button" class="tb" id="tbCheckVars" title="Find placeholders that will not be replaced"><i class="bi bi-braces-asterisk"></i> Check vars</button>
@@ -184,21 +177,21 @@
                         </div>
 
                         {{-- Preview pane --}}
-                        <div id="pane-preview" class="d-none" style="background:#f6f8fb; padding:12px;">
+                        <div id="pane-preview" class="d-none bg-body-tertiary" style="padding:12px;">
                             <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-1">
                                 <small class="text-muted">Preview with sample invoice <code>INV-2026-00001</code> • Shyamolesh Ghosh</small>
                                 <div class="d-flex align-items-center gap-2">
-                                    <div class="btn-group btn-group-sm" id="vpToggleGroup">
-                                        <button type="button" class="vp-btn" data-vp="375" title="Mobile (375px)">📱 375</button>
-                                        <button type="button" class="vp-btn active" data-vp="600" title="Email (600px)">✉ 600</button>
-                                        <button type="button" class="vp-btn" data-vp="full" title="Full width">🖥 Full</button>
+                                    <div class="btn-group btn-group-sm" id="vpToggleGroup" role="group" aria-label="Preview width">
+                                        <button type="button" class="vp-btn" data-vp="375" title="Mobile (375px)" aria-label="Mobile preview 375 pixels">📱 375</button>
+                                        <button type="button" class="vp-btn active" data-vp="600" title="Email (600px)" aria-label="Email preview 600 pixels">✉ 600</button>
+                                        <button type="button" class="vp-btn" data-vp="full" title="Full width" aria-label="Full width preview">🖥 Full</button>
                                     </div>
                                     <button type="button" class="btn btn-sm btn-outline-secondary py-0" id="btnRefreshPreview">Refresh</button>
                                 </div>
                             </div>
-                            <div id="previewSubject" class="small fw-semibold mb-2 p-2 bg-white border rounded"></div>
+                            <div id="previewSubject" class="small fw-semibold mb-2 p-2 bg-body-tertiary border rounded"></div>
                             <div class="d-flex justify-content-center" style="overflow-x:auto;">
-                                <iframe id="previewFrame" class="et-preview-frame border rounded bg-white" style="width:600px;"></iframe>
+                                <iframe id="previewFrame" class="et-preview-frame border rounded" style="width:600px;" title="Email preview"></iframe>
                             </div>
                         </div>
                     </div>
@@ -217,7 +210,8 @@
             {{-- Variable palette --}}
             <x-adminlte-card icon="bi bi-braces" title="Variables — click to insert" class="sticky-top" style="top:1rem;">
                 <div class="mb-2">
-                    <input type="search" id="varSearch" class="form-control form-control-sm" placeholder="Filter variables...">
+                    <label class="visually-hidden" for="varSearch">Filter variables</label>
+                    <input type="search" id="varSearch" class="form-control form-control-sm" placeholder="Filter variables..." aria-label="Filter variables">
                 </div>
                 <div style="max-height:560px; overflow:auto;" id="varPalette">
                     @foreach($variableGroups as $group => $vars)
@@ -231,7 +225,7 @@
                         </div>
                     @endforeach
                 </div>
-                <div class="small text-muted mt-2">Keys match <code>InvoiceEmailService::buildVariables()</code>. <a href="#" data-bs-toggle="modal" data-bs-target="#varsHelpModal">Full list</a></div>
+                <div class="small text-muted mt-2">Keys match <code>InvoiceEmailService::buildVariables()</code>. <button type="button" class="btn btn-link btn-sm p-0" data-bs-toggle="modal" data-bs-target="#varsHelpModal">Full list</button></div>
             </x-adminlte-card>
 
             @if($defaultTemplate)
@@ -248,7 +242,7 @@
     {{-- Reset modal --}}
     <div class="modal fade" id="resetModal" tabindex="-1">
         <div class="modal-dialog"><div class="modal-content">
-            <div class="modal-header"><h5 class="modal-title">Reset to default?</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+            <div class="modal-header"><h5 class="modal-title">Reset to default?</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div>
             <div class="modal-body">This will overwrite subject and body with the seeder default for <code>{{ $template->name }}</code>.</div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
@@ -260,10 +254,11 @@
     {{-- Send test modal --}}
     <div class="modal fade" id="sendTestModal" tabindex="-1">
         <div class="modal-dialog"><div class="modal-content">
-            <div class="modal-header"><h5 class="modal-title">Send test email</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+            <div class="modal-header"><h5 class="modal-title">Send test email</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div>
             <div class="modal-body">
                 <p class="small text-muted">Renders current editor content with sample invoice and sends to an address.</p>
-                <input type="email" id="testEmail" class="form-control" value="{{ auth()->user()->email }}" placeholder="you@example.com">
+                <label class="visually-hidden" for="testEmail">Test email address</label>
+                <input type="email" id="testEmail" class="form-control" value="{{ auth()->user()->email }}" placeholder="you@example.com" aria-label="Test email address">
                 <div id="testResult" class="small mt-2"></div>
             </div>
             <div class="modal-footer">
@@ -276,7 +271,7 @@
     {{-- Variable check result modal --}}
     <div class="modal fade" id="varCheckModal" tabindex="-1">
         <div class="modal-dialog"><div class="modal-content">
-            <div class="modal-header"><h5 class="modal-title">Placeholder check</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+            <div class="modal-header"><h5 class="modal-title">Placeholder check</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div>
             <div class="modal-body" id="varCheckBody" style="max-height:60vh; overflow:auto;"></div>
                     <div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button></div>
         </div></div>
@@ -284,7 +279,7 @@
     <button type="button" id="varCheckTrigger" class="d-none" data-bs-toggle="modal" data-bs-target="#varCheckModal"></button>
     <button type="button" id="varCheckTrigger" class="d-none" data-bs-toggle="modal" data-bs-target="#varCheckModal"></button>
 
-    <div class="modal fade" id="varsHelpModal" tabindex="-1"><div class="modal-dialog modal-lg"><div class="modal-content"><div class="modal-header"><h5 class="modal-title">All variables</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body" style="max-height:70vh; overflow:auto;">
+    <div class="modal fade" id="varsHelpModal" tabindex="-1"><div class="modal-dialog modal-lg"><div class="modal-content"><div class="modal-header"><h5 class="modal-title">All variables</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div><div class="modal-body" style="max-height:70vh; overflow:auto;">
         @foreach($variableGroups as $g => $vars)
             <h6 class="mt-3">{{ $g }}</h6>
             <table class="table table-sm"><thead><tr><th>Key</th><th>Label</th><th>Desc</th></tr></thead><tbody>

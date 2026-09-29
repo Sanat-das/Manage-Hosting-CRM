@@ -224,6 +224,19 @@ Schedule::command('provisioning:reconcile')
     ->withoutOverlapping(10)
     ->runInBackground();
 
+// The systemd unit is the primary consumer; this drain is the safety net for
+// hosts without it (this Windows dev box) or when that service is stopped.
+// Without a consumer, a queued VM build sits in the table (card spinning)
+// until the 35-minute stale sweep. Mirrors the emails/default drain above and
+// the unit's flags: --tries=1 (verbs are not idempotent), --timeout=1800 (a
+// clone can take ~900s). --stop-when-empty makes each tick exit the moment
+// the queue is idle, so ticks never stack behind a long build.
+Schedule::command('queue:work --queue=provisioning --sleep=3 --tries=1 --timeout=1800 --stop-when-empty')
+    ->everyMinute()
+    ->withoutOverlapping(35)
+    ->runInBackground()
+    ->name('queue-provisioning-cron');
+
 /*
 |--------------------------------------------------------------------------
 | Admin enable/disable gate (Cron Jobs page)

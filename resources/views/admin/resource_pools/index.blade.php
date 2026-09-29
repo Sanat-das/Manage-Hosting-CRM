@@ -4,7 +4,7 @@
     <x-ui.page-header title="Resource Pools" subtitle="Overview and management of resource pools" :breadcrumbs="[['label' => __('adminlte.home'), 'url' => url('/')],['label' => 'Resource Pools','active' => true]]" />
 @stop
 @section('content')
-    @if (session('success')) <x-adminlte-alert theme="success" dismissible>{{ session('success') }}</x-adminlte-alert> @endif
+    <x-adminlte.partials.flash-alert />
 
     <x-adminlte.partials.datatable
         icon="bi bi-collection"
@@ -39,7 +39,7 @@
                 </td>
             </tr>
         @empty
-            <tr><td colspan="6" class="text-center text-muted py-4">No resource pools found.</td></tr>
+            <x-ui.empty-table-row colSpan="6" title="No resource pools found." />
         @endforelse
     </x-adminlte.partials.datatable>
 @stop

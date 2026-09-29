@@ -44,7 +44,7 @@
   --bs-link-color-rgb: var(--hostvexa-primary-rgb);
   --bs-link-hover-color: var(--hostvexa-primary-hover);
   --bs-link-hover-color-rgb: 2, 132, 199;
-  --bs-focus-ring-color: rgba(var(--hostvexa-primary-rgb), 0.22);
+  --bs-focus-ring-color: rgba(var(--bs-primary-rgb), 0.22);
   /* Existing token bridge — adminlte.css / app.css read these */
   --color-primary: var(--hostvexa-primary);
   --color-primary-hover: var(--hostvexa-primary-hover);
@@ -59,7 +59,9 @@
   --bs-primary: #38bdf8; /* sky-400 — AA on oklch(0.14) without glow */
   --bs-primary-rgb: 56, 189, 248;
   --bs-link-color: #38bdf8;
+  --bs-link-color-rgb: 56, 189, 248;
   --bs-link-hover-color: #7dd3fc;
+  --bs-link-hover-color-rgb: 125, 211, 252;
   --color-primary: #38bdf8;
   --color-primary-hover: #7dd3fc;
 }
@@ -84,24 +86,27 @@ a:hover { text-decoration-thickness: from-font; }
 .form-control:focus,
 .form-select:focus,
 .form-check-input:focus {
-  border-color: var(--hostvexa-primary);
-  box-shadow: 0 0 0 0.2rem rgba(var(--hostvexa-primary-rgb), 0.16);
+  border-color: var(--bs-primary);
+  box-shadow: 0 0 0 0.2rem rgba(var(--bs-primary-rgb), 0.16);
 }
 .btn:focus-visible,
 .page-link:focus-visible,
 .nav-link:focus-visible {
-  box-shadow: 0 0 0 0.2rem rgba(var(--hostvexa-primary-rgb), 0.20);
+  box-shadow: 0 0 0 0.2rem rgba(var(--bs-primary-rgb), 0.20);
   outline: 0;
 }
 
-/* Utilities that Bootstrap generates from --bs-primary — keep in sync */
-.bg-primary { background-color: var(--hostvexa-primary) !important; }
-.text-primary { color: var(--hostvexa-primary) !important; }
-.border-primary { border-color: var(--hostvexa-primary) !important; }
-.badge.bg-primary { background: var(--hostvexa-gradient) !important; }
+/* Utilities that Bootstrap generates from --bs-primary — keep in sync.
+   These must read --bs-primary, not --hostvexa-primary: the dark block above
+   re-points --bs-primary to sky-400, and a hardcoded sky-500 here left
+   .text-primary / .bg-primary unreadable on a dark surface. */
+.bg-primary { background-color: var(--bs-primary) !important; }
+.text-primary { color: var(--bs-primary) !important; }
+.border-primary { border-color: var(--bs-primary) !important; }
+.badge.bg-primary { background: var(--bs-primary) !important; }
 
 /* Selection — subtle brand tint */
-::selection { background: rgba(var(--hostvexa-primary-rgb), 0.18); }
+::selection { background: rgba(var(--bs-primary-rgb), 0.18); }
 
 /* ── 4 · Sidebar brand — .brand-logo-hostvexa + .brand-image ───────────── */
 .brand-link {

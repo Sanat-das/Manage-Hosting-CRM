@@ -24,9 +24,7 @@
 @stop
 
 @section('content')
-    @if (session('success'))
-        <x-adminlte-alert theme="success" dismissible>{{ session('success') }}</x-adminlte-alert>
-    @endif
+    <x-adminlte.partials.flash-alert />
 
     @php
         $m = $metrics ?? ['customers'=>0,'activeServices'=>0,'openInvoices'=>0,'overdueInvoices'=>0,'openTickets'=>0,'urgentTickets'=>0,'revenueMtd'=>0,'revenueMtdPrev'=>0];
@@ -49,19 +47,17 @@
         // base entirely rather than deep-merging, so `type`/`height`/`categories`
         // must be repeated here or they silently vanish from the rendered config.
         $revenueChartOptions = [
-            'colors' => ['#0d9f6e'],
-            'chart' => ['type' => 'area', 'height' => 280, 'toolbar' => ['show' => false], 'zoom' => ['enabled' => false], 'foreColor' => '#64748b', 'fontFamily' => 'Instrument Sans'],
+            'chart' => ['type' => 'area', 'height' => 280, 'toolbar' => ['show' => false], 'zoom' => ['enabled' => false], 'fontFamily' => 'Instrument Sans'],
             'stroke' => ['curve' => 'smooth', 'width' => 2],
             'fill' => ['type' => 'gradient', 'gradient' => ['shadeIntensity' => 1, 'opacityFrom' => 0.28, 'opacityTo' => 0.02]],
             'dataLabels' => ['enabled' => false],
-            'grid' => ['borderColor' => '#e2e8f0', 'strokeDashArray' => 3],
+            'grid' => ['strokeDashArray' => 3],
             'xaxis' => ['categories' => $revenueChart['labels'] ?? ['Jan','Feb','Mar','Apr','May','Jun'], 'labels' => ['style' => ['fontSize' => '11px']], 'axisBorder' => ['show' => false], 'axisTicks' => ['show' => false]],
             'yaxis' => ['labels' => ['style' => ['fontSize' => '11px']]],
         ];
         $ticketsChartOptions = [
             'labels' => array_keys($ticketsByStatus ?? []),
-            'colors' => ['#5b5bd6','#0284c7','#d97706','#dc2626','#0d9f6e','#64748b'],
-            'chart' => ['type' => 'donut', 'height' => 280, 'foreColor' => '#64748b', 'fontFamily' => 'Instrument Sans'],
+            'chart' => ['type' => 'donut', 'height' => 280, 'fontFamily' => 'Instrument Sans'],
             'legend' => ['position' => 'bottom', 'fontSize' => '11px'],
             'stroke' => ['width' => 0],
             'dataLabels' => ['enabled' => true, 'style' => ['fontSize' => '11px']],
@@ -128,7 +124,7 @@
         <div class="col-lg-8">
             <x-adminlte-card icon="bi bi-graph-up" title="Revenue — Last 6 months">
                 <x-slot:tools>
-                    <span class="badge text-bg-light border" style="font-size: var(--text-xs); font-weight: 500;">INR</span>
+                    <span class="badge text-bg-secondary border" style="font-size: var(--text-xs); font-weight: 500;">INR</span>
                 </x-slot:tools>
                 @if($hasRevenue)
                     <x-adminlte-chart
@@ -332,13 +328,14 @@ document.addEventListener('DOMContentLoaded', function () {
     function applySemanticChartColors() {
         try {
             var cs = getComputedStyle(document.documentElement);
-            var tok = function (name, fallback) { return (cs.getPropertyValue(name) || fallback).trim(); };
-            var primary = tok('--color-primary', '#5b5bd6');
-            var success = tok('--color-success', '#0d9f6e');
-            var warning = tok('--color-warning', '#d97706');
-            var danger = tok('--color-danger', '#dc2626');
-            var info = tok('--color-info', '#0284c7');
-            var muted = tok('--bs-secondary-color', tok('--color-text-muted', '#64748b'));
+            var tok = function (name) { return (cs.getPropertyValue(name) || '').trim(); };
+            var primary = tok('--color-primary') || tok('--bs-primary');
+            var success = tok('--color-success') || tok('--bs-success');
+            var warning = tok('--color-warning') || tok('--bs-warning');
+            var danger = tok('--color-danger') || tok('--bs-danger');
+            var info = tok('--color-info') || tok('--bs-info');
+            var muted = tok('--bs-secondary-color') || tok('--color-text-muted');
+            if (! primary || ! success || ! warning || ! danger || ! info || ! muted) { return; }
 
             var revenue = document.getElementById('mh-revenue-chart');
             if (revenue && revenue.apexChart) revenue.apexChart.updateOptions({ colors: [success] }, false, true);

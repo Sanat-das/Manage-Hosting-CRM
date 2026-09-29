@@ -186,9 +186,7 @@
                                     @endunless
                                 </tr>
                             @empty
-                                <tr>
-                                    <td colspan="{{ $optionPricingHidden ? 1 : count($cycles) + 1 }}" class="text-center text-muted py-3">No values on this group yet.</td>
-                                </tr>
+                                <x-ui.empty-table-row :colSpan="$optionPricingHidden ? 1 : count($cycles) + 1" icon="bi bi-list-check" title="No values on this group yet." />
                             @endforelse
                         </tbody>
                     </table>

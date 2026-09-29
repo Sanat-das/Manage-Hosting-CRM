@@ -8,7 +8,7 @@
     ]" />
 @stop
 @section('content')
-    @if (session('success')) <x-adminlte-alert theme="success" dismissible>{{ session('success') }}</x-adminlte-alert> @endif
+    <x-adminlte.partials.flash-alert />
     @if ($errors->has('generate')) <x-adminlte-alert theme="danger" dismissible>{{ $errors->first('generate') }}</x-adminlte-alert> @endif
 
     @if ($errors->has('delete')) <x-adminlte-alert theme="danger" dismissible>{{ $errors->first('delete') }}</x-adminlte-alert> @endif
@@ -42,8 +42,8 @@
                     <div class="modal-body">
                         <p class="text-muted small mb-3">Creates <code>available</code> addresses for every usable host in <code>{{ $ipSubnet->subnet_cidr }}</code>. Existing IPs are skipped. Large subnets are capped at 4096 per batch (/16 – /32; /31 and /32 handled per RFC).</p>
                         <div class="mb-3">
-                            <label class="form-label">Type</label>
-                            <select name="type" class="form-select">
+                            <label class="form-label" for="generate-type">Type</label>
+                            <select name="type" id="generate-type" class="form-select">
                                 <option value="available" selected>available</option>
                                 <option value="reserved">reserved</option>
                                 <option value="floating">floating</option>
@@ -107,7 +107,7 @@
                             <td class="text-muted small">{{ $ip->assigned_to_type ? class_basename($ip->assigned_to_type).'#'.$ip->assigned_to_id : '—' }}</td>
                         </tr>
                     @empty
-                        <tr><td colspan="3" class="text-center text-muted py-4">No IP addresses yet — use Generate IPs above.</td></tr>
+                        <x-ui.empty-table-row colSpan="3" title="No IP addresses yet — use Generate IPs above." />
                     @endforelse
                 </tbody>
             </table>

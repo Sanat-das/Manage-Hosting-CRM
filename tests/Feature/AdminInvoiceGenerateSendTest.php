@@ -20,8 +20,10 @@ use Tests\TestCase;
  * invoice page (InvoiceController::send — the "Send Invoice" button).
  *
  * Locks in:
- *  - an order can be invoiced on demand through the shared GST engine, and
- *    only one open draft per order (the existing draft is surfaced instead);
+ *  - an order can be invoiced on demand through the shared GST engine; an
+ *    existing draft is surfaced instead of duplicated, while a non-draft open
+ *    invoice (e.g. the sent add-on attach invoice) blocks generation until it
+ *    is voided or cancelled;
  *  - cancelled/terminated orders cannot be invoiced;
  *  - sending emails the customer from the invoice_created template and flips
  *    a draft to sent only once the email actually dispatched; paid, void and
@@ -161,14 +163,15 @@ class AdminInvoiceGenerateSendTest extends TestCase
         $this->assertSame(0, Invoice::count());
     }
 
-    public function test_generate_invoice_allowed_once_previous_leaves_draft(): void
+    public function test_generate_invoice_refused_while_a_sent_invoice_exists(): void
     {
         $admin = $this->adminUser();
         $customer = $this->makeCustomer();
         $order = $this->makeOrder($customer, $this->makeProduct());
 
-        // A sent invoice is no longer an open draft → a new one may be raised
-        // for the next billing cycle.
+        // A sent invoice still carries every order item (the add-on attach
+        // raises one) — generating again from the same items would re-bill the
+        // whole order. Void or cancel it first when it really must be re-raised.
         Invoice::create([
             'customer_id' => $customer->id,
             'order_id' => $order->id,
@@ -179,9 +182,13 @@ class AdminInvoiceGenerateSendTest extends TestCase
             'due_date' => now()->addDays(7),
         ]);
 
-        $this->actingAs($admin)->post(route('admin.orders.generate-invoice', $order));
+        $response = $this->actingAs($admin)
+            ->from(route('admin.orders.show', $order))
+            ->post(route('admin.orders.generate-invoice', $order));
 
-        $this->assertSame(2, Invoice::count());
+        $response->assertRedirect(route('admin.orders.show', $order));
+        $response->assertSessionHasErrors('error');
+        $this->assertSame(1, Invoice::count());
     }
 
     // ─── Send Invoice (invoice page) ──────────────────────────────────

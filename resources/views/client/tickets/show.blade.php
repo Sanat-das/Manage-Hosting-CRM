@@ -3,16 +3,11 @@
 @section('title', $ticket->ticket_no)
 
 @section('content_header')
-    <div class="row">
-        <div class="col-sm-6"><h1 class="m-0">Ticket {{ $ticket->ticket_no }}</h1></div>
-        <div class="col-sm-6">
-            <ol class="breadcrumb float-sm-end">
-                <li class="breadcrumb-item"><a href="{{ url('/') }}">{{ __('adminlte.home') }}</a></li>
-                <li class="breadcrumb-item"><a href="{{ route('client.tickets.index') }}">Tickets</a></li>
-                <li class="breadcrumb-item active">{{ $ticket->ticket_no }}</li>
-            </ol>
-        </div>
-    </div>
+    <x-ui.page-header :title="'Ticket ' . $ticket->ticket_no" :breadcrumbs="[
+        ['label' => __('adminlte.home'), 'url' => url('/')],
+        ['label' => 'Tickets', 'url' => route('client.tickets.index')],
+        ['label' => $ticket->ticket_no, 'active' => true],
+    ]" />
 @stop
 
 @section('content')
@@ -36,7 +31,7 @@
                         // point of blind-copying them. Only staff (admin view) sees it.
                         $sanitizedHtml = \App\Support\TicketHtmlSanitizer::sanitize($reply->html_body);
                     @endphp
-                    <div class="border rounded p-3 mb-3 {{ $reply->is_staff ? 'border-primary bg-light' : '' }}">
+                    <div class="border rounded p-3 mb-3 {{ $reply->is_staff ? 'border-primary bg-body-tertiary' : 'bg-body' }}">
                         <div class="d-flex justify-content-between mb-1">
                             <strong>{{ $reply->is_staff ? 'Staff' : 'You' }}</strong>
                             <small class="text-muted">{{ $reply->created_at?->format('M j, H:i') }}</small>
@@ -98,10 +93,10 @@
                                                 default => 'bi-file-earmark text-secondary',
                                             };
                                         @endphp
-                                        <div class="attachment-card d-flex align-items-center gap-2 p-2 bg-white border rounded {{ $isPreviewable ? 'attachment-previewable' : '' }}"
+                                        <div class="attachment-card d-flex align-items-center gap-2 p-2 bg-body border rounded {{ $isPreviewable ? 'attachment-previewable' : '' }}"
                                              style="min-width: 210px; max-width: 300px; cursor: {{ $isPreviewable ? 'pointer' : 'default' }};"
                                              @if($isPreviewable) data-preview-url="{{ $previewUrl }}" data-preview-mime="{{ $mime }}" data-filename="{{ $attachment->filename }}" data-download-url="{{ $downloadUrl }}" @endif>
-                                            <div class="flex-shrink-0 d-flex align-items-center justify-content-center bg-light border rounded overflow-hidden" style="width: 40px; height: 40px;">
+                                            <div class="flex-shrink-0 d-flex align-items-center justify-content-center bg-body-tertiary border rounded overflow-hidden" style="width: 40px; height: 40px;">
                                                 @if($isImage)
                                                     <img src="{{ $previewUrl }}" alt="{{ $attachment->filename }}" loading="lazy" style="width:100%; height:100%; object-fit: cover;">
                                                 @else
@@ -114,9 +109,9 @@
                                             </div>
                                             <div class="d-flex gap-1 flex-shrink-0">
                                                 @if($isPreviewable)
-                                                    <button type="button" class="btn btn-sm btn-light border attachment-preview-btn" data-preview-url="{{ $previewUrl }}" data-preview-mime="{{ $mime }}" data-filename="{{ $attachment->filename }}" data-download-url="{{ $downloadUrl }}" title="Preview"><i class="bi bi-eye"></i></button>
+                                                    <button type="button" class="btn btn-sm btn-outline-secondary attachment-preview-btn" data-preview-url="{{ $previewUrl }}" data-preview-mime="{{ $mime }}" data-filename="{{ $attachment->filename }}" data-download-url="{{ $downloadUrl }}" title="Preview" aria-label="Preview {{ $attachment->filename }}"><i class="bi bi-eye" aria-hidden="true"></i></button>
                                                 @endif
-                                                <a href="{{ $downloadUrl }}" class="btn btn-sm btn-light border" title="Download" download><i class="bi bi-download"></i></a>
+                                                <a href="{{ $downloadUrl }}" class="btn btn-sm btn-outline-secondary" title="Download" aria-label="Download {{ $attachment->filename }}" download><i class="bi bi-download" aria-hidden="true"></i></a>
                                             </div>
                                         </div>
                                     @endforeach
@@ -157,7 +152,7 @@
                                 if(!input.files||!input.files.length) return;
                                 Array.from(input.files).forEach(function(f,i){
                                     var row=document.createElement('div');
-                                    row.className='d-flex align-items-center gap-2 p-2 bg-light border rounded';
+                                    row.className='d-flex align-items-center gap-2 p-2 bg-body-tertiary border rounded';
                                     var ext=f.name.split('.').pop().toLowerCase();
                                     var icon='bi-file-earmark';
                                     if(f.type.startsWith('image/')) icon='bi-file-earmark-image text-success';
@@ -222,14 +217,14 @@
                 <div class="modal-header py-2">
                     <h6 class="modal-title text-truncate me-2" id="attachmentPreviewTitle" style="max-width:60%;"></h6>
                     <div class="ms-auto d-flex align-items-center gap-2">
-                        <a id="attachmentPreviewDownload" href="#" class="btn btn-sm btn-primary" download><i class="bi bi-download me-1"></i>Download</a>
-                        <a id="attachmentPreviewOpen" href="#" target="_blank" rel="noopener" class="btn btn-sm btn-outline-secondary"><i class="bi bi-box-arrow-up-right"></i></a>
-                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                        <a id="attachmentPreviewDownload" class="btn btn-sm btn-primary" download aria-label="Download attachment"><i class="bi bi-download me-1" aria-hidden="true"></i>Download</a>
+                        <a id="attachmentPreviewOpen" class="btn btn-sm btn-outline-secondary" target="_blank" rel="noopener" aria-label="Open attachment in new tab"><i class="bi bi-box-arrow-up-right" aria-hidden="true"></i></a>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close preview"></button>
                     </div>
                 </div>
-                <div class="modal-body p-0 bg-dark d-flex align-items-center justify-content-center" style="min-height:320px; max-height:78vh; overflow:auto;">
+                <div class="modal-body p-0 d-flex align-items-center justify-content-center" style="min-height:320px; max-height:78vh; overflow:auto; background:var(--color-neutral-950);">
                     <img id="attachmentPreviewImage" src="" alt="" style="max-width:100%; max-height:74vh; object-fit:contain; display:none;">
-                    <iframe id="attachmentPreviewFrame" src="" style="width:100%; height:74vh; border:0; display:none; background:white;"></iframe>
+                    <iframe id="attachmentPreviewFrame" src="" title="Attachment preview" style="width:100%; height:74vh; border:0; display:none; background:var(--bs-body-bg);"></iframe>
                     <div id="attachmentPreviewFallback" class="text-white text-center p-4" style="display:none;"><i class="bi bi-file-earmark fs-1 d-block mb-2"></i><span>Preview not available.</span></div>
                 </div>
             </div>
@@ -239,8 +234,8 @@
     @push('css')
         <style>
             .attachment-card { transition: box-shadow .15s, border-color .15s; }
-            .attachment-card:hover { border-color: #adb5bd !important; box-shadow: 0 1px 6px rgba(0,0,0,.08); }
-            .attachment-card.attachment-previewable:hover { border-color: #0d6efd !important; }
+            .attachment-card:hover { border-color: var(--color-border-strong) !important; box-shadow: var(--shadow-sm); }
+            .attachment-card.attachment-previewable:hover { border-color: var(--color-primary) !important; }
         </style>
     @endpush
     @push('js')

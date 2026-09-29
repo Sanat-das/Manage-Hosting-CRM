@@ -25,7 +25,7 @@
                         <td>{{ $c->hosting_accounts_count }}</td>
                     </tr>
                 @empty
-                    <tr><td colspan="5" class="text-center text-muted py-4">No customers.</td></tr>
+                    <x-ui.empty-table-row colSpan="5" title="No customers." />
                 @endforelse
             </tbody>
         </table>

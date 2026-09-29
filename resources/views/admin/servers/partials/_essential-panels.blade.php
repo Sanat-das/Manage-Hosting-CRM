@@ -182,7 +182,7 @@
                         <br>Last refresh failed: {{ $freshError }}
                     @endif
                     Re-test to refresh.
-                    <button type="button" class="btn btn-sm btn-outline-warning ms-2" onclick="document.getElementById('retestBtn')?.click()">Re-test now</button>
+                    <button type="button" class="btn btn-sm btn-outline-warning ms-2" data-retest-proxy="retestBtn">Re-test now</button>
                 </div>
             @elseif (($isHyperv || $isProxmox) && ! $hasVmCounts)
                 <div class="alert alert-warning py-1 px-2 mb-2 small" data-available="limited-badge">
@@ -347,3 +347,24 @@
         <span class="placeholder col-4 mt-2"></span>
     </div>
 </div>
+
+@push('js')
+<script>
+document.addEventListener('click', function (event) {
+    var el = event.target && event.target.closest ? event.target.closest('[data-retest-proxy],[data-expand-toggle]') : null;
+    if (!el) return;
+    if (el.hasAttribute('data-retest-proxy')) {
+        var target = document.getElementById(el.getAttribute('data-retest-proxy') || '');
+        if (target) target.click();
+        return;
+    }
+    var scope = el.closest('div');
+    var selector = el.getAttribute('data-expand-toggle') || '';
+    if (!scope || selector === '') return;
+    var hidden = scope.querySelectorAll(selector + '.d-none');
+    var wasHidden = hidden.length > 0;
+    hidden.forEach(function (node) { node.classList.toggle('d-none'); });
+    el.textContent = wasHidden ? 'Show less' : (el.getAttribute('data-label-show') || el.textContent);
+});
+</script>
+@endpush

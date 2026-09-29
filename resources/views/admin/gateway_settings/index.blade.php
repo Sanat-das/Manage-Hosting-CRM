@@ -7,9 +7,7 @@
 @stop
 
 @section('content')
-    @if (session('success'))
-        <x-adminlte-alert theme="success" dismissible>{{ session('success') }}</x-adminlte-alert>
-    @endif
+    <x-adminlte.partials.flash-alert />
 
     <x-adminlte-alert theme="info" dismissible icon="bi bi-info-circle">
         Online gateways (Stripe, PayPal, Razorpay) must have their credentials configured before they can be enabled.
@@ -36,13 +34,13 @@
                             <td class="fw-bold">{{ $gateway->name }}</td>
                             <td><code>{{ $gateway->code }}</code></td>
                             <td>
-                                <span class="badge text-bg-{{ $gateway->mode === 'live' ? 'success' : 'warning' }}">{{ ucfirst($gateway->mode) }}</span>
+                                <x-adminlte.partials.status-badge :status="$gateway->mode" :label="ucfirst($gateway->mode)" :map="['live' => 'success', 'test' => 'warning', 'sandbox' => 'warning']" />
                             </td>
                             <td>
-                                <span class="badge text-bg-{{ $gateway->enabled ? 'success' : 'secondary' }}">{{ $gateway->enabled ? 'Enabled' : 'Disabled' }}</span>
+                                <x-adminlte.partials.status-badge :status="$gateway->enabled ? 'enabled' : 'disabled'" />
                             </td>
                             <td>
-                                <span class="badge text-bg-{{ $gateway->isConfigured() ? 'success' : 'secondary' }}">{{ $gateway->isConfigured() ? 'Configured' : 'Not configured' }}</span>
+                                <x-adminlte.partials.status-badge :status="$gateway->isConfigured() ? 'configured' : 'inactive'" :label="$gateway->isConfigured() ? 'Configured' : 'Not configured'" />
                             </td>
                             <td class="text-end">
                         <div class="table-actions">
@@ -51,7 +49,7 @@
                     </td>
                         </tr>
                     @empty
-                        <tr><td colspan="6" class="text-center text-muted py-4">No payment gateways found.</td></tr>
+                        <x-ui.empty-table-row colSpan="6" title="No payment gateways found." />
                     @endforelse
                 </tbody>
             </table>

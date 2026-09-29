@@ -1,0 +1,23 @@
+[
+  {
+    "at": "+6s",
+    "step": "login.ok"
+  },
+  {
+    "at": "+20s",
+    "step": "phase3c.baseline",
+    "state": "Off"
+  },
+  {
+    "at": "+37s",
+    "step": "vm.deleted",
+    "state": "Not created",
+    "feedback": []
+  },
+  {
+    "at": "+38s",
+    "step": "hosting.after-delete",
+    "terminated": true,
+    "hostName": "host-i0syymhi"
+  }
+]

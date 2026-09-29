@@ -36,7 +36,7 @@
                         </td>
                     </tr>
                 @empty
-                    <tr><td colspan="5" class="text-center text-muted py-4">No accounts.</td></tr>
+                    <x-ui.empty-table-row colSpan="5" title="No accounts." />
                 @endforelse
             </tbody>
         </table>

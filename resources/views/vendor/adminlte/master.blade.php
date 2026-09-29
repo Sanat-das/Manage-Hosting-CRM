@@ -25,7 +25,9 @@
 <!DOCTYPE html>
 <html lang="{{ str_replace('_', '-', app()->getLocale()) }}"
       dir="{{ $rtl ? 'rtl' : 'ltr' }}"
-      @isset($darkMode) data-bs-theme="dark" @endisset>
+      {{-- Explicit light/dark choice rendered server-side; Auto emits nothing and
+           the pre-paint script in partials/head.blade.php resolves it before paint. --}}
+      @if (! empty($themeResolved)) data-bs-theme="{{ $themeResolved }}" @endif>
 <head>
     @include('adminlte::partials.head')
 </head>

@@ -139,7 +139,7 @@ class InvoiceController extends Controller
             'status' => $validated['status'],
             'due_date' => $validated['due_date'] ?? null,
             'notes' => $validated['notes'] ?? null,
-        ], $items);
+        ], $items, $this->billing->resolvePlaceOfSupply((int) $validated['customer_id']));
 
         return redirect()
             ->route('admin.invoices.show', $invoice)
@@ -236,7 +236,7 @@ class InvoiceController extends Controller
             'status' => $validated['status'],
             'due_date' => $validated['due_date'] ?? null,
             'notes' => $validated['notes'] ?? null,
-        ], $items);
+        ], $items, $this->billing->resolvePlaceOfSupply((int) $validated['customer_id']));
 
         return redirect()
             ->route('admin.invoices.show', $invoice)

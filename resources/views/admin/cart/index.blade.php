@@ -7,7 +7,7 @@
     ]" />
 @stop
 @section('content')
-    @if (session('success')) <x-adminlte-alert theme="success" dismissible>{{ session('success') }}</x-adminlte-alert> @endif
+    <x-adminlte.partials.flash-alert />
     <div class="row">
         <div class="col-md-3">
             <x-adminlte-card icon="bi bi-list" title="Categories">
@@ -24,7 +24,7 @@
             </x-adminlte-card>
             <x-adminlte-card icon="bi bi-search" title="Domain Search" class="mt-3">
                 <form method="GET" action="{{ route('admin.cart.domain-search') }}">
-                    <x-adminlte-input name="domain" placeholder="example.com" value="{{ request('domain') }}" />
+                    <x-adminlte-input name="domain" label="Domain name" placeholder="example.com" value="{{ request('domain') }}" />
                     <button type="submit" class="btn btn-primary w-100">Check Availability</button>
                 </form>
             </x-adminlte-card>
@@ -48,7 +48,7 @@
                                         <form method="POST" action="{{ route('admin.cart.add') }}">
                                             @csrf
                                             <input type="hidden" name="product_id" value="{{ $product->id }}">
-                                            <button type="submit" class="btn btn-sm btn-primary"><i class="bi bi-cart-plus"></i></button>
+                                            <button type="submit" class="btn btn-sm btn-primary" aria-label="Add to cart"><i class="bi bi-cart-plus" aria-hidden="true"></i></button>
                                         </form>
                                     </div>
                                 </div>

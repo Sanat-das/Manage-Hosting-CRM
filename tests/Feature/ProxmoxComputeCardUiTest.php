@@ -11,6 +11,7 @@ use App\Models\PanelAccount;
 use App\Models\Permission;
 use App\Models\Product;
 use App\Models\ProductModule;
+use App\Models\ProvisioningEvent;
 use App\Models\Role;
 use App\Models\Server;
 use App\Models\ServiceInstance;
@@ -584,6 +585,223 @@ final class ProxmoxComputeCardUiTest extends TestCase
         $this->assertStringContainsString('data-compute-action="stop"', $html);
         $this->assertStringContainsString('data-compute-progress', $html);
         $this->assertStringContainsString('data-compute-view="reset_password"', $html);
+    }
+
+    /**
+     * A failed compute action must survive the server render inside the
+     * status strip (danger) so a manual page reload still shows the error
+     * instead of losing it. The strip carries the presenter's notice first
+     * and the verdict after it; the empty feedback hook stays behind for
+     * the poller's live verdicts.
+     */
+    public function test_failed_compute_action_survives_server_render_in_status_strip(): void
+    {
+        Http::fake();
+
+        $server = $this->proxmoxServer();
+        $product = $this->productWithProxmoxLink();
+        $account = $this->hostingAccount($this->customer(), $product, $server);
+
+        ProvisioningEvent::create([
+            'service_instance_id' => null,
+            'hosting_account_id' => $account->id,
+            'event_type' => 'provision',
+            'status' => 'failed',
+            'event_status' => 'failed',
+            'payload' => ['module' => 'proxmox', 'action' => 'create'],
+            'result' => ['error' => 'PVE-COMPUTE-BOOM-9f3a'],
+            'last_error' => 'PVE-COMPUTE-BOOM-9f3a',
+        ]);
+
+        $html = $this->actingAs($this->adminWith(['hosting.view', 'hosting.edit']))
+            ->get(route('admin.hosting.show', $account))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('id="compute-panel-proxmox"', $html);
+        $this->assertStringContainsString('PVE-COMPUTE-BOOM-9f3a', $html);
+
+        $dom = new \DOMDocument;
+        @$dom->loadHTML($html);
+        $xpath = new \DOMXPath($dom);
+
+        $nodes = $xpath->query('//*[@id="compute-panel-proxmox"]//*[@data-compute-notice]');
+        $this->assertSame(1, $nodes->length, 'The compute card must render exactly one status strip.');
+        $strip = $nodes->item(0);
+        $this->assertStringContainsString('alert-danger', (string) $strip->getAttribute('class'));
+        $this->assertSame('status', (string) $strip->getAttribute('role'));
+        $this->assertSame('polite', (string) $strip->getAttribute('aria-live'));
+        $this->assertStringContainsString('PVE-COMPUTE-BOOM-9f3a', (string) $strip->textContent);
+
+        $feedback = $xpath->query('//*[@id="compute-panel-proxmox"]//*[@data-compute-feedback]');
+        $this->assertSame(1, $feedback->length, 'The live-poller feedback hook must stay behind.');
+        $this->assertStringContainsString('d-none', (string) $feedback->item(0)->getAttribute('class'));
+        $this->assertSame('', trim((string) $feedback->item(0)->textContent));
+    }
+
+    /**
+     * The presenter's additive notice key renders verbatim in the strip with
+     * its severity; a refused create keeps the primary section absent (not
+     * greyed) and links the disabled button at the strip.
+     */
+    public function test_status_strip_renders_presenter_notice_when_provided(): void
+    {
+        $html = $this->renderComputeCard([
+            'action' => ['running' => false],
+            'vm' => ['exists' => false, 'state' => null, 'probe_error' => null],
+            'can' => ['create' => false, 'start' => false, 'stop' => false, 'restart' => false, 'delete' => false, 'reset_password' => false],
+            'reasons' => ['create' => 'Service is terminated — restore the account before creating a VM.'],
+            'credentials' => ['stored' => false, 'username' => 'root'],
+            'notice' => ['severity' => 'danger', 'text' => 'Service is terminated — create is refused. Delete cleans up; restoring the account re-enables provisioning.'],
+        ]);
+
+        $this->assertStringContainsString('id="compute-notice-proxmox"', $html);
+        $this->assertStringContainsString('Service is terminated — create is refused.', $html);
+        $this->assertStringContainsString('alert-danger', $html);
+        $this->assertStringContainsString('role="status"', $html);
+        $this->assertStringContainsString('aria-live="polite"', $html);
+        // The section hook also appears in the panel JS, so assert on the
+        // element itself: refused create renders no section, never a greyed one.
+        $this->assertDoesNotMatchRegularExpression('/<section[^>]*data-compute-create-section/', $html);
+        $this->assertMatchesRegularExpression('/data-compute-action="create"[^>]*aria-describedby="compute-notice-proxmox"/', $html);
+    }
+
+    /**
+     * A steady running VM explains nothing, so no strip renders at all — and
+     * no button points at a strip id that does not exist.
+     */
+    public function test_status_strip_absent_for_a_steady_running_vm(): void
+    {
+        $html = $this->renderComputeCard([
+            'action' => ['running' => false],
+            'vm' => ['exists' => true, 'state' => 'running', 'probe_error' => null],
+            'can' => ['create' => false, 'start' => false, 'stop' => true, 'restart' => true, 'delete' => false, 'reset_password' => true],
+            'reasons' => [],
+            'credentials' => ['stored' => true, 'username' => 'root'],
+        ]);
+
+        $this->assertStringNotContainsString('id="compute-notice-proxmox"', $html);
+        $this->assertDoesNotMatchRegularExpression('/aria-describedby="/', $html);
+    }
+
+    /**
+     * Without a notice key (hand-crafted payloads, older consumers) the card
+     * still explains a refusal: the strip falls back to the presenter's
+     * reason, warns, groups the actions by risk, and links refusals at it.
+     */
+    public function test_status_strip_falls_back_to_probe_reason_without_notice_key(): void
+    {
+        $html = $this->renderComputeCard([
+            'action' => ['running' => false],
+            'vm' => ['exists' => null, 'state' => null, 'probe_error' => 'connection timed out'],
+            'can' => ['create' => false, 'start' => false, 'stop' => false, 'restart' => false, 'delete' => false, 'reset_password' => false],
+            'reasons' => ['create' => 'Could not verify the VM on the host — connection timed out'],
+            'credentials' => ['stored' => false, 'username' => 'root'],
+        ]);
+
+        $this->assertStringContainsString('id="compute-notice-proxmox"', $html);
+        $this->assertStringContainsString('Could not verify the VM on the host', $html);
+        $this->assertStringContainsString('alert-warning', $html);
+        foreach (['Lifecycle', 'Access', 'Danger'] as $group) {
+            $this->assertStringContainsString($group, $html);
+        }
+        $this->assertMatchesRegularExpression('/data-compute-action="start"[^>]*aria-describedby="compute-notice-proxmox"/', $html);
+    }
+
+    /**
+     * The primary create section is the empty state: visible with its
+     * template select and start checkbox while create is allowed, absent
+     * (never greyed) once refused. The progress block stays either way.
+     */
+    public function test_create_section_visible_only_when_create_allowed(): void
+    {
+        $allowed = $this->renderComputeCard([
+            'action' => ['running' => false],
+            'vm' => ['exists' => false, 'state' => null, 'probe_error' => null],
+            'can' => ['create' => true, 'start' => false, 'stop' => false, 'restart' => false, 'delete' => false, 'reset_password' => false],
+            'reasons' => ['start' => 'VM is not created on the host yet.'],
+            'credentials' => ['stored' => false, 'username' => 'root'],
+        ]);
+
+        $this->assertMatchesRegularExpression('/<section[^>]*data-compute-create-section/', $allowed);
+        $this->assertStringContainsString('id="compute-template-proxmox"', $allowed);
+        $this->assertStringContainsString('name="start_after_create"', $allowed);
+        $this->assertStringContainsString('data-compute-form-action="create"', $allowed);
+        $this->assertStringContainsString('data-compute-progress', $allowed);
+
+        $refused = $this->renderComputeCard([
+            'action' => ['running' => false],
+            'vm' => ['exists' => true, 'state' => 'running', 'probe_error' => null],
+            'can' => ['create' => false, 'start' => false, 'stop' => true, 'restart' => true, 'delete' => false, 'reset_password' => true],
+            'reasons' => ['create' => 'A VM already exists on the host — delete it first to rebuild.'],
+            'credentials' => ['stored' => true, 'username' => 'root'],
+        ]);
+
+        $this->assertDoesNotMatchRegularExpression('/<section[^>]*data-compute-create-section/', $refused);
+        $this->assertStringNotContainsString('compute-template-proxmox', $refused);
+        $this->assertStringContainsString('data-compute-progress', $refused);
+    }
+
+    /**
+     * A completed or still-running latest action must NOT pre-render the
+     * feedback alert: success toasts belong to the live poller, and a
+     * running action owns the progress panel instead.
+     */
+    public function test_completed_or_running_compute_action_does_not_pre_render_feedback_alert(): void
+    {
+        Http::fake();
+
+        $server = $this->proxmoxServer();
+        $product = $this->productWithProxmoxLink();
+
+        $completed = $this->hostingAccount($this->customer(), $product, $server, 'pve-done-'.str()->lower(str()->random(6)));
+        ProvisioningEvent::create([
+            'service_instance_id' => null,
+            'hosting_account_id' => $completed->id,
+            'event_type' => 'provision',
+            'status' => 'completed',
+            'event_status' => 'completed',
+            'payload' => ['module' => 'proxmox', 'action' => 'create'],
+            'result' => ['message' => 'PVE-COMPUTE-DONE-4b7c'],
+            'last_error' => null,
+        ]);
+
+        $html = $this->actingAs($this->adminWith(['hosting.view', 'hosting.edit']))
+            ->get(route('admin.hosting.show', $completed))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringNotContainsString('PVE-COMPUTE-DONE-4b7c', $html);
+        $dom = new \DOMDocument;
+        @$dom->loadHTML($html);
+        $feedback = (new \DOMXPath($dom))->query('//*[@id="compute-panel-proxmox"]//*[@data-compute-feedback]');
+        $this->assertSame(1, $feedback->length);
+        $this->assertStringContainsString('d-none', (string) $feedback->item(0)->getAttribute('class'));
+        $this->assertSame('', trim((string) $feedback->item(0)->textContent));
+
+        $running = $this->hostingAccount($this->customer(), $product, $server, 'pve-run-'.str()->lower(str()->random(6)));
+        ProvisioningEvent::create([
+            'service_instance_id' => null,
+            'hosting_account_id' => $running->id,
+            'event_type' => 'provision',
+            'status' => 'running',
+            'event_status' => 'running',
+            'payload' => ['module' => 'proxmox', 'action' => 'create'],
+            'result' => [],
+            'last_error' => null,
+        ]);
+
+        $runningHtml = $this->actingAs($this->adminWith(['hosting.view', 'hosting.edit']))
+            ->get(route('admin.hosting.show', $running))
+            ->assertOk()
+            ->getContent();
+
+        $runningDom = new \DOMDocument;
+        @$runningDom->loadHTML($runningHtml);
+        $runningFeedback = (new \DOMXPath($runningDom))->query('//*[@id="compute-panel-proxmox"]//*[@data-compute-feedback]');
+        $this->assertSame(1, $runningFeedback->length);
+        $this->assertStringContainsString('d-none', (string) $runningFeedback->item(0)->getAttribute('class'));
+        $this->assertSame('', trim((string) $runningFeedback->item(0)->textContent));
     }
 
     // ─────────────────────────── helpers ───────────────────────────

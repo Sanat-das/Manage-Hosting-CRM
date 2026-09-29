@@ -1,0 +1,78 @@
+{
+  "evidence": {
+    "unitPrice": "499.00",
+    "orderId": 22,
+    "orderNo": "ORD-2026-00008",
+    "hostingHref": "http://managehosting.local/admin/hosting/22",
+    "hostingUrl": "http://managehosting.local/admin/hosting/22",
+    "hostingId": 22,
+    "hostName": "host-i0syymhi",
+    "vmid": "114"
+  },
+  "steps": [
+    {
+      "at": "+14s",
+      "step": "login.ok",
+      "url": "http://managehosting.local/admin/dashboard"
+    },
+    {
+      "at": "+15s",
+      "step": "order.form.ready",
+      "unitPrice": "499.00",
+      "cycle": "monthly"
+    },
+    {
+      "at": "+22s",
+      "step": "order.created",
+      "orderId": 22,
+      "orderNo": "ORD-2026-00008",
+      "status": "0",
+      "url": "http://managehosting.local/admin/orders/22"
+    },
+    {
+      "at": "+27s",
+      "step": "order.activated",
+      "flash": "is now active",
+      "hostingHref": "http://managehosting.local/admin/hosting/22",
+      "url": "http://managehosting.local/admin/orders/22"
+    },
+    {
+      "at": "+32s",
+      "step": "hosting.compute.before",
+      "hostingId": 22,
+      "hostName": "host-i0syymhi",
+      "state": "Not created",
+      "mode": "Manual"
+    },
+    {
+      "at": "+33s",
+      "step": "hosting.create.form",
+      "templateValue": "110",
+      "templateOptions": [
+        "Almalinuxtest.in-b8b90bb5",
+        "Alma9Template-f6dbc7b4"
+      ]
+    },
+    {
+      "at": "+35s",
+      "step": "hosting.create.submitted",
+      "state": "Not created"
+    },
+    {
+      "at": "+537s",
+      "step": "hosting.vm.running",
+      "state": "Running"
+    },
+    {
+      "at": "+539s",
+      "step": "server.vm-row",
+      "row": "host-i0syymhi | Panel username: host2222 | \t114\t | Somenath Patr | ORD-2026-00008 · active\tActive\trunning\t—\t0% · 2 vCPU | 2 GB | \t7 minutes ago | host-cvtcymds",
+      "vmid": "114"
+    },
+    {
+      "at": "+842s",
+      "step": "FAILED",
+      "error": "Compute state did not reach \"Off\" within 300s (last=\"Unknown\")"
+    }
+  ]
+}

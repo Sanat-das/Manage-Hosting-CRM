@@ -8,7 +8,7 @@
     ]" />
 @stop
 @section('content')
-    @if (session('success')) <x-adminlte-alert theme="success" dismissible>{{ session('success') }}</x-adminlte-alert> @endif
+    <x-adminlte.partials.flash-alert />
     <div class="d-flex justify-content-end mb-3">
         <a href="{{ route('admin.product-bundles.edit', $bundle) }}" class="btn btn-sm btn-outline-primary"><i class="bi bi-pencil me-1"></i> Edit</a>
     </div>
@@ -41,7 +41,7 @@
                             </td>
                         </tr>
                     @empty
-                        <tr><td colspan="5" class="text-center text-muted py-4">No components in this bundle.</td></tr>
+                        <x-ui.empty-table-row colSpan="5" icon="bi bi-diagram-3" title="No components in this bundle." />
                     @endforelse
                 </tbody>
             </table>

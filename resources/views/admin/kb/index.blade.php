@@ -10,12 +10,7 @@
 @stop
 
 @section('content')
-    @if (session('success'))
-        <x-adminlte-alert theme="success" dismissible>{{ session('success') }}</x-adminlte-alert>
-    @endif
-    @if (session('error'))
-        <x-adminlte-alert theme="danger" dismissible>{{ session('error') }}</x-adminlte-alert>
-    @endif
+    <x-adminlte.partials.flash-alert />
 
     <x-adminlte.partials.metric-cards :items="[
         ['title' => $stats['total'], 'text' => 'Total Articles', 'icon' => 'bi bi-file-text', 'theme' => 'primary'],
@@ -85,11 +80,7 @@
                     </td>
                     </tr>
                 @empty
-                    <tr>
-                        <td colspan="6" class="text-center text-muted py-4">
-                            No articles found.
-                        </td>
-                    </tr>
+                    <x-ui.empty-table-row colSpan="6" title="No articles found." />
                 @endforelse
             </x-adminlte.partials.datatable>
         </div>
@@ -102,7 +93,7 @@
                         <a href="{{ route('admin.kb.index', array_filter(['category' => $cat['id'], 'search' => $search, 'status' => $status])) }}"
                            class="list-group-item list-group-item-action d-flex justify-content-between align-items-center {{ $category === $cat['id'] ? 'active' : '' }}">
                             {{ $cat['name'] }}
-                            <span class="badge rounded-pill {{ $category === $cat['id'] ? 'bg-white text-primary' : 'text-bg-primary' }}">{{ $cat['article_count'] }}</span>
+                            <span class="badge rounded-pill {{ $category === $cat['id'] ? 'text-bg-light' : 'text-bg-primary' }}">{{ $cat['article_count'] }}</span>
                         </a>
                     @endforeach
                 </div>

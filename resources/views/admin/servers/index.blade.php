@@ -10,12 +10,7 @@
 @stop
 
 @section('content')
-    @if (session('success'))
-        <x-adminlte-alert theme="success" dismissible>{{ session('success') }}</x-adminlte-alert>
-    @endif
-    @if (session('error'))
-        <x-adminlte-alert theme="danger" dismissible>{{ session('error') }}</x-adminlte-alert>
-    @endif
+    <x-adminlte.partials.flash-alert />
 
     @php
         $typeFilter = request()->query('server_type');
@@ -29,8 +24,8 @@
     <x-adminlte-card class="mb-3">
         <form method="GET" action="{{ route('admin.servers.index') }}" class="row g-2 align-items-end">
             <div class="col-md-3">
-                <label class="form-label small fw-medium mb-1">Type</label>
-                <select name="server_type" class="form-select form-select-sm">
+                <label for="filter-server-type" class="form-label small fw-medium mb-1">Type</label>
+                <select id="filter-server-type" name="server_type" class="form-select form-select-sm">
                     <option value="">All types</option>
                     @foreach ($typeOptions as $opt)
                         <option value="{{ $opt['value'] ?? $opt['slug'] }}" @selected($typeFilter === ($opt['value'] ?? $opt['slug']))>{{ $opt['label'] ?? $opt['value'] }} ({{ $opt['value'] ?? $opt['slug'] }})</option>
@@ -38,8 +33,8 @@
                 </select>
             </div>
             <div class="col-md-3">
-                <label class="form-label small fw-medium mb-1">Connection</label>
-                <select name="connection_status" class="form-select form-select-sm">
+                <label for="filter-connection" class="form-label small fw-medium mb-1">Connection</label>
+                <select id="filter-connection" name="connection_status" class="form-select form-select-sm">
                     <option value="">All connections</option>
                     <option value="connected" @selected($connFilter === 'connected')>Connected</option>
                     <option value="failed" @selected($connFilter === 'failed')>Failed</option>
@@ -47,8 +42,8 @@
                 </select>
             </div>
             <div class="col-md-3">
-                <label class="form-label small fw-medium mb-1">Status</label>
-                <select name="status" class="form-select form-select-sm">
+                <label for="filter-status" class="form-label small fw-medium mb-1">Status</label>
+                <select id="filter-status" name="status" class="form-select form-select-sm">
                     <option value="">All statuses</option>
                     <option value="active" @selected(request()->query('status') === 'active')>Active</option>
                     <option value="inactive" @selected(request()->query('status') === 'inactive')>Inactive</option>
@@ -146,11 +141,7 @@
                 </td>
             </tr>
         @empty
-            <tr>
-                <td colspan="8" class="text-center text-muted py-4">
-                    No servers found.
-                </td>
-            </tr>
+            <x-ui.empty-table-row :col-span="8" icon="bi bi-server" title="No servers found." />
         @endforelse
     </x-adminlte.partials.datatable>
 

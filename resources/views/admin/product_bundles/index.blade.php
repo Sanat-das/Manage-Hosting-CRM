@@ -10,8 +10,7 @@
 @stop
 
 @section('content')
-    @if (session('success')) <x-adminlte-alert theme="success" dismissible>{{ session('success') }}</x-adminlte-alert> @endif
-    @if (session('error')) <x-adminlte-alert theme="danger" dismissible>{{ session('error') }}</x-adminlte-alert> @endif
+    <x-adminlte.partials.flash-alert />
 
     <x-adminlte.partials.datatable
         icon="bi bi-box-seam"
@@ -46,7 +45,7 @@
                 </td>
             </tr>
         @empty
-            <tr><td colspan="5" class="text-center text-muted py-4">No bundles found.</td></tr>
+            <x-ui.empty-table-row colSpan="5" icon="bi bi-box-seam" title="No bundles found." />
         @endforelse
     </x-adminlte.partials.datatable>
 @stop

@@ -35,15 +35,7 @@
 @stop
 
 @section('content')
-    @if ($errors->any())
-        <x-adminlte-alert theme="danger" dismissible>
-            <ul class="mb-0">
-                @foreach ($errors->all() as $error)
-                    <li>{{ $error }}</li>
-                @endforeach
-            </ul>
-        </x-adminlte-alert>
-    @endif
+    <x-adminlte.partials.flash-alert />
 
     {{-- Where this template is in use. Read-only: the money lives on the
          product link, and detaching here would cascade it away. --}}
@@ -73,9 +65,9 @@
                                 <span class="badge bg-secondary">Fixed</span>
                             @endif
                             @if ($usage['has_pricing'])
-                                <span class="badge bg-success">Priced</span>
+                                <span class="badge text-bg-success">Priced</span>
                             @else
-                                <span class="badge bg-light text-dark">No price set</span>
+                                <span class="badge text-bg-secondary">No price set</span>
                             @endif
                         </span>
                     </li>
@@ -83,22 +75,30 @@
             </ul>
 
             <div class="p-3 border-top">
-                <form method="POST" action="{{ route('admin.product-options.push', $productOption) }}"
-                      onsubmit="return confirm('Replace the option values and prices on {{ $usedBy->count() }} product(s) with the ones saved here? Per-product prices will be overwritten.');">
-                    @csrf
-                    <button type="submit" class="btn btn-sm btn-outline-warning">
-                        <i class="bi bi-arrow-repeat me-1" aria-hidden="true"></i>
-                        Push these values to all {{ $usedBy->count() }} {{ Str::plural('product', $usedBy->count()) }}
-                    </button>
-                    <p class="text-muted small mb-0 mt-2">
-                        Each product keeps its <em>own</em> copy of these values and prices, so editing them here
-                        changes nothing on its own. Push overwrites those copies &mdash; including any price tuned
-                        for a single product.
-                    </p>
-                </form>
+                <button type="button" class="btn btn-sm btn-outline-warning" data-bs-toggle="modal" data-bs-target="#push-values-modal">
+                    <i class="bi bi-arrow-repeat me-1" aria-hidden="true"></i>
+                    Push these values to all {{ $usedBy->count() }} {{ Str::plural('product', $usedBy->count()) }}
+                </button>
+                <p class="text-muted small mb-0 mt-2">
+                    Each product keeps its <em>own</em> copy of these values and prices, so editing them here
+                    changes nothing on its own. Push overwrites those copies &mdash; including any price tuned
+                    for a single product.
+                </p>
             </div>
         @endif
     </x-adminlte-card>
+
+    @if ($usedBy->isNotEmpty())
+        <x-adminlte.partials.confirm-modal
+            id="push-values-modal"
+            title="Push values to products"
+            :message="'Replace the option values and prices on ' . $usedBy->count() . ' product(s) with the ones saved here? Per-product prices will be overwritten.'"
+            method="POST"
+            :action="route('admin.product-options.push', $productOption)"
+            confirm-label="Push values"
+            confirm-theme="warning"
+        />
+    @endif
 
     <x-adminlte.partials.form-card
         icon="bi bi-pencil-square"

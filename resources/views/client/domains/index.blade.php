@@ -3,16 +3,11 @@
 @section('title', 'My Domains')
 
 @section('content_header')
-    <div class="row">
-        <div class="col-sm-6"><h1 class="m-0">My Domains</h1></div>
-        <div class="col-sm-6">
-            <ol class="breadcrumb float-sm-end">
-                <li class="breadcrumb-item"><a href="{{ url('/') }}">{{ __('adminlte.home') }}</a></li>
-                <li class="breadcrumb-item"><a href="{{ route('client.dashboard') }}">Dashboard</a></li>
-                <li class="breadcrumb-item active">Domains</li>
-            </ol>
-        </div>
-    </div>
+    <x-ui.page-header title="My Domains" :breadcrumbs="[
+        ['label' => __('adminlte.home'), 'url' => url('/')],
+        ['label' => 'Dashboard', 'url' => route('client.dashboard')],
+        ['label' => 'Domains', 'active' => true],
+    ]" />
 @stop
 
 @section('content')
@@ -55,7 +50,7 @@
                         </td>
                     </tr>
                 @empty
-                    <tr><td colspan="6" class="text-center text-muted py-4">No domains registered.</td></tr>
+                    <x-ui.empty-table-row colSpan="6" icon="bi bi-globe" title="No domains registered." actionLabel="Register New Domain" :actionUrl="route('client.domains.register')" />
                 @endforelse
     </x-adminlte.partials.datatable>
 @stop

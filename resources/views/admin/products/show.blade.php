@@ -21,27 +21,11 @@
 @endphp
 
 @section('content_header')
-    <div class="row">
-        <div class="col-sm-6">
-            <h1 class="m-0">{{ $product->name }}</h1>
-        </div>
-        <div class="col-sm-6">
-            <ol class="breadcrumb float-sm-end">
-                <li class="breadcrumb-item"><a href="{{ url('/') }}">{{ __('adminlte.home') }}</a></li>
-                <li class="breadcrumb-item"><a href="{{ route('admin.products.index') }}">Products</a></li>
-                <li class="breadcrumb-item active" aria-current="page">{{ $product->name }}</li>
-            </ol>
-        </div>
-    </div>
+    <x-ui.page-header title="{{ $product->name }}" subtitle="View product details" :breadcrumbs="[['label' => __('adminlte.home'), 'url' => url('/')], ['label' => 'Products', 'url' => route('admin.products.index')], ['label' => $product->name, 'active' => true]]" />
 @stop
 
 @section('content')
-    @if (session('success'))
-        <x-adminlte-alert theme="success" dismissible>{{ session('success') }}</x-adminlte-alert>
-    @endif
-    @if (session('error'))
-        <x-adminlte-alert theme="danger" dismissible>{{ session('error') }}</x-adminlte-alert>
-    @endif
+    <x-adminlte.partials.flash-alert />
 
     {{-- Product header --}}
     <x-adminlte-card>
@@ -186,7 +170,7 @@
                                     </td>
                                 </tr>
                             @empty
-                                <tr><td colspan="5" class="text-center text-muted py-3">No pricing configured.</td></tr>
+                                <x-ui.empty-table-row colSpan="5" icon="bi bi-currency-rupee" title="No pricing configured." />
                             @endforelse
                         </tbody>
                     </table>
@@ -276,7 +260,7 @@
                                     <td><x-adminlte.partials.status-badge :status="$addon->status" /></td>
                                 </tr>
             @empty
-                <tr><td colspan="5" class="text-center text-muted py-3">No add-ons attached.</td></tr>
+                <x-ui.empty-table-row colSpan="5" icon="bi bi-plus-square" title="No add-ons attached." />
             @endforelse
         </tbody>
     </table>
@@ -326,7 +310,7 @@
                                                 <form method="POST" action="{{ route('admin.products.modules.mode', [$product, $slug]) }}" class="d-inline-flex align-items-center gap-2">
                                                     @csrf
                                                     @method('PUT')
-                                                    <select name="provisioning_mode" class="form-select form-select-sm" style="width: auto;" onchange="this.form.submit()" @cannot('products.edit') disabled @endcannot>
+                                                    <select name="provisioning_mode" class="form-select form-select-sm" style="width: auto;" aria-label="Provisioning mode" onchange="this.form.submit()" @cannot('products.edit') disabled @endcannot>
                                                         <option value="auto" {{ $mode === 'auto' ? 'selected' : '' }}>Auto</option>
                                                         <option value="manual" {{ $mode === 'manual' ? 'selected' : '' }}>Manual</option>
                                                     </select>

@@ -3,16 +3,11 @@
 @section('title', $account->host_name)
 
 @section('content_header')
-    <div class="row">
-        <div class="col-sm-6"><h1 class="m-0">{{ $account->host_name }}</h1></div>
-        <div class="col-sm-6">
-            <ol class="breadcrumb float-sm-end">
-                <li class="breadcrumb-item"><a href="{{ url('/') }}">{{ __('adminlte.home') }}</a></li>
-                <li class="breadcrumb-item"><a href="{{ route('client.hosting.index') }}">Products/Services</a></li>
-                <li class="breadcrumb-item active">{{ $account->host_name }}</li>
-            </ol>
-        </div>
-    </div>
+    <x-ui.page-header :title="$account->host_name" :breadcrumbs="[
+        ['label' => __('adminlte.home'), 'url' => url('/')],
+        ['label' => 'Products/Services', 'url' => route('client.hosting.index')],
+        ['label' => $account->host_name, 'active' => true],
+    ]" />
 @stop
 
 @section('content')
@@ -260,7 +255,7 @@
                             @if(! $clientCanReset || $clientPowerRunning) disabled title="{{ $clientResetReason !== '' ? $clientResetReason : 'Password reset is not available right now.' }}" @endif
                     ><i class="bi bi-key me-1"></i> Reset Administrator password</button>
                 @elseif (! $isCompute)
-                    <a href="#" class="btn btn-outline-info w-100 mb-2 disabled" title="Coming soon"><i class="bi bi-key me-1"></i> Change Password</a>
+                    <button type="button" class="btn btn-outline-info w-100 mb-2" disabled aria-disabled="true" title="Coming soon"><i class="bi bi-key me-1" aria-hidden="true"></i> Change Password</button>
                 @endif
             </x-adminlte-card>
 
@@ -319,7 +314,7 @@
                     <table class="table table-sm table-borderless mb-0">
                         <tr>
                             <th class="text-muted">Amount</th>
-                            <td class="text-end"><strong>{{ number_format((float) ($billing['amount'] ?? 0), 2) }}</strong></td>
+                            <td class="text-end"><strong><x-adminlte.partials.currency :value="$billing['amount'] ?? 0" /></strong></td>
                         </tr>
                         <tr>
                             <th class="text-muted">Cycle</th>

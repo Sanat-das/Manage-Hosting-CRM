@@ -31,14 +31,14 @@
         {{-- Revenue chart --}}
         <div class="col-lg-8">
             <x-adminlte-card icon="bi bi-graph-up" title="Revenue (Last 12 Months)">
-                <canvas id="revenueChart" style="height:240px"></canvas>
+                <canvas id="revenueChart" role="img" aria-label="Bar chart of revenue for the last 12 months" style="height:240px"></canvas>
             </x-adminlte-card>
         </div>
 
         {{-- Hosting by status --}}
         <div class="col-lg-4">
             <x-adminlte-card icon="bi bi-pie-chart" title="Hosting Accounts">
-                <canvas id="hostingChart" style="height:240px"></canvas>
+                <canvas id="hostingChart" role="img" aria-label="Doughnut chart of hosting accounts by status" style="height:240px"></canvas>
             </x-adminlte-card>
         </div>
     </div>
@@ -47,14 +47,14 @@
         {{-- Tickets by priority --}}
         <div class="col-lg-6">
             <x-adminlte-card icon="bi bi-bar-chart" title="Open Tickets by Priority">
-                <canvas id="ticketsChart" style="height:200px"></canvas>
+                <canvas id="ticketsChart" role="img" aria-label="Horizontal bar chart of open tickets by priority" style="height:200px"></canvas>
             </x-adminlte-card>
         </div>
 
         {{-- Domain status --}}
         <div class="col-lg-6">
             <x-adminlte-card icon="bi bi-globe2" title="Domain Status Distribution">
-                <canvas id="domainsChart" style="height:200px"></canvas>
+                <canvas id="domainsChart" role="img" aria-label="Pie chart of domain status distribution" style="height:200px"></canvas>
             </x-adminlte-card>
         </div>
     </div>
@@ -63,7 +63,7 @@
     <div class="row">
         <div class="col-12">
             <x-adminlte-card icon="bi bi-people" title="Customer Registrations (Last 12 Months)">
-                <canvas id="customersChart" style="height:160px"></canvas>
+                <canvas id="customersChart" role="img" aria-label="Line chart of customer registrations for the last 12 months" style="height:160px"></canvas>
             </x-adminlte-card>
         </div>
     </div>
@@ -74,19 +74,19 @@
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     const cs = getComputedStyle(document.documentElement);
-    const token = (name, fallback) => (cs.getPropertyValue(name).trim() || fallback);
+    const token = (name) => ((cs.getPropertyValue(name) || '').trim());
     const colors = [
-        token('--color-primary', '#5b5bd6'),
-        token('--color-success', '#0d9f6e'),
-        token('--color-warning', '#d97706'),
-        token('--color-danger', '#dc2626'),
-        token('--color-info', '#0284c7'),
-        token('--bs-purple', '#6f42c1'),
-        token('--bs-orange', '#fd7e14'),
-        token('--bs-secondary-color', '#6c757d')
+        token('--color-primary') || token('--bs-primary'),
+        token('--color-success') || token('--bs-success'),
+        token('--color-warning') || token('--bs-warning'),
+        token('--color-danger') || token('--bs-danger'),
+        token('--color-info') || token('--bs-info'),
+        token('--bs-purple') || token('--color-info'),
+        token('--bs-orange') || token('--color-warning'),
+        token('--bs-secondary-color') || token('--color-text-muted')
     ];
-    const primary = token('--color-primary', '#5b5bd6');
-    const primaryAlpha = primary.startsWith('#') ? primary + '1a' : 'rgba(91,91,214,0.1)';
+    const primary = token('--color-primary') || token('--bs-primary');
+    const primaryAlpha = token('--color-primary-subtle') || primary;
 
     // Revenue chart
     const revenueData = @json($revenueByMonth);
@@ -97,7 +97,7 @@ document.addEventListener('DOMContentLoaded', function() {
             datasets: [{
                 label: 'Revenue',
                 data: Object.values(revenueData),
-                backgroundColor: token('--color-success', '#0d9f6e'),
+                backgroundColor: token('--color-success') || token('--bs-success'),
             }]
         },
         options: {
@@ -125,7 +125,7 @@ document.addEventListener('DOMContentLoaded', function() {
         type: 'bar',
         data: {
             labels: Object.keys(ticketsData),
-            datasets: [{ label: 'Tickets', data: Object.values(ticketsData), backgroundColor: [token('--color-info', '#0284c7'), token('--color-warning', '#d97706'), token('--color-danger', '#dc2626'), token('--color-neutral-800', '#343a40')] }]
+            datasets: [{ label: 'Tickets', data: Object.values(ticketsData), backgroundColor: [token('--color-info') || token('--bs-info'), token('--color-warning') || token('--bs-warning'), token('--color-danger') || token('--bs-danger'), token('--color-neutral-800') || token('--bs-secondary-color')] }]
         },
         options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y', plugins: { legend: { display: false } } }
     });

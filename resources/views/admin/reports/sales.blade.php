@@ -20,7 +20,7 @@
         <form method="GET" class="d-flex gap-2 align-items-end">
             <x-adminlte-input name="from" type="date" label="From" value="{{ $from }}" />
             <x-adminlte-input name="to" type="date" label="To" value="{{ $to }}" />
-            <button class="btn btn-primary"><i class="bi bi-search me-1"></i> Filter</button>
+            <button type="submit" class="btn btn-primary"><i class="bi bi-search me-1"></i> Filter</button>
             <a href="{{ route('admin.reports.export', ['type' => 'orders', 'from' => $from, 'to' => $to]) }}" class="btn btn-outline-success"><i class="bi bi-download me-1"></i> Export CSV</a>
         </form>
     </x-adminlte-card>
@@ -42,7 +42,7 @@
                         <td class="text-muted">{{ $order->created_at?->format('M j, Y') }}</td>
                     </tr>
                 @empty
-                    <tr><td colspan="5" class="text-center text-muted py-4">No orders in this period.</td></tr>
+                    <x-ui.empty-table-row colSpan="5" title="No orders in this period." />
                 @endforelse
             </tbody>
         </table>

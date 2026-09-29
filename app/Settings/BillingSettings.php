@@ -17,6 +17,12 @@ class BillingSettings extends Settings
 
     public float $tax_rate = 18.0;
 
+    /**
+     * Renewal invoice generation window, in days before the due date
+     * (WHMCS "Generate X days before due"). 0 = generate on the due date.
+     */
+    public int $renewal_invoice_days = 0;
+
     public static function group(): string
     {
         return 'billing';
@@ -29,6 +35,7 @@ class BillingSettings extends Settings
             'invoice_next_number' => ['nullable', 'integer', 'min:0'],
             'invoice_prefix' => ['nullable', 'string', 'max:20'],
             'tax_rate' => ['nullable', 'numeric', 'min:0', 'max:100'],
+            'renewal_invoice_days' => ['nullable', 'integer', 'min:0', 'max:90'],
         ];
     }
 }

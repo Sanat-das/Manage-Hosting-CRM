@@ -3,33 +3,15 @@
 @section('title', 'My Profile')
 
 @section('content_header')
-    <div class="row">
-        <div class="col-sm-6">
-            <h1 class="m-0">My Profile</h1>
-        </div>
-        <div class="col-sm-6">
-            <ol class="breadcrumb float-sm-end">
-                <li class="breadcrumb-item"><a href="{{ url('/') }}">{{ __('adminlte.home') }}</a></li>
-                <li class="breadcrumb-item"><a href="{{ route('client.dashboard') }}">Dashboard</a></li>
-                <li class="breadcrumb-item active" aria-current="page">Profile</li>
-            </ol>
-        </div>
-    </div>
+    <x-ui.page-header title="My Profile" :breadcrumbs="[
+        ['label' => __('adminlte.home'), 'url' => url('/')],
+        ['label' => 'Dashboard', 'url' => route('client.dashboard')],
+        ['label' => 'Profile', 'active' => true],
+    ]" />
 @stop
 
 @section('content')
-    @if (session('success'))
-        <x-adminlte-alert theme="success" dismissible>{{ session('success') }}</x-adminlte-alert>
-    @endif
-    @if ($errors->any())
-        <x-adminlte-alert theme="danger" dismissible>
-            <ul class="mb-0">
-                @foreach ($errors->all() as $error)
-                    <li>{{ $error }}</li>
-                @endforeach
-            </ul>
-        </x-adminlte-alert>
-    @endif
+    <x-adminlte.partials.flash-alert />
 
     <x-adminlte-card icon="bi bi-person-circle" title="Profile Details">
         <form method="POST" action="{{ route('client.profile.update') }}">
@@ -56,7 +38,7 @@
 
             <x-adminlte-input name="company" label="Company" value="{{ old('company', $user->company) }}" />
 
-            <div class="border rounded p-3 mb-3 bg-light-subtle">
+            <div class="border rounded p-3 mb-3 bg-body-tertiary">
                 <div class="d-flex align-items-center gap-2 mb-3">
                     <i class="bi bi-geo-alt text-primary"></i>
                     <h6 class="mb-0 fw-semibold">Billing Address</h6>

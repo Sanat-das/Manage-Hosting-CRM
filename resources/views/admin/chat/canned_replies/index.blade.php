@@ -11,9 +11,7 @@
 @stop
 
 @section('content')
-    @if (session('success'))
-        <x-adminlte-alert theme="success" dismissible>{{ session('success') }}</x-adminlte-alert>
-    @endif
+    <x-adminlte.partials.flash-alert />
 
     <x-adminlte.partials.datatable icon="bi bi-lightning" title="Saved Replies"
         search-placeholder="Search title, shortcut or text"
@@ -84,11 +82,7 @@
                 </td>
             </tr>
         @empty
-            <tr>
-                <td colspan="6" class="text-center text-muted py-4">
-                    No saved replies yet. Create one and operators can insert it with <code>/shortcut</code>.
-                </td>
-            </tr>
+            <x-ui.empty-table-row colSpan="6" icon="bi bi-lightning" title="No saved replies yet." message="Create one and operators can insert it with /shortcut." />
         @endforelse
 
         <x-slot name="pagination">{{ $replies->links() }}</x-slot>

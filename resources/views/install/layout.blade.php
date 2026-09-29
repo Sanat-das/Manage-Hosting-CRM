@@ -1,17 +1,44 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" @if (! empty($themeResolved)) data-theme="{{ $themeResolved }}" @endif>
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="robots" content="noindex, nofollow">
     <title>{{ config('adminlte.title', config('app.name')) }} — Setup</title>
+    {{-- Resolve the theme before first paint. Shares the app-wide keys
+         (adminlte.colorMode in localStorage, mh_theme cookie) so a choice made
+         here carries into the panel once setup finishes. --}}
+    <script>
+        (function () {
+            try {
+                var match = document.cookie.match(/(?:^|;\s*)mh_theme=([^;]+)/);
+                var preference = localStorage.getItem('adminlte.colorMode')
+                    || (match ? decodeURIComponent(match[1]) : 'auto');
+                var resolved = preference === 'auto'
+                    ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+                    : preference;
+                document.documentElement.setAttribute('data-theme', resolved);
+                document.documentElement.setAttribute('data-preference', preference);
+            } catch (e) {
+                /* Storage blocked — the media query below still handles Auto. */
+            }
+        })();
+    </script>
     <style>
         :root {
             --bg: #f6f7f9; --card: #ffffff; --text: #1b1b18; --muted: #6b7280;
             --border: #e5e7eb; --accent: #2563eb; --ok: #15803d; --err: #b91c1c; --input: #ffffff;
         }
+        /* Dark palette, declared twice on purpose: once for the explicit choice
+           the script stamps on <html>, once for the no-JS case where only
+           prefers-color-scheme is available. The script always resolves to an
+           explicit light|dark, so the two blocks never both apply. */
+        :root[data-theme="dark"] {
+            --bg: #0a0a0a; --card: #141414; --text: #ededec; --muted: #9ca3af;
+            --border: #2d2d2d; --accent: #3b82f6; --ok: #4ade80; --err: #f87171; --input: #1c1c1c;
+        }
         @media (prefers-color-scheme: dark) {
-            :root {
+            :root:not([data-theme]) {
                 --bg: #0a0a0a; --card: #141414; --text: #ededec; --muted: #9ca3af;
                 --border: #2d2d2d; --accent: #3b82f6; --ok: #4ade80; --err: #f87171; --input: #1c1c1c;
             }
@@ -22,7 +49,16 @@
             background: var(--bg); color: var(--text);
         }
         .shell { max-width: 640px; margin: 0 auto; padding: 48px 16px 32px; }
-        .brand { display: flex; align-items: center; gap: 12px; margin-bottom: 24px; }
+        .brand { display: flex; align-items: center; gap: 12px; margin-bottom: 24px; flex-wrap: wrap; row-gap: 10px; }
+        .brand .theme-toggle { margin-left: auto; }
+        .theme-toggle { display: inline-flex; gap: 2px; padding: 2px; border: 1px solid var(--border); border-radius: 9999px; }
+        .theme-toggle button {
+            border: 0; background: transparent; color: var(--muted); font: inherit; font-size: 12px;
+            padding: 5px 10px; border-radius: 9999px; cursor: pointer; line-height: 1;
+        }
+        .theme-toggle button:hover { color: var(--text); }
+        .theme-toggle button[aria-pressed="true"] { background: var(--accent); color: #fff; }
+        .theme-toggle button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
         .brand .mark {
             width: 40px; height: 40px; border-radius: 10px; background: var(--accent); color: #fff;
             display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 18px; flex: none;
@@ -78,6 +114,11 @@
                 <h1>{{ config('adminlte.title', config('app.name')) }}</h1>
                 <p>First-run setup</p>
             </div>
+            <div class="theme-toggle" role="group" aria-label="Colour scheme">
+                <button type="button" data-install-theme="light" aria-pressed="false">Light</button>
+                <button type="button" data-install-theme="dark" aria-pressed="false">Dark</button>
+                <button type="button" data-install-theme="auto" aria-pressed="true">Auto</button>
+            </div>
         </header>
 
         <div class="card">
@@ -89,5 +130,47 @@
 
         <p class="footnote">Setup wizard — this page is disabled after installation completes.</p>
     </main>
+
+    <script>
+        (function () {
+            var root = document.documentElement;
+            var buttons = document.querySelectorAll('[data-install-theme]');
+
+            function resolve(preference) {
+                return preference === 'auto'
+                    ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+                    : preference;
+            }
+
+            function paint(preference) {
+                root.setAttribute('data-preference', preference);
+                root.setAttribute('data-theme', resolve(preference));
+                buttons.forEach(function (button) {
+                    button.setAttribute('aria-pressed',
+                        button.dataset.installTheme === preference ? 'true' : 'false');
+                });
+            }
+
+            paint(root.getAttribute('data-preference') || 'auto');
+
+            buttons.forEach(function (button) {
+                button.addEventListener('click', function () {
+                    var preference = button.dataset.installTheme;
+                    try {
+                        localStorage.setItem('adminlte.colorMode', preference);
+                        document.cookie = 'mh_theme=' + encodeURIComponent(preference)
+                            + '; path=/; max-age=31536000; samesite=lax';
+                    } catch (e) {
+                        /* Storage blocked — the choice still applies to this page. */
+                    }
+                    paint(preference);
+                });
+            });
+
+            window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function () {
+                if (root.getAttribute('data-preference') === 'auto') paint('auto');
+            });
+        })();
+    </script>
 </body>
 </html>

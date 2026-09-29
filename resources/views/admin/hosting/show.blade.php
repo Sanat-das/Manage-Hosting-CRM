@@ -23,21 +23,7 @@
 @endphp
 
 @section('content')
-    @if (session('success'))
-        <x-adminlte-alert theme="success" dismissible>{{ session('success') }}</x-adminlte-alert>
-    @endif
-    @if (session('error'))
-        <x-adminlte-alert theme="danger" dismissible>{{ session('error') }}</x-adminlte-alert>
-    @endif
-    @if ($errors->any())
-        <x-adminlte-alert theme="danger" dismissible>
-            <ul class="mb-0">
-                @foreach ($errors->all() as $error)
-                    <li>{{ $error }}</li>
-                @endforeach
-            </ul>
-        </x-adminlte-alert>
-    @endif
+    <x-adminlte.partials.flash-alert />
 
     {{-- Account header — username is legacy/module-managed, show ID + product --}}
     <x-adminlte-card>
@@ -201,7 +187,7 @@
                     </div>
                 @endif
             @endforeach
-            <p class="text-muted small mb-0 mt-2">Calls the enabled module directly from this account. Manual links only run here — never automatically. Compute power actions are state-checked on the host; Restart and Delete require typing the account name.</p>
+            <p class="text-muted small mb-0 mt-2"><i class="bi bi-info-circle me-1" aria-hidden="true"></i>Calls the enabled module directly — manual links only run here, never automatically. Compute power actions are state-checked on the host; Restart and Delete require typing the account name.</p>
         </x-adminlte-card>
 
         {{-- Inline (not @push('css')): this card renders in the body, after the head's
@@ -840,7 +826,7 @@
                                     <td class="text-muted">{{ $entry->user?->full_name ?? 'System' }}</td>
                                 </tr>
                             @empty
-                                <tr><td colspan="4" class="text-center text-muted py-3">No history recorded.</td></tr>
+                                <x-ui.empty-table-row colSpan="4" icon="bi bi-clock-history" title="No history recorded." />
                             @endforelse
                         </tbody>
                     </table>
@@ -852,7 +838,7 @@
                 @can('hosting.manage')
                     <form method="POST" action="{{ route('admin.hosting.notes.store', $hostingAccount) }}" class="mb-3">
                         @csrf
-                        <div class="border rounded p-3 bg-light">
+                        <div class="border rounded p-3 bg-body-tertiary">
                             <label for="hosting-note" class="form-label fw-semibold mb-1">Add note about this product/service</label>
                             <textarea id="hosting-note" name="note" class="form-control @error('note') is-invalid @enderror" rows="3" placeholder="Add an internal note for super-users / admins... (supports multi-line)" required>{{ old('note') }}</textarea>
                             @error('note')<div class="invalid-feedback">{{ $message }}</div>@enderror
@@ -888,11 +874,11 @@
                                 </div>
                                 @can('hosting.manage')
                                     <div class="d-flex gap-1 flex-shrink-0">
-                                        <button type="button" class="btn btn-sm btn-outline-primary" title="Edit note" onclick="document.getElementById('edit-hosting-note-{{ $note->id }}').classList.toggle('d-none')">
-                                            <i class="bi bi-pencil"></i>
+                                        <button type="button" class="btn btn-sm btn-outline-primary" title="Edit note" aria-label="Edit note" data-toggle-target="edit-hosting-note-{{ $note->id }}">
+                                            <i class="bi bi-pencil" aria-hidden="true"></i>
                                         </button>
-                                        <button type="button" class="btn btn-sm btn-outline-danger" title="Delete note"
-                                                data-bs-toggle="modal" data-bs-target="#delete-hosting-note-{{ $note->id }}"><i class="bi bi-trash"></i></button>
+                                        <button type="button" class="btn btn-sm btn-outline-danger" title="Delete note" aria-label="Delete note"
+                                                data-bs-toggle="modal" data-bs-target="#delete-hosting-note-{{ $note->id }}"><i class="bi bi-trash" aria-hidden="true"></i></button>
                                     </div>
                                 @endcan
                             </div>
@@ -901,7 +887,8 @@
                                     <form method="POST" action="{{ route('admin.hosting.notes.update', [$hostingAccount, $note]) }}">
                                         @csrf
                                         @method('PUT')
-                                        <textarea name="note" class="form-control form-control-sm" rows="3" required>{{ $note->note }}</textarea>
+                                        <label class="visually-hidden" for="edit-hosting-note-text-{{ $note->id }}">Edit note</label>
+                                        <textarea id="edit-hosting-note-text-{{ $note->id }}" name="note" class="form-control form-control-sm" rows="3" required aria-label="Edit note">{{ $note->note }}</textarea>
                                         <div class="d-flex align-items-center justify-content-between mt-2">
                                             <div class="form-check">
                                                 <input type="checkbox" name="is_important" value="1" id="hosting-note-important-{{ $note->id }}" class="form-check-input" {{ $note->is_important ? 'checked' : '' }}>
@@ -914,8 +901,8 @@
                             @endcan
                         </div>
                     @empty
-                        <div class="text-center py-4 border rounded bg-light">
-                            <i class="bi bi-sticky text-muted" style="font-size: 1.5rem;"></i>
+                        <div class="text-center py-4 border rounded bg-body-tertiary">
+                            <i class="bi bi-sticky text-muted" style="font-size: 1.5rem;" aria-hidden="true"></i>
                             <p class="text-muted mb-0 mt-1">No notes yet. Super-users with <code>hosting.manage</code> can add internal notes here.</p>
                         </div>
                     @endforelse
@@ -945,4 +932,15 @@
             />
         @endif
     @endcan
+
+    @push('js')
+        <script>
+            document.addEventListener('click', function (e) {
+                var btn = e.target.closest('[data-toggle-target]');
+                if (!btn) return;
+                var el = document.getElementById(btn.getAttribute('data-toggle-target'));
+                if (el) el.classList.toggle('d-none');
+            });
+        </script>
+    @endpush
 @stop

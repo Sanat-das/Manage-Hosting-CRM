@@ -7,6 +7,7 @@ namespace Tests\Feature;
 use App\Models\Customer;
 use App\Models\Order;
 use App\Models\PanelAccount;
+use App\Models\Server;
 use App\Models\ServiceInstance;
 use App\Models\User;
 use App\ViewModels\Admin\ServerDetailViewModel;
@@ -37,7 +38,7 @@ class ServerVmInventoryPresenterTest extends TestCase
 
     private function makeServiceInstance(?Order $order = null, ?Customer $customer = null): ServiceInstance
     {
-        $instance = new ServiceInstance();
+        $instance = new ServiceInstance;
         $instance->forceFill(['status' => 'active']);
         $instance->setRelation('order', $order);
         $instance->setRelation('customer', $customer);
@@ -47,7 +48,7 @@ class ServerVmInventoryPresenterTest extends TestCase
 
     private function makeCustomer(?User $user = null): Customer
     {
-        $customer = new Customer();
+        $customer = new Customer;
         $customer->forceFill(['company' => 'Acme Ltd']);
         $customer->setRelation('user', $user);
 
@@ -56,7 +57,7 @@ class ServerVmInventoryPresenterTest extends TestCase
 
     private function makeUser(): User
     {
-        $user = new User();
+        $user = new User;
         $user->forceFill([
             'email' => 'jane@example.com',
             'first_name' => 'Jane',
@@ -68,7 +69,7 @@ class ServerVmInventoryPresenterTest extends TestCase
 
     private function makeOrder(): Order
     {
-        $order = new Order();
+        $order = new Order;
         $order->id = 7;
         $order->forceFill(['order_number' => 'ORD-0007', 'status' => 'active']);
 
@@ -468,11 +469,15 @@ class ServerVmInventoryPresenterTest extends TestCase
             [$this->makeLiveRow(self::GUID_LOWER)]
         );
 
-        $html = view('admin.servers.partials._vm-list', ['server' => new \App\Models\Server(), 'vm' => null, 'vmInventory' => $result, 'panelAccounts' => collect()])->render();
+        $html = view('admin.servers.partials._vm-list', ['server' => new Server, 'vm' => null, 'vmInventory' => $result, 'panelAccounts' => collect()])->render();
 
         // Terminated unmatched row renders the neutral label…
         $this->assertStringContainsString('removed', $html);
-        $this->assertStringContainsString('text-bg-light border text-muted fw-normal', $html);
+        // …in Bootstrap's neutral badge variant. This asserted `text-bg-light
+        // border text-muted` until the dark-mode sweep: `text-bg-light` is a
+        // light-only utility that left the badge unreadable on a dark surface, so
+        // the absent row now uses the theme-aware neutral `text-bg-secondary`.
+        $this->assertStringContainsString('text-bg-secondary border fw-normal', $html);
         // …and only the active unmatched row warns.
         $this->assertSame(1, substr_count($html, 'not found on host'));
     }

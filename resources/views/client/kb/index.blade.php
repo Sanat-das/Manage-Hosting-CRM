@@ -3,16 +3,11 @@
 @section('title', 'Knowledge Base')
 
 @section('content_header')
-    <div class="row">
-        <div class="col-sm-6"><h1 class="m-0">Knowledge Base</h1></div>
-        <div class="col-sm-6">
-            <ol class="breadcrumb float-sm-end">
-                <li class="breadcrumb-item"><a href="{{ url('/') }}">{{ __('adminlte.home') }}</a></li>
-                <li class="breadcrumb-item"><a href="{{ route('client.dashboard') }}">Dashboard</a></li>
-                <li class="breadcrumb-item active">Knowledge Base</li>
-            </ol>
-        </div>
-    </div>
+    <x-ui.page-header title="Knowledge Base" :breadcrumbs="[
+        ['label' => __('adminlte.home'), 'url' => url('/')],
+        ['label' => 'Dashboard', 'url' => route('client.dashboard')],
+        ['label' => 'Knowledge Base', 'active' => true],
+    ]" />
 @stop
 
 @section('content')
@@ -51,7 +46,7 @@
                 </td>
             </tr>
         @empty
-            <tr><td colspan="4" class="text-center text-muted py-4">No articles found.</td></tr>
+            <x-ui.empty-table-row colSpan="4" icon="bi bi-journal-text" title="No articles found." />
         @endforelse
     </x-adminlte.partials.datatable>
 @stop

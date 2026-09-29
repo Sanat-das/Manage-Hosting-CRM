@@ -4,7 +4,7 @@
     <x-ui.page-header title="Add Resource Pool" subtitle="Add a new resource pool" :breadcrumbs="[['label' => __('adminlte.home'), 'url' => url('/')],['label' => 'Resource Pools','url' => route('admin.resource-pools.index')],['label' => 'Add Resource Pool','active' => true]]" />
 @stop
 @section('content')
-    @if ($errors->any()) <x-adminlte-alert theme="danger" dismissible><ul class="mb-0">@foreach ($errors->all() as $error)<li>{{ $error }}</li>@endforeach</ul></x-adminlte-alert> @endif
+    <x-adminlte.partials.flash-alert />
     <x-adminlte.partials.form-card icon="bi bi-collection" title="New Resource Pool" :action="route('admin.resource-pools.store')" submit-label="Save Pool" :cancel-url="route('admin.resource-pools.index')">
         <div class="row">
             <div class="col-md-6"><x-adminlte-input name="name" label="Name" placeholder="e.g. CPU Pool A" value="{{ old('name') }}" required /></div>

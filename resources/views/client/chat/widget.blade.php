@@ -180,7 +180,7 @@
             <div class="client-chat__stars">
                 @for ($star = 1; $star <= 5; $star++)
                     <button type="button" class="client-chat__star" data-rating="{{ $star }}"
-                            aria-label="{{ $star }} out of 5">&#9733;</button>
+                            aria-label="{{ $star }} out of 5"><i class="bi bi-star" aria-hidden="true"></i></button>
                 @endfor
             </div>
             <p class="small text-success mt-2 mb-0 d-none" id="client-chat-thanks">Thank you.</p>

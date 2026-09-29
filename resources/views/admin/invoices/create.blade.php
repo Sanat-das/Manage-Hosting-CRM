@@ -7,11 +7,7 @@
 @stop
 
 @section('content')
-    @if ($errors->any())
-        <x-adminlte-alert theme="danger" dismissible>
-            <ul class="mb-0">@foreach ($errors->all() as $error)<li>{{ $error }}</li>@endforeach</ul>
-        </x-adminlte-alert>
-    @endif
+    <x-adminlte.partials.flash-alert />
 
     <x-adminlte.partials.form-card icon="bi bi-receipt" title="New Invoice"
         :action="route('admin.invoices.store')" submit-label="Create Invoice"
@@ -47,10 +43,10 @@
         <h5 class="mt-3">Line Items</h5>
         <div id="line-items">
             <div class="row g-2 mb-2 line-item">
-                <div class="col-md-5"><input type="text" name="items[0][description]" class="form-control form-control-sm" placeholder="Description" required></div>
-                <div class="col-md-2"><input type="number" name="items[0][quantity]" class="form-control form-control-sm" value="1" min="1" required></div>
-                <div class="col-md-3"><input type="number" name="items[0][unit_price]" class="form-control form-control-sm" step="0.01" min="0" placeholder="Unit price" required></div>
-                <div class="col-md-2"><button type="button" class="btn btn-sm btn-outline-danger remove-item"><i class="bi bi-trash"></i></button></div>
+                <div class="col-md-5"><input type="text" name="items[0][description]" class="form-control form-control-sm" placeholder="Description" aria-label="Line item description" required></div>
+                <div class="col-md-2"><input type="number" name="items[0][quantity]" class="form-control form-control-sm" value="1" min="1" aria-label="Line item quantity" required></div>
+                <div class="col-md-3"><input type="number" name="items[0][unit_price]" class="form-control form-control-sm" step="0.01" min="0" placeholder="Unit price" aria-label="Line item unit price" required></div>
+                <div class="col-md-2"><button type="button" class="btn btn-sm btn-outline-danger remove-item" aria-label="Remove line item"><i class="bi bi-trash" aria-hidden="true"></i></button></div>
             </div>
         </div>
         <button type="button" class="btn btn-sm btn-outline-primary mt-2" id="add-item"><i class="bi bi-plus-lg me-1"></i> Add Line</button>
@@ -61,10 +57,10 @@
         let idx = 1;
         document.getElementById('add-item').addEventListener('click', function() {
             const html = `<div class="row g-2 mb-2 line-item">
-                <div class="col-md-5"><input type="text" name="items[${idx}][description]" class="form-control form-control-sm" placeholder="Description" required></div>
-                <div class="col-md-2"><input type="number" name="items[${idx}][quantity]" class="form-control form-control-sm" value="1" min="1" required></div>
-                <div class="col-md-3"><input type="number" name="items[${idx}][unit_price]" class="form-control form-control-sm" step="0.01" min="0" placeholder="Unit price" required></div>
-                <div class="col-md-2"><button type="button" class="btn btn-sm btn-outline-danger remove-item"><i class="bi bi-trash"></i></button></div>
+                <div class="col-md-5"><input type="text" name="items[${idx}][description]" class="form-control form-control-sm" placeholder="Description" aria-label="Line item description" required></div>
+                <div class="col-md-2"><input type="number" name="items[${idx}][quantity]" class="form-control form-control-sm" value="1" min="1" aria-label="Line item quantity" required></div>
+                <div class="col-md-3"><input type="number" name="items[${idx}][unit_price]" class="form-control form-control-sm" step="0.01" min="0" placeholder="Unit price" aria-label="Line item unit price" required></div>
+                <div class="col-md-2"><button type="button" class="btn btn-sm btn-outline-danger remove-item" aria-label="Remove line item"><i class="bi bi-trash"></i></button></div>
             </div>`;
             document.getElementById('line-items').insertAdjacentHTML('beforeend', html);
             idx++;

@@ -21,9 +21,7 @@
 @stop
 
 @section('content')
-    @if (session('success'))
-        <x-adminlte-alert theme="success" dismissible>{{ session('success') }}</x-adminlte-alert>
-    @endif
+    <x-adminlte.partials.flash-alert />
 
     @if (session()->has('impersonator_id'))
         <x-adminlte-alert theme="warning" dismissible>
@@ -62,7 +60,7 @@
                             <div class="text-muted small" style="font-size: var(--text-xs); font-variant-numeric: tabular-nums;">Due {{ $invoice->due_date?->format('M j, Y') ?? '—' }}</div>
                         </div>
                         <div class="text-end flex-shrink-0 ms-3">
-                            <div style="font-size: var(--text-sm); font-variant-numeric: tabular-nums; font-weight: 500; letter-spacing: -0.01em;">₹{{ number_format($invoice->total, 2) }}</div>
+                            <div style="font-size: var(--text-sm); font-variant-numeric: tabular-nums; font-weight: 500; letter-spacing: -0.01em;"><x-adminlte.partials.currency :value="$invoice->total" /></div>
                             <x-adminlte.partials.status-badge :status="$invoice->status" />
                         </div>
                     </div>
@@ -101,8 +99,8 @@
         <div class="col-md-4">
             <x-adminlte-card icon="bi bi-wallet2" title="Account Balance">
                 <div class="text-center py-3">
-                    <div class="fw-bold {{ $customer->balance < 0 ? 'text-danger' : '' }}" style="font-size: var(--text-2xl); letter-spacing: var(--tracking-tight); line-height: var(--leading-tight); font-variant-numeric: tabular-nums;">₹{{ number_format($customer->balance, 2) }}</div>
-                    <div class="text-muted small mt-1" style="font-size: var(--text-sm); font-variant-numeric: tabular-nums;">Credit: <span style="color: var(--color-text); font-weight: 500;">₹{{ number_format($customer->credit, 2) }}</span></div>
+                    <div class="fw-bold {{ $customer->balance < 0 ? 'text-danger' : '' }}" style="font-size: var(--text-2xl); letter-spacing: var(--tracking-tight); line-height: var(--leading-tight); font-variant-numeric: tabular-nums;"><x-adminlte.partials.currency :value="$customer->balance" /></div>
+                    <div class="text-muted small mt-1" style="font-size: var(--text-sm); font-variant-numeric: tabular-nums;">Credit: <span style="color: var(--color-text); font-weight: 500;"><x-adminlte.partials.currency :value="$customer->credit" /></span></div>
                     <div class="mt-3">
                         <a href="{{ route('client.wallet.index') }}" class="btn btn-sm btn-outline-primary" style="border-radius: var(--radius-md); font-size: var(--text-sm);"><i class="bi bi-wallet2 me-1"></i> Manage wallet</a>
                     </div>
@@ -139,7 +137,7 @@
                                 <h6 class="card-title mb-0" style="font-size: var(--text-base); font-weight: 600; letter-spacing: var(--tracking-tight); line-height: var(--leading-tight); color: var(--color-text);">{{ $fp->name }}</h6>
                                 <p class="card-text small text-muted mb-0" style="font-size: var(--text-sm); line-height: var(--leading-normal);">{{ Str::limit($fp->description, 80) }}</p>
                                 <div class="mt-auto pt-2">
-                                    <span class="badge text-bg-primary" style="font-size: var(--text-xs); font-weight: 500; letter-spacing: 0.02em; padding: 0.32em 0.6em; border-radius: var(--radius-full);">From ₹{{ number_format($fp->price, 2) }}/mo</span>
+                                    <span class="badge text-bg-primary" style="font-size: var(--text-xs); font-weight: 500; letter-spacing: 0.02em; padding: 0.32em 0.6em; border-radius: var(--radius-full);">From <x-adminlte.partials.currency :value="$fp->price" />/mo</span>
                                 </div>
                             </div>
                             <div class="card-footer d-flex justify-content-end align-items-center gap-2" style="background: var(--color-bg-subtle); border-top-color: var(--bs-border-color); padding: var(--space-3) var(--space-4);">

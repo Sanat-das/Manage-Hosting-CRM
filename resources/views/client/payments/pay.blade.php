@@ -3,17 +3,12 @@
 @section('title', 'Pay Invoice ' . $invoice->invoice_no)
 
 @section('content_header')
-    <div class="row">
-        <div class="col-sm-6"><h1 class="m-0">Pay Invoice {{ $invoice->invoice_no }}</h1></div>
-        <div class="col-sm-6">
-            <ol class="breadcrumb float-sm-end">
-                <li class="breadcrumb-item"><a href="{{ url('/') }}">{{ __('adminlte.home') }}</a></li>
-                <li class="breadcrumb-item"><a href="{{ route('client.invoices.index') }}">Invoices</a></li>
-                <li class="breadcrumb-item"><a href="{{ route('client.invoices.show', $invoice) }}">{{ $invoice->invoice_no }}</a></li>
-                <li class="breadcrumb-item active">Pay</li>
-            </ol>
-        </div>
-    </div>
+    <x-ui.page-header :title="'Pay Invoice ' . $invoice->invoice_no" :breadcrumbs="[
+        ['label' => __('adminlte.home'), 'url' => url('/')],
+        ['label' => 'Invoices', 'url' => route('client.invoices.index')],
+        ['label' => $invoice->invoice_no, 'url' => route('client.invoices.show', $invoice)],
+        ['label' => 'Pay', 'active' => true],
+    ]" />
 @stop
 
 @section('content')
@@ -69,7 +64,7 @@
                 <hr>
                 <div class="mb-3">
                     <div class="text-muted small">Amount Due</div>
-                    <div class="fs-4 fw-bold">{{ number_format($dueAmount, 2) }}</div>
+                    <div class="fs-4 fw-bold"><x-adminlte.partials.currency :value="$dueAmount" /></div>
                 </div>
             </x-adminlte-card>
         </div>

@@ -18,7 +18,7 @@
                         <td class="text-warning fw-bold">{{ $d->expiry_date?->format('M j, Y') }}</td>
                     </tr>
                 @empty
-                    <tr><td colspan="3" class="text-center text-muted py-4">No domains expiring soon.</td></tr>
+                    <x-ui.empty-table-row colSpan="3" title="No domains expiring soon." />
                 @endforelse
             </tbody>
         </table>

@@ -93,10 +93,39 @@ final class ProvisioningEventRecorder
         self::$shutdownGuardRegistered = true;
 
         register_shutdown_function(static function (): void {
-            foreach (array_keys(self::$openEvents) as $eventId) {
-                self::markInterrupted((int) $eventId);
-            }
+            self::flushOpenEvents();
         });
+    }
+
+    /**
+     * Hand ownership of a queued event's lifecycle to its job.
+     *
+     * Call immediately AFTER a successful queue push: the row stays
+     * `running`, but this process stops tracking it, so the shutdown guard
+     * will not mark it interrupted at request teardown. The queued job
+     * closes the row (complete()/fail()) in its own process. Idempotent and
+     * never throws — a handoff failure must not break the dispatch it
+     * follows.
+     */
+    public function handOff(ProvisioningEvent $event): void
+    {
+        try {
+            self::untrackOpenEvent((int) $event->id);
+        } catch (Throwable) {
+            // Untracking is an in-memory unset; there is nothing to recover.
+        }
+    }
+
+    /**
+     * Mark every still-tracked open event interrupted. Called by the
+     * shutdown guard at process end; public static so the guard is drivable
+     * without exiting the process.
+     */
+    public static function flushOpenEvents(): void
+    {
+        foreach (array_keys(self::$openEvents) as $eventId) {
+            self::markInterrupted((int) $eventId);
+        }
     }
 
     private static function untrackOpenEvent(int $eventId): void

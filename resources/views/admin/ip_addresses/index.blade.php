@@ -10,7 +10,7 @@
 @stop
 
 @section('content')
-    @if (session('success')) <x-adminlte-alert theme="success" dismissible>{{ session('success') }}</x-adminlte-alert> @endif
+    <x-adminlte.partials.flash-alert />
     @if ($errors->has('assign') || $errors->has('delete')) <x-adminlte-alert theme="danger" dismissible>{{ $errors->first('assign') ?? $errors->first('delete') }}</x-adminlte-alert> @endif
 
     <x-adminlte.partials.datatable
@@ -104,7 +104,7 @@
                 </td>
             </tr>
         @empty
-            <tr><td colspan="8" class="text-center text-muted py-4">No IP addresses found.</td></tr>
+            <x-ui.empty-table-row colSpan="8" title="No IP addresses found." />
         @endforelse
     </x-adminlte.partials.datatable>
 

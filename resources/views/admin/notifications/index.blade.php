@@ -7,9 +7,7 @@
 @stop
 
 @section('content')
-    @if (session('success'))
-        <x-adminlte-alert theme="success" dismissible>{{ session('success') }}</x-adminlte-alert>
-    @endif
+    <x-adminlte.partials.flash-alert />
 
     <x-adminlte.partials.datatable
         icon="bi bi-bell"
@@ -46,11 +44,7 @@
                 </td>
                 <td class="text-muted text-nowrap">{{ $notification->created_at?->format('M j, Y g:i A') }}</td>
                 <td>
-                    @if ($notification->read_at)
-                        <span class="badge text-bg-secondary">Read</span>
-                    @else
-                        <span class="badge text-bg-primary">Unread</span>
-                    @endif
+                    <x-adminlte.partials.status-badge :status="$notification->read_at ? 'read' : 'unread'" :map="['read' => 'secondary', 'unread' => 'primary']" />
                 </td>
                 <td class="text-end">
                     <div class="table-actions">
@@ -66,7 +60,7 @@
                 </td>
             </tr>
         @empty
-            <tr><td colspan="4" class="text-center text-muted py-4">No notifications.</td></tr>
+            <x-ui.empty-table-row colSpan="4" title="No notifications." />
         @endforelse
     </x-adminlte.partials.datatable>
 @stop

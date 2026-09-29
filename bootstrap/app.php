@@ -2,7 +2,7 @@
 
 // Must run before Laravel boots: without APP_KEY the app throws before any route is reached.
 (static function () {
-    $base    = dirname(__DIR__);
+    $base = dirname(__DIR__);
     $envPath = $base.'/.env';
     $example = $base.'/.env.example';
 
@@ -13,7 +13,7 @@
     if (file_exists($envPath)) {
         $content = file_get_contents($envPath);
         if (preg_match('/^APP_KEY=\s*$/m', $content)) {
-            $key     = 'base64:'.base64_encode(random_bytes(32));
+            $key = 'base64:'.base64_encode(random_bytes(32));
             $content = preg_replace('/^APP_KEY=\s*$/m', 'APP_KEY='.$key, $content);
             file_put_contents($envPath, $content);
         }
@@ -23,12 +23,12 @@
 use App\Http\Middleware\AdminMiddleware;
 use App\Http\Middleware\ClientMiddleware;
 use App\Http\Middleware\EnsureAppInstalled;
-use App\Http\Middleware\SecurityHeaders;
 use App\Http\Middleware\EnsureCustomerRecord;
 use App\Http\Middleware\EnsureRegistrationEnabled;
 use App\Http\Middleware\PermissionMiddleware;
 use App\Http\Middleware\RedirectIfInstalled;
 use App\Http\Middleware\RoleMiddleware;
+use App\Http\Middleware\SecurityHeaders;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -151,6 +151,18 @@ return Application::configure(basePath: dirname(__DIR__))
         // pre-framework shim in public/index.php honours it too.
         $middleware->preventRequestsDuringMaintenance(except: [
             'admin/system/update/progress',
+        ]);
+
+        // Secrets must round-trip byte-exact: a mailbox password or API token
+        // with a leading/trailing space is valid, so these nested settings
+        // fields are excepted from TrimStrings. The blank-submit guard in
+        // SettingsController::update() compensates by treating a
+        // whitespace-only submit as "keep the current value".
+        $middleware->trimStrings(except: [
+            'settings.smtp_password',
+            'settings.cpanel_api_token',
+            'settings.plesk_password',
+            'settings.resellerclub_api_key',
         ]);
 
         // While the application is not installed, every web request is

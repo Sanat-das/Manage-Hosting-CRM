@@ -8,15 +8,7 @@
     ]" />
 @stop
 @section('content')
-    @if (session('success')) <x-adminlte-alert theme="success" dismissible>{{ session('success') }}</x-adminlte-alert> @endif
-    @if (session('error')) <x-adminlte-alert theme="danger" dismissible>{{ session('error') }}</x-adminlte-alert> @endif
-    @if ($errors->any())
-        <x-adminlte-alert theme="warning" dismissible>
-            <ul class="mb-0">
-                @foreach ($errors->all() as $error)<li>{{ $error }}</li>@endforeach
-            </ul>
-        </x-adminlte-alert>
-    @endif
+    <x-adminlte.partials.flash-alert />
     @if (empty($items))
         <x-adminlte-alert theme="info">Your cart is empty. <a href="{{ route('admin.cart.index') }}">Browse products</a>.</x-adminlte-alert>
     @else
@@ -27,20 +19,30 @@
                     <tbody>
                         @php $subtotal = 0; @endphp
                         @foreach ($items as $idx => $item)
-                            @php $subtotal += $item['total']; @endphp
+                            @php
+                                $isAddonPreview = (bool) ($item['preview_addon'] ?? false);
+                                $subtotal += $item['total'];
+                            @endphp
                             <tr>
-                                <td><strong>{{ $item['product']->name }}</strong></td>
-                                <td><span class="badge text-bg-info">{{ ucfirst(str_replace('_', ' ', $item['cycle'])) }}</span></td>
+                                <td>
+                                    <strong>{{ $isAddonPreview ? $item['product_name'] : $item['product']->name }}</strong>
+                                    @if ($isAddonPreview)
+                                        <span class="badge text-bg-info ms-1">Add-on</span>
+                                    @endif
+                                </td>
+                                <td><span class="badge text-bg-info">{{ ucfirst(str_replace('_', ' ', $isAddonPreview ? $item['billing_cycle'] : $item['cycle'])) }}</span></td>
                                 <td>{{ $item['quantity'] }}</td>
                                 <td>₹{{ number_format($item['unit_price'], 2) }}</td>
                                 <td>₹{{ number_format($item['total'], 2) }}</td>
                                 <td>{{ $item['domain'] ?? '—' }}</td>
                                 <td class="text-end">
-                                    <form method="POST" action="{{ route('admin.cart.remove') }}" class="d-inline">
-                                        @csrf
-                                        <input type="hidden" name="index" value="{{ $idx }}">
-                                        <button type="submit" class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
-                                    </form>
+                                    @unless ($isAddonPreview)
+                                        <form method="POST" action="{{ route('admin.cart.remove') }}" class="d-inline">
+                                            @csrf
+                                            <input type="hidden" name="index" value="{{ $idx }}">
+                                            <button type="submit" class="btn btn-sm btn-outline-danger" aria-label="Remove item"><i class="bi bi-trash" aria-hidden="true"></i></button>
+                                        </form>
+                                    @endunless
                                 </td>
                             </tr>
                         @endforeach

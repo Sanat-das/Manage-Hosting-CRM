@@ -4,16 +4,20 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
+use App\Jobs\RunUnrecordedVmDestroy;
 use App\Models\Customer;
 use App\Models\PanelAccount;
 use App\Models\Permission;
+use App\Models\ProvisioningEvent;
 use App\Models\Role;
 use App\Models\Server;
 use App\Models\ServiceInstance;
 use App\Models\User;
+use App\Services\Provisioning\ProvisioningEventRecorder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Queue;
 use Tests\TestCase;
 
 /**
@@ -86,6 +90,32 @@ final class ProxmoxUnrecordedVmDestroyTest extends TestCase
         Http::assertSent(fn (Request $r): bool => $r->method() === 'DELETE'
             && str_contains($r->url(), '/nodes/pve1/qemu/105')
             && str_contains($r->url(), 'purge=1'));
+    }
+
+    public function test_a_queued_destroy_hands_off_so_the_guard_keeps_the_row_running(): void
+    {
+        Queue::fake();
+
+        $server = $this->server();
+        $this->fakePveDestroy();
+
+        $this->actingAs($this->adminWith(['hosting.manage']))
+            ->from(route('admin.servers.show', $server))
+            ->post(route('admin.servers.vms.destroy', [$server, '105']), [
+                'confirm' => '105',
+                'node' => 'pve1',
+            ])
+            ->assertRedirect(route('admin.servers.show', $server))
+            ->assertSessionHas('success');
+
+        $event = ProvisioningEvent::sole();
+
+        Queue::assertPushed(RunUnrecordedVmDestroy::class, fn (RunUnrecordedVmDestroy $job): bool => $job->eventId === $event->id);
+
+        // Request teardown must not fail the queued destroy.
+        ProvisioningEventRecorder::flushOpenEvents();
+
+        $this->assertSame('running', $event->fresh()->status);
     }
 
     public function test_a_vm_that_belongs_to_a_service_is_refused(): void

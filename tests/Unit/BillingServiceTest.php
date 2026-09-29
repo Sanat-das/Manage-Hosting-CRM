@@ -3,6 +3,7 @@
 namespace Tests\Unit;
 
 use App\Models\Customer;
+use App\Models\GstSetting;
 use App\Models\Invoice;
 use App\Models\Order;
 use App\Models\OrderItem;
@@ -10,6 +11,8 @@ use App\Models\OrderStatusHistory;
 use App\Models\Product;
 use App\Models\User;
 use App\Services\Billing\BillingService;
+use App\Services\OrderNumberService;
+use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -18,36 +21,37 @@ class BillingServiceTest extends TestCase
     use RefreshDatabase;
 
     /**
-     * Test that the invoice number format is correct.
-     * We test the format pattern without touching the database.
+     * The invoice number carries the financial-year label (Apr–Mar), not the
+     * calendar year: INV-{FY}-{seq5}. Calls generateNumber() so this can
+     * actually fail.
      */
     public function test_invoice_number_format_pattern(): void
     {
-        $year = date('Y');
-        // Simulate what generateNumber produces
-        $seq = 1;
-        $number = sprintf('INV-%s-%s', $year, str_pad((string) $seq, 5, '0', STR_PAD_LEFT));
+        $number = app(BillingService::class)->generateNumber();
 
         $this->assertMatchesRegularExpression('/^INV-\d{4}-\d{5}$/', $number);
-        $this->assertEquals("INV-{$year}-00001", $number);
+
+        $fy = OrderNumberService::financialYearLabel(now());
+        $this->assertSame("INV-{$fy}-00001", $number);
     }
 
     public function test_invoice_number_padding(): void
     {
-        $year = date('Y');
-        // Test various sequence numbers
-        $tests = [
-            [1, "INV-{$year}-00001"],
-            [99, "INV-{$year}-00099"],
-            [999, "INV-{$year}-00999"],
-            [9999, "INV-{$year}-09999"],
-            [99999, "INV-{$year}-99999"],
-        ];
+        $service = app(BillingService::class);
 
-        foreach ($tests as [$seq, $expected]) {
-            $number = sprintf('INV-%s-%s', $year, str_pad((string) $seq, 5, '0', STR_PAD_LEFT));
-            $this->assertEquals($expected, $number);
-        }
+        // The sequences counter is shared, so seed it forward then assert the
+        // padding on consecutive deliveries.
+        $first = $service->generateNumber();
+        $second = $service->generateNumber();
+
+        $this->assertMatchesRegularExpression('/^INV-\d{4}-\d{5}$/', $first);
+        $this->assertMatchesRegularExpression('/^INV-\d{4}-\d{5}$/', $second);
+        $this->assertNotSame($first, $second);
+
+        $firstSeq = (int) substr($first, -5);
+        $secondSeq = (int) substr($second, -5);
+        $this->assertSame($firstSeq + 1, $secondSeq);
+        $this->assertSame(str_pad((string) $secondSeq, 5, '0', STR_PAD_LEFT), substr($second, -5));
     }
 
     /**
@@ -87,9 +91,10 @@ class BillingServiceTest extends TestCase
             'amount' => 499.00,
         ]);
 
-        // next_billing_date advanced by one month from the as-of date.
+        // next_billing_date advanced by one month from the item's OWN due
+        // date (the legacy item's fallback: the order's summary date).
         $this->assertSame(
-            now()->addMonth()->toDateString(),
+            now()->subDay()->addMonth()->toDateString(),
             $order->fresh()->next_billing_date->toDateString()
         );
     }
@@ -137,9 +142,237 @@ class BillingServiceTest extends TestCase
 
         $result = app(BillingService::class)->processRecurringBilling();
 
+        // A free due item is never invoiced — and is no longer an error
+        // (review F7): its schedule advances instead of staying stuck.
         $this->assertSame(0, $result['invoices_generated']);
-        $this->assertSame(1, $result['errors']);
+        $this->assertSame(0, $result['errors']);
         $this->assertSame(0, Invoice::count());
+    }
+
+    /**
+     * Review F7: a due item whose quantity-aware total is zero must not be
+     * invoiced, must not count as an error, and must not stay stuck due — its
+     * schedule advances from its OWN due date while the order summary is kept
+     * in sync.
+     */
+    public function test_process_recurring_billing_advances_zero_value_due_item_without_invoicing(): void
+    {
+        $asOf = CarbonImmutable::today('Asia/Kolkata');
+        $customer = $this->makeCustomer();
+        $product = $this->makeProduct(['price' => 0]);
+
+        $order = Order::create([
+            'customer_id' => $customer->id,
+            'product_id' => $product->id,
+            'order_number' => 'ORD-'.date('Y').'-'.str_pad((string) random_int(1, 99999), 5, '0', STR_PAD_LEFT),
+            'billing_cycle' => 'monthly',
+            'quantity' => 1,
+            'total' => 0.00,
+            'status' => Order::STATUS_ACTIVE,
+            'next_billing_date' => $asOf->subDay()->toDateString(),
+        ]);
+
+        $item = OrderItem::create([
+            'order_id' => $order->id,
+            'product_id' => $product->id,
+            'product_name' => $product->name,
+            'billing_cycle' => 'monthly',
+            'quantity' => 1,
+            'unit_price' => 0.00,
+            'total' => 0.00,
+            'next_billing_date' => $asOf->subDay()->toDateString(),
+            'billing_cycles_count' => 1,
+        ]);
+
+        $result = app(BillingService::class)->processRecurringBilling($asOf);
+
+        $this->assertSame(0, $result['invoices_generated']);
+        $this->assertSame(0, $result['errors'], 'A free due item must not count as an error.');
+        $this->assertSame(0, Invoice::count(), 'No zero-value invoice may be generated.');
+
+        // Advanced from its own due date (yesterday), not from the run date.
+        $this->assertSame($asOf->subDay()->addMonth()->toDateString(), $item->fresh()->next_billing_date->toDateString());
+        $this->assertSame($asOf->toDateString(), $item->fresh()->last_billing_date->toDateString());
+        $this->assertSame(2, $item->fresh()->billing_cycles_count);
+
+        // syncOrderSummary still ran: the order summary follows the item.
+        $this->assertSame($asOf->subDay()->addMonth()->toDateString(), $order->fresh()->next_billing_date->toDateString());
+    }
+
+    /**
+     * A zero-value due item must not leak into an invoice that other due items
+     * produce: the invoice carries only the billable lines and their amount.
+     */
+    public function test_process_recurring_billing_excludes_zero_value_item_from_a_mixed_invoice(): void
+    {
+        $asOf = CarbonImmutable::today('Asia/Kolkata');
+        $customer = $this->makeCustomer();
+        $product = $this->makeProduct(['name' => 'Shared Hosting', 'price' => 100.00]);
+
+        $order = Order::create([
+            'customer_id' => $customer->id,
+            'product_id' => $product->id,
+            'order_number' => 'ORD-'.date('Y').'-'.str_pad((string) random_int(1, 99999), 5, '0', STR_PAD_LEFT),
+            'billing_cycle' => 'monthly',
+            'quantity' => 1,
+            'total' => 100.00,
+            'status' => Order::STATUS_ACTIVE,
+            'next_billing_date' => $asOf->subDay()->toDateString(),
+        ]);
+
+        OrderItem::create([
+            'order_id' => $order->id,
+            'product_id' => $product->id,
+            'product_name' => 'Shared Hosting',
+            'billing_cycle' => 'monthly',
+            'quantity' => 1,
+            'unit_price' => 100.00,
+            'total' => 100.00,
+            'next_billing_date' => $asOf->subDay()->toDateString(),
+            'billing_cycles_count' => 1,
+        ]);
+
+        $free = OrderItem::create([
+            'order_id' => $order->id,
+            'product_id' => $product->id,
+            'product_name' => 'Free Add-on',
+            'billing_cycle' => 'monthly',
+            'quantity' => 1,
+            'unit_price' => 0.00,
+            'total' => 0.00,
+            'next_billing_date' => $asOf->subDay()->toDateString(),
+            'billing_cycles_count' => 1,
+        ]);
+
+        $result = app(BillingService::class)->processRecurringBilling($asOf);
+
+        $this->assertSame(1, $result['invoices_generated']);
+        $this->assertSame(0, $result['errors']);
+
+        $invoice = Invoice::where('order_id', $order->id)->sole();
+        $this->assertSame(100.00, (float) $invoice->amount);
+        $this->assertSame(1, $invoice->items()->count());
+        $this->assertStringContainsString('Shared Hosting', $invoice->items()->sole()->description);
+
+        // The free item advanced on its own schedule all the same.
+        $this->assertSame($asOf->subDay()->addMonth()->toDateString(), $free->fresh()->next_billing_date->toDateString());
+        $this->assertSame(2, $free->fresh()->billing_cycles_count);
+    }
+
+    /**
+     * The once-per-cycle guard also protects the zero-value advance: a free
+     * item that is still short of today after one advance must not advance
+     * again on a second run the same day (it catches up one period per cycle,
+     * not one per run).
+     */
+    public function test_process_recurring_billing_advances_a_zero_value_item_once_per_cycle(): void
+    {
+        $asOf = CarbonImmutable::today('Asia/Kolkata');
+        $customer = $this->makeCustomer();
+        $product = $this->makeProduct(['price' => 0]);
+
+        $order = Order::create([
+            'customer_id' => $customer->id,
+            'product_id' => $product->id,
+            'order_number' => 'ORD-'.date('Y').'-'.str_pad((string) random_int(1, 99999), 5, '0', STR_PAD_LEFT),
+            'billing_cycle' => 'monthly',
+            'quantity' => 1,
+            'total' => 0.00,
+            'status' => Order::STATUS_ACTIVE,
+            'next_billing_date' => $asOf->subMonths(3)->toDateString(),
+        ]);
+
+        $item = OrderItem::create([
+            'order_id' => $order->id,
+            'product_id' => $product->id,
+            'product_name' => $product->name,
+            'billing_cycle' => 'monthly',
+            'quantity' => 1,
+            'unit_price' => 0.00,
+            'total' => 0.00,
+            'next_billing_date' => $asOf->subMonths(3)->toDateString(),
+            'billing_cycles_count' => 1,
+        ]);
+
+        $service = app(BillingService::class);
+        $first = $service->processRecurringBilling($asOf);
+        $second = $service->processRecurringBilling($asOf);
+
+        $this->assertSame(0, $first['invoices_generated']);
+        $this->assertSame(0, $first['errors']);
+        $this->assertSame(0, $second['invoices_generated']);
+        $this->assertSame(0, $second['errors']);
+        $this->assertSame(0, Invoice::count());
+
+        // One advance only — still in the past, but not advanced twice today.
+        $this->assertSame($asOf->subMonths(3)->addMonth()->toDateString(), $item->fresh()->next_billing_date->toDateString());
+        $this->assertSame(2, $item->fresh()->billing_cycles_count);
+    }
+
+    /**
+     * Regression: a null next_billing_date on a NON-legacy item means its
+     * schedule was intentionally ended (e.g. a cancelled add-on). It must
+     * never fall back to the order summary date — doing so re-billed and
+     * re-armed the cancelled line on every run.
+     */
+    public function test_process_recurring_billing_never_rearms_an_intentionally_ended_item(): void
+    {
+        $asOf = CarbonImmutable::today('Asia/Kolkata');
+        $customer = $this->makeCustomer();
+        $product = $this->makeProduct(['name' => 'Shared Hosting', 'price' => 100.00]);
+
+        $order = Order::create([
+            'customer_id' => $customer->id,
+            'product_id' => $product->id,
+            'order_number' => 'ORD-'.date('Y').'-'.str_pad((string) random_int(1, 99999), 5, '0', STR_PAD_LEFT),
+            'billing_cycle' => 'monthly',
+            'quantity' => 1,
+            'total' => 100.00,
+            'status' => Order::STATUS_ACTIVE,
+            'next_billing_date' => $asOf->subDay()->toDateString(),
+        ]);
+
+        $parent = OrderItem::create([
+            'order_id' => $order->id,
+            'product_id' => $product->id,
+            'product_name' => 'Shared Hosting',
+            'billing_cycle' => 'monthly',
+            'quantity' => 1,
+            'unit_price' => 100.00,
+            'total' => 100.00,
+            'next_billing_date' => $asOf->subDay()->toDateString(),
+            'billing_cycles_count' => 1,
+        ]);
+
+        // Cancelled add-on: schedule cleared, cycle counter still set, so it
+        // is NOT a legacy item and must not inherit the order's due date.
+        $cancelledAddon = OrderItem::create([
+            'order_id' => $order->id,
+            'product_id' => $product->id,
+            'product_name' => 'Extra Storage',
+            'billing_cycle' => 'monthly',
+            'quantity' => 1,
+            'unit_price' => 50.00,
+            'total' => 50.00,
+            'recurring_cycles_limit' => 0,
+            'next_billing_date' => null,
+            'billing_cycles_count' => 1,
+            'parent_item_id' => $parent->id,
+        ]);
+
+        $result = app(BillingService::class)->processRecurringBilling($asOf);
+
+        $this->assertSame(1, $result['invoices_generated']);
+        $this->assertSame(0, $result['errors']);
+
+        $invoice = Invoice::where('order_id', $order->id)->sole();
+        $this->assertSame(100.00, (float) $invoice->amount);
+        $this->assertSame(1, $invoice->items()->count());
+        $this->assertStringContainsString('Shared Hosting', $invoice->items()->sole()->description);
+
+        // The cancelled line stays cancelled: no date, no counter bump.
+        $this->assertNull($cancelledAddon->fresh()->next_billing_date);
+        $this->assertSame(1, $cancelledAddon->fresh()->billing_cycles_count);
     }
 
     public function test_process_recurring_billing_skips_one_time_order(): void
@@ -253,17 +486,17 @@ class BillingServiceTest extends TestCase
         $this->assertSame(1, $invoice->items()->count());
         $this->assertStringContainsString('Monthly VPS', $invoice->items()->first()->description);
 
-        // The monthly item advanced one month and its counter bumped; the
-        // annual item is untouched.
+        // The monthly item advanced one month from ITS OWN due date and its
+        // counter bumped; the annual item is untouched.
         $items = $order->items()->orderBy('id')->get();
-        $this->assertSame(now()->addMonth()->toDateString(), $items[0]->fresh()->next_billing_date->toDateString());
+        $this->assertSame(now()->subDay()->addMonth()->toDateString(), $items[0]->fresh()->next_billing_date->toDateString());
         $this->assertSame(2, $items[0]->fresh()->billing_cycles_count);
         $this->assertSame(now()->addMonths(11)->toDateString(), $items[1]->fresh()->next_billing_date->toDateString());
         $this->assertSame(1, $items[1]->fresh()->billing_cycles_count);
 
         // The order summary tracks the earliest remaining item date (the
-        // monthly item renews again in one month).
-        $this->assertSame(now()->addMonth()->toDateString(), $order->fresh()->next_billing_date->toDateString());
+        // monthly item renews again one month after its own due date).
+        $this->assertSame(now()->subDay()->addMonth()->toDateString(), $order->fresh()->next_billing_date->toDateString());
     }
 
     public function test_process_recurring_billing_ends_only_the_item_at_its_snapshot_cycle_limit(): void
@@ -320,13 +553,14 @@ class BillingServiceTest extends TestCase
 
         $items = $order->items()->orderBy('id')->get();
         $this->assertNull($items[0]->fresh()->next_billing_date, 'The limited item stops renewing at its snapshot limit.');
-        $this->assertSame(now()->addMonth()->toDateString(), $items[1]->fresh()->next_billing_date->toDateString());
+        $this->assertSame(now()->subDay()->addMonth()->toDateString(), $items[1]->fresh()->next_billing_date->toDateString());
 
         // The order summary follows the remaining recurring item.
-        $this->assertSame(now()->addMonth()->toDateString(), $order->fresh()->next_billing_date->toDateString());
+        $this->assertSame(now()->subDay()->addMonth()->toDateString(), $order->fresh()->next_billing_date->toDateString());
     }
 
-    public function test_process_auto_terminations_terminates_expired_fixed_term(): void    {
+    public function test_process_auto_terminations_terminates_expired_fixed_term(): void
+    {
         $customer = $this->makeCustomer();
         $product = $this->makeProduct(['auto_terminate_value' => 30, 'auto_terminate_unit' => 'days']);
         $order = $this->makeDueOrder($customer, $product);
@@ -558,6 +792,150 @@ class BillingServiceTest extends TestCase
         $remaining3 = max(0.0, $total - $newPaid3);
         $status3 = $remaining3 <= 0 ? 'paid' : 'partial';
         $this->assertEquals('paid', $status3);
+    }
+
+    /**
+     * Renewal lines must carry product_id: under tax_mode per_product a line
+     * without one is billed tax-free (GstTaxService::calculateItemTax), so a
+     * renewal would silently drop the GST the draft invoice charged.
+     */
+    public function test_process_recurring_billing_carries_product_id_for_per_product_gst(): void
+    {
+        // The migration seeds the id=1 row; `id` is not fillable, so update it.
+        GstSetting::where('id', 1)->update([
+            'state_code' => '27',
+            'cgst_rate' => 9,
+            'sgst_rate' => 9,
+            'igst_rate' => 18,
+            'enabled' => 1,
+            'tax_mode' => GstSetting::TAX_MODE_PER_PRODUCT,
+        ]);
+
+        $customer = $this->makeCustomer();
+        $customer->update(['state_code' => '27']);
+
+        $product = $this->makeProduct();
+        $product->update(['gst_enabled' => 1, 'gst_type' => 'standard']);
+
+        $order = $this->makeDueOrder($customer, $product);
+
+        $result = app(BillingService::class)->processRecurringBilling();
+
+        $this->assertSame(1, $result['invoices_generated']);
+
+        $invoice = Invoice::where('order_id', $order->id)->sole();
+        $line = $invoice->items()->sole();
+
+        $this->assertSame($product->id, (int) $line->product_id);
+        $this->assertGreaterThan(0, (float) $invoice->cgst_amount);
+        $this->assertGreaterThan(0, (float) $invoice->sgst_amount);
+        $this->assertSame(0.0, (float) $invoice->igst_amount);
+    }
+
+    /**
+     * createAddonChargeInvoice: one immediately-issued invoice for an attached
+     * add-on — recurring line plus setup-fee line, GST with the customer's
+     * place of supply, and that code snapshotted on the invoice.
+     */
+    public function test_create_addon_charge_invoice_builds_a_sent_invoice_with_setup_fee_and_gst(): void
+    {
+        GstSetting::where('id', 1)->update([
+            'state_code' => '27',
+            'cgst_rate' => 9,
+            'sgst_rate' => 9,
+            'igst_rate' => 18,
+            'enabled' => 1,
+            'tax_mode' => GstSetting::TAX_MODE_GLOBAL,
+        ]);
+
+        $customer = $this->makeCustomer();
+        $customer->update(['state_code' => '27']);
+
+        $product = $this->makeProduct(['name' => 'Shared Hosting', 'price' => 100.00]);
+        $order = $this->makeDueOrder($customer, $product);
+        $parent = $order->items()->sole();
+
+        $recurring = OrderItem::create([
+            'order_id' => $order->id,
+            'product_id' => $product->id,
+            'product_name' => 'Extra Storage',
+            'billing_cycle' => 'monthly',
+            'quantity' => 2,
+            'unit_price' => 50.00,
+            'total' => 100.00,
+            'next_billing_date' => now()->addMonth()->toDateString(),
+            'billing_cycles_count' => 1,
+            'parent_item_id' => $parent->id,
+        ]);
+
+        $setup = OrderItem::create([
+            'order_id' => $order->id,
+            'product_id' => $product->id,
+            'product_name' => 'Extra Storage — Setup Fee',
+            'billing_cycle' => 'one_time',
+            'quantity' => 1,
+            'unit_price' => 25.00,
+            'total' => 25.00,
+            'billing_cycles_count' => 0,
+            'parent_item_id' => $parent->id,
+        ]);
+
+        $invoice = app(BillingService::class)->createAddonChargeInvoice($recurring, $setup);
+
+        $this->assertSame(Invoice::STATUS_SENT, $invoice->status);
+        $this->assertSame($customer->id, (int) $invoice->customer_id);
+        $this->assertSame($order->id, (int) $invoice->order_id);
+        $this->assertSame(125.00, (float) $invoice->amount);
+        $this->assertSame('27', $invoice->place_of_supply_code);
+        $this->assertSame(now()->addDays(7)->toDateString(), $invoice->due_date->toDateString());
+        $this->assertSame('Add-on charge — Extra Storage', $invoice->notes);
+
+        $lines = $invoice->items()->orderBy('id')->get();
+        $this->assertCount(2, $lines);
+        $this->assertSame('Extra Storage — Monthly', $lines[0]->description);
+        $this->assertSame(2, (int) $lines[0]->quantity);
+        $this->assertSame(50.00, (float) $lines[0]->unit_price);
+        $this->assertSame(100.00, (float) $lines[0]->total);
+        $this->assertSame('Extra Storage — Setup Fee — One time', $lines[1]->description);
+        $this->assertSame(25.00, (float) $lines[1]->total);
+
+        // Same state as the company → CGST + SGST on the whole 125.00, no IGST.
+        $this->assertGreaterThan(0, (float) $invoice->cgst_amount);
+        $this->assertGreaterThan(0, (float) $invoice->sgst_amount);
+        $this->assertSame(0.0, (float) $invoice->igst_amount);
+        $this->assertSame(round(125.00 + (float) $invoice->tax, 2), round((float) $invoice->total, 2));
+    }
+
+    public function test_create_addon_charge_invoice_without_setup_fee_bills_only_the_addon_line(): void
+    {
+        $customer = $this->makeCustomer();
+        $customer->update(['state_code' => '29']);
+
+        $product = $this->makeProduct(['name' => 'Shared Hosting', 'price' => 100.00]);
+        $order = $this->makeDueOrder($customer, $product);
+        $parent = $order->items()->sole();
+
+        $recurring = OrderItem::create([
+            'order_id' => $order->id,
+            'product_id' => $product->id,
+            'product_name' => 'Extra Storage',
+            'billing_cycle' => 'monthly',
+            'quantity' => 1,
+            'unit_price' => 60.00,
+            'total' => 60.00,
+            'next_billing_date' => now()->addMonth()->toDateString(),
+            'billing_cycles_count' => 1,
+            'parent_item_id' => $parent->id,
+        ]);
+
+        $invoice = app(BillingService::class)->createAddonChargeInvoice($recurring, null, 'Attached by admin');
+
+        $this->assertSame(Invoice::STATUS_SENT, $invoice->status);
+        $this->assertSame(60.00, (float) $invoice->amount);
+        $this->assertSame('29', $invoice->place_of_supply_code);
+        $this->assertSame('Attached by admin', $invoice->notes);
+        $this->assertSame(1, $invoice->items()->count());
+        $this->assertSame('Extra Storage — Monthly', $invoice->items()->sole()->description);
     }
 
     private function makeCustomer(): Customer

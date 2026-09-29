@@ -18,21 +18,7 @@
 @stop
 
 @section('content')
-    @if (session('success'))
-        <x-adminlte-alert theme="success" dismissible>{{ session('success') }}</x-adminlte-alert>
-    @endif
-    @if (session('error'))
-        <x-adminlte-alert theme="danger" dismissible>{{ session('error') }}</x-adminlte-alert>
-    @endif
-    @if ($errors->any())
-        <x-adminlte-alert theme="danger" dismissible>
-            <ul class="mb-0">
-                @foreach ($errors->all() as $error)
-                    <li>{{ $error }}</li>
-                @endforeach
-            </ul>
-        </x-adminlte-alert>
-    @endif
+    <x-adminlte.partials.flash-alert />
 
     {{-- Guest ticket banner --}}
     @if ($ticket->isGuest())
@@ -150,7 +136,7 @@
                             <div class="position-relative ticket-contact-field" data-field="to" data-single="0" data-search-url="{{ route('admin.tickets.contacts.search', $ticket) }}">
                                 <x-adminlte-input name="to" label="To" value="{{ old('to', $defaultReplyTo) }}"
                                                    placeholder="comma-separated addresses" />
-                                <div class="ticket-contact-dropdown dropdown-menu bg-white border shadow rounded p-1" role="listbox" aria-label="Contact suggestions" style="display:none; position:absolute; top:100%; left:0; right:0; z-index:1050; max-height:200px; overflow-y:auto;"></div>
+                                <div class="ticket-contact-dropdown dropdown-menu border shadow rounded p-1" role="listbox" aria-label="Contact suggestions" style="display:none; position:absolute; top:100%; left:0; right:0; z-index:1050; max-height:200px; overflow-y:auto;"></div>
                             </div>
 
                             <div class="mb-2">
@@ -162,17 +148,17 @@
                                 <div class="position-relative ticket-contact-field" data-field="cc" data-single="0" data-search-url="{{ route('admin.tickets.contacts.search', $ticket) }}">
                                     <x-adminlte-input name="cc" label="Cc" value="{{ old('cc', $defaultCc ?? '') }}"
                                                        placeholder="comma-separated addresses" />
-                                    <div class="ticket-contact-dropdown dropdown-menu bg-white border shadow rounded p-1" role="listbox" aria-label="Contact suggestions" style="display:none; position:absolute; top:100%; left:0; right:0; z-index:1050; max-height:200px; overflow-y:auto;"></div>
+                                    <div class="ticket-contact-dropdown dropdown-menu border shadow rounded p-1" role="listbox" aria-label="Contact suggestions" style="display:none; position:absolute; top:100%; left:0; right:0; z-index:1050; max-height:200px; overflow-y:auto;"></div>
                                 </div>
                                 <div class="position-relative ticket-contact-field" data-field="bcc" data-single="0" data-search-url="{{ route('admin.tickets.contacts.search', $ticket) }}">
                                     <x-adminlte-input name="bcc" label="Bcc" value="{{ old('bcc', $defaultBcc ?? '') }}"
                                                        placeholder="comma-separated addresses" />
-                                    <div class="ticket-contact-dropdown dropdown-menu bg-white border shadow rounded p-1" role="listbox" aria-label="Contact suggestions" style="display:none; position:absolute; top:100%; left:0; right:0; z-index:1050; max-height:200px; overflow-y:auto;"></div>
+                                    <div class="ticket-contact-dropdown dropdown-menu border shadow rounded p-1" role="listbox" aria-label="Contact suggestions" style="display:none; position:absolute; top:100%; left:0; right:0; z-index:1050; max-height:200px; overflow-y:auto;"></div>
                                 </div>
                             </div>
 
                             <div class="mb-3">
-                                <label class="form-label">Reply message</label>
+                                <label class="form-label" for="reply-html-body">Reply message</label>
                                 @php
                                     $sig = auth()->user()?->ticket_signature;
                                     $sigHtml = $sig ? '<p><br></p><p>--<br>' . str_replace("\n", '<br>', e($sig)) . '</p>' : '';
@@ -237,7 +223,7 @@
                                         if (!input.files || input.files.length===0) return;
                                         Array.from(input.files).forEach(function(file, idx){
                                             var row=document.createElement('div');
-                                            row.className='d-flex align-items-center gap-2 p-2 bg-light border rounded';
+                                            row.className='d-flex align-items-center gap-2 p-2 bg-body-tertiary border rounded';
                                             var icon='bi-file-earmark';
                                             var ext=file.name.split('.').pop().toLowerCase();
                                             if (file.type.startsWith('image/')) icon='bi-file-earmark-image text-success';
@@ -564,7 +550,7 @@
                                         <div class="mb-1">
                                             <span class="text-muted">{{ $label }}:</span>
                                             @foreach ($addresses as $address)
-                                                <span class="badge text-bg-light border ms-1">{{ $address }}</span>
+                                                <span class="badge text-bg-secondary border ms-1">{{ $address }}</span>
                                             @endforeach
                                         </div>
                                     @endif
@@ -615,10 +601,10 @@
                                                 default => 'bi-file-earmark text-secondary',
                                             };
                                         @endphp
-                                        <div class="attachment-card d-flex align-items-center gap-2 p-2 bg-white border rounded {{ $isPreviewable ? 'attachment-previewable' : '' }}"
+                                        <div class="attachment-card d-flex align-items-center gap-2 p-2 bg-body border rounded {{ $isPreviewable ? 'attachment-previewable' : '' }}"
                                              style="min-width: 220px; max-width: 320px; cursor: {{ $isPreviewable ? 'pointer' : 'default' }};"
                                              @if($isPreviewable) data-preview-url="{{ $previewUrl }}" data-preview-mime="{{ $mime }}" data-filename="{{ $attachment->filename }}" data-download-url="{{ $downloadUrl }}" @endif>
-                                            <div class="flex-shrink-0 d-flex align-items-center justify-content-center bg-light border rounded overflow-hidden"
+                                            <div class="flex-shrink-0 d-flex align-items-center justify-content-center bg-body-tertiary border rounded overflow-hidden"
                                                  style="width: 44px; height: 44px;">
                                                 @if($isImage)
                                                     <img src="{{ $previewUrl }}" alt="{{ $attachment->filename }}" loading="lazy"
@@ -634,15 +620,15 @@
                                             <div class="d-flex gap-1 flex-shrink-0">
                                                 @if($isPreviewable)
                                                     <button type="button"
-                                                            class="btn btn-sm btn-light border attachment-preview-btn"
+                                                            class="btn btn-sm btn-outline-secondary border attachment-preview-btn"
                                                             data-preview-url="{{ $previewUrl }}" data-preview-mime="{{ $mime }}"
                                                             data-filename="{{ $attachment->filename }}" data-download-url="{{ $downloadUrl }}"
-                                                            title="Preview">
-                                                        <i class="bi bi-eye"></i>
+                                                            title="Preview" aria-label="Preview {{ $attachment->filename }}">
+                                                        <i class="bi bi-eye" aria-hidden="true"></i>
                                                     </button>
                                                 @endif
-                                                <a href="{{ $downloadUrl }}" class="btn btn-sm btn-light border" title="Download" download>
-                                                    <i class="bi bi-download"></i>
+                                                <a href="{{ $downloadUrl }}" class="btn btn-sm btn-outline-secondary border" title="Download {{ $attachment->filename }}" aria-label="Download {{ $attachment->filename }}" download>
+                                                    <i class="bi bi-download" aria-hidden="true"></i>
                                                 </a>
                                             </div>
                                         </div>
@@ -667,7 +653,7 @@
                         @endif
                     </div>
                 @empty
-                    <p class="text-muted mb-0">No replies yet.</p>
+                    <x-adminlte.partials.empty-state icon="bi bi-chat-left-text" title="No replies yet." message="Replies will appear here." size="sm" />
                 @endforelse
             </x-adminlte-card>
 
@@ -700,7 +686,7 @@
                 <x-adminlte-card class="mb-3" icon="bi bi-sticky" title="Internal Note">
                     <form method="POST" action="{{ route('admin.tickets.note', $ticket) }}">
                         @csrf
-                        <x-adminlte-textarea name="note" label="" rows="3"
+                        <x-adminlte-textarea name="note" label="Staff-only note" rows="3"
                                              placeholder="Add a staff-only note..." required>{{ old('note') }}</x-adminlte-textarea>
                         <button type="submit" class="btn btn-sm btn-warning">
                             <i class="bi bi-sticky me-1"></i> Add Note
@@ -942,11 +928,11 @@
                 <div class="modal-header py-2">
                     <h6 class="modal-title text-truncate me-2" id="attachmentPreviewTitle" style="max-width: 60%;"></h6>
                     <div class="ms-auto d-flex align-items-center gap-2">
-                        <a id="attachmentPreviewDownload" href="#" class="btn btn-sm btn-primary" download>
-                            <i class="bi bi-download me-1"></i>Download
+                        <a id="attachmentPreviewDownload" class="btn btn-sm btn-primary" download aria-label="Download attachment">
+                            <i class="bi bi-download me-1" aria-hidden="true"></i>Download
                         </a>
-                        <a id="attachmentPreviewOpen" href="#" target="_blank" rel="noopener" class="btn btn-sm btn-outline-secondary" title="Open in new tab">
-                            <i class="bi bi-box-arrow-up-right"></i>
+                        <a id="attachmentPreviewOpen" target="_blank" rel="noopener" class="btn btn-sm btn-outline-secondary" title="Open in new tab" aria-label="Open attachment in new tab">
+                            <i class="bi bi-box-arrow-up-right" aria-hidden="true"></i>
                         </a>
                         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                     </div>
@@ -966,16 +952,16 @@
     @push('css')
         <link rel="stylesheet" href="{{ asset('vendor/trix/trix.css') }}">
         <style>
-            trix-editor { min-height: 220px; font-size: 0.875rem; line-height: 1.6; border: 1px solid #ced4da; border-radius: 0.25rem; padding: 0.5rem 0.75rem; background: #fff; overflow-y: auto; }
-            trix-editor:focus { border-color: #86b7fe; outline: 0; box-shadow: 0 0 0 0.2rem rgba(13,110,253,.25); }
-            trix-editor.is-invalid { border-color: #dc3545; }
-            trix-toolbar .trix-button-group { border: 1px solid #ced4da; border-radius: 0.2rem; }
+            trix-editor { min-height: 220px; font-size: 0.875rem; line-height: 1.6; border: 1px solid var(--bs-border-color); border-radius: 0.25rem; padding: 0.5rem 0.75rem; background: var(--bs-body-bg); color: var(--bs-body-color); overflow-y: auto; }
+            trix-editor:focus { border-color: var(--bs-primary); outline: 0; box-shadow: 0 0 0 0.2rem color-mix(in srgb, var(--color-primary) 25%, transparent); }
+            trix-editor.is-invalid { border-color: var(--color-danger); }
+            trix-toolbar .trix-button-group { border: 1px solid var(--bs-border-color); border-radius: 0.2rem; background: var(--bs-body-bg); }
             trix-toolbar .trix-button { border-bottom: none; }
-            trix-toolbar .trix-button.trix-active { background: #e9ecef; }
+            trix-toolbar .trix-button.trix-active { background: var(--bs-tertiary-bg); }
         trix-toolbar .trix-button-group--file-tools { display: none; }
             .attachment-card { transition: box-shadow .15s, border-color .15s; }
-            .attachment-card:hover { border-color: #adb5bd !important; box-shadow: 0 1px 6px rgba(0,0,0,.08); }
-            .attachment-card.attachment-previewable:hover { border-color: #0d6efd !important; }
+            .attachment-card:hover { border-color: var(--color-border-strong) !important; box-shadow: var(--shadow-sm); }
+            .attachment-card.attachment-previewable:hover { border-color: var(--color-primary) !important; }
         </style>
     @endpush
     @push('js')

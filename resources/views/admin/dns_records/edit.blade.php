@@ -8,7 +8,7 @@
     ]" />
 @stop
 @section('content')
-    @if ($errors->any()) <x-adminlte-alert theme="danger" dismissible><ul class="mb-0">@foreach ($errors->all() as $error)<li>{{ $error }}</li>@endforeach</ul></x-adminlte-alert> @endif
+    <x-adminlte.partials.flash-alert />
     <x-adminlte.partials.form-card icon="bi bi-pencil" title="Edit DNS Record" :action="route('admin.dns-zones.records.update', [$dnsZone, $dnsRecord])" submit-label="Update Record" :cancel-url="route('admin.dns-zones.records.index', $dnsZone)">
         @method('PUT')
         <div class="row">

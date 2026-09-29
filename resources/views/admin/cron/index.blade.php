@@ -111,27 +111,7 @@
 @endphp
 
 @section('content')
-    @if (session('success'))
-        <div class="alert alert-success alert-dismissible fade show d-flex align-items-start gap-2" role="alert" style="border-radius: var(--radius-md); border-left: 3px solid var(--color-success);">
-            <i class="bi bi-check-circle-fill flex-shrink-0" style="font-size: 1rem; margin-top: 0.1rem;" aria-hidden="true"></i>
-            <div class="flex-fill" style="font-size: var(--text-sm); line-height: var(--leading-normal);">{{ session('success') }}</div>
-            <button type="button" class="btn-close flex-shrink-0" data-bs-dismiss="alert" aria-label="Close"></button>
-        </div>
-    @endif
-
-    @if ($errors->any())
-        <div class="alert alert-danger alert-dismissible fade show d-flex align-items-start gap-2" role="alert" style="border-radius: var(--radius-md); border-left: 3px solid var(--color-danger);">
-            <i class="bi bi-exclamation-triangle-fill flex-shrink-0" style="font-size: 1rem; margin-top: 0.1rem;" aria-hidden="true"></i>
-            <div class="flex-fill">
-                <ul class="mb-0 ps-3" style="font-size: var(--text-sm); line-height: var(--leading-normal);">
-                    @foreach ($errors->all() as $error)
-                        <li>{{ $error }}</li>
-                    @endforeach
-                </ul>
-            </div>
-            <button type="button" class="btn-close flex-shrink-0" data-bs-dismiss="alert" aria-label="Close"></button>
-        </div>
-    @endif
+    <x-adminlte.partials.flash-alert />
 
     {{-- Scheduler health. Nothing else on this page matters if the OS-level tick is not running. --}}
     @if (! $schedulerHealthy)

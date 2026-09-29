@@ -6,6 +6,7 @@ use App\Models\Permission;
 use App\Models\Role;
 use App\Models\User;
 use App\Settings\EmailSettings;
+use App\Support\MailSettings;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Mail;
 use Tests\TestCase;
@@ -154,6 +155,22 @@ class SettingsTestEmailTest extends TestCase
             ->assertSessionHasNoErrors();
 
         $this->assertTrue(app(EmailSettings::class)->imap_auto_create_customers);
+    }
+
+    public function test_an_explicit_apply_timeout_survives_mailer_resolution(): void
+    {
+        $settings = app(EmailSettings::class);
+        $settings->fill(['smtp_host' => 'smtp.example.com', 'smtp_port' => 587]);
+        $settings->save();
+
+        // The test-email button passes a short timeout so an unreachable host
+        // cannot hang the page. Resolving the mailer afterwards fires the
+        // provider hook — it must not overwrite the caller's timeout.
+        MailSettings::apply(forgetResolvedMailers: true, timeout: 10);
+
+        Mail::mailer(MailSettings::MAILER);
+
+        $this->assertSame(10, config('mail.mailers.settings_smtp.timeout'));
     }
 
     private function actingAsSettingsAdmin(): self

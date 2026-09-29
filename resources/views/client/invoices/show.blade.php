@@ -3,16 +3,11 @@
 @section('title', 'Invoice ' . $invoice->invoice_no)
 
 @section('content_header')
-    <div class="row">
-        <div class="col-sm-6"><h1 class="m-0">Invoice {{ $invoice->invoice_no }}</h1></div>
-        <div class="col-sm-6">
-            <ol class="breadcrumb float-sm-end">
-                <li class="breadcrumb-item"><a href="{{ url('/') }}">{{ __('adminlte.home') }}</a></li>
-                <li class="breadcrumb-item"><a href="{{ route('client.invoices.index') }}">Invoices</a></li>
-                <li class="breadcrumb-item active">{{ $invoice->invoice_no }}</li>
-            </ol>
-        </div>
-    </div>
+    <x-ui.page-header :title="'Invoice ' . $invoice->invoice_no" :breadcrumbs="[
+        ['label' => __('adminlte.home'), 'url' => url('/')],
+        ['label' => 'Invoices', 'url' => route('client.invoices.index')],
+        ['label' => $invoice->invoice_no, 'active' => true],
+    ]" />
 @stop
 
 @section('content')
@@ -56,7 +51,7 @@
                                         ])
                                     </td>
                                     <td class="text-center">{{ $item->quantity }}</td>
-                                    <td class="text-end">{{ number_format((float) $item->total, 2) }}</td>
+                                    <td class="text-end"><x-adminlte.partials.currency :value="$item->total" /></td>
                                 </tr>
                             @endforeach
                         </tbody>
@@ -67,19 +62,19 @@
                 <table class="table table-sm mt-3">
                     <thead><tr><th>Description</th><th class="text-end">Amount</th></tr></thead>
                     <tbody>
-                        <tr><td>Subtotal</td><td class="text-end">{{ number_format($invoice->amount, 2) }}</td></tr>
+                        <tr><td>Subtotal</td><td class="text-end"><x-adminlte.partials.currency :value="$invoice->amount" /></td></tr>
                         @if ($invoice->gst_enabled && $invoice->tax > 0)
-                            <tr><td class="text-muted">Tax ({{ number_format($invoice->tax_rate, 1) }}%)</td><td class="text-end text-muted">{{ number_format($invoice->tax, 2) }}</td></tr>
+                            <tr><td class="text-muted">Tax ({{ number_format($invoice->tax_rate, 1) }}%)</td><td class="text-end text-muted"><x-adminlte.partials.currency :value="$invoice->tax" /></td></tr>
                         @endif
                         @if ($invoice->discount > 0)
-                            <tr><td class="text-success">Discount</td><td class="text-end text-success">-{{ number_format($invoice->discount, 2) }}</td></tr>
+                            <tr><td class="text-success">Discount</td><td class="text-end text-success">-<x-adminlte.partials.currency :value="$invoice->discount" /></td></tr>
                         @endif
-                        <tr class="fw-bold"><td>Total</td><td class="text-end">{{ number_format($invoice->total, 2) }}</td></tr>
+                        <tr class="fw-bold"><td>Total</td><td class="text-end"><x-adminlte.partials.currency :value="$invoice->total" /></td></tr>
                     </tbody>
                 </table>
 
                 @if ($invoice->notes)
-                    <div class="mt-3 p-3 bg-light rounded small">{{ $invoice->notes }}</div>
+                    <div class="mt-3 p-3 bg-body-tertiary border rounded small">{{ $invoice->notes }}</div>
                 @endif
             </x-adminlte-card>
         </div>
@@ -88,7 +83,7 @@
             <x-adminlte-card icon="bi bi-wallet2" title="Payment">
                 <div class="mb-3">
                     <div class="text-muted small">Total Due</div>
-                    <div class="fs-4 fw-bold">{{ number_format($invoice->total, 2) }}</div>
+                    <div class="fs-4 fw-bold"><x-adminlte.partials.currency :value="$invoice->total" /></div>
                 </div>
                 @if ($invoice->status === 'paid')
                     <div class="alert alert-success mb-0"><i class="bi bi-check-circle me-1"></i> Paid {{ $invoice->paid_at?->format('M j, Y') }}</div>

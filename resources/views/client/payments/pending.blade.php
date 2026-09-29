@@ -3,17 +3,12 @@
 @section('title', 'Payment Pending')
 
 @section('content_header')
-    <div class="row">
-        <div class="col-sm-6"><h1 class="m-0">Payment Pending</h1></div>
-        <div class="col-sm-6">
-            <ol class="breadcrumb float-sm-end">
-                <li class="breadcrumb-item"><a href="{{ url('/') }}">{{ __('adminlte.home') }}</a></li>
-                <li class="breadcrumb-item"><a href="{{ route('client.invoices.index') }}">Invoices</a></li>
-                <li class="breadcrumb-item"><a href="{{ route('client.invoices.show', $invoice) }}">{{ $invoice->invoice_no }}</a></li>
-                <li class="breadcrumb-item active">Payment</li>
-            </ol>
-        </div>
-    </div>
+    <x-ui.page-header title="Payment Pending" :breadcrumbs="[
+        ['label' => __('adminlte.home'), 'url' => url('/')],
+        ['label' => 'Invoices', 'url' => route('client.invoices.index')],
+        ['label' => $invoice->invoice_no, 'url' => route('client.invoices.show', $invoice)],
+        ['label' => 'Payment', 'active' => true],
+    ]" />
 @stop
 
 @section('content')
@@ -41,7 +36,7 @@
                         </ul>
                     @endif
 
-                    <div class="alert alert-light border mb-3">
+                    <div class="alert alert-secondary border mb-3">
                         <i class="bi bi-check2-circle me-1 text-success"></i>
                         Once you've completed the transfer, our team will confirm your payment and update the invoice.
                     </div>

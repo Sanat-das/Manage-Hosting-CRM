@@ -3,18 +3,7 @@
 @section('title', $customer->full_name)
 
 @section('content_header')
-    <div class="row">
-        <div class="col-sm-6">
-            <h1 class="m-0">{{ $customer->full_name }}</h1>
-        </div>
-        <div class="col-sm-6">
-            <ol class="breadcrumb float-sm-end">
-                <li class="breadcrumb-item"><a href="{{ url('/') }}">{{ __('adminlte.home') }}</a></li>
-                <li class="breadcrumb-item"><a href="{{ route('admin.customers.index') }}">Customers</a></li>
-                <li class="breadcrumb-item active" aria-current="page">{{ $customer->display_id }}</li>
-            </ol>
-        </div>
-    </div>
+    <x-ui.page-header title="{{ $customer->full_name }}" subtitle="Customer {{ $customer->display_id }}" :breadcrumbs="[['label' => __('adminlte.home'), 'url' => url('/')],['label' => 'Customers','url' => route('admin.customers.index')],['label' => $customer->display_id,'active' => true]]" />
 @stop
 
 @php
@@ -34,12 +23,7 @@
 @endphp
 
 @section('content')
-    @if (session('success'))
-        <x-adminlte-alert theme="success" dismissible>{{ session('success') }}</x-adminlte-alert>
-    @endif
-    @if (session('error'))
-        <x-adminlte-alert theme="danger" dismissible>{{ session('error') }}</x-adminlte-alert>
-    @endif
+    <x-adminlte.partials.flash-alert />
 
     {{-- Profile header (reference: customer-profile-v2) --}}
     <x-adminlte-card>
@@ -229,7 +213,7 @@
                                     <td><x-adminlte.partials.status-badge :status="$account->status" /></td>
                                 </tr>
                             @empty
-                                <tr><td colspan="10" class="text-center text-muted py-3">No hosting accounts yet.</td></tr>
+                                <x-ui.empty-table-row colSpan="10" icon="bi bi-hdd-stack" title="No hosting accounts yet." />
                             @endforelse
                         </tbody>
                     </table>
@@ -261,7 +245,7 @@
                                     <td class="text-muted">{{ $order->created_at?->format('M j, Y') ?? '—' }}</td>
                                 </tr>
                             @empty
-                                <tr><td colspan="6" class="text-center text-muted py-3">No orders yet.</td></tr>
+                                <x-ui.empty-table-row colSpan="6" icon="bi bi-cart3" title="No orders yet." />
                             @endforelse
                         </tbody>
                     </table>
@@ -287,7 +271,7 @@
                                     <td class="text-muted">{{ $invoice->due_date?->format('M j, Y') ?? '—' }}</td>
                                 </tr>
                             @empty
-                                <tr><td colspan="4" class="text-center text-muted py-3">No invoices yet.</td></tr>
+                                <x-ui.empty-table-row colSpan="4" icon="bi bi-receipt" title="No invoices yet." />
                             @endforelse
                         </tbody>
                     </table>
@@ -313,7 +297,7 @@
                                     <td><x-adminlte.partials.status-badge :status="$ticket->status" /></td>
                                 </tr>
                             @empty
-                                <tr><td colspan="4" class="text-center text-muted py-3">No tickets yet.</td></tr>
+                                <x-ui.empty-table-row colSpan="4" icon="bi bi-life-preserver" title="No tickets yet." />
                             @endforelse
                         </tbody>
                     </table>
@@ -344,7 +328,7 @@
                                     <td><x-adminlte.partials.status-badge :status="$domain->status" /></td>
                                 </tr>
                             @empty
-                                <tr><td colspan="4" class="text-center text-muted py-3">No domains yet.</td></tr>
+                                <x-ui.empty-table-row colSpan="4" icon="bi bi-globe2" title="No domains yet." />
                             @endforelse
                         </tbody>
                     </table>
@@ -359,29 +343,34 @@
                         <i class="bi bi-plus-lg me-1"></i> Add Contact
                     </button>
                     <div class="collapse mb-3" id="add-contact-form">
-                        <div class="border rounded p-3 bg-light">
+                        <div class="border rounded p-3 bg-body-tertiary">
                             <form method="POST" action="{{ route('admin.customers.contacts.store', $customer) }}">
                                 @csrf
                                 <div class="row g-2">
                                     <div class="col-md-4">
-                                        <input type="text" name="first_name" class="form-control form-control-sm"
-                                               placeholder="First name" required>
+                                        <label class="visually-hidden" for="contact-first-name">First name</label>
+                                        <input type="text" id="contact-first-name" name="first_name" class="form-control form-control-sm"
+                                               placeholder="First name" aria-label="First name" required>
                                     </div>
                                     <div class="col-md-4">
-                                        <input type="text" name="last_name" class="form-control form-control-sm"
-                                               placeholder="Last name" required>
+                                        <label class="visually-hidden" for="contact-last-name">Last name</label>
+                                        <input type="text" id="contact-last-name" name="last_name" class="form-control form-control-sm"
+                                               placeholder="Last name" aria-label="Last name" required>
                                     </div>
                                     <div class="col-md-4">
-                                        <input type="email" name="email" class="form-control form-control-sm"
-                                               placeholder="Email" required>
+                                        <label class="visually-hidden" for="contact-email">Email</label>
+                                        <input type="email" id="contact-email" name="email" class="form-control form-control-sm"
+                                               placeholder="Email" aria-label="Email" required>
                                     </div>
                                     <div class="col-md-4">
-                                        <input type="text" name="phone" class="form-control form-control-sm"
-                                               placeholder="Phone">
+                                        <label class="visually-hidden" for="contact-phone">Phone</label>
+                                        <input type="text" id="contact-phone" name="phone" class="form-control form-control-sm"
+                                               placeholder="Phone" aria-label="Phone">
                                     </div>
                                     <div class="col-md-4">
-                                        <input type="text" name="role" class="form-control form-control-sm"
-                                               placeholder="Role (e.g. Technical)">
+                                        <label class="visually-hidden" for="contact-role">Role</label>
+                                        <input type="text" id="contact-role" name="role" class="form-control form-control-sm"
+                                               placeholder="Role (e.g. Technical)" aria-label="Role">
                                     </div>
                                     <div class="col-md-4 d-flex align-items-center gap-2">
                                         <input type="checkbox" name="is_primary" value="1" id="contact-primary"
@@ -419,46 +408,46 @@
                                     <td><x-adminlte.partials.status-badge :status="$contact->status" /></td>
                                     <td class="text-end">
                                         @can('customers.edit')
-                                            <button type="button" class="btn btn-sm btn-outline-primary" title="Edit"
-                                                    onclick="document.getElementById('edit-contact-{{ $contact->id }}').classList.toggle('d-none')">
-                                                <i class="bi bi-pencil"></i>
+                                            <button type="button" class="btn btn-sm btn-outline-primary" title="Edit contact" aria-label="Edit contact"
+                                                    data-toggle-target="edit-contact-{{ $contact->id }}">
+                                                <i class="bi bi-pencil" aria-hidden="true"></i>
                                             </button>
-                                            <button type="button" class="btn btn-sm btn-outline-danger" title="Delete"
+                                            <button type="button" class="btn btn-sm btn-outline-danger" title="Delete contact" aria-label="Delete contact"
                                                     data-bs-toggle="modal" data-bs-target="#delete-contact-{{ $contact->id }}">
-                                                <i class="bi bi-trash"></i>
+                                                <i class="bi bi-trash" aria-hidden="true"></i>
                                             </button>
                                         @endcan
                                     </td>
                                 </tr>
                                 @can('customers.edit')
                                     <tr class="d-none" id="edit-contact-{{ $contact->id }}">
-                                        <td colspan="6" class="bg-light">
+                                        <td colspan="6" class="bg-body-tertiary">
                                             <form method="POST" action="{{ route('admin.customers.contacts.update', [$customer, $contact]) }}">
                                                 @csrf
                                                 @method('PUT')
                                                 <div class="row g-2">
                                                     <div class="col-md-3">
                                                         <input type="text" name="first_name" value="{{ $contact->first_name }}"
-                                                               class="form-control form-control-sm" required>
+                                                               class="form-control form-control-sm" required aria-label="First name">
                                                     </div>
                                                     <div class="col-md-3">
                                                         <input type="text" name="last_name" value="{{ $contact->last_name }}"
-                                                               class="form-control form-control-sm" required>
+                                                               class="form-control form-control-sm" required aria-label="Last name">
                                                     </div>
                                                     <div class="col-md-3">
                                                         <input type="email" name="email" value="{{ $contact->email }}"
-                                                               class="form-control form-control-sm" required>
+                                                               class="form-control form-control-sm" required aria-label="Email">
                                                     </div>
                                                     <div class="col-md-3">
                                                         <input type="text" name="phone" value="{{ $contact->phone }}"
-                                                               class="form-control form-control-sm" placeholder="Phone">
+                                                               class="form-control form-control-sm" placeholder="Phone" aria-label="Phone">
                                                     </div>
                                                     <div class="col-md-3">
                                                         <input type="text" name="role" value="{{ $contact->role }}"
-                                                               class="form-control form-control-sm" placeholder="Role (e.g. Technical)">
+                                                               class="form-control form-control-sm" placeholder="Role (e.g. Technical)" aria-label="Role">
                                                     </div>
                                                     <div class="col-md-3">
-                                                        <select name="status" class="form-select form-select-sm">
+                                                        <select name="status" class="form-select form-select-sm" aria-label="Contact status">
                                                             <option value="active" {{ $contact->status === 'active' ? 'selected' : '' }}>Active</option>
                                                             <option value="inactive" {{ $contact->status === 'inactive' ? 'selected' : '' }}>Inactive</option>
                                                         </select>
@@ -478,7 +467,7 @@
                                     </tr>
                                 @endcan
                             @empty
-                                <tr><td colspan="6" class="text-center text-muted py-3">No contacts yet.</td></tr>
+                                <x-ui.empty-table-row colSpan="6" icon="bi bi-people" title="No contacts yet." />
                             @endforelse
                         </tbody>
                     </table>
@@ -491,8 +480,9 @@
                     <form method="POST" action="{{ route('admin.customers.notes.store', $customer) }}" class="mb-3">
                         @csrf
                         <div class="input-group">
-                            <textarea name="note" class="form-control" rows="2" placeholder="Add an internal note..."
-                                      required></textarea>
+                            <label class="visually-hidden" for="customer-note">Add an internal note</label>
+                            <textarea id="customer-note" name="note" class="form-control" rows="2" placeholder="Add an internal note..."
+                                      required aria-label="Add an internal note"></textarea>
                             <div class="d-flex flex-column justify-content-center">
                                 <div class="form-check ms-2 mb-1">
                                     <input type="checkbox" name="is_important" value="1" id="note-important" class="form-check-input">
@@ -522,12 +512,12 @@
                                 </div>
                                 @can('customers.edit')
                                     <div class="d-flex gap-1">
-                                        <button type="button" class="btn btn-sm btn-outline-primary" title="Edit"
-                                                onclick="document.getElementById('edit-note-{{ $note->id }}').classList.toggle('d-none')">
-                                            <i class="bi bi-pencil"></i>
+                                        <button type="button" class="btn btn-sm btn-outline-primary" title="Edit note" aria-label="Edit note"
+                                                data-toggle-target="edit-note-{{ $note->id }}">
+                                            <i class="bi bi-pencil" aria-hidden="true"></i>
                                         </button>
-                                        <button type="button" class="btn btn-sm btn-outline-danger" title="Delete"
-                                                data-bs-toggle="modal" data-bs-target="#delete-note-{{ $note->id }}"><i class="bi bi-trash"></i></button>
+                                        <button type="button" class="btn btn-sm btn-outline-danger" title="Delete note" aria-label="Delete note"
+                                                data-bs-toggle="modal" data-bs-target="#delete-note-{{ $note->id }}"><i class="bi bi-trash" aria-hidden="true"></i></button>
                                     </div>
                                 @endcan
                             </div>
@@ -536,7 +526,8 @@
                                     <form method="POST" action="{{ route('admin.customers.notes.update', [$customer, $note]) }}">
                                         @csrf
                                         @method('PUT')
-                                        <textarea name="note" class="form-control" rows="2" required>{{ $note->note }}</textarea>
+                                        <label class="visually-hidden" for="edit-note-text-{{ $note->id }}">Edit note</label>
+                                        <textarea id="edit-note-text-{{ $note->id }}" name="note" class="form-control" rows="2" required aria-label="Edit note">{{ $note->note }}</textarea>
                                         <div class="d-flex align-items-center justify-content-between mt-2">
                                             <div class="form-check">
                                                 <input type="checkbox" name="is_important" value="1"
@@ -551,7 +542,7 @@
                             @endcan
                         </div>
                     @empty
-                        <p class="text-muted mb-0">No notes yet.</p>
+                        <x-adminlte.partials.empty-state icon="bi bi-sticky" title="No notes yet." size="sm" />
                     @endforelse
                 </div>
             </div>
@@ -564,12 +555,13 @@
                         <i class="bi bi-plus-lg me-1"></i> Adjust Wallet
                     </button>
                     <div class="collapse mb-3" id="wallet-form">
-                        <div class="border rounded p-3 bg-light">
+                        <div class="border rounded p-3 bg-body-tertiary">
                             <form method="POST" action="{{ route('admin.customers.wallet.store', $customer) }}">
                                 @csrf
                                 <div class="row g-2">
                                     <div class="col-md-4">
-                                        <select name="type" class="form-select form-select-sm">
+                                        <label class="visually-hidden" for="wallet-type">Transaction type</label>
+                                        <select id="wallet-type" name="type" class="form-select form-select-sm" aria-label="Transaction type">
                                             <option value="deposit">Deposit (account)</option>
                                             <option value="debit">Debit (account)</option>
                                             <option value="credit">Credit (credit limit)</option>
@@ -577,12 +569,14 @@
                                         </select>
                                     </div>
                                     <div class="col-md-3">
-                                        <input type="number" name="amount" step="0.01" min="0.01"
-                                               class="form-control form-control-sm" placeholder="Amount" required>
+                                        <label class="visually-hidden" for="wallet-amount">Amount</label>
+                                        <input type="number" id="wallet-amount" name="amount" step="0.01" min="0.01"
+                                               class="form-control form-control-sm" placeholder="Amount" required aria-label="Amount">
                                     </div>
                                     <div class="col-md-5">
-                                        <input type="text" name="description" class="form-control form-control-sm"
-                                               placeholder="Description (optional)">
+                                        <label class="visually-hidden" for="wallet-description">Description</label>
+                                        <input type="text" id="wallet-description" name="description" class="form-control form-control-sm"
+                                               placeholder="Description (optional)" aria-label="Description">
                                     </div>
                                     <div class="col-12">
                                         <button type="submit" class="btn btn-sm btn-primary">Apply</button>
@@ -627,7 +621,7 @@
                                     <td class="text-muted">{{ $tx->adminUser?->full_name ?? '—' }}</td>
                                 </tr>
                             @empty
-                                <tr><td colspan="5" class="text-center text-muted py-3">No wallet transactions yet.</td></tr>
+                                <x-ui.empty-table-row colSpan="5" icon="bi bi-wallet2" title="No wallet transactions yet." />
                             @endforelse
                         </tbody>
                     </table>
@@ -653,7 +647,7 @@
                                     <td class="text-muted">{{ $entry->user?->full_name ?? 'System' }}</td>
                                 </tr>
                             @empty
-                                <tr><td colspan="4" class="text-center text-muted py-3">No activity recorded.</td></tr>
+                                <x-ui.empty-table-row colSpan="4" icon="bi bi-clock-history" title="No activity recorded." />
                             @endforelse
                         </tbody>
                     </table>
@@ -707,6 +701,17 @@
             confirm-theme="primary"
         />
     @endif
+
+    @push('js')
+        <script>
+            document.addEventListener('click', function (e) {
+                var btn = e.target.closest('[data-toggle-target]');
+                if (!btn) return;
+                var el = document.getElementById(btn.getAttribute('data-toggle-target'));
+                if (el) el.classList.toggle('d-none');
+            });
+        </script>
+    @endpush
 @stop
 
 

@@ -7,9 +7,7 @@
 @stop
 
 @section('content')
-    @if (session('success'))
-        <x-adminlte-alert theme="success" dismissible>{{ session('success') }}</x-adminlte-alert>
-    @endif
+    <x-adminlte.partials.flash-alert />
 
     <div class="d-flex justify-content-end mb-3">
         <a href="{{ route('admin.customer-groups.edit', $group) }}" class="btn btn-outline-primary me-2"><i class="bi bi-pencil me-1"></i> Edit</a>
@@ -32,7 +30,7 @@
             <tr><th class="text-muted">Description</th><td>{{ $group->description ?? '—' }}</td></tr>
             <tr><th class="text-muted">Parent</th><td>{{ $group->parent?->name ?? '—' }}</td></tr>
             <tr><th class="text-muted">Status</th>
-                <td>{{ $group->status === 'active' ? '✅ Active' : '⏸️ Inactive' }}</td>
+                <td><x-adminlte.partials.status-badge :status="$group->status" /></td>
             </tr>
             <tr><th class="text-muted">Products</th><td>{{ $group->products_count ?? $group->products()->count() }}</td></tr>
         </table>

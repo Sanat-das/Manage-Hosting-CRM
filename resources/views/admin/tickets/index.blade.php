@@ -10,12 +10,7 @@
 @stop
 
 @section('content')
-    @if (session('success'))
-        <x-adminlte-alert theme="success" dismissible>{{ session('success') }}</x-adminlte-alert>
-    @endif
-    @if (session('error'))
-        <x-adminlte-alert theme="danger" dismissible>{{ session('error') }}</x-adminlte-alert>
-    @endif
+    <x-adminlte.partials.flash-alert />
 
     <x-adminlte.partials.datatable
         icon="bi bi-ticket"
@@ -97,11 +92,7 @@
                 <td class="text-end"><span class="text-muted">—</span></td>
             </tr>
         @empty
-            <tr>
-                <td colspan="9" class="text-center text-muted py-4">
-                    No tickets found.
-                </td>
-            </tr>
+            <x-ui.empty-table-row colSpan="9" icon="bi bi-ticket" title="No tickets found." message="Try adjusting your search or filters." />
         @endforelse
     </x-adminlte.partials.datatable>
 

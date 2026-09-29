@@ -13,11 +13,12 @@ use Tests\TestCase;
 /**
  * Baseline inventory guard for admin/settings.
  *
- * - Captures the 197 name="settings[*]" keys rendered by
+ * - Captures the 198 name="settings[*]" keys rendered by
  *   resources/views/admin/settings/index.blade.php (84 baseline + 94 task-8 typed
  *   surfaced + 3 imap_* policy keys for ticket email piping + 4 security hardening
- *   toggles + 6 branding_* keys added with BrandingSettings + 8 company split)
- *   and asserts the set is unchanged after refactors (no drop/rename).
+ *   toggles + 6 branding_* keys added with BrandingSettings + 8 company split
+ *   + 1 renewal_invoice_days) and asserts the set is unchanged after refactors
+ *   (no drop/rename).
  * - Guards GET query count: 1 legacy settings pluck + 17 typed group loads = <=19.
  *   Ensures SettingsController::loadAll() does not introduce N+1 per-key queries.
  */
@@ -38,6 +39,8 @@ class AdminSettingsInventoryTest extends TestCase
       *     these two could read "Yes" while every invoice was written with zero tax.
       *     The keys stay accepted by SettingsController (see UntypedSettingsTest) —
       *     only the form controls are gone.
+      * v9: 2026-09-29 added renewal_invoice_days (F3 renewal invoice generation
+      *     window, BillingSettings) — a typed billing key rendered on the Billing tab.
       */
     public const BASELINE_KEYS = [
         'analytics_anonymize_ip',
@@ -204,6 +207,7 @@ class AdminSettingsInventoryTest extends TestCase
         'product_version_management',
         'quote_prefix',
         'registration_enabled',
+        'renewal_invoice_days',
         'resellerclub_api_id',
         'resellerclub_api_key',
         'resellerclub_enabled',
@@ -267,7 +271,7 @@ class AdminSettingsInventoryTest extends TestCase
         $expected = self::BASELINE_KEYS;
         sort($expected);
 
-        $this->assertCount(197, $keys, 'Baseline field count changed - expected 197 name="settings[*]" keys. Got: ' . implode(', ', $keys));
+        $this->assertCount(198, $keys, 'Baseline field count changed - expected 198 name="settings[*]" keys. Got: ' . implode(', ', $keys));
         $this->assertSame($expected, $keys, 'Baseline field set changed - keys were dropped, renamed, or added.');
     }
 

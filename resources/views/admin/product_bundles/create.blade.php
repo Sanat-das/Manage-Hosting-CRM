@@ -8,7 +8,7 @@
     ]" />
 @stop
 @section('content')
-    @if ($errors->any()) <x-adminlte-alert theme="danger" dismissible><ul class="mb-0">@foreach ($errors->all() as $error)<li>{{ $error }}</li>@endforeach</ul></x-adminlte-alert> @endif
+    <x-adminlte.partials.flash-alert />
     <form method="POST" action="{{ route('admin.product-bundles.store') }}">
         @csrf
         <x-adminlte-card icon="bi bi-box-seam" title="Bundle Details">

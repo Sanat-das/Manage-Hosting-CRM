@@ -10,7 +10,10 @@ use App\Models\Invoice;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Product;
+use App\Models\ProductAddon;
+use App\Models\ProductAddonPricing;
 use App\Models\Setting;
+use App\Services\Billing\AddOnService;
 use App\Services\Billing\BillingService;
 use App\Services\Billing\GstTaxService;
 use App\Services\Exports\CsvStreamService;
@@ -53,6 +56,7 @@ class OrderController extends Controller
         private readonly OrderNumberService $orderNumbers,
         private readonly OrderService $orders,
         private readonly BillingService $billing,
+        private readonly AddOnService $addons,
         private readonly OrderConfigSnapshot $snapshot,
         private readonly InvoiceEmailService $invoiceEmails,
         private readonly OrderEmailService $orderEmails,
@@ -155,7 +159,41 @@ class OrderController extends Controller
         // of the "Generate Invoice" checkbox on the order form.
         $autoGenerateInvoice = (string) (Setting::where('setting_key', 'auto_generate_invoice')->value('setting_value') ?? 'yes') !== 'no';
 
-        return view('admin.orders.create', compact('customers', 'products', 'paymentMethods', 'gstSettings', 'autoGenerateInvoice'));
+        // Add-on picker data for the order line editor (frozen shape for the
+        // follow-up UI slice): per product, its active product-scoped add-ons
+        // plus all active global add-ons. One query, grouped in PHP.
+        $activeAddons = ProductAddon::query()
+            ->with('pricing')
+            ->where('status', 'active')
+            ->orderBy('name')
+            ->get();
+
+        $addonsByProduct = [];
+        foreach ($products as $product) {
+            $addonsByProduct[(string) $product->id] = $activeAddons
+                ->filter(fn (ProductAddon $addon) => $addon->product_id === null || (int) $addon->product_id === (int) $product->id)
+                ->map(fn (ProductAddon $addon) => [
+                    'id' => $addon->id,
+                    'name' => $addon->name,
+                    'price' => (float) $addon->price,
+                    'setup_fee' => (float) $addon->setup_fee,
+                    'billing_cycle' => $addon->billing_cycle,
+                    // Per-cycle matrix rows: the line editor displays the
+                    // price the server will charge for the line's cycle.
+                    'pricing' => $addon->pricing
+                        ->mapWithKeys(fn (ProductAddonPricing $row) => [
+                            (string) $row->billing_cycle => [
+                                'price' => (float) $row->price,
+                                'setup_fee' => (float) $row->setup_fee,
+                            ],
+                        ])
+                        ->all(),
+                ])
+                ->values()
+                ->all();
+        }
+
+        return view('admin.orders.create', compact('customers', 'products', 'paymentMethods', 'gstSettings', 'autoGenerateInvoice', 'addonsByProduct'));
     }
 
     public function store(OrderRequest $request): RedirectResponse
@@ -215,7 +253,7 @@ class OrderController extends Controller
                 ]);
 
                 foreach ($prepared as [$product, $line, $unitPrice, $lineTotal]) {
-                    OrderItem::create([
+                    $parentItem = OrderItem::create([
                         'order_id' => $order->id,
                         'product_id' => $product->id,
                         'product_name' => $product->name,
@@ -228,7 +266,16 @@ class OrderController extends Controller
                         'total' => $lineTotal,
                         'config_options' => $this->snapshot->capture($product, null, $line['options'] ?? [], $line['billing_cycle']),
                     ]);
+
+                    // Order-time add-on selections become their own order
+                    // items BEFORE the draft invoice is created below.
+                    $this->addons->materialize($order, $parentItem, $line['addons'] ?? []);
                 }
+
+                // The add-on rows above are billable lines too: the order
+                // total is the sum of ALL its rows (relation query, so it
+                // never depends on a loaded relation).
+                $order->update(['total' => round((float) $order->items()->sum('total'), 2)]);
 
                 // "Create as Active" runs the full activation through the
                 // guarded state machine inside this transaction: it seeds the
@@ -252,6 +299,10 @@ class OrderController extends Controller
                 // convention as the scheduled invoice job.
                 $invoice = null;
                 if ($generateInvoice) {
+                    // The add-on rows above were created through fresh model
+                    // instances, but refresh the relation so the invoice sees
+                    // every line even if this instance touched items earlier.
+                    $order->load('items');
                     $invoice = $this->billing->createInvoiceForOrder($order);
                 }
 
@@ -299,7 +350,17 @@ class OrderController extends Controller
         $statusHistory = $order->statusHistory;
         $allowedTransitions = $this->exposedTransitions($order);
 
-        return view('admin.orders.show', compact('order', 'statusHistory', 'allowedTransitions'));
+        // Add-on management data for the "Add-ons" tab: the attach form
+        // targets the order's first non-add-on service line, so the picker
+        // offers exactly the add-ons applicable to that line's product
+        // (active product-scoped + global ones). Empty when the order has no
+        // parent line to hang an add-on off.
+        $primaryItem = $order->items->first(fn (OrderItem $item) => ! $item->isAddon());
+        $applicableAddons = $primaryItem?->product !== null
+            ? $this->addons->applicableFor($primaryItem->product)
+            : collect();
+
+        return view('admin.orders.show', compact('order', 'statusHistory', 'allowedTransitions', 'applicableAddons'));
     }
 
     /**
@@ -345,12 +406,13 @@ class OrderController extends Controller
      * Generate a new draft invoice for an existing order through the shared
      * BillingService GST engine (the same path the order form uses).
      *
-     * Guards: a cancelled/terminated order cannot be invoiced, and an order
-     * that already has an open draft invoice is not invoiced twice — the
-     * existing draft is surfaced instead (the admin can send or void it).
-     * Later invoices are only created once the previous one leaves draft
-     * (sent/paid/void), mirroring the recurring billing job's one-invoice
-     * at-a-time behaviour.
+     * Guards: a cancelled/terminated order cannot be invoiced; an existing
+     * draft is surfaced instead of duplicated (the admin can send or void it);
+     * and an order that already holds a non-draft live invoice (sent, paid,
+     * overdue, partial) is refused outright. Every order item — add-on rows
+     * included — goes onto the generated invoice, so a second one raised while
+     * such an invoice exists would re-bill the whole order. Void and cancelled
+     * invoices are dead documents and do not block a fresh one.
      */
     public function generateInvoice(Order $order): RedirectResponse
     {
@@ -367,6 +429,17 @@ class OrderController extends Controller
             return redirect()
                 ->route('admin.invoices.show', $existingDraft)
                 ->with('success', "Order {$order->order_number} already has a draft invoice ({$existingDraft->invoice_no}).");
+        }
+
+        // Double-billing guard. The draft branch above already returned, so
+        // this only fires for a live non-draft invoice — the add-on attach
+        // invoice is `sent`, for example.
+        $hasOpenInvoice = $order->invoices()
+            ->whereNotIn('status', [Invoice::STATUS_DRAFT, Invoice::STATUS_CANCELLED, Invoice::STATUS_VOID])
+            ->exists();
+
+        if ($hasOpenInvoice) {
+            return back()->withErrors(['error' => 'An invoice already exists for this order — send or edit it instead of generating a new one.']);
         }
 
         try {

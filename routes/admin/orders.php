@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Admin\OrderAddonController;
 use App\Http\Controllers\Admin\OrderController;
 use Illuminate\Support\Facades\Route;
 
@@ -42,4 +43,15 @@ Route::middleware(['web', 'auth', 'admin', 'throttle:admin'])->prefix('admin')->
     Route::put('orders/{order}/status', [OrderController::class, 'updateStatus'])
         ->middleware('permission:orders.edit')
         ->name('orders.status');
+
+    // Live add-on lifecycle on an existing order. Post-signup attach/cancel is
+    // an order-edit operation, so both routes reuse `orders.edit` (frozen
+    // decision O4 — no new permission string).
+    Route::post('orders/{order}/addons', [OrderAddonController::class, 'store'])
+        ->middleware('permission:orders.edit')
+        ->name('orders.addons.store');
+
+    Route::delete('orders/{order}/addons/{orderItem}', [OrderAddonController::class, 'destroy'])
+        ->middleware('permission:orders.edit')
+        ->name('orders.addons.destroy');
 });

@@ -15,7 +15,7 @@
         <div class="col-lg-8">
             <x-adminlte-card icon="bi bi-chat-dots" title="Conversation">
                 @forelse ($chat->messages as $msg)
-                    <div class="border rounded p-3 mb-3 {{ $msg->sender_type === 'staff' ? 'border-primary bg-light' : '' }}">
+                    <div class="border rounded p-3 mb-3 {{ $msg->sender_type === 'staff' ? 'border-primary bg-body-tertiary' : '' }}">
                         <div class="d-flex justify-content-between mb-1">
                             <strong>{{ $msg->sender_type === 'staff' ? 'Staff' : ($chat->name ?? 'Customer') }}</strong>
                             <small class="text-muted">{{ $msg->created_at?->format('M j, H:i') }}</small>
@@ -23,7 +23,7 @@
                         <div class="mb-0" style="white-space: pre-wrap;">{{ $msg->message }}</div>
                     </div>
                 @empty
-                    <p class="text-muted">No messages yet.</p>
+                    <x-adminlte.partials.empty-state icon="bi bi-chat-dots" title="No messages yet." size="sm" />
                 @endforelse
             </x-adminlte-card>
         </div>
@@ -39,7 +39,22 @@
                             <x-adminlte.partials.status-badge :status="$chat->status" />
                         </td>
                     </tr>
-                    <tr><th class="text-muted">Rating</th><td>{{ $chat->rating ? str_repeat('⭐', $chat->rating) : '—' }}</td></tr>
+                    <tr>
+                        <th class="text-muted">Rating</th>
+                        <td>
+                            {{-- Directives stay on their own lines: a directive
+                                 glued to a preceding word character is not
+                                 compiled and would render as literal text. --}}
+                            @if ($chat->rating)
+                                <span class="visually-hidden">{{ $chat->rating }} out of 5</span>
+                                @for ($star = 1; $star <= 5; $star++)
+                                    <i class="bi bi-star{{ $star <= (int) $chat->rating ? '-fill text-warning' : ' text-muted' }}" aria-hidden="true"></i>
+                                @endfor
+                            @else
+                                —
+                            @endif
+                        </td>
+                    </tr>
                     <tr><th class="text-muted">Started</th><td>{{ $chat->started_at?->format('M j, Y H:i') ?? '—' }}</td></tr>
                     <tr><th class="text-muted">Ended</th><td>{{ $chat->ended_at?->format('M j, Y H:i') ?? '—' }}</td></tr>
                 </table>

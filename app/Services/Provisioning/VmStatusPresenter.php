@@ -26,8 +26,14 @@ use Illuminate\Support\Facades\Cache;
  *     account: {status: string},
  *     credentials: {stored: bool, username: string},
  *     can: {create, start, stop, restart, delete, reset_password: bool},
- *     reasons: {action: string}
+ *     reasons: {action: string},
+ *     notice: {severity: 'danger'|'warning'|'info'|null, text: ?string}
  *   }
+ *
+ * `notice` is additive and may be ignored by older consumers. It carries the
+ * single status answer for the card, in `permissions()` precedence order:
+ * running action, probe failure, terminated account, VM absent, VM state
+ * unknown; a running or stopped VM needs no notice (severity and text null).
  *
  * `vm.exists` is deliberately tri-state: true (observed), false (observed
  * missing) and null (host unreachable / action running — unknown).
@@ -105,6 +111,7 @@ final class VmStatusPresenter
         }
 
         [$can, $reasons] = $this->permissions($slug, $hostingAccount, $vm, $action, $vmProbeError);
+        $notice = $this->notice($action, $hostingAccount, $vm, $vmProbeError);
 
         return [
             'ok' => true,
@@ -114,6 +121,7 @@ final class VmStatusPresenter
             'credentials' => ['stored' => $stored, 'username' => $credUsername],
             'can' => $can,
             'reasons' => $reasons,
+            'notice' => $notice,
         ];
     }
 
@@ -343,23 +351,28 @@ final class VmStatusPresenter
                 $reasons[$k] = 'Could not verify the VM on the host — '.$probeError;
             }
         } elseif ($isTerminated) {
-            $msgTerm = 'Service is terminated — start/stop/restart is refused. Create re-provisions, Delete cleans up.';
+            // Terminated mirrors the server gate (ManualProvisioner allows
+            // pending/suspended, plus active only for a rebuild): create is
+            // refused in every sub-case, and the reasons name the real exits —
+            // delete the VM record, or restore the account.
+            $msgTerm = 'Service is terminated — restore the account to manage this VM.';
 
             if (! $vmExists) {
-                $can['create'] = true;
+                $reasons['create'] = 'Service is terminated — restore the account before creating a VM.';
                 $reasons['delete'] = 'VM is not created on the host yet.';
             } elseif ($vmRunning) {
-                $reasons['create'] = 'A VM already exists on the host — delete it first to rebuild.';
-                $reasons['delete'] = 'Stop the VM first.';
+                $reasons['create'] = 'Service is terminated — restore the account to rebuild this VM.';
+                $reasons['delete'] = 'Service is terminated — restore the account to delete this VM.';
             } elseif ($vmOff) {
-                $reasons['create'] = 'A VM already exists on the host — delete it first to rebuild.';
+                $reasons['create'] = 'Service is terminated — delete the VM record to clean up, or restore the account to rebuild.';
                 $can['delete'] = true;
             } else {
-                $reasons['create'] = 'A VM already exists on the host — delete it first to rebuild.';
+                $reasons['create'] = 'Service is terminated — restore the account to rebuild this VM.';
+                $reasons['delete'] = 'VM state is unknown — refresh the page or re-test the connection.';
             }
 
             foreach (['start', 'stop', 'restart', 'reset_password'] as $k) {
-                $reasons[$k] = $k === 'reset_password' ? 'Service is terminated — reset is refused.' : $msgTerm;
+                $reasons[$k] = $k === 'reset_password' ? 'Service is terminated — restore the account to reset the password.' : $msgTerm;
             }
         } elseif (! $vmExists) {
             $can['create'] = true;
@@ -407,6 +420,42 @@ final class VmStatusPresenter
         }
 
         return [$can, $reasons];
+    }
+
+    /**
+     * The single status answer for the card, in permissions() precedence
+     * order. Severity is null exactly when text is null (running or stopped
+     * VM — the state chip already says it). No success variant.
+     *
+     * @param  array{exists: bool|null, state: ?string, name: ?string, vmId: ?string}  $vm
+     * @param  array<string, mixed>|null  $action
+     * @return array{severity: 'danger'|'warning'|'info'|null, text: ?string}
+     */
+    private function notice(?array $action, HostingAccount $hostingAccount, array $vm, ?string $probeError): array
+    {
+        if ($action !== null && ($action['running'] ?? false) === true) {
+            return ['severity' => 'warning', 'text' => 'An action is already running.'];
+        }
+
+        if ($vm['exists'] === null && $probeError !== null) {
+            return ['severity' => 'danger', 'text' => 'Could not verify the VM on the host — '.$probeError];
+        }
+
+        if ($hostingAccount->status === HostingService::STATUS_TERMINATED) {
+            return ['severity' => 'danger', 'text' => 'This service is terminated — VM actions are refused. Restore the account to re-enable them.'];
+        }
+
+        if (($vm['exists'] ?? null) === false) {
+            return ['severity' => 'info', 'text' => 'No VM exists on the host yet — create one to get started.'];
+        }
+
+        $state = $vm['state'] !== null ? strtolower((string) $vm['state']) : null;
+
+        if ($state === 'running' || in_array($state, ['off', 'saved', 'stopped'], true)) {
+            return ['severity' => null, 'text' => null];
+        }
+
+        return ['severity' => 'warning', 'text' => 'The VM state is unknown — refresh the page or re-test the connection.'];
     }
 
     /**

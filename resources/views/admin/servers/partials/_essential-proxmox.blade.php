@@ -65,11 +65,11 @@
                                 ? (\App\ViewModels\Admin\ServerDetailViewModel::fmtUptime($ndUptimeRaw) ?? trim($ndUptimeRaw))
                                 : '';
                         @endphp
-                        <span class="badge text-bg-light border fw-normal proxmox-node {{ $i >= 8 ? 'd-none' : '' }}" style="font-size:var(--text-xs);" @if($ndIp !== '') title="{{ $ndIp }}" @endif><span class="d-inline-block rounded-circle me-1 align-middle {{ $ndOnline ? 'bg-success' : 'bg-secondary' }}" style="width:8px;height:8px;"></span>{{ $ndName }}@if($ndUptime !== '')<span class="text-muted"> · {{ $ndUptime }}</span>@endif</span>
+                        <span class="badge text-bg-secondary border fw-normal proxmox-node {{ $i >= 8 ? 'd-none' : '' }}" style="font-size:var(--text-xs);" @if($ndIp !== '') title="{{ $ndIp }}" @endif><span class="d-inline-block rounded-circle me-1 align-middle {{ $ndOnline ? 'bg-success' : 'bg-secondary' }}" style="width:8px;height:8px;"></span>{{ $ndName }}@if($ndUptime !== '')<span class="text-muted"> · {{ $ndUptime }}</span>@endif</span>
                     @endforeach
                 </div>
                 @if (count($clusterNodes) > 8)
-                    <button type="button" class="btn btn-link btn-sm p-0 mt-1" style="font-size:var(--text-xs);" onclick="var h=this.closest('div').querySelectorAll('.proxmox-node.d-none');var hidden=h.length>0;h.forEach(function(e){e.classList.toggle('d-none');});this.textContent=hidden?'Show less':'Show all ({{ count($clusterNodes) }})';">Show all ({{ count($clusterNodes) }})</button>
+                    <button type="button" class="btn btn-link btn-sm p-0 mt-1" style="font-size:var(--text-xs);" data-expand-toggle=".proxmox-node" data-label-show="Show all ({{ count($clusterNodes) }})">Show all ({{ count($clusterNodes) }})</button>
                 @endif
             </div>
         </div>
@@ -97,7 +97,7 @@
                     @endforeach
                 </div>
                 @if (count($storagePools) > 8)
-                    <button type="button" class="btn btn-link btn-sm p-0 mt-1" style="font-size:var(--text-xs);" onclick="var h=this.closest('div').querySelectorAll('.proxmox-pool.d-none');var hidden=h.length>0;h.forEach(function(e){e.classList.toggle('d-none');});this.textContent=hidden?'Show less':'Show all ({{ count($storagePools) }})';">Show all ({{ count($storagePools) }})</button>
+                    <button type="button" class="btn btn-link btn-sm p-0 mt-1" style="font-size:var(--text-xs);" data-expand-toggle=".proxmox-pool" data-label-show="Show all ({{ count($storagePools) }})">Show all ({{ count($storagePools) }})</button>
                 @endif
             </div>
         </div>

@@ -3,26 +3,22 @@
 @section('title', 'Register Domain')
 
 @section('content_header')
-    <div class="row">
-        <div class="col-sm-6"><h1 class="m-0">Register Domain</h1></div>
-        <div class="col-sm-6">
-            <ol class="breadcrumb float-sm-end">
-                <li class="breadcrumb-item"><a href="{{ url('/') }}">{{ __('adminlte.home') }}</a></li>
-                <li class="breadcrumb-item"><a href="{{ route('client.dashboard') }}">Dashboard</a></li>
-                <li class="breadcrumb-item"><a href="{{ route('client.domains.index') }}">Domains</a></li>
-                <li class="breadcrumb-item active">Register</li>
-            </ol>
-        </div>
-    </div>
+    <x-ui.page-header title="Register Domain" :breadcrumbs="[
+        ['label' => __('adminlte.home'), 'url' => url('/')],
+        ['label' => 'Dashboard', 'url' => route('client.dashboard')],
+        ['label' => 'Domains', 'url' => route('client.domains.index')],
+        ['label' => 'Register', 'active' => true],
+    ]" />
 @stop
 
 @section('content')
     @include('client.store._alerts')
 
     <x-adminlte-card icon="bi bi-search" title="Check Domain Availability">
-        <form method="GET" action="{{ route('client.domains.register') }}" class="d-flex gap-2">
-            <input type="text" name="q" class="form-control" placeholder="Enter a domain name (e.g. example.com)" value="{{ $query }}">
-            <button type="submit" class="btn btn-primary"><i class="bi bi-search me-1"></i> Check</button>
+        <form method="GET" action="{{ route('client.domains.register') }}" class="d-flex gap-2" role="search">
+            <label class="visually-hidden" for="domain-search-q">Domain name</label>
+            <input type="text" id="domain-search-q" name="q" class="form-control" placeholder="Enter a domain name (e.g. example.com)" value="{{ $query }}" autocomplete="off">
+            <button type="submit" class="btn btn-primary"><i class="bi bi-search me-1" aria-hidden="true"></i> Check</button>
         </form>
     </x-adminlte-card>
 
@@ -74,7 +70,7 @@
                 <div class="row g-3">
                     <div class="col-md-6">
                         <label class="form-label" for="registration_period">Registration Period</label>
-                        <select name="registration_period" id="registration_period" class="form-select" onchange="updateTotal(this)">
+                        <select name="registration_period" id="registration_period" class="form-select" data-domain-term-select>
                             @foreach ($terms as $term)
                                 <option value="{{ $term['years'] }}" data-price="{{ number_format($term['price'], 2) }}">
                                     {{ $term['years'] }} {{ $term['years'] === 1 ? 'year' : 'years' }} — {{ $selected['currency'] }} {{ number_format($term['price'], 2) }}
@@ -84,7 +80,7 @@
                         @error('registration_period')<div class="text-danger small mt-1">{{ $message }}</div>@enderror
                     </div>
                     <div class="col-md-6">
-                        <label class="form-label">Order Total</label>
+                        <span class="form-label d-block">Order Total</span>
                         <div class="border rounded p-2 fs-5 fw-bold" id="order-total">
                             {{ $selected['currency'] }} {{ number_format($terms[0]['price'] ?? $selected['price'], 2) }}
                         </div>
@@ -106,11 +102,19 @@
             </form>
         </x-adminlte-card>
 
+        @push('js')
         <script>
-            function updateTotal(select) {
-                var option = select.options[select.selectedIndex];
-                document.getElementById('order-total').textContent = '{{ $selected['currency'] ?? '' }} ' + option.dataset.price;
-            }
+            document.addEventListener('DOMContentLoaded', function () {
+                var termSelect = document.querySelector('[data-domain-term-select]');
+                var totalEl = document.getElementById('order-total');
+                if (termSelect && totalEl) {
+                    termSelect.addEventListener('change', function () {
+                        var option = termSelect.options[termSelect.selectedIndex];
+                        totalEl.textContent = '{{ $selected['currency'] ?? '' }} ' + option.dataset.price;
+                    });
+                }
+            });
         </script>
+        @endpush
     @endif
 @stop

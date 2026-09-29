@@ -13,26 +13,18 @@
 @push('css')
     <link rel="stylesheet" href="{{ asset('vendor/trix/trix.css') }}">
     <style>
-        trix-editor { min-height: 220px; font-size: 0.875rem; line-height: 1.6; border: 1px solid #ced4da; border-radius: 0.25rem; padding: 0.5rem 0.75rem; background: #fff; overflow-y: auto; }
-        trix-editor:focus { border-color: #86b7fe; outline: 0; box-shadow: 0 0 0 0.2rem rgba(13,110,253,.25); }
-        trix-editor.is-invalid { border-color: #dc3545; }
-        trix-toolbar .trix-button-group { border: 1px solid #ced4da; border-radius: 0.2rem; }
+        trix-editor { min-height: 220px; font-size: 0.875rem; line-height: 1.6; border: 1px solid var(--bs-border-color); border-radius: 0.25rem; padding: 0.5rem 0.75rem; background: var(--bs-body-bg); color: var(--bs-body-color); overflow-y: auto; }
+        trix-editor:focus { border-color: var(--bs-primary); outline: 0; box-shadow: 0 0 0 0.2rem color-mix(in srgb, var(--color-primary) 25%, transparent); }
+        trix-editor.is-invalid { border-color: var(--color-danger); }
+        trix-toolbar .trix-button-group { border: 1px solid var(--bs-border-color); border-radius: 0.2rem; background: var(--bs-body-bg); }
         trix-toolbar .trix-button { border-bottom: none; }
-        trix-toolbar .trix-button.trix-active { background: #e9ecef; }
+        trix-toolbar .trix-button.trix-active { background: var(--bs-tertiary-bg); }
         trix-toolbar .trix-button-group--file-tools { display: none; }
     </style>
 @endpush
 
 @section('content')
-    @if ($errors->any())
-        <x-adminlte-alert theme="danger" dismissible>
-            <ul class="mb-0">
-                @foreach ($errors->all() as $error)
-                    <li>{{ $error }}</li>
-                @endforeach
-            </ul>
-        </x-adminlte-alert>
-    @endif
+    <x-adminlte.partials.flash-alert />
 
     <x-adminlte-card icon="bi bi-ticket" title="New Support Ticket">
         <form method="POST" action="{{ route('admin.tickets.store') }}" enctype="multipart/form-data" id="create-ticket-form">
@@ -84,7 +76,7 @@
             </div>
 
             <div class="mb-3">
-                <label class="form-label">Message <span class="text-danger">*</span></label>
+                <label class="form-label" for="create-html-body">Message <span class="text-danger">*</span></label>
                 @php
                     $sig = auth()->user()?->ticket_signature;
                     $sigHtml = $sig ? '<p><br></p><p>--<br>' . str_replace("\n", '<br>', e($sig)) . '</p>' : '';

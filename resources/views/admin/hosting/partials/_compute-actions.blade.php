@@ -41,19 +41,20 @@
     $computeStateRaw = $computeVm['state'] ?? null;
     if (($computeVm['exists'] ?? null) === false) {
         $computeStateLabel = 'Not created';
-        $computeStateTheme = 'secondary';
     } elseif (is_string($computeStateRaw) && $computeStateRaw !== '') {
         $computeLow = strtolower(trim($computeStateRaw));
-        if ($computeLow === 'running') { $computeStateLabel = 'Running'; $computeStateTheme = 'success'; }
-        elseif ($computeLow === 'off' || $computeLow === 'stopped') { $computeStateLabel = 'Off'; $computeStateTheme = 'secondary'; }
-        elseif ($computeLow === 'saved') { $computeStateLabel = 'Saved'; $computeStateTheme = 'warning'; }
-        else { $computeStateLabel = $computeStateRaw; $computeStateTheme = 'secondary'; }
+        if ($computeLow === 'running') { $computeStateLabel = 'Running'; }
+        elseif ($computeLow === 'off' || $computeLow === 'stopped') { $computeStateLabel = 'Off'; }
+        elseif ($computeLow === 'saved') { $computeStateLabel = 'Saved'; }
+        else { $computeStateLabel = $computeStateRaw; }
     } else {
         $computeStateLabel = 'Unknown';
-        $computeStateTheme = 'secondary';
     }
 
-    $computeCanCreate = (bool) ($computeCan['create'] ?? false) && $computeOptions !== [];
+    // Mirrors applyStatus() below: the gate is the presenter's can.create.
+    // (A template lookup failure must not strand the operator — with no
+    // curated options the section below says so and still submits.)
+    $computeCanCreate = (bool) ($computeCan['create'] ?? false);
     $computeCanStart = (bool) ($computeCan['start'] ?? false);
     $computeCanStop = (bool) ($computeCan['stop'] ?? false);
     $computeCanDelete = (bool) ($computeCan['delete'] ?? false);
@@ -100,89 +101,206 @@
         $computeConsoleReason = 'An action is already running — please wait.';
     }
     $computeConsoleAvailable = $computeConsoleIsProxmox && $computeConsoleReason === null;
+
+    // ── Status strip: the single refusal surface. Reads the presenter's
+    // additive `notice` key defensively — the card is also rendered
+    // standalone with a hand-crafted $vmStatus that has no `notice`
+    // (ProxmoxComputeCardUiTest), so a missing key must never crash and the
+    // fallback below derives only from can/reasons/vm/account status.
+    $computeNoticeRaw = is_array($computeVmStatus['notice'] ?? null) ? $computeVmStatus['notice'] : null;
+    $computeNoticeText = $computeNoticeRaw !== null ? trim((string) ($computeNoticeRaw['text'] ?? '')) : '';
+    $computeNoticeSeverity = $computeNoticeRaw !== null ? strtolower(trim((string) ($computeNoticeRaw['severity'] ?? ''))) : '';
+    if (! in_array($computeNoticeSeverity, ['danger', 'warning', 'info'], true)) {
+        $computeNoticeSeverity = '';
+    }
+
+    // Terminal failure verdict, computed early. A failed latest action stays
+    // visible across a reload (the old alert-danger guarantee), but only
+    // while no VM is observed on the host: once a VM exists, live state
+    // supersedes the verdict and the event history owns the past.
+    // When the presenter offers a notice of its own, the strip carries the
+    // state message first and the verdict on its own muted line below it —
+    // so neither B.2 (notice text) nor B6 (failure text) is dropped, and the
+    // state message leads. One strip, one severity.
+    $computeFailureText = (! $computeIsRunning && ($computeAct['status'] ?? null) === 'failed')
+        ? trim((string) ($computeAct['error'] ?? $computeAct['message'] ?? ''))
+        : '';
+    $computeFailureRelevant = $computeFailureText !== '' && ($computeVm['exists'] ?? null) !== true;
+    $computeFailureSuffix = '';
+    if ($computeFailureRelevant && $computeNoticeText !== '' && $computeFailureText !== $computeNoticeText) {
+        $computeFailureSuffix = $computeFailureText;
+        $computeNoticeSeverity = 'danger';
+    } elseif ($computeFailureRelevant && $computeNoticeText === '') {
+        $computeNoticeText = $computeFailureText;
+        $computeNoticeSeverity = 'danger';
+    }
+
+    // Fallback precedence mirrors the presenter's permissions() order:
+    // probe failure > terminated > VM absent > state unknown. Steady states
+    // (running, stopped) and a running action render no strip — the state
+    // chip and the open progress panel already answer those.
+    if ($computeNoticeText === '' && ! $computeIsRunning) {
+        if ($computeProbeError !== '') {
+            $computeNoticeText = trim((string) ($computeReasons['create'] ?? $computeReasons['start'] ?? ''));
+            if ($computeNoticeText === '') { $computeNoticeText = 'Host unreachable — actions may fail.'; }
+            $computeNoticeSeverity = 'warning';
+        } elseif (strtolower(trim((string) ($hostingAccount->status ?? ''))) === 'terminated') {
+            $computeNoticeText = trim((string) ($computeReasons['create'] ?? ''));
+            if ($computeNoticeText === '') { $computeNoticeText = 'Service is terminated — create, start, stop and restart are refused. Delete cleans up; restoring the account re-enables provisioning.'; }
+            $computeNoticeSeverity = 'danger';
+        } elseif (($computeVm['exists'] ?? null) === false) {
+            $computeNoticeText = 'No VM exists on the host yet — create one first.';
+            $computeNoticeSeverity = 'info';
+        } elseif (($computeVm['exists'] ?? null) === null) {
+            $computeNoticeText = trim((string) ($computeReasons['start'] ?? ''));
+            if ($computeNoticeText === '') { $computeNoticeText = 'VM state is unknown — refresh the page or re-test the connection.'; }
+            $computeNoticeSeverity = 'warning';
+        }
+    }
+    if ($computeNoticeText !== '' && $computeNoticeSeverity === '') { $computeNoticeSeverity = 'info'; }
+    $computeNoticeId = 'compute-notice-' . $computeSlug;
+    $computeNoticeAlert = 'alert-' . ($computeNoticeSeverity !== '' ? $computeNoticeSeverity : 'info');
+    $computeNoticeIcon = $computeNoticeSeverity === 'danger' ? 'bi-exclamation-triangle-fill' : ($computeNoticeSeverity === 'warning' ? 'bi-exclamation-triangle-fill' : 'bi-info-circle');
+
+    // Server-rendered titles mirror what applyStatus() sets on poll, so a
+    // disabled button explains itself before the first poll lands.
+    $computeRunningTitle = 'An action is already running — please wait.';
+    $computeTitles = [];
+    foreach (['create', 'start', 'stop', 'delete', 'reset_password'] as $computeTitleAct) {
+        $computeTitles[$computeTitleAct] = $computeIsRunning
+            ? $computeRunningTitle
+            : trim((string) ($computeReasons[$computeTitleAct] ?? ''));
+    }
+    // Restart has no can key of its own; its gate is exists === true.
+    $computeTitles['restart'] = $computeIsRunning
+        ? $computeRunningTitle
+        : trim((string) ($computeReasons['restart'] ?? ''));
+    if ($computeTitles['restart'] === '' && ($computeVm['exists'] ?? null) !== true) {
+        $computeTitles['restart'] = 'VM is not created on the host yet.';
+    }
+
+    // Disabled buttons point at the strip when one is rendered.
+    $computeDescribedBy = $computeNoticeText !== '' ? $computeNoticeId : '';
+
+    // Honest disabled hierarchy (presentation only): a disabled action
+    // renders its outline variant so it recedes, an enabled action keeps
+    // its solid variant. Each mirrors its `disabled` condition below
+    // exactly — gating itself is untouched.
+    $computeEnabledCreate = $computeCanCreate && ! $computeIsRunning;
+    $computeEnabledStart = $computeCanStart && ! $computeIsRunning;
+    $computeEnabledStop = $computeCanStop && ! $computeIsRunning;
+    $computeEnabledDelete = $computeCanDelete && ! $computeIsRunning;
+    $computeEnabledReset = $computeCanReset && ! $computeIsRunning;
+    $computeEnabledCreds = $computeCredsStored && ! $computeIsRunning;
+    $computeEnabledRestart = $computeCanRestart && ! $computeIsRunning && ($computeVm['exists'] ?? null) === true;
 @endphp
 <div class="ma-entry" id="compute-panel-{{ $computeSlug }}">
-    <div class="d-flex flex-wrap align-items-center gap-2 py-2">
+    <div class="d-flex flex-wrap align-items-center gap-2 py-2" data-compute-identity>
         <strong>{{ $computeName }}</strong>
         <span class="text-muted small">{{ $computeSlug }}</span>
         <span class="badge {{ $computeMode === 'manual' ? 'text-bg-warning' : 'text-bg-success' }}">{{ ucfirst($computeMode) }}</span>
-        <span id="compute-state-{{ $computeSlug }}" class="badge text-bg-{{ $computeStateTheme }}">{{ $computeStateLabel }}</span>
-        <span class="text-muted small" data-compute-hint>
-            @if ($computeIsRunning)
-                An action is already running — the controls unlock when it finishes.
-            @elseif ($computeProbeError !== '')
-                Host unreachable — actions may fail.
-            @elseif (($computeVm['exists'] ?? null) === false)
-                No VM exists on the host yet — create one first.
-            @endif
-        </span>
-        <span class="ms-auto d-flex flex-wrap align-items-center gap-2">
-            @can('hosting.edit')
-                <button type="button" class="btn btn-sm btn-success" data-compute-action="create"
-                        @if(! $computeCanCreate || $computeIsRunning) disabled @endif>Create VM</button>
-                <button type="button" class="btn btn-sm btn-primary" data-compute-action="start"
-                        @if(! $computeCanStart || $computeIsRunning) disabled @endif>Start</button>
-                <button type="button" class="btn btn-sm btn-warning" data-compute-action="stop"
-                        @if(! $computeCanStop || $computeIsRunning) disabled @endif>Stop</button>
-                @if ($computeCanRestart)
-                    <button type="button" class="btn btn-sm btn-warning" data-compute-action="restart"
-                            @if($computeIsRunning || ($computeVm['exists'] ?? null) !== true) disabled @endif>Restart</button>
-                @endif
-                <button type="button" class="btn btn-sm btn-outline-danger" data-compute-action="delete"
-                        @if(! $computeCanDelete || $computeIsRunning) disabled @endif>Delete</button>
-                <button type="button" class="btn btn-sm btn-outline-secondary" data-compute-action="reset_password"
-                        @if(! $computeCanReset || $computeIsRunning) disabled @endif
-                        @if($computeResetTitle !== '') title="{{ $computeResetTitle }}" @endif>Reset password</button>
-                {{-- Credentials reveal: fetched on demand, never server-rendered --}}
-                <button type="button" class="btn btn-sm btn-outline-secondary" data-compute-action="credentials"
-                        @if(! $computeCredsStored || $computeIsRunning) disabled @endif
-                        @if($computeCredsTitle !== '') title="{{ $computeCredsTitle }}" @endif>Credentials</button>
-                {{-- VM Console: opens the Proxmox VNC console owned by the
-                     rdp-console module (route only exists while that module is
-                     active). Manage-gated because it is interactive control —
-                     the same capability class as the Hyper-V VMConnect console.
-                     A disabled button is not focusable, so the reason is
-                     rendered as visible text, not only a title. --}}
-                @if ($computeConsoleIsProxmox)
-                    @can('hosting.manage')
-                        @if ($computeConsoleAvailable)
-                            <a href="{{ route('admin.rdp-console.pveConsole', $hostingAccount) }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-display me-1"></i> VM Console</a>
-                        @else
-                            <button type="button" class="btn btn-sm btn-outline-secondary" disabled
-                                    title="{{ $computeConsoleReason }}"><i class="bi bi-display me-1"></i> VM Console</button>
-                            <span class="text-muted small">{{ $computeConsoleReason }}</span>
-                        @endif
-                    @endcan
-                @endif
-            @endcan
-            @if ($computeProbeError !== '')
-                <button type="button" class="btn btn-sm btn-outline-secondary" data-compute-retry>Retry</button>
-            @endif
-        </span>
+        <x-adminlte.partials.status-badge :status="strtolower($computeStateLabel)" :label="$computeStateLabel" :map="['running' => 'success']" id="compute-state-{{ $computeSlug }}" />
     </div>
 
-    <div class="compute-progress {{ $computeIsRunning ? 'is-open' : '' }}" data-compute-progress aria-hidden="{{ $computeIsRunning ? 'false' : 'true' }}">
-        <div class="px-2 pb-2">
-            <div class="d-flex align-items-center justify-content-between gap-2 flex-wrap mb-1">
-                <span class="small fw-semibold" data-compute-progress-label aria-live="polite">{{ $computeStageLabel }}</span>
-                <span class="text-muted small" data-compute-progress-elapsed>{{ $computeElapsedFmt }}</span>
-            </div>
-            <div class="progress" style="height: 8px;">
-                <div class="progress-bar progress-bar-striped progress-bar-animated" data-compute-progress-bar
-                     role="progressbar" aria-valuenow="{{ $computeProgress }}" aria-valuemin="0" aria-valuemax="100"
-                     style="width: {{ $computeProgress }}%;"></div>
-            </div>
-            <div class="text-muted small mt-1" data-compute-progress-message></div>
+    @if ($computeNoticeText !== '')
+        <div id="{{ $computeNoticeId }}" data-compute-notice class="alert {{ $computeNoticeAlert }} mh-module-notice py-2 px-3 my-2" role="status" aria-live="polite">
+            <i class="bi {{ $computeNoticeIcon }} flex-shrink-0" aria-hidden="true" data-compute-notice-icon></i>
+            <span class="mh-module-notice__body">
+                <span data-compute-hint>{{ $computeNoticeText }}</span>
+                @if ($computeFailureSuffix !== '')
+                    <span class="mh-module-notice__failure">Last action failed: {{ $computeFailureSuffix }}</span>
+                @endif
+            </span>
         </div>
-    </div>
+    @endif
 
     <div class="alert py-2 px-3 my-2 d-none" role="alert" data-compute-feedback></div>
 
     @can('hosting.edit')
-        <div class="compute-disclosure border rounded-2 p-3 mb-2" data-compute-disclosure hidden aria-hidden="true">
-            {{-- Create --}}
-            <div data-compute-view="create" hidden>
-                <h6 class="fw-semibold mb-2">Create VM on {{ $computeName }}</h6>
+        <div class="mh-module-actions py-1">
+            <div class="mh-module-group">
+                <div class="mh-module-group__title">Lifecycle</div>
+                <div class="d-flex flex-wrap gap-2">
+                    <button type="button" class="btn btn-sm {{ $computeEnabledCreate ? 'btn-success' : 'btn-outline-success' }}" data-compute-action="create"
+                            @if(! $computeCanCreate || $computeIsRunning) disabled @endif
+                            @if($computeTitles['create'] !== '') title="{{ $computeTitles['create'] }}" @endif
+                            @if($computeDescribedBy !== '') aria-describedby="{{ $computeDescribedBy }}" @endif><i class="bi bi-plus-circle me-1" aria-hidden="true"></i>Create VM</button>
+                    <button type="button" class="btn btn-sm {{ $computeEnabledStart ? 'btn-primary' : 'btn-outline-primary' }}" data-compute-action="start"
+                            @if(! $computeCanStart || $computeIsRunning) disabled @endif
+                            @if($computeTitles['start'] !== '') title="{{ $computeTitles['start'] }}" @endif
+                            @if($computeDescribedBy !== '') aria-describedby="{{ $computeDescribedBy }}" @endif><i class="bi bi-play-fill me-1" aria-hidden="true"></i>Start</button>
+                    <button type="button" class="btn btn-sm {{ $computeEnabledStop ? 'btn-warning' : 'btn-outline-warning' }}" data-compute-action="stop"
+                            @if(! $computeCanStop || $computeIsRunning) disabled @endif
+                            @if($computeTitles['stop'] !== '') title="{{ $computeTitles['stop'] }}" @endif
+                            @if($computeDescribedBy !== '') aria-describedby="{{ $computeDescribedBy }}" @endif><i class="bi bi-stop-fill me-1" aria-hidden="true"></i>Stop</button>
+                    @if ($computeCanRestart)
+                        <button type="button" class="btn btn-sm {{ $computeEnabledRestart ? 'btn-warning' : 'btn-outline-warning' }}" data-compute-action="restart"
+                                @if($computeIsRunning || ($computeVm['exists'] ?? null) !== true) disabled @endif
+                                @if($computeTitles['restart'] !== '') title="{{ $computeTitles['restart'] }}" @endif
+                                @if($computeDescribedBy !== '') aria-describedby="{{ $computeDescribedBy }}" @endif><i class="bi bi-arrow-clockwise me-1" aria-hidden="true"></i>Restart</button>
+                    @endif
+                </div>
+            </div>
+            <div class="mh-module-group">
+                <div class="mh-module-group__title">Access</div>
+                <div class="d-flex flex-wrap gap-2">
+                    {{-- Credentials reveal: fetched on demand, never server-rendered --}}
+                    <button type="button" class="btn btn-sm {{ $computeEnabledCreds ? 'btn-secondary' : 'btn-outline-secondary' }}" data-compute-action="credentials"
+                            @if(! $computeCredsStored || $computeIsRunning) disabled @endif
+                            @if($computeCredsTitle !== '') title="{{ $computeCredsTitle }}" @endif
+                            @if($computeDescribedBy !== '') aria-describedby="{{ $computeDescribedBy }}" @endif><i class="bi bi-person-badge me-1" aria-hidden="true"></i>Credentials</button>
+                    <button type="button" class="btn btn-sm {{ $computeEnabledReset ? 'btn-secondary' : 'btn-outline-secondary' }}" data-compute-action="reset_password"
+                            @if(! $computeCanReset || $computeIsRunning) disabled @endif
+                            @if($computeResetTitle !== '') title="{{ $computeResetTitle }}" @endif
+                            @if($computeDescribedBy !== '') aria-describedby="{{ $computeDescribedBy }}" @endif><i class="bi bi-key-fill me-1" aria-hidden="true"></i>Reset password</button>
+                    {{-- VM Console: opens the Proxmox VNC console owned by the
+                         rdp-console module (route only exists while that module is
+                         active). Manage-gated because it is interactive control —
+                         the same capability class as the Hyper-V VMConnect console.
+                         A disabled button is not focusable, so the reason is
+                         rendered as a muted line below the buttons (inside this
+                         group, next to VM Console) — never inline, where it
+                         would widen the group and push Danger off the row. --}}
+                    @if ($computeConsoleIsProxmox)
+                        @can('hosting.manage')
+                            @if ($computeConsoleAvailable)
+                                <a href="{{ route('admin.rdp-console.pveConsole', $hostingAccount) }}" class="btn btn-sm btn-secondary"><i class="bi bi-display me-1" aria-hidden="true"></i>VM Console</a>
+                            @else
+                                <button type="button" class="btn btn-sm btn-outline-secondary" disabled
+                                        title="{{ $computeConsoleReason }}"
+                                        @if($computeDescribedBy !== '') aria-describedby="{{ $computeDescribedBy }}" @endif><i class="bi bi-display me-1" aria-hidden="true"></i>VM Console</button>
+                            @endif
+                        @endcan
+                    @endif
+                </div>
+                @if ($computeConsoleIsProxmox)
+                    @can('hosting.manage')
+                        @if (! $computeConsoleAvailable)
+                            <div class="mh-module-group__note">{{ $computeConsoleReason }}</div>
+                        @endif
+                    @endcan
+                @endif
+            </div>
+            <div class="mh-module-group mh-module-group--danger">
+                <div class="mh-module-group__title">Danger</div>
+                <div class="d-flex flex-wrap gap-2">
+                    <button type="button" class="btn btn-sm {{ $computeEnabledDelete ? 'btn-danger' : 'btn-outline-danger' }}" data-compute-action="delete"
+                            @if(! $computeCanDelete || $computeIsRunning) disabled @endif
+                            @if($computeTitles['delete'] !== '') title="{{ $computeTitles['delete'] }}" @endif
+                            @if($computeDescribedBy !== '') aria-describedby="{{ $computeDescribedBy }}" @endif><i class="bi bi-trash me-1" aria-hidden="true"></i>Delete</button>
+                </div>
+            </div>
+        </div>
+    @endcan
+    @if ($computeProbeError !== '')
+        <button type="button" class="btn btn-sm btn-outline-secondary" data-compute-retry>Retry</button>
+    @endif
+
+    @can('hosting.edit')
+        @if ($computeCanCreate)
+            <section class="mh-module-create my-2" data-compute-create-section aria-labelledby="compute-create-title-{{ $computeSlug }}">
+                <h6 class="fw-semibold mb-1" id="compute-create-title-{{ $computeSlug }}"><i class="bi bi-plus-circle me-1" aria-hidden="true"></i>Create the VM</h6>
+                <p class="text-muted small mb-2">Select a template to build the VM on the host.</p>
                 @if ($computeNoEffective)
                     <p class="text-danger small mb-2">No templates are available for this product on this server — check the product's template restriction.</p>
                 @elseif ($computeOptions === [])
@@ -207,13 +325,29 @@
                                id="compute-start-{{ $computeSlug }}" @checked($computeStartAfterCreate)>
                         <label class="form-check-label small" for="compute-start-{{ $computeSlug }}">Start the VM after creation</label>
                     </div>
-                    <div class="d-flex gap-2">
-                        <button type="button" class="btn btn-sm btn-outline-secondary" data-compute-cancel>Cancel</button>
-                        <button type="submit" class="btn btn-sm btn-success" data-compute-submit>Create VM</button>
-                    </div>
+                    <button type="submit" class="btn btn-sm btn-success" data-compute-submit><i class="bi bi-plus-circle me-1" aria-hidden="true"></i>Create VM</button>
                 </form>
-            </div>
+            </section>
+        @endif
+    @endcan
 
+    <div class="compute-progress {{ $computeIsRunning ? 'is-open' : '' }}" data-compute-progress aria-hidden="{{ $computeIsRunning ? 'false' : 'true' }}">
+        <div class="px-2 pb-2">
+            <div class="d-flex align-items-center justify-content-between gap-2 flex-wrap mb-1">
+                <span class="small fw-semibold" data-compute-progress-label aria-live="polite">{{ $computeStageLabel }}</span>
+                <span class="text-muted small" data-compute-progress-elapsed>{{ $computeElapsedFmt }}</span>
+            </div>
+            <div class="progress" style="height: 8px;">
+                <div class="progress-bar progress-bar-striped progress-bar-animated" data-compute-progress-bar
+                     role="progressbar" aria-valuenow="{{ $computeProgress }}" aria-valuemin="0" aria-valuemax="100"
+                     style="width: {{ $computeProgress }}%;"></div>
+            </div>
+            <div class="text-muted small mt-1" data-compute-progress-message></div>
+        </div>
+    </div>
+
+    @can('hosting.edit')
+        <div class="compute-disclosure border rounded-2 p-3 mb-2" data-compute-disclosure hidden aria-hidden="true">
             {{-- Restart (typed confirmation) --}}
             <div data-compute-view="restart" data-compute-confirm-expected="{{ $hostingAccount->host_name }}" hidden>
                 <h6 class="fw-semibold mb-2">Restart VM</h6>
@@ -352,7 +486,6 @@
         var NO_CREDENTIALS_REASON = 'No credentials are stored for this VM.';
 
         var statePill = document.getElementById('compute-state-' + slug);
-        var hint = panel.querySelector('[data-compute-hint]');
         var progress = panel.querySelector('[data-compute-progress]');
         var progressBar = panel.querySelector('[data-compute-progress-bar]');
         var progressLabel = panel.querySelector('[data-compute-progress-label]');
@@ -400,6 +533,70 @@
             if (feedback) feedback.classList.add('d-none');
         }
 
+        var NOTICE_SEVERITIES = { danger: 'danger', warning: 'warning', info: 'info' };
+        var NOTICE_ICONS = { danger: 'bi-exclamation-triangle-fill', warning: 'bi-exclamation-triangle-fill', info: 'bi-info-circle' };
+
+        // The strip's live text. Mirrors the server strip in this file:
+        // presenter notice first, then the freshest failure verdict (only
+        // while no VM is observed — live state supersedes it), then the
+        // state-derived fallback. A running action and steady states return
+        // null — the open progress panel and the state chip own those.
+        function noticeFromStatus(status) {
+            var n = status && status.notice && typeof status.notice === 'object' ? status.notice : null;
+            var text = (n && n.text) ? String(n.text) : '';
+            var sev = (n && n.severity) ? (NOTICE_SEVERITIES[String(n.severity).toLowerCase()] || 'info') : 'info';
+            var action = (status && status.action) || null;
+            var vm = (status && status.vm) || null;
+            var running = !!(action && action.running);
+            var verdict = (!running && action && action.status === 'failed') ? (action.error || action.message || '') : '';
+            var relevant = !!verdict && (!vm || vm.exists !== true);
+            if (relevant && text && String(verdict) !== text) {
+                return { text: text + ' Last action failed: ' + verdict, severity: 'danger' };
+            }
+            if (relevant && !text) return { text: String(verdict), severity: 'danger' };
+            if (text) return { text: text, severity: sev };
+            if (running) return null;
+            if (vm && vm.probe_error) return { text: 'Host unreachable — actions may fail.', severity: 'warning' };
+            if (vm && vm.exists === false) return { text: 'No VM exists on the host yet — create one first.', severity: 'info' };
+            if (vm && (vm.exists === null || vm.exists === undefined)) return { text: 'VM state is unknown — refresh the page or re-test the connection.', severity: 'warning' };
+            return null;
+        }
+
+        function setNotice(found) {
+            var box = panel.querySelector('[data-compute-notice]');
+            if (!found) {
+                if (box) box.hidden = true;
+                return;
+            }
+            if (!box) {
+                box = document.createElement('div');
+                box.id = 'compute-notice-' + slug;
+                box.setAttribute('data-compute-notice', '');
+                box.setAttribute('role', 'status');
+                box.setAttribute('aria-live', 'polite');
+                var icon = document.createElement('i');
+                icon.setAttribute('aria-hidden', 'true');
+                icon.setAttribute('data-compute-notice-icon', '');
+                var text = document.createElement('span');
+                text.setAttribute('data-compute-hint', '');
+                box.appendChild(icon);
+                box.appendChild(text);
+                var anchor = panel.querySelector('[data-compute-identity]');
+                if (anchor && anchor.parentNode) anchor.parentNode.insertBefore(box, anchor.nextSibling);
+                else if (panel.firstChild) panel.insertBefore(box, panel.firstChild);
+                else panel.appendChild(box);
+                buttons.forEach(function (btn) {
+                    if (btn.disabled && !btn.getAttribute('aria-describedby')) btn.setAttribute('aria-describedby', box.id);
+                });
+            }
+            box.hidden = false;
+            box.className = 'alert py-2 px-3 my-2 alert-' + found.severity + ' mh-module-notice';
+            var iconEl = box.querySelector('[data-compute-notice-icon]');
+            if (iconEl) iconEl.className = 'bi flex-shrink-0 ' + (NOTICE_ICONS[found.severity] || NOTICE_ICONS.info);
+            var textEl = box.querySelector('[data-compute-hint]');
+            if (textEl) textEl.textContent = found.text;
+        }
+
         function setProgress(open, pct, label, elapsed, message) {
             if (!progress) return;
             progress.classList.toggle('is-open', !!open);
@@ -430,16 +627,12 @@
             if (statePill) {
                 var meta = stateMeta(vm);
                 statePill.textContent = meta.label;
-                statePill.className = 'badge text-bg-' + meta.theme;
+                // Keep the status-badge component classes the server render
+                // uses; only the theme suffix changes with live state.
+                statePill.className = 'badge rounded-pill text-bg-' + meta.theme + ' mh-badge mh-badge--solid';
             }
 
-            if (hint) {
-                var text = '';
-                if (running) text = 'An action is already running — the controls unlock when it finishes.';
-                else if (vm && vm.probe_error) text = 'Host unreachable — actions may fail.';
-                else if (vm && vm.exists === false) text = 'No VM exists on the host yet — create one first.';
-                hint.textContent = text;
-            }
+            setNotice(noticeFromStatus(status));
 
             buttons.forEach(function (btn) {
                 var act = btn.getAttribute('data-compute-action');
@@ -510,10 +703,36 @@
                 var action = payload && payload.action ? payload.action : null;
                 if (!action || action.running) return;
                 stopPolling();
-                if (action.status === 'failed') showFeedback('error', action.error || action.message || 'Action failed.');
-                else if (action.status === 'completed') showFeedback('success', action.message || 'Done.');
-                setTimeout(function () { window.location.reload(); }, 1500);
+                if (action.status === 'failed') {
+                    state.busy = false;
+                    setProgress(false);
+                    showFeedback('error', action.error || action.message || 'Action failed.');
+                    return;
+                }
+                // Still `running` on the row but the presenter no longer calls
+                // it running (stale: the worker died before it closed the
+                // event). Surface the verdict instead of swallowing it.
+                if (action.status === 'running') {
+                    state.busy = false;
+                    setProgress(false);
+                    showFeedback('error', action.message || action.error || 'The action was interrupted — retry it.');
+                    return;
+                }
+                if (action.status === 'completed') {
+                    showFeedback('success', action.message || 'Done.');
+                    setTimeout(function () { window.location.reload(); }, 1500);
+                }
             }).catch(function () { /* transient poll errors keep the loop alive */ });
+        }
+
+        // The create form is an always-visible section (the empty state), so
+        // its button scrolls to it instead of opening the disclosure.
+        function scrollToCreate() {
+            var section = panel.querySelector('[data-compute-create-section]');
+            if (!section) return;
+            try { section.scrollIntoView({ block: 'nearest' }); } catch (e) {}
+            var first = section.querySelector('select, input:not([type="hidden"])');
+            if (first) { try { first.focus({ preventScroll: true }); } catch (e) { try { first.focus(); } catch (ignored) {} } }
         }
 
         function openView(action, trigger) {
@@ -850,7 +1069,8 @@
             var action = btn.getAttribute('data-compute-action');
 
             if (action === 'start' || action === 'stop') { runDirect(action); return; }
-            if (action === 'create' || action === 'restart' || action === 'delete' || action === 'reset_password' || action === 'credentials') { openView(action, btn); return; }
+            if (action === 'create') { scrollToCreate(); return; }
+            if (action === 'restart' || action === 'delete' || action === 'reset_password' || action === 'credentials') { openView(action, btn); return; }
         });
 
         panel.addEventListener('input', function (ev) {

@@ -57,7 +57,7 @@
             </div>
         </div>
 
-        <div class="border rounded p-3 mb-3 bg-light-subtle">
+        <div class="border rounded p-3 mb-3 bg-body-tertiary">
             <div class="d-flex align-items-center gap-2 mb-3">
                 <i class="bi bi-geo-alt text-primary"></i>
                 <h6 class="mb-0 fw-semibold">Billing Address</h6>

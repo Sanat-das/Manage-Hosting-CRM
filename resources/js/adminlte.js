@@ -43,6 +43,10 @@ function parseConfig(el, attr) {
 // --- Color mode (Light / Dark / Auto) ---------------------------------------
 // color-mode.blade.php ships markup only — this is the wiring it expects.
 const COLOR_MODE_STORE = 'adminlte.colorMode'
+// Mirrored into a cookie so PHP can render `data-bs-theme` on the <html> tag
+// (see App\Support\Theme). localStorage alone is invisible to the server, which
+// is what let the first paint come up in the wrong theme on a hard navigation.
+const COLOR_MODE_COOKIE = 'mh_theme'
 
 function getStoredTheme() {
   try {
@@ -56,7 +60,14 @@ function setStoredTheme(theme) {
   try {
     localStorage.setItem(COLOR_MODE_STORE, theme)
   } catch (e) {
-    // Private mode / quota — same tolerance as writeGridWidths() above.
+    // Private mode / quota — the cookie below still carries the choice.
+  }
+  try {
+    const secure = location.protocol === 'https:' ? '; secure' : ''
+    document.cookie = COLOR_MODE_COOKIE + '=' + encodeURIComponent(theme)
+      + '; path=/; max-age=31536000; samesite=lax' + secure
+  } catch (e) {
+    // Cookie blocked — this page still switches, it just won't survive a reload.
   }
 }
 

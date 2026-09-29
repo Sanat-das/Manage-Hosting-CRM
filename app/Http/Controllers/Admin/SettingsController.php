@@ -5,6 +5,11 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\EmailLog;
 use App\Models\GstSetting;
+use App\Models\Order;
+use App\Models\Role;
+use App\Models\ServerGroup;
+use App\Services\DomainService;
+use App\Services\Integrations\IntegrationRegistry;
 use App\Settings\IntegrationSettings;
 use App\Support\AppSettings;
 use App\Support\MailSettings;
@@ -90,22 +95,22 @@ class SettingsController extends Controller
             // Through the models, never a hardcoded table name — the roles table
             // is `adminlte_roles`, and querying `roles` fails silently through
             // the guard below, leaving the admin an empty dropdown.
-            'roles' => $safe(static fn (): array => \App\Models\Role::query()
+            'roles' => $safe(static fn (): array => Role::query()
                 ->orderBy('name')
                 ->pluck('name')
                 ->all()),
-            'billing_cycles' => \App\Models\Order::BILLING_CYCLES,
+            'billing_cycles' => Order::BILLING_CYCLES,
             'cron_schedules' => ['hourly', 'daily', 'weekly', 'monthly'],
             'date_formats' => ['Y-m-d', 'd/m/Y', 'm/d/Y', 'd-m-Y', 'd M Y', 'j F Y', 'D, d M Y'],
 
             'provisioning_panels' => $safe(static function (): array {
-                return app(\App\Services\Integrations\IntegrationRegistry::class)->slugs();
+                return app(IntegrationRegistry::class)->slugs();
             }),
-            'server_groups' => $safe(static fn (): array => \App\Models\ServerGroup::query()
+            'server_groups' => $safe(static fn (): array => ServerGroup::query()
                 ->orderBy('name')
                 ->pluck('name')
                 ->all()),
-            'registrars' => $safe(static fn (): array => app(\App\Services\DomainService::class)->registrars()),
+            'registrars' => $safe(static fn (): array => app(DomainService::class)->registrars()),
             'stock_units' => ['units', 'pcs', 'licenses', 'GB', 'TB', 'cores', 'hours'],
 
             // No source: nothing in the app defines domain pricing tiers, so
@@ -337,7 +342,9 @@ class SettingsController extends Controller
             $code = trim((string) ($request->input('company_phone_code', $request->input('phone_code', ''))));
             $number = trim((string) ($request->input('company_phone_number', $request->input('phone_number', ''))));
             if ($code !== '' || $number !== '') {
-                if ($code === '' && $number !== '') $code = '+91';
+                if ($code === '' && $number !== '') {
+                    $code = '+91';
+                }
                 $payload['company_phone'] = $number !== '' ? trim($code.' '.$number) : $code;
             }
         } elseif ($hasPhoneSplit) {
@@ -345,7 +352,9 @@ class SettingsController extends Controller
             $number = trim((string) ($payload['company_phone_number'] ?? ''));
             // hidden combined may already be correct (JS synced); prefer split when present
             if ($code !== '' || $number !== '') {
-                if ($code === '' && $number !== '') $code = '+91';
+                if ($code === '' && $number !== '') {
+                    $code = '+91';
+                }
                 $payload['company_phone'] = $number !== '' ? trim($code.' '.$number) : $code;
             }
             unset($payload['company_phone_code'], $payload['company_phone_number']);
@@ -355,7 +364,9 @@ class SettingsController extends Controller
             $code = trim((string) ($payload['phone_code'] ?? ''));
             $number = trim((string) ($payload['phone_number'] ?? ''));
             if ($code !== '' || $number !== '') {
-                if ($code === '' && $number !== '') $code = '+91';
+                if ($code === '' && $number !== '') {
+                    $code = '+91';
+                }
                 $payload['company_phone'] = $number !== '' ? trim($code.' '.$number) : $code;
             }
             unset($payload['phone_code'], $payload['phone_number']);
@@ -426,8 +437,18 @@ class SettingsController extends Controller
 
         // Blank encrypted fields were masked on GET (loadAll returns ''). Do not
         // overwrite stored secrets with empty string when form leaves them blank.
+        // Whitespace-only counts as blank too: these secrets are excepted from
+        // TrimStrings (see bootstrap/app.php), so '   ' arrives untrimmed and
+        // ConvertEmptyStringsToNull leaves it alone — without the trim() here it
+        // would overwrite the stored secret with spaces.
+        // Unicode-aware on purpose: PHP's trim() strips ASCII whitespace only,
+        // so a whitespace-only paste (e.g. NBSP) would otherwise be stored as
+        // the credential and permanently break that integration's login.
+        // \p{Z} covers the Unicode separators, \x{200B} and \x{FEFF} are
+        // format characters matched explicitly; anything containing a real
+        // character is still stored verbatim.
         foreach ($this->secretKeys() as $secret) {
-            if (array_key_exists($secret, $values) && $values[$secret] === '') {
+            if (array_key_exists($secret, $values) && self::isBlankSecretInput($values[$secret] ?? '')) {
                 unset($values[$secret]);
             }
         }
@@ -509,7 +530,7 @@ class SettingsController extends Controller
                         'user_id' => $userId,
                         'customer_id' => null,
                         'action' => 'settings.updated',
-                        'description' => 'Settings updated (' . $sec . '): changed ' . implode(', ', $secKeys),
+                        'description' => 'Settings updated ('.$sec.'): changed '.implode(', ', $secKeys),
                         'metadata' => json_encode($properties),
                         'properties' => json_encode($properties),
                         'event' => 'updated',
@@ -530,7 +551,7 @@ class SettingsController extends Controller
             $message = 'All settings saved.';
         } elseif ($tab) {
             $label = collect(AppSettings::sections())->firstWhere('id', $tab)['label'] ?? ucfirst((string) $tab);
-            $message = $label . ' saved.';
+            $message = $label.' saved.';
         } else {
             $message = 'Settings updated successfully.';
         }
@@ -691,6 +712,22 @@ class SettingsController extends Controller
             ...array_keys(IntegrationSettings::casts()),
             'smtp_password',
         ]));
+    }
+
+    /**
+     * Whether a submitted secret value counts as "leave blank to keep current".
+     *
+     * Unicode-aware because PHP's trim() strips ASCII whitespace only, so it
+     * misses NBSP and the other Unicode spaces. \p{Z} (the Unicode separator
+     * category) plus the two format characters (\x{200B}, \x{FEFF}) carry the
+     * semantics — deliberately not leaning on \s, whose Unicode behaviour
+     * under /u varies by PCRE build. '0' and 0 are real values.
+     */
+    private static function isBlankSecretInput(mixed $value): bool
+    {
+        $v = (string) ($value ?? '');
+
+        return preg_match('/^[\s\p{Z}\x{200B}\x{FEFF}]*$/u', $v) === 1;
     }
 
     /**

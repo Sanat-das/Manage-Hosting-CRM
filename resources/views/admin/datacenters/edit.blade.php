@@ -8,7 +8,7 @@
     ]" />
 @stop
 @section('content')
-    @if ($errors->any()) <x-adminlte-alert theme="danger" dismissible><ul class="mb-0">@foreach ($errors->all() as $error)<li>{{ $error }}</li>@endforeach</ul></x-adminlte-alert> @endif
+    <x-adminlte.partials.flash-alert />
     <x-adminlte.partials.form-card icon="bi bi-building" title="Edit Datacenter" :action="route('admin.datacenters.update', $datacenter)" submit-label="Update Datacenter" :cancel-url="route('admin.datacenters.show', $datacenter)">
         @method('PUT')
         <div class="row">

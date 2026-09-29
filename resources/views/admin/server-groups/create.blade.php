@@ -11,15 +11,7 @@
 @stop
 
 @section('content')
-    @if ($errors->any())
-        <x-adminlte-alert theme="danger" dismissible>
-            <ul class="mb-0">
-                @foreach ($errors->all() as $error)
-                    <li>{{ $error }}</li>
-                @endforeach
-            </ul>
-        </x-adminlte-alert>
-    @endif
+    <x-adminlte.partials.flash-alert />
 
     <x-adminlte.partials.form-card
         icon="bi bi-collection"
@@ -77,7 +69,7 @@
                            @checked(in_array($server->id, old('server_ids', [])))>
                     <label class="form-check-label" for="server-{{ $server->id }}">
                         {{ $server->name }} ({{ $server->ip_address }})
-                        <span class="badge bg-secondary">{{ $server->server_type ?? 'unknown' }}</span>
+                        <span class="badge text-bg-secondary">{{ $server->server_type ?? 'unknown' }}</span>
                         <x-adminlte.partials.status-badge :status="$server->status" />
                     </label>
                 </div>

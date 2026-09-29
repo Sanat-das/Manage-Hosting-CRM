@@ -19,7 +19,7 @@
                 @if ($active) aria-selected="true" @else aria-selected="false" @endif
             >
                 @if (! empty($tab['icon']))
-                    <i class="{{ $tab['icon'] }} me-2"></i>
+                    <i class="{{ $tab['icon'] }} me-2" aria-hidden="true"></i>
                 @endif
                 {{ $tab['label'] ?? $tab['id'] }}
                 @if (! empty($tab['badge']))

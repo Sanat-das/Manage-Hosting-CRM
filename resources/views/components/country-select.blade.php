@@ -56,6 +56,7 @@
             id="{{ $fieldId }}"
             {{ $attributes->merge([
                 'autocomplete' => 'country-name',
+                'aria-label' => $label ?? $name,
                 'class' => 'form-select'.($size ? ' form-select-'.$size : '').($errors->has($errorKey) ? ' is-invalid' : ''),
             ]) }}>
         @if ($allowBlank)

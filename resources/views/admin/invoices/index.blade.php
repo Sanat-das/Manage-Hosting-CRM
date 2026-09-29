@@ -7,9 +7,7 @@
 @stop
 
 @section('content')
-    @if (session('success'))
-        <x-adminlte-alert theme="success" dismissible>{{ session('success') }}</x-adminlte-alert>
-    @endif
+    <x-adminlte.partials.flash-alert />
 
     <x-adminlte.partials.metric-cards :items="[
         ['title' => $stats->get('draft', 0), 'text' => 'Draft', 'icon' => 'bi bi-pencil', 'theme' => 'secondary'],

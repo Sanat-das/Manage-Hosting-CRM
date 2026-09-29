@@ -57,11 +57,11 @@
                         @if ($role->name !== 'admin')
                             <a href="{{ route('adminlte.roles.edit', $role) }}"
                                class="btn btn-sm btn-outline-secondary btn-icon" aria-label="{{ __('adminlte.edit') }}" title="Edit">
-                                <i class="bi bi-pencil"></i>
+                                <i class="bi bi-pencil" aria-hidden="true"></i>
                             </a>
                             <button type="button" class="btn btn-sm btn-outline-danger btn-icon" aria-label="{{ __('adminlte.delete') }}" title="Delete"
                                     data-bs-toggle="modal" data-bs-target="#delete-role-{{ $role->id }}">
-                                <i class="bi bi-trash"></i>
+                                <i class="bi bi-trash" aria-hidden="true"></i>
                             </button>
                         @else
                             <span class="text-muted small fst-italic">protected</span>
@@ -70,7 +70,7 @@
                 </td>
             </tr>
         @empty
-            <tr><td colspan="4" class="text-center text-muted py-4">{{ __('adminlte.no_roles') }}</td></tr>
+            <x-ui.empty-table-row colSpan="4" icon="bi bi-shield-lock" :title="__('adminlte.no_roles')" />
         @endforelse
     </x-adminlte.partials.datatable>
 

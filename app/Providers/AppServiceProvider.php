@@ -8,6 +8,7 @@ use App\Support\AppSettings;
 use App\Support\Branding;
 use App\Support\GridFilters;
 use App\Support\GridSort;
+use App\Support\Theme;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\Paginator;
@@ -15,6 +16,7 @@ use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\View;
 use Illuminate\Support\ServiceProvider;
+use Laravel\Dusk\DuskServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -37,8 +39,8 @@ class AppServiceProvider extends ServiceProvider
         //
         // `php artisan dusk` swaps .env for .env.dusk (APP_ENV=dusk) before
         // booting, so the browser suite is unaffected.
-        if ($this->shouldRegisterDusk() && class_exists(\Laravel\Dusk\DuskServiceProvider::class)) {
-            $this->app->register(\Laravel\Dusk\DuskServiceProvider::class);
+        if ($this->shouldRegisterDusk() && class_exists(DuskServiceProvider::class)) {
+            $this->app->register(DuskServiceProvider::class);
         }
     }
 
@@ -200,6 +202,15 @@ class AppServiceProvider extends ServiceProvider
                 } catch (\Throwable) {
                     // Never break view rendering if branding is unreadable.
                 }
+
+                // Colour scheme for <html data-bs-theme>. Cheap: one cookie read.
+                try {
+                    $view->with('themePreference', Theme::preference());
+                    $view->with('themeResolved', Theme::resolved());
+                } catch (\Throwable) {
+                    // Queued/PDF renders with no request — leave both unset, which
+                    // reads as Auto and falls through to the client resolver.
+                }
             });
         } catch (\Throwable) {
             // View system not booted (e.g. pure console without views) — safe to ignore.
@@ -220,7 +231,7 @@ class AppServiceProvider extends ServiceProvider
 
             // Fallback: `*.manage` implies `*.view`
             if (str_ends_with($ability, '.view')) {
-                $manage = substr($ability, 0, -5) . '.manage';
+                $manage = substr($ability, 0, -5).'.manage';
                 if ($user->hasPermission($manage)) {
                     return true;
                 }

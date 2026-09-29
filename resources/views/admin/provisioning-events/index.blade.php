@@ -4,7 +4,7 @@
     <x-ui.page-header title="Provisioning Events" subtitle="Overview and management of provisioning events" :breadcrumbs="[['label' => __('adminlte.home'), 'url' => url('/')],['label' => 'Provisioning Events','active' => true]]" />
 @stop
 @section('content')
-    @if (session('success')) <x-adminlte-alert theme="success" dismissible>{{ session('success') }}</x-adminlte-alert> @endif
+    <x-adminlte.partials.flash-alert />
 
     <x-adminlte.partials.datatable
         icon="bi bi-clock-history"
@@ -50,7 +50,7 @@
                 <td><x-adminlte.partials.status-badge :status="$event->event_status" /></td>
             </tr>
         @empty
-            <tr><td colspan="4" class="text-center text-muted py-4">No provisioning events found.</td></tr>
+            <x-ui.empty-table-row colSpan="4" title="No provisioning events found." />
         @endforelse
     </x-adminlte.partials.datatable>
 @stop

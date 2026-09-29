@@ -11,9 +11,7 @@
 @stop
 
 @section('content')
-    @if ($errors->any())
-        <x-adminlte-alert theme="danger" dismissible><ul class="mb-0">@foreach ($errors->all() as $error)<li>{{ $error }}</li>@endforeach</ul></x-adminlte-alert>
-    @endif
+    <x-adminlte.partials.flash-alert />
 
     <x-adminlte.partials.form-card icon="bi bi-diagram-3" title="Edit VLAN" :action="route('admin.vlans.update', $vlan)" submit-label="Update VLAN" :cancel-url="route('admin.vlans.show', $vlan)">
         @method('PUT')

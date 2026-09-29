@@ -4,6 +4,7 @@ namespace App\Http\Requests;
 
 use App\Models\Order;
 use App\Models\Product;
+use App\Models\ProductAddon;
 use App\Support\OptionSelectionRules;
 use Illuminate\Contracts\Validation\Validator;
 use Illuminate\Foundation\Http\FormRequest;
@@ -99,6 +100,9 @@ class OrderRequest extends FormRequest
             // ASCII hostname per line (the domain the service is provisioned
             // against): ≥2 labels, labels of a–z0–9–, ≤253 chars.
             'lines.*.domain_name' => ['nullable', 'string', 'max:253', 'regex:/^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$/i'],
+            'lines.*.addons' => ['sometimes', 'array', 'max:20'],
+            'lines.*.addons.*.addon_id' => ['required', 'integer', 'exists:product_addons,id'],
+            'lines.*.addons.*.quantity' => ['required', 'integer', 'min:1', 'max:'.Order::MAX_QUANTITY],
         ];
 
         // Per-line configurable-option rules, keyed under each line's prefix.
@@ -167,6 +171,18 @@ class OrderRequest extends FormRequest
 
                 if ($product->require_domain && blank($line['domain_name'] ?? null)) {
                     $validator->errors()->add("lines.$index.domain_name", 'This product requires a domain name.');
+                }
+
+                // Order-time add-on selections: each add-on must exist, be
+                // active, and be scoped to this line's product (or global).
+                // Never trust the form — AddOnService::materialize re-guards.
+                foreach ($line['addons'] ?? [] as $addonIndex => $selection) {
+                    $addon = isset($selection['addon_id']) ? ProductAddon::query()->find($selection['addon_id']) : null;
+
+                    if ($addon === null || $addon->status !== 'active'
+                        || ($addon->product_id !== null && (int) $addon->product_id !== (int) $product->id)) {
+                        $validator->errors()->add("lines.$index.addons.$addonIndex.addon_id", 'The selected add-on is not available for this product.');
+                    }
                 }
 
                 if (! ($line['override'] ?? false)) {

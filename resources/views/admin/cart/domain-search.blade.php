@@ -11,7 +11,7 @@
     <x-adminlte-card icon="bi bi-globe" title="Check Domain Availability">
         <form method="GET" action="{{ route('admin.cart.domain-search') }}">
             <div class="input-group mb-3">
-                <input type="text" name="domain" class="form-control" placeholder="Enter domain name (e.g. mysite)" value="{{ $domain }}">
+                <input type="text" name="domain" class="form-control" placeholder="Enter domain name (e.g. mysite)" aria-label="Domain name to search" value="{{ $domain }}">
                 <button type="submit" class="btn btn-primary">Check Availability</button>
             </div>
         </form>

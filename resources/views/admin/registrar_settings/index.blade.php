@@ -7,9 +7,7 @@
 @stop
 
 @section('content')
-    @if (session('success'))
-        <x-adminlte-alert theme="success" dismissible>{{ session('success') }}</x-adminlte-alert>
-    @endif
+    <x-adminlte.partials.flash-alert />
 
     @forelse ($registrars as $registrar)
         <x-adminlte-card icon="bi bi-globe2" title="{{ ucfirst($registrar) }}">
@@ -33,7 +31,7 @@
         </x-adminlte-card>
     @empty
         <x-adminlte-card title="No Registrars Configured">
-            <p class="text-muted mb-0">Configure domain registrar API connections in Settings > General, or add them manually.</p>
+            <x-adminlte.partials.empty-state icon="bi bi-globe2" title="No Registrars Configured" message="Configure domain registrar API connections in Settings > General, or add them manually." size="sm" />
         </x-adminlte-card>
     @endforelse
 

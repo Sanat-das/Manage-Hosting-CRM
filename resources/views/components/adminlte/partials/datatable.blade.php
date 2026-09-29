@@ -94,7 +94,7 @@
                             </ul>
                         </div>
                     @else
-                        <select name="{{ $statusField }}" class="form-select grid-toolbar-status">
+                        <select name="{{ $statusField }}" class="form-select grid-toolbar-status" aria-label="{{ $statusPlaceholder }}">
                             <option value="">{{ $statusPlaceholder }}</option>
                             @foreach ($statusOptions as $value => $label)
                                 <option value="{{ $value }}" @selected($statusValue === $value)>{{ $label }}</option>

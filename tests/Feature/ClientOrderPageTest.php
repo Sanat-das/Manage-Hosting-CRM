@@ -159,7 +159,7 @@ class ClientOrderPageTest extends TestCase
         $this->actingAs($customer->user)
             ->get(route('client.orders.index'))
             ->assertOk()
-            ->assertSee("You haven't placed any orders yet.", false)
+            ->assertSeeText("You haven't placed any orders yet.")
             ->assertSee('Browse the Store');
     }
 

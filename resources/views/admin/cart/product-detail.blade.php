@@ -44,8 +44,8 @@
                     @csrf
                     <input type="hidden" name="product_id" value="{{ $product->id }}">
                     <div class="mb-3">
-                        <label class="form-label fw-bold">Billing Cycle</label>
-                        <select name="billing_cycle" class="form-select">
+                        <label class="form-label fw-bold" for="cart-billing-cycle">Billing Cycle</label>
+                        <select name="billing_cycle" id="cart-billing-cycle" class="form-select">
                             @php
                                 // The 'free' cycle is a payment-type marker,
                                 // never a selectable billing cycle.
@@ -62,8 +62,8 @@
                     </div>
                     @if ($product->require_domain)
                         <div class="mb-3">
-                            <label class="form-label fw-bold">Domain</label>
-                            <input type="text" name="domain" class="form-control" placeholder="example.com">
+                            <label class="form-label fw-bold" for="cart-domain">Domain</label>
+                            <input type="text" name="domain" id="cart-domain" class="form-control" placeholder="example.com" aria-label="Domain name">
                         </div>
                     @endif
                     <button type="submit" class="btn btn-primary w-100"><i class="bi bi-cart-plus me-1"></i> Add to Cart</button>

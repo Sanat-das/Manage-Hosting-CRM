@@ -4,7 +4,7 @@
     <x-ui.page-header title="Edit: {{ $type->name }}" subtitle="Update resource type details" :breadcrumbs="[['label' => __('adminlte.home'), 'url' => url('/')],['label' => 'Resource Types','url' => route('admin.resource-types.index')],['label' => 'Edit','active' => true]]" />
 @stop
 @section('content')
-    @if ($errors->any()) <x-adminlte-alert theme="danger" dismissible><ul class="mb-0">@foreach ($errors->all() as $error)<li>{{ $error }}</li>@endforeach</ul></x-adminlte-alert> @endif
+    <x-adminlte.partials.flash-alert />
     <x-adminlte.partials.form-card icon="bi bi-cpu" title="Edit Resource Type" :action="route('admin.resource-types.update', $type)" submit-label="Update" :cancel-url="route('admin.resource-types.show', $type)">
         @method('PUT')
         <div class="row">

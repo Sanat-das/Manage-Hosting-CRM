@@ -56,6 +56,7 @@ class AppSettings
         'invoice_next_number' => BillingSettings::class,
         'invoice_prefix' => BillingSettings::class,
         'tax_rate' => BillingSettings::class,
+        'renewal_invoice_days' => BillingSettings::class,
         // email
         'smtp_host' => EmailSettings::class,
         'smtp_port' => EmailSettings::class,

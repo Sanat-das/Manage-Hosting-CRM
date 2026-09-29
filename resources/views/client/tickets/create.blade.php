@@ -3,24 +3,15 @@
 @section('title', 'New Ticket')
 
 @section('content_header')
-    <div class="row">
-        <div class="col-sm-6"><h1 class="m-0">Open a Support Ticket</h1></div>
-        <div class="col-sm-6">
-            <ol class="breadcrumb float-sm-end">
-                <li class="breadcrumb-item"><a href="{{ url('/') }}">{{ __('adminlte.home') }}</a></li>
-                <li class="breadcrumb-item"><a href="{{ route('client.tickets.index') }}">Tickets</a></li>
-                <li class="breadcrumb-item active">New</li>
-            </ol>
-        </div>
-    </div>
+    <x-ui.page-header title="Open a Support Ticket" :breadcrumbs="[
+        ['label' => __('adminlte.home'), 'url' => url('/')],
+        ['label' => 'Tickets', 'url' => route('client.tickets.index')],
+        ['label' => 'New', 'active' => true],
+    ]" />
 @stop
 
 @section('content')
-    @if ($errors->any())
-        <x-adminlte-alert theme="danger" dismissible>
-            <ul class="mb-0">@foreach ($errors->all() as $error)<li>{{ $error }}</li>@endforeach</ul>
-        </x-adminlte-alert>
-    @endif
+    <x-adminlte.partials.flash-alert />
 
     <x-adminlte-card icon="bi bi-life-preserver" title="Submit a New Ticket">
         <form method="POST" action="{{ route('client.tickets.store') }}">

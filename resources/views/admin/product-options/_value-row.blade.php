@@ -14,7 +14,7 @@
     );
 @endphp
 
-<div class="option-value-row border rounded p-2 mb-2 bg-light">
+<div class="option-value-row border rounded p-2 mb-2 bg-body-tertiary">
     <div class="row g-2 align-items-end">
         <div class="col-auto d-flex flex-column align-items-center pt-3">
             <button type="button" class="btn btn-link btn-sm p-0 lh-1 move-value-up" title="Move up" aria-label="Move up">

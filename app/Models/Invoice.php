@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-#[Fillable(['invoice_no', 'customer_id', 'order_id', 'amount', 'tax', 'tax_rate', 'discount', 'total', 'gst_enabled', 'cgst_rate', 'cgst_amount', 'sgst_rate', 'sgst_amount', 'igst_rate', 'igst_amount', 'status', 'due_date', 'paid_at', 'notes', 'paid_amount', 'last_reminder_at', 'reminder_count'])]
+#[Fillable(['invoice_no', 'customer_id', 'order_id', 'amount', 'tax', 'tax_rate', 'discount', 'total', 'gst_enabled', 'cgst_rate', 'cgst_amount', 'sgst_rate', 'sgst_amount', 'igst_rate', 'igst_amount', 'status', 'due_date', 'paid_at', 'notes', 'paid_amount', 'last_reminder_at', 'reminder_count', 'place_of_supply_code'])]
 class Invoice extends Model
 {
     /**
@@ -98,7 +98,7 @@ class Invoice extends Model
      * Statuses selectable when editing: the current status plus every allowed
      * transition. The current status is always kept first.
      *
-     * @return array<string,string>  status => label
+     * @return array<string,string> status => label
      */
     public function allowedStatusTransitions(): array
     {

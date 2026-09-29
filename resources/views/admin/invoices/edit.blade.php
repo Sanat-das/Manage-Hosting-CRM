@@ -7,11 +7,7 @@
 @stop
 
 @section('content')
-    @if ($errors->any())
-        <x-adminlte-alert theme="danger" dismissible>
-            <ul class="mb-0">@foreach ($errors->all() as $error)<li>{{ $error }}</li>@endforeach</ul>
-        </x-adminlte-alert>
-    @endif
+    <x-adminlte.partials.flash-alert />
 
     @if ($locked)
         <x-adminlte-alert theme="warning" dismissible>
@@ -29,8 +25,8 @@
             <div class="row">
                 <div class="col-md-6">
                     <div class="mb-3">
-                        <label>Customer</label>
-                        <input type="text" class="form-control-plaintext" value="{{ $lockedCustomer?->full_name }} ({{ $lockedCustomer?->user?->email }})" readonly>
+                        <label for="locked-customer">Customer</label>
+                        <input type="text" id="locked-customer" class="form-control-plaintext" value="{{ $lockedCustomer?->full_name }} ({{ $lockedCustomer?->user?->email }})" readonly>
                     </div>
                 </div>
                 <div class="col-md-6">
@@ -60,7 +56,7 @@
                             <td class="text-end">{{ number_format($item->total, 2) }}</td>
                         </tr>
                     @empty
-                        <tr><td colspan="4" class="text-center text-muted py-3">No items.</td></tr>
+                        <x-ui.empty-table-row colSpan="4" icon="bi bi-list-ul" title="No items." />
                     @endforelse
                 </tbody>
             </table>
@@ -104,10 +100,10 @@
                              also drives per-product GST) and the configurable
                              options it bills for. --}}
                         <input type="hidden" name="items[{{ $i }}][id]" value="{{ old("items.$i.id", $item->id) }}">
-                        <div class="col-md-5"><input type="text" name="items[{{ $i }}][description]" class="form-control form-control-sm" value="{{ old("items.$i.description", $item->description) }}" placeholder="Description" required></div>
-                        <div class="col-md-2"><input type="number" name="items[{{ $i }}][quantity]" class="form-control form-control-sm" value="{{ old("items.$i.quantity", $item->quantity) }}" min="1" required></div>
-                        <div class="col-md-3"><input type="number" name="items[{{ $i }}][unit_price]" class="form-control form-control-sm" step="0.01" min="0" value="{{ old("items.$i.unit_price", $item->unit_price) }}" placeholder="Unit price" required></div>
-                        <div class="col-md-2"><button type="button" class="btn btn-sm btn-outline-danger remove-item"><i class="bi bi-trash"></i></button></div>
+                        <div class="col-md-5"><input type="text" name="items[{{ $i }}][description]" class="form-control form-control-sm" value="{{ old("items.$i.description", $item->description) }}" placeholder="Description" aria-label="Line item description" required></div>
+                        <div class="col-md-2"><input type="number" name="items[{{ $i }}][quantity]" class="form-control form-control-sm" value="{{ old("items.$i.quantity", $item->quantity) }}" min="1" aria-label="Line item quantity" required></div>
+                        <div class="col-md-3"><input type="number" name="items[{{ $i }}][unit_price]" class="form-control form-control-sm" step="0.01" min="0" value="{{ old("items.$i.unit_price", $item->unit_price) }}" placeholder="Unit price" aria-label="Line item unit price" required></div>
+                        <div class="col-md-2"><button type="button" class="btn btn-sm btn-outline-danger remove-item" aria-label="Remove line item"><i class="bi bi-trash" aria-hidden="true"></i></button></div>
                     </div>
                 @endforeach
             </div>
@@ -121,10 +117,10 @@
             let idx = {{ $invoice->items->count() }};
             document.getElementById('add-item').addEventListener('click', function() {
                 const html = `<div class="row g-2 mb-2 line-item">
-                    <div class="col-md-5"><input type="text" name="items[${idx}][description]" class="form-control form-control-sm" placeholder="Description" required></div>
-                    <div class="col-md-2"><input type="number" name="items[${idx}][quantity]" class="form-control form-control-sm" value="1" min="1" required></div>
-                    <div class="col-md-3"><input type="number" name="items[${idx}][unit_price]" class="form-control form-control-sm" step="0.01" min="0" placeholder="Unit price" required></div>
-                    <div class="col-md-2"><button type="button" class="btn btn-sm btn-outline-danger remove-item"><i class="bi bi-trash"></i></button></div>
+                    <div class="col-md-5"><input type="text" name="items[${idx}][description]" class="form-control form-control-sm" placeholder="Description" aria-label="Line item description" required></div>
+                    <div class="col-md-2"><input type="number" name="items[${idx}][quantity]" class="form-control form-control-sm" value="1" min="1" aria-label="Line item quantity" required></div>
+                    <div class="col-md-3"><input type="number" name="items[${idx}][unit_price]" class="form-control form-control-sm" step="0.01" min="0" placeholder="Unit price" aria-label="Line item unit price" required></div>
+                    <div class="col-md-2"><button type="button" class="btn btn-sm btn-outline-danger remove-item" aria-label="Remove line item"><i class="bi bi-trash"></i></button></div>
                 </div>`;
                 document.getElementById('line-items').insertAdjacentHTML('beforeend', html);
                 idx++;

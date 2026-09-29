@@ -7,11 +7,13 @@
 <!DOCTYPE html>
 <html lang="{{ str_replace('_', '-', app()->getLocale()) }}"
       dir="{{ $rtl ? 'rtl' : 'ltr' }}"
-      @isset($darkMode) data-bs-theme="dark" @endisset>
+      @if (! empty($themeResolved)) data-bs-theme="{{ $themeResolved }}" @endif>
 <head>
     @include('adminlte::partials.head')
 </head>
 <body class="bg-body-tertiary">
+    @include('partials._theme-switch', ['variant' => 'floating'])
+
     <div class="d-flex align-items-center justify-content-center min-vh-100">
         <div class="container">
             @yield('content')
