@@ -131,10 +131,10 @@ class ProductCrudTest extends TestCase
         $this->assertSame('499.00', (string) $product->price);
         $this->assertSame('99.00', (string) $product->setup_fee);
 
-        // Both submitted cycles are stored — plus the `free` row savePricing()
-        // always writes, priced at 0.
+        // Both submitted cycles are stored; no phantom `free` row for a paid
+        // product whose Free field was not priced.
         $this->assertSame(
-            ['annual', 'free', 'monthly'],
+            ['annual', 'monthly'],
             $product->pricing->pluck('billing_cycle')->sort()->values()->all()
         );
         $this->assertDatabaseHas('product_pricing', [
@@ -316,10 +316,10 @@ class ProductCrudTest extends TestCase
         $this->assertSame('annual', $product->billing_cycle);
         $this->assertSame('5990.00', (string) $product->price);
 
-        // The monthly row the product was created with is gone (`free` is the
-        // always-written row, not a submitted one).
+        // The monthly row the product was created with is gone, and no
+        // phantom `free` row appears for a paid product.
         $this->assertSame(
-            ['annual', 'free'],
+            ['annual'],
             $product->pricing->pluck('billing_cycle')->sort()->values()->all()
         );
     }

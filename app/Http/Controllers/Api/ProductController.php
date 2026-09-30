@@ -248,8 +248,12 @@ class ProductController extends Controller
             $row = $pricing[$cycle] ?? [];
             $price = $row['price'] ?? null;
 
-            // Skip cycles with no price unless the cycle is 'free'.
-            if ($cycle !== 'free' && ($price === null || $price === '')) {
+            // Skip cycles with no price — 'free' included. The free row is
+            // only stored for products that are actually free: their form
+            // submits price '0' (a non-empty string), so it survives this
+            // filter; a paid product whose Free field was left blank does not
+            // get a phantom 0.00 row.
+            if ($price === null || $price === '') {
                 continue;
             }
 

@@ -4,6 +4,12 @@
 
 @php
     $cycleLabels = \App\Models\Product::BILLING_CYCLES;
+    // The 'free' cycle is a payment-type marker row; a paid product may
+    // carry a stale 0.00 row from before savePricing stopped writing it —
+    // never show it unless the product is actually free.
+    $pricingRows = ($product->payment_type ?? 'recurring') === 'free'
+        ? $product->pricing
+        : $product->pricing->reject(fn ($row) => $row->billing_cycle === 'free');
     $activeTab = (string) request()->query('tab', 'overview');
     // The Modules tab lists plugin modules only (the provisioning builtins are
     // configured on the Details tab), so count only the links it displays.
@@ -13,7 +19,7 @@
 
     $tabs = [
         ['id' => 'overview', 'label' => 'Overview', 'icon' => 'bi bi-info-circle'],
-        ['id' => 'pricing', 'label' => 'Pricing', 'icon' => 'bi bi-currency-rupee', 'badge' => $product->pricing->count()],
+        ['id' => 'pricing', 'label' => 'Pricing', 'icon' => 'bi bi-currency-rupee', 'badge' => $pricingRows->count()],
         ['id' => 'options', 'label' => 'Options', 'icon' => 'bi bi-sliders', 'badge' => $product->options->count()],
         ['id' => 'addons', 'label' => 'Add-ons', 'icon' => 'bi bi-plus-square', 'badge' => $product->addons->count()],
         ['id' => 'modules', 'label' => 'Modules', 'icon' => 'bi bi-puzzle', 'badge' => $enabledModuleCount],
@@ -71,7 +77,7 @@
 
     {{-- Metric row --}}
     <x-adminlte.partials.metric-cards :items="[
-        ['title' => $product->pricing->count(), 'text' => 'Price Points', 'icon' => 'bi bi-currency-rupee', 'theme' => 'primary'],
+        ['title' => $pricingRows->count(), 'text' => 'Price Points', 'icon' => 'bi bi-currency-rupee', 'theme' => 'primary'],
         ['title' => $product->options->count(), 'text' => 'Option Groups', 'icon' => 'bi bi-sliders', 'theme' => 'warning'],
         ['title' => $product->options->sum(fn ($option) => $option->values->count()), 'text' => 'Option Values', 'icon' => 'bi bi-list-check', 'theme' => 'success'],
         ['title' => $product->addons->count(), 'text' => 'Add-ons', 'icon' => 'bi bi-plus-square', 'theme' => 'info'],
@@ -155,7 +161,7 @@
                             </tr>
                         </thead>
                         <tbody>
-                            @forelse ($product->pricing->sortBy(fn ($row) => array_search($row->billing_cycle, array_keys($cycleLabels), true) ?: 99) as $row)
+                            @forelse ($pricingRows->sortBy(fn ($row) => array_search($row->billing_cycle, array_keys($cycleLabels), true) ?: 99) as $row)
                                 <tr>
                                     <td><strong>{{ $cycleLabels[$row->billing_cycle] ?? ucfirst($row->billing_cycle) }}</strong></td>
                                     <td class="text-end">{{ number_format($row->price, 2) }}</td>
