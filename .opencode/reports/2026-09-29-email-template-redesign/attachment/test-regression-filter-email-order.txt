@@ -1,0 +1,13 @@
+﻿  [32;1mâœ“[39;22m[90m [39m[90mthe sent body carries the password but the logged body does not[39m[90m                                             [39m [90m0.29s[39m  
+  [32;1mâœ“[39;22m[90m [39m[90mthe emails table row is redacted end to end[39m[90m                                                                 [39m [90m0.27s[39m  
+  [32;1mâœ“[39;22m[90m [39m[90mthe products own template wins over the fallback[39m[90m                                                            [39m [90m0.27s[39m  
+  [32;1mâœ“[39;22m[90m [39m[90man inactive product template falls back rather than sending nothing[39m[90m                                         [39m [90m0.29s[39m  
+  [32;1mâœ“[39;22m[90m [39m[90ma template without the placeholder still gets the credentials appended[39m[90m                                      [39m [90m0.28s[39m  
+  [32;1mâœ“[39;22m[90m [39m[90mthe hosting welcome email setting disables it[39m[90m                                                               [39m [90m0.26s[39m  
+  [32;1mâœ“[39;22m[90m [39m[90mno email when provisioning failed[39m[90m                                                                           [39m [90m0.29s[39m  
+  [32;1mâœ“[39;22m[90m [39m[90ma missing template does not break activation[39m[90m                                                                [39m [90m0.31s[39m  
+
+  [90mTests:[39m    [32;1m317 passed[39;22m[90m (1375 assertions)[39m
+  [90mDuration:[39m [39m93.02s[39m
+
+

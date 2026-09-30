@@ -244,9 +244,9 @@ class ServiceSeeder extends Seeder
                 'due_months' => 1,
             ],
             [
-                'username' => 'demoaddon',
-                'domain' => 'demoaddon.test',
-                'product' => 'Demo SSL & Backup Addon',
+                'username' => 'demobiz2',
+                'domain' => 'demobiz2.test',
+                'product' => 'Demo Business Shared Hosting',
                 'server' => 'web01.demo.example',
                 'status' => 'active',
                 'disk_quota' => 20480,

@@ -16,11 +16,11 @@ require "vendor/autoload.php"; $a=require "bootstrap/app.php";
 $a->make("Illuminate\Contracts\Console\Kernel")->bootstrap();
 '"$1"'' | tr -d "\r"; }
 echo ""; echo "== checks =="
-# 1) row minima: products >=8, orders >=10
+# 1) row minima: products >=6, orders >=10
 COUNTS=$(q 'echo json_encode(["p"=>\DB::table("products")->count(),"o"=>\DB::table("orders")->count()]);' | grep -o "{.*}")
 P=$(echo "$COUNTS" | php -r 'echo json_decode(file_get_contents("php://stdin"))->p??0;')
 O=$(echo "$COUNTS" | php -r 'echo json_decode(file_get_contents("php://stdin"))->o??0;')
-[ "${P:-0}" -ge 8 ] && pass "products >=8 (got $P)" || fail "products >=8 (got ${P:-?} raw=$COUNTS)"
+[ "${P:-0}" -ge 6 ] && pass "products >=6 (got $P)" || fail "products >=6 (got ${P:-?} raw=$COUNTS)"
 [ "${O:-0}" -ge 10 ] && pass "orders >=10 (got $O)" || fail "orders >=10 (got ${O:-?})"
 # 2) permissions modules.view / modules.manage exist and granted to admin
 PJ=$(q '

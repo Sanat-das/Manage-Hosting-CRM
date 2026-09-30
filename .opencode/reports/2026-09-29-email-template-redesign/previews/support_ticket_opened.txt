@@ -1,0 +1,13 @@
+Hi Priya Sharma,
+
+Thank you for contacting us. Your support request has been logged and assigned to our team.
+
+  Ticket number : #TKT-2026-00042
+  Subject       : Cannot send mail from my domain
+  Department    : Technical Support
+
+A member of our team will review your request and reply as soon as possible. You can add more information by replying directly to this email, or follow the conversation in your account: https://portal.acme.example
+
+Regards,
+The Acme Cloud Support Team
+Acme Cloud Pvt Ltd · billing@acme.example

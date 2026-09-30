@@ -461,15 +461,21 @@ final class Branding
         // Storage paths — any path containing branding/ or already storage-prefixed.
         if (str_starts_with($path, 'storage/') || str_starts_with($path, 'branding/') || str_contains($path, 'branding/')) {
             try {
+                // Strip leading storage/ prefix — Storage::url() and disk->exists() both expect it.
+                $diskPath = ltrim(preg_replace('#^storage/#', '', $path), '/');
+                // Stored path may outlive the uploaded file (cleanup, manual delete) — fall back to default.
+                if (! Storage::disk('public')->exists($diskPath)) {
+                    return self::asset($fallbackAsset);
+                }
                 // Storage::url() already uses APP_URL, but we want the auto-fetched
                 // base for emails. When the storage URL is relative, prefix with baseUrl().
-                $url = Storage::url(preg_replace('#^storage/#', '', $path));
+                $url = Storage::url($diskPath);
                 // If Storage::url returned a .local URL but we have a public request host, fix it.
                 $base = self::baseUrl();
                 if (str_contains($url, '.local') && !str_contains($base, '.local') && $base !== '') {
                     $url = str_replace(parse_url($url, PHP_URL_HOST) ?? 'managehosting.local', parse_url($base, PHP_URL_HOST) ?? '', $url);
                     // Simpler: replace the base part
-                    $url = $base . '/storage/' . ltrim(preg_replace('#^storage/#', '', $path), '/');
+                    $url = $base . '/storage/' . $diskPath;
                 }
                 return $url;
             } catch (\Throwable) {

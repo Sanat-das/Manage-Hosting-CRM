@@ -106,7 +106,7 @@ class InvoiceSeeder extends Seeder
             'notes' => 'Initial invoice for the onboarding order; awaiting payment.',
             'items' => [
                 ['product' => 'Demo Starter Shared Hosting', 'quantity' => 1, 'gst_type' => 'standard'],
-                ['product' => 'Demo .com Domain Registration', 'quantity' => 1, 'gst_type' => 'exempt'],
+                ['product' => 'Demo Business Shared Hosting', 'quantity' => 1, 'gst_type' => 'standard'],
             ],
         ],
         [
@@ -118,7 +118,7 @@ class InvoiceSeeder extends Seeder
             'notes' => 'Settled by card on the day of issue; loyalty discount applied.',
             'items' => [
                 ['product' => 'Demo Business Shared Hosting', 'quantity' => 1, 'gst_type' => 'standard'],
-                ['product' => 'Demo SSL & Backup Addon', 'quantity' => 1, 'gst_type' => 'standard'],
+                ['product' => 'Demo Cloud VPS 8GB', 'quantity' => 1, 'gst_type' => 'standard'],
             ],
         ],
         [
@@ -130,7 +130,7 @@ class InvoiceSeeder extends Seeder
             'notes' => 'Past due; two dunning reminders sent, suspension pending.',
             'items' => [
                 ['product' => 'Demo Cloud VPS 2GB', 'quantity' => 1, 'gst_type' => 'standard'],
-                ['product' => 'Demo SSL & Backup Addon', 'quantity' => 1, 'gst_type' => 'standard'],
+                ['product' => 'Demo Business Shared Hosting', 'quantity' => 1, 'gst_type' => 'standard'],
             ],
         ],
         [
@@ -142,7 +142,7 @@ class InvoiceSeeder extends Seeder
             'notes' => 'Service already suspended for non-payment; escalated to accounts.',
             'items' => [
                 ['product' => 'Demo Legacy Hosting Pack', 'quantity' => 1, 'gst_type' => 'standard'],
-                ['product' => 'Demo .com Domain Registration', 'quantity' => 1, 'gst_type' => 'exempt'],
+                ['product' => 'Demo Starter Shared Hosting', 'quantity' => 1, 'gst_type' => 'standard'],
             ],
         ],
         [
@@ -151,9 +151,9 @@ class InvoiceSeeder extends Seeder
             'discount' => 0.00,
             'due_days' => -9,
             'gst_enabled' => true,
-            'notes' => 'Annual domain registration paid in full via bank transfer.',
+            'notes' => 'Annual VPS renewal paid in full via bank transfer.',
             'items' => [
-                ['product' => 'Demo .com Domain Registration', 'quantity' => 1, 'gst_type' => 'exempt'],
+                ['product' => 'Demo Cloud VPS 8GB', 'quantity' => 1, 'gst_type' => 'standard'],
                 ['product' => 'Demo Setup & Onboarding Fee', 'quantity' => 1, 'gst_type' => 'standard'],
             ],
         ],
@@ -165,7 +165,7 @@ class InvoiceSeeder extends Seeder
             'gst_enabled' => false,
             'notes' => 'Order cancelled inside the cooling-off window; invoice voided, no GST charged.',
             'items' => [
-                ['product' => 'Demo SSL & Backup Addon', 'quantity' => 1, 'gst_type' => 'exempt'],
+                ['product' => 'Demo Legacy Hosting Pack', 'quantity' => 1, 'gst_type' => 'standard'],
                 ['product' => 'Demo Setup & Onboarding Fee', 'quantity' => 1, 'gst_type' => 'exempt'],
             ],
         ],
@@ -178,7 +178,7 @@ class InvoiceSeeder extends Seeder
             'notes' => 'Customer paid a part amount; balance promised for next week.',
             'items' => [
                 ['product' => 'Demo Cloud VPS 8GB', 'quantity' => 1, 'gst_type' => 'standard'],
-                ['product' => 'Demo SSL & Backup Addon', 'quantity' => 1, 'gst_type' => 'standard'],
+                ['product' => 'Demo Reseller Bronze', 'quantity' => 1, 'gst_type' => 'standard'],
             ],
         ],
         [
@@ -202,7 +202,7 @@ class InvoiceSeeder extends Seeder
             'notes' => 'Draft pro-forma for the hardware refresh; not yet issued to the customer.',
             'items' => [
                 ['product' => 'Demo Dedicated E3 Server', 'quantity' => 1, 'gst_type' => 'standard'],
-                ['product' => 'Demo .com Domain Registration', 'quantity' => 2, 'gst_type' => 'exempt'],
+                ['product' => 'Demo Cloud VPS 8GB', 'quantity' => 2, 'gst_type' => 'standard'],
             ],
         ],
         [

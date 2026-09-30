@@ -114,10 +114,10 @@ class OrderSeeder extends Seeder
             'billing_cycle' => 'monthly',
             'status' => 'pending',
             'domain' => 'northwind.test',
-            'notes' => 'New customer onboarding - domain transfer pending.',
+            'notes' => 'New customer onboarding - starter plan with business hosting.',
             'items' => [
                 ['product_name' => 'Demo Starter Shared Hosting', 'quantity' => 1],
-                ['product_name' => 'Demo .com Domain Registration', 'quantity' => 1],
+                ['product_name' => 'Demo Business Shared Hosting', 'quantity' => 1],
             ],
         ],
         [
@@ -129,7 +129,7 @@ class OrderSeeder extends Seeder
             'notes' => 'Invoice paid; auto-renew enabled.',
             'items' => [
                 ['product_name' => 'Demo Business Shared Hosting', 'quantity' => 1],
-                ['product_name' => 'Demo SSL & Backup Addon', 'quantity' => 1],
+                ['product_name' => 'Demo Cloud VPS 8GB', 'quantity' => 1],
             ],
         ],
         [
@@ -141,7 +141,7 @@ class OrderSeeder extends Seeder
             'notes' => 'OS selected: ubuntu-22.04. Provisioning via Virtualizor.',
             'items' => [
                 ['product_name' => 'Demo Cloud VPS 2GB', 'quantity' => 1],
-                ['product_name' => 'Demo SSL & Backup Addon', 'quantity' => 1],
+                ['product_name' => 'Demo Business Shared Hosting', 'quantity' => 1],
             ],
         ],
         [
@@ -153,29 +153,29 @@ class OrderSeeder extends Seeder
             'notes' => 'Payment overdue 14 days - service suspended per policy.',
             'items' => [
                 ['product_name' => 'Demo Legacy Hosting Pack', 'quantity' => 1],
-                ['product_name' => 'Demo .com Domain Registration', 'quantity' => 1],
+                ['product_name' => 'Demo Starter Shared Hosting', 'quantity' => 1],
             ],
         ],
         [
             'customer_email' => 'client5@example.com',
-            'product_name' => 'Demo .com Domain Registration',
+            'product_name' => 'Demo Cloud VPS 8GB',
             'billing_cycle' => 'annual',
             'status' => 'paid',
             'domain' => 'everline.test',
-            'notes' => 'Domain registration for the .com TLD, 1 year.',
+            'notes' => 'Annual VPS renewal paid in full via bank transfer.',
             'items' => [
-                ['product_name' => 'Demo .com Domain Registration', 'quantity' => 1],
+                ['product_name' => 'Demo Cloud VPS 8GB', 'quantity' => 1],
             ],
         ],
         [
             'customer_email' => 'client1@example.com',
-            'product_name' => 'Demo SSL & Backup Addon',
+            'product_name' => 'Demo Legacy Hosting Pack',
             'billing_cycle' => 'annual',
             'status' => 'cancelled',
             'domain' => null,
             'notes' => 'Cancelled within the cooling-off period, full refund issued.',
             'items' => [
-                ['product_name' => 'Demo SSL & Backup Addon', 'quantity' => 1],
+                ['product_name' => 'Demo Legacy Hosting Pack', 'quantity' => 1],
             ],
         ],
         [
@@ -187,7 +187,7 @@ class OrderSeeder extends Seeder
             'notes' => 'Provisioning failed: insufficient IPs in pool. Retry queued.',
             'items' => [
                 ['product_name' => 'Demo Cloud VPS 8GB', 'quantity' => 1],
-                ['product_name' => 'Demo SSL & Backup Addon', 'quantity' => 1],
+                ['product_name' => 'Demo Reseller Bronze', 'quantity' => 1],
             ],
         ],
         [
@@ -211,7 +211,7 @@ class OrderSeeder extends Seeder
             'notes' => 'Hardware returned to inventory after non-payment.',
             'items' => [
                 ['product_name' => 'Demo Dedicated E3 Server', 'quantity' => 1],
-                ['product_name' => 'Demo .com Domain Registration', 'quantity' => 1],
+                ['product_name' => 'Demo Cloud VPS 8GB', 'quantity' => 1],
             ],
         ],
         [

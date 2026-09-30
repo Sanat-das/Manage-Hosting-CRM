@@ -59,7 +59,7 @@ class QuoteSeeder extends Seeder
             'notes' => 'Accepted by the customer; convert to order on approval.',
             'items' => [
                 ['product' => 'Demo Business Shared Hosting', 'qty' => 2, 'gst_type' => 'standard'],
-                ['product' => 'Demo SSL & Backup Addon', 'qty' => 1, 'gst_type' => 'standard'],
+                ['product' => 'Demo Starter Shared Hosting', 'qty' => 1, 'gst_type' => 'standard'],
             ],
         ],
         [
@@ -72,7 +72,6 @@ class QuoteSeeder extends Seeder
             'items' => [
                 ['product' => 'Demo Cloud VPS 8GB', 'qty' => 2, 'gst_type' => 'standard'],
                 ['product' => 'Demo Cloud VPS 2GB', 'qty' => 1, 'gst_type' => 'standard'],
-                ['product' => 'Demo SSL & Backup Addon', 'qty' => 2, 'gst_type' => 'standard'],
             ],
         ],
         [
@@ -89,14 +88,14 @@ class QuoteSeeder extends Seeder
         ],
         [
             'quote_no' => 'DEMO-QT-2026-0004',
-            'subject' => 'Dedicated server refresh with domain renewals',
+            'subject' => 'Dedicated server refresh',
             'stage' => 'delivered',
             'discount' => 500.00,
             'valid_until_days' => 45,
-            'notes' => 'Hardware refresh proposal including a two-year domain renewal.',
+            'notes' => 'Hardware refresh proposal with managed business hosting.',
             'items' => [
                 ['product' => 'Demo Dedicated E3 Server', 'qty' => 1, 'gst_type' => 'standard'],
-                ['product' => 'Demo .com Domain Registration', 'qty' => 2, 'gst_type' => 'exempt'],
+                ['product' => 'Demo Business Shared Hosting', 'qty' => 2, 'gst_type' => 'standard'],
             ],
         ],
         [

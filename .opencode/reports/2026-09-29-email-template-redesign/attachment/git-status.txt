@@ -1,0 +1,10 @@
+﻿ M app/Services/Concerns/BuildsEmailVariables.php
+ M app/Services/InvoiceEmailService.php
+ M app/Services/Provisioning/WelcomeMailer.php
+ M app/Services/TicketMailService.php
+ M database/migrations/2026_09_15_000005_backfill_chat_transcript_email_template.php
+ M database/seeders/Demo/NotificationEmailSeeder.php
+ M database/seeders/EmailTemplateSeeder.php
+?? .opencode/reports/2026-09-29-email-template-redesign/
+?? tests/Feature/InvoiceEmailAttachmentTest.php
+

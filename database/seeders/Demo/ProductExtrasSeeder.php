@@ -11,13 +11,14 @@ use RuntimeException;
  * Demo product extras.
  *
  * Seeds, idempotently:
- *   product_addons          8 addons attached to demo products
+ *   product_addons          7 addons attached to demo products
  *   product_upgrades        3 directed upgrade rows (upgrade_type enum)
  *   product_upgrade_paths   3 upgrade path configs (enabled flag)
- *   product_bundles         3 bundle-component links
- *   catalog_products        8 catalog entries (unique SKU)
- *   product_resources       16 resource allocations (2 per product × 8)
- *   product_quota_summary   8 quota summaries (1 per product)
+ *   product_bundles         0 — every bundle referenced a removed domain/SSL
+ *                           demo product, so the block was deleted outright
+ *   catalog_products        6 catalog entries (unique SKU)
+ *   product_resources       12 resource allocations (2 per product × 6)
+ *   product_quota_summary   7 quota summaries (1 per product)
  *
  * ENUM VALUES ARE TAKEN FROM THE MIGRATIONS, NOT GUESSED
  * -----------------------------------------------------
@@ -82,8 +83,6 @@ class ProductExtrasSeeder extends Seeder
         'Demo Cloud VPS 2GB',
         'Demo Cloud VPS 8GB',
         'Demo Dedicated E3 Server',
-        'Demo .com Domain Registration',
-        'Demo SSL & Backup Addon',
         'Demo Legacy Hosting Pack',
     ];
 
@@ -97,8 +96,6 @@ class ProductExtrasSeeder extends Seeder
         'reseller' => 'reseller-hosting',
         'vps' => 'vps-hosting',
         'dedicated' => 'dedicated-servers',
-        'domain' => 'domain-registration',
-        'addon' => 'addons-extras',
     ];
 
     public function run(): void
@@ -110,7 +107,6 @@ class ProductExtrasSeeder extends Seeder
         $this->seedAddons($products);
         $this->seedUpgrades($products);
         $this->seedUpgradePaths($products);
-        $this->seedBundles($products);
         $this->seedCatalogProducts($groups);
         $this->seedProductResources($products, $resourceTypes);
         $this->seedQuotaSummaries($products);
@@ -160,7 +156,7 @@ class ProductExtrasSeeder extends Seeder
     }
 
     // ------------------------------------------------------------------
-    // product_addons (>= 8)
+    // product_addons (>= 7)
     // ------------------------------------------------------------------
 
     /**
@@ -226,16 +222,6 @@ class ProductExtrasSeeder extends Seeder
                 'billing_cycle' => 'monthly',
                 'setup_fee' => 0.00,
                 'price' => 1499.00,
-                'welcome_email_template_id' => null,
-                'status' => 'active',
-            ],
-            [
-                'product_id' => $products['Demo SSL & Backup Addon'],
-                'name' => 'Extended Backup Retention',
-                'description' => 'Extend offsite backup retention from 30 to 90 days.',
-                'billing_cycle' => 'monthly',
-                'setup_fee' => 0.00,
-                'price' => 299.00,
                 'welcome_email_template_id' => null,
                 'status' => 'active',
             ],
@@ -318,46 +304,7 @@ class ProductExtrasSeeder extends Seeder
     }
 
     // ------------------------------------------------------------------
-    // product_bundles (>= 3)
-    // ------------------------------------------------------------------
-
-    /**
-     * @param  array<string, int>  $products
-     */
-    private function seedBundles(array $products): void
-    {
-        $rows = [
-            [
-                'bundle_product_id' => $products['Demo Starter Shared Hosting'],
-                'component_product_id' => $products['Demo .com Domain Registration'],
-                'quantity' => 1,
-                'discount_type' => 'percent',
-                'discount_value' => 100.00,
-                'sort_order' => 1,
-            ],
-            [
-                'bundle_product_id' => $products['Demo Business Shared Hosting'],
-                'component_product_id' => $products['Demo SSL & Backup Addon'],
-                'quantity' => 1,
-                'discount_type' => 'fixed',
-                'discount_value' => 1499.00,
-                'sort_order' => 1,
-            ],
-            [
-                'bundle_product_id' => $products['Demo Cloud VPS 8GB'],
-                'component_product_id' => $products['Demo .com Domain Registration'],
-                'quantity' => 1,
-                'discount_type' => 'percent',
-                'discount_value' => 50.00,
-                'sort_order' => 1,
-            ],
-        ];
-
-        $this->seedRows('product_bundles', $rows);
-    }
-
-    // ------------------------------------------------------------------
-    // catalog_products (>= 8)
+    // catalog_products (>= 6)
     // ------------------------------------------------------------------
 
     /**
@@ -372,8 +319,6 @@ class ProductExtrasSeeder extends Seeder
             ['sku' => 'DEMO-CAT-004', 'name' => 'Demo Cloud VPS 2GB', 'product_type' => 'vps', 'provisioning_method' => 'virtualizor', 'billing_model' => 'recurring', 'require_domain' => false, 'show_in_order' => true, 'only_admin' => false, 'sort_order' => 40, 'status' => 'active', 'version' => 1, 'category_slug' => 'vps-hosting'],
             ['sku' => 'DEMO-CAT-005', 'name' => 'Demo Cloud VPS 8GB', 'product_type' => 'vps', 'provisioning_method' => 'virtualizor', 'billing_model' => 'recurring', 'require_domain' => false, 'show_in_order' => true, 'only_admin' => false, 'sort_order' => 50, 'status' => 'active', 'version' => 1, 'category_slug' => 'vps-hosting'],
             ['sku' => 'DEMO-CAT-006', 'name' => 'Demo Dedicated E3 Server', 'product_type' => 'dedicated', 'provisioning_method' => 'custom_script', 'billing_model' => 'recurring', 'require_domain' => false, 'show_in_order' => true, 'only_admin' => false, 'sort_order' => 60, 'status' => 'active', 'version' => 1, 'category_slug' => 'dedicated-servers'],
-            ['sku' => 'DEMO-CAT-007', 'name' => 'Demo .com Domain', 'product_type' => 'domain', 'provisioning_method' => 'manual', 'billing_model' => 'one_time', 'require_domain' => true, 'show_in_order' => true, 'only_admin' => false, 'sort_order' => 70, 'status' => 'active', 'version' => 1, 'category_slug' => 'domain-registration'],
-            ['sku' => 'DEMO-CAT-008', 'name' => 'Demo SSL & Backup Addon', 'product_type' => 'addon', 'provisioning_method' => 'manual', 'billing_model' => 'one_time', 'require_domain' => true, 'show_in_order' => true, 'only_admin' => false, 'sort_order' => 80, 'status' => 'active', 'version' => 1, 'category_slug' => 'addons-extras'],
         ];
 
         $rows = [];
@@ -393,7 +338,7 @@ class ProductExtrasSeeder extends Seeder
     }
 
     // ------------------------------------------------------------------
-    // product_resources (>= 16) — 2 per product × 8 products
+    // product_resources (>= 12) — 2 per product × 6 products
     // ------------------------------------------------------------------
 
     /**
@@ -427,14 +372,6 @@ class ProductExtrasSeeder extends Seeder
                 ['slug' => 'cpu_core', 'quantity' => 8.0000, 'is_required' => true, 'is_upgradable' => false, 'min' => 8.0000, 'max' => 8.0000],
                 ['slug' => 'ram', 'quantity' => 32768.0000, 'is_required' => true, 'is_upgradable' => false, 'min' => 32768.0000, 'max' => 32768.0000],
             ]],
-            ['name' => 'Demo .com Domain Registration', 'resources' => [
-                ['slug' => 'domains', 'quantity' => 1.0000, 'is_required' => true, 'is_upgradable' => false, 'min' => 1.0000, 'max' => 1.0000],
-                ['slug' => 'email_accounts', 'quantity' => 0.0000, 'is_required' => false, 'is_upgradable' => true, 'min' => 0.0000, 'max' => 100.0000],
-            ]],
-            ['name' => 'Demo SSL & Backup Addon', 'resources' => [
-                ['slug' => 'ssl_certificates', 'quantity' => 1.0000, 'is_required' => true, 'is_upgradable' => false, 'min' => 1.0000, 'max' => 1.0000],
-                ['slug' => 'backup_storage', 'quantity' => 10240.0000, 'is_required' => true, 'is_upgradable' => true, 'min' => 5120.0000, 'max' => 51200.0000],
-            ]],
         ];
 
         $rows = [];
@@ -459,7 +396,7 @@ class ProductExtrasSeeder extends Seeder
     }
 
     // ------------------------------------------------------------------
-    // product_quota_summary (>= 8) — NO id, NO created_at
+    // product_quota_summary (>= 7) — NO id, NO created_at
     // ------------------------------------------------------------------
 
     /**
@@ -477,8 +414,6 @@ class ProductExtrasSeeder extends Seeder
             'Demo Cloud VPS 2GB' => ['disk_mb' => 51200, 'bandwidth_mb' => 2048000, 'email_accounts' => 0, 'databases' => 0, 'cpu_cores' => 2, 'cpu_mhz' => 2600, 'ram_mb' => 2048, 'ips' => 1, 'ftp_accounts' => 0, 'subdomains' => 0],
             'Demo Cloud VPS 8GB' => ['disk_mb' => 204800, 'bandwidth_mb' => 5120000, 'email_accounts' => 0, 'databases' => 0, 'cpu_cores' => 4, 'cpu_mhz' => 3200, 'ram_mb' => 8192, 'ips' => 2, 'ftp_accounts' => 0, 'subdomains' => 0],
             'Demo Dedicated E3 Server' => ['disk_mb' => 1048576, 'bandwidth_mb' => 10240000, 'email_accounts' => 0, 'databases' => 0, 'cpu_cores' => 8, 'cpu_mhz' => 3400, 'ram_mb' => 32768, 'ips' => 5, 'ftp_accounts' => 0, 'subdomains' => 0],
-            'Demo .com Domain Registration' => ['disk_mb' => 0, 'bandwidth_mb' => 0, 'email_accounts' => 0, 'databases' => 0, 'cpu_cores' => 0, 'cpu_mhz' => 0, 'ram_mb' => 0, 'ips' => 0, 'ftp_accounts' => 0, 'subdomains' => 0],
-            'Demo SSL & Backup Addon' => ['disk_mb' => 10240, 'bandwidth_mb' => 0, 'email_accounts' => 0, 'databases' => 0, 'cpu_cores' => 0, 'cpu_mhz' => 0, 'ram_mb' => 0, 'ips' => 0, 'ftp_accounts' => 0, 'subdomains' => 0],
             'Demo Legacy Hosting Pack' => ['disk_mb' => 20480, 'bandwidth_mb' => 204800, 'email_accounts' => 25, 'databases' => 10, 'cpu_cores' => 1, 'cpu_mhz' => 1200, 'ram_mb' => 1024, 'ips' => 0, 'ftp_accounts' => 5, 'subdomains' => 20],
         ];
 

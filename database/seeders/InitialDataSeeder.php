@@ -31,8 +31,6 @@ class InitialDataSeeder extends Seeder
             ['name' => 'Reseller Hosting', 'slug' => 'reseller-hosting', 'description' => 'Reseller hosting plans', 'sort_order' => 2, 'status' => 'active', 'is_hosting' => true, 'created_at' => now(), 'updated_at' => now()],
             ['name' => 'VPS Hosting', 'slug' => 'vps-hosting', 'description' => 'Virtual Private Server plans', 'sort_order' => 3, 'status' => 'active', 'is_hosting' => true, 'created_at' => now(), 'updated_at' => now()],
             ['name' => 'Dedicated Servers', 'slug' => 'dedicated-servers', 'description' => 'Dedicated server plans', 'sort_order' => 4, 'status' => 'active', 'is_hosting' => true, 'created_at' => now(), 'updated_at' => now()],
-            ['name' => 'Domain Registration', 'slug' => 'domain-registration', 'description' => 'Domain name registration and transfer', 'sort_order' => 5, 'status' => 'active', 'is_hosting' => false, 'created_at' => now(), 'updated_at' => now()],
-            ['name' => 'Addons & Extras', 'slug' => 'addons-extras', 'description' => 'Product addons and extras', 'sort_order' => 6, 'status' => 'active', 'is_hosting' => false, 'created_at' => now(), 'updated_at' => now()],
         ];
 
         foreach ($productGroups as $row) {

@@ -14,7 +14,7 @@ namespace Database\Seeders\Demo;
  *
  * PROFILE: "modest"
  * -----------------
- * Anchors: 5 customers, 8 products. Every leaf/child table carries 1-3 rows
+ * Anchors: 5 customers, 6 products. Every leaf/child table carries 1-3 rows
  * per owning parent, so totals stay small enough to seed in seconds while
  * still exercising every relationship, pivot and log table in the schema.
  *
@@ -42,7 +42,7 @@ final class DummyDataConfig
     public const CUSTOMERS = 5;
 
     /** Number of demo products in the catalog (the secondary fan-out anchor). */
-    public const PRODUCTS = 8;
+    public const PRODUCTS = 6;
 
     /** Total application tables the demo seed must populate. */
     public const TOTAL_BUSINESS_TABLES = 99;
@@ -95,27 +95,29 @@ final class DummyDataConfig
         'marketing_consent_log' => 10,
 
         // --- Product catalog (17) -------------------------------------
-        // 8 products; 2 pricing rows + 2 meta rows + 2 resources each.
+        // 6 catalog products + 1 legacy hosting pack (7 products); 2-3
+        // pricing rows + 2 meta rows each; 2 resources on the 6 catalog
+        // products only (the legacy pack has none).
         'products' => self::PRODUCTS,
-        'product_groups' => 6,
-        'product_pricing' => 16,
-        'product_meta' => 16,
-        'product_addons' => 8,
+        'product_groups' => 4,
+        'product_pricing' => 19,
+        'product_meta' => 14,
+        'product_addons' => 7,
         'product_option_groups' => 4,
-        'product_option_group_product' => 27,
+        'product_option_group_product' => 22,
         'product_option_values' => 8,
         'product_option_pricing' => 16,
         // Product-options snapshot: 1 pivot per attached group; 2 link values
         // per pivot; each link value mirrors the source value's per-cycle
         // pricing (2-3 cycles each).
-        'product_option_link_values' => 56,
-        'product_option_link_value_pricing' => 160,
-        'product_resources' => 16,
-        'product_quota_summary' => 8,
-        'product_bundles' => 3,
+        'product_option_link_values' => 44,
+        'product_option_link_value_pricing' => 84,
+        'product_resources' => 12,
+        'product_quota_summary' => 7,
+        'product_bundles' => 0,
         'product_upgrade_paths' => 3,
         'product_upgrades' => 3,
-        'catalog_products' => 8,
+        'catalog_products' => 6,
 
         // --- Sales & billing (11) -------------------------------------
         // 2 orders per customer; each order yields an invoice and line items.

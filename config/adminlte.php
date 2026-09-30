@@ -442,6 +442,12 @@ return [
             'can' => 'settings.view',
         ],
         [
+            'text' => 'Email Logs',
+            'route' => 'admin.email-logs.index',
+            'icon' => 'bi bi-envelope-open',
+            'can' => 'email.view',
+        ],
+        [
             'text' => 'Settings',
             'route' => 'admin.settings.index',
             'icon' => 'bi bi-gear',

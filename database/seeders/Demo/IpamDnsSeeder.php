@@ -537,7 +537,7 @@ class IpamDnsSeeder extends Seeder
             ['name' => 'demolab.test', 'customer' => 4, 'type' => 'register', 'status' => 'suspended', 'registrar' => 'openprovider', 'years' => 1, 'age' => 330, 'privacy' => false, 'auto_renew' => false, 'amount' => '899.00'],
             ['name' => 'demoarchive.test', 'customer' => 0, 'type' => 'existing', 'status' => 'expired', 'registrar' => 'resellerclub', 'years' => 1, 'age' => 420, 'privacy' => false, 'auto_renew' => false, 'amount' => '899.00'],
             ['name' => 'demodedi.test', 'customer' => 1, 'type' => 'register', 'status' => 'active', 'registrar' => 'cloudflare', 'years' => 5, 'age' => 700, 'privacy' => true, 'auto_renew' => true, 'amount' => '3999.00'],
-            ['name' => 'demoaddon.test', 'customer' => 2, 'type' => 'transfer', 'status' => 'pending_transfer', 'registrar' => 'openprovider', 'years' => 1, 'age' => 10, 'privacy' => false, 'auto_renew' => true, 'amount' => '1299.00'],
+            ['name' => 'demobiz2.test', 'customer' => 2, 'type' => 'transfer', 'status' => 'pending_transfer', 'registrar' => 'openprovider', 'years' => 1, 'age' => 10, 'privacy' => false, 'auto_renew' => true, 'amount' => '1299.00'],
         ];
 
         foreach ($plan as $index => $row) {

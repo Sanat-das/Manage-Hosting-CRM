@@ -11,10 +11,10 @@ use RuntimeException;
  * Demo product catalog.
  *
  * Seeds, idempotently:
- *   product_groups          reuses the six groups InitialDataSeeder owns
+ *   product_groups          reuses the four groups InitialDataSeeder owns
  *                           (matched on `slug`), creating them only if absent
  *   products                DummyDataConfig::PRODUCTS demo products spread
- *                           across all six product groups (is_bundle=false)
+ *                           across all four product groups (is_bundle=false)
  *   product_pricing         2-3 billing cycles per product
  *   product_option_groups   shared option groups (matched on `name`), linked
  *                           to products through the product_option_group_product
@@ -67,8 +67,6 @@ class ProductSeeder extends Seeder
         ['slug' => 'reseller-hosting', 'name' => 'Reseller Hosting', 'description' => 'White label reseller packages.', 'sort_order' => 2, 'is_hosting' => true],
         ['slug' => 'vps-hosting', 'name' => 'VPS Hosting', 'description' => 'Virtual private servers with dedicated resources.', 'sort_order' => 3, 'is_hosting' => true],
         ['slug' => 'dedicated-servers', 'name' => 'Dedicated Servers', 'description' => 'Single tenant bare metal servers.', 'sort_order' => 4, 'is_hosting' => true],
-        ['slug' => 'domain-registration', 'name' => 'Domain Registration', 'description' => 'TLD registration, transfer and renewal.', 'sort_order' => 5, 'is_hosting' => false],
-        ['slug' => 'addons-extras', 'name' => 'Addons & Extras', 'description' => 'SSL, backups, licences and other add-ons.', 'sort_order' => 6, 'is_hosting' => false],
     ];
 
     public function run(): void
@@ -489,32 +487,6 @@ class ProductSeeder extends Seeder
                 'sort_order' => 60,
                 'pricing' => ['monthly' => 8999.00, 'annual' => 89999.00],
                 'meta' => ['rack_location' => 'BOM1 / R12', 'ipmi' => 'included'],
-            ],
-            [
-                'name' => 'Demo .com Domain Registration',
-                'group' => 'domain-registration',
-                'description' => 'One year .com registration including free WHOIS privacy.',
-                'price' => 899.00,
-                'default_cycle' => 'annual',
-                'setup_fee' => 0.00,
-                'provisioning_module' => 'manual',
-                'require_domain' => true,
-                'sort_order' => 70,
-                'pricing' => ['annual' => 899.00, 'biennial' => 1699.00],
-                'meta' => ['tld' => '.com', 'whois_privacy' => 'free'],
-            ],
-            [
-                'name' => 'Demo SSL & Backup Addon',
-                'group' => 'addons-extras',
-                'description' => 'Positive SSL certificate bundled with offsite daily backups.',
-                'price' => 1499.00,
-                'default_cycle' => 'annual',
-                'setup_fee' => 0.00,
-                'provisioning_module' => 'manual',
-                'require_domain' => true,
-                'sort_order' => 80,
-                'pricing' => ['annual' => 1499.00, 'one_time' => 1999.00],
-                'meta' => ['certificate_authority' => 'Sectigo', 'backup_retention_days' => '30'],
             ],
             [
                 'name' => 'Demo Legacy Hosting Pack',

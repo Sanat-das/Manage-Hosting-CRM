@@ -1,0 +1,13 @@
+Hi Priya Sharma,
+
+There is a new reply on your support ticket.
+
+  Ticket number : #TKT-2026-00042
+  Subject       : Cannot send mail from my domain
+  Department    : Technical Support
+
+You can continue the conversation by replying directly to this email, or read the full thread in your account: https://portal.acme.example
+
+Regards,
+The Acme Cloud Support Team
+Acme Cloud Pvt Ltd · billing@acme.example
