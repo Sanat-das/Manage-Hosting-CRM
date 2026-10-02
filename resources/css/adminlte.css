@@ -52,6 +52,14 @@
     --bs-link-hover-color: var(--color-primary-hover);
 }
 
+/* ── Bootstrap collapse — override Tailwind Preflight visibility conflict ──
+   Tailwind Preflight sets `visibility: collapse` on .collapse, which hides
+   the content even when Bootstrap adds .show (display: block). Force
+   visible on expanded collapses. */
+.collapse { visibility: visible; }
+.collapse.show { visibility: visible; }
+.collapsing { visibility: visible; }
+
 /* ── Global type scale — compact enterprise (overrides Bootstrap/AdminLTE 2.5rem h1) */
 h1, .h1 { font-size: var(--text-2xl) !important; line-height: var(--leading-tight); font-weight: 600; letter-spacing: var(--tracking-tight); }
 h2, .h2 { font-size: var(--text-xl) !important; line-height: var(--leading-tight); font-weight: 600; letter-spacing: var(--tracking-tight); }
@@ -422,7 +430,7 @@ body.grid-is-resizing {
 .grid-pagination .pagination .page-item.active .page-link {
     background: var(--color-primary);
     border-color: var(--color-primary);
-    color: #fff;
+    color: var(--color-neutral-0);
     box-shadow: 0 1px 2px color-mix(in srgb, var(--color-primary) 22%, transparent);
 }
 .grid-pagination .pagination .page-item.disabled .page-link {
@@ -538,8 +546,8 @@ body.grid-is-resizing {
     padding-block: var(--space-2);
     font-size: var(--text-sm);
     font-weight: 500;
-    background: color-mix(in srgb, #000 8%, transparent);
-    border-top: 1px solid color-mix(in srgb, #fff 10%, transparent);
+    background: color-mix(in srgb, var(--color-neutral-950) 8%, transparent);
+    border-top: 1px solid color-mix(in srgb, var(--color-neutral-0) 10%, transparent);
 }
 .mh-metric-row {
     --bs-gutter-x: var(--space-4);
@@ -1131,7 +1139,7 @@ textarea.form-control { min-height: 76px; resize: vertical; line-height: var(--l
 }
 .theme-switch__btn.active {
     background: var(--color-primary);
-    color: #fff;
+    color: var(--color-neutral-0);
 }
 .theme-switch__btn:focus-visible {
     outline: 2px solid var(--color-focus-ring);

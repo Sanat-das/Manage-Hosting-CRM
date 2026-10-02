@@ -115,6 +115,16 @@
                     @endif
                 </button>
             </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link {{ $activeTab === 'upgrade-paths' ? 'active' : '' }}" id="edit-tab-upgrade-paths"
+                        data-bs-toggle="tab" data-bs-target="#edit-pane-upgrade-paths" type="button" role="tab"
+                        aria-controls="edit-pane-upgrade-paths" aria-selected="{{ $activeTab === 'upgrade-paths' ? 'true' : 'false' }}">
+                    <i class="bi bi-arrow-repeat me-1"></i> Upgrade Paths
+                    @if (($upgradePaths->count() ?? 0) > 0)
+                        <span class="badge text-bg-secondary ms-1">{{ $upgradePaths->count() }}</span>
+                    @endif
+                </button>
+            </li>
         </ul>
 
         <div class="tab-content">
@@ -380,6 +390,96 @@
             </div>
         </div>
     </x-adminlte.partials.form-card>
+
+    {{-- Upgrade Paths: a separate card rendered AFTER the update form closes.
+         Paths are their own entity with their own add/remove forms, so nesting
+         them inside the single product form would produce invalid nested-form
+         HTML and hijack the header Save button. Bootstrap toggles this pane by
+         id from its tab button; the .tab-content wrapper is what hides it
+         while another tab is active (.tab-content > .tab-pane { display:none }). --}}
+    @php
+        $directionLabels = ['upgrade' => 'Upgrade', 'downgrade' => 'Downgrade', 'both' => 'Both'];
+        $directionBadges = ['upgrade' => 'text-bg-primary', 'downgrade' => 'text-bg-warning', 'both' => 'text-bg-info'];
+        $upgradeColumns = [
+            [
+                'key' => 'upgrade',
+                'heading' => 'Upgrade products',
+                'empty' => 'No upgrade targets configured.',
+                'addLabel' => 'Add an upgrade target',
+                'defaultDirection' => 'upgrade',
+                'paths' => $upgradePaths->whereIn('direction', ['upgrade', 'both']),
+            ],
+            [
+                'key' => 'downgrade',
+                'heading' => 'Downgrade products',
+                'empty' => 'No downgrade targets configured.',
+                'addLabel' => 'Add a downgrade target',
+                'defaultDirection' => 'downgrade',
+                'paths' => $upgradePaths->whereIn('direction', ['downgrade', 'both']),
+            ],
+        ];
+    @endphp
+    <div class="tab-content">
+        <div class="tab-pane fade {{ $activeTab === 'upgrade-paths' ? 'show active' : '' }}"
+             id="edit-pane-upgrade-paths" role="tabpanel" aria-labelledby="edit-tab-upgrade-paths">
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="card-title"><i class="bi bi-arrow-repeat me-1" aria-hidden="true"></i> Upgrade Paths</h3>
+                    <div class="card-tools">
+                        <span class="text-muted small">Which products this one may upgrade or downgrade to.</span>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        @foreach ($upgradeColumns as $column)
+                            <div class="col-md-6" data-upgrade-column="{{ $column['key'] }}">
+                                <h4 class="h6 text-uppercase text-muted mb-2">{{ $column['heading'] }}</h4>
+
+                                <ul class="list-group list-group-flush mb-3" data-upgrade-list="{{ $column['key'] }}">
+                                    @forelse ($column['paths'] as $path)
+                                        <li class="list-group-item d-flex justify-content-between align-items-center px-0">
+                                            <span>
+                                                {{ $path->toProduct?->name ?? '—' }}
+                                                <span class="badge {{ $directionBadges[$path->direction] ?? 'text-bg-secondary' }} ms-1">{{ $directionLabels[$path->direction] ?? $path->direction }}</span>
+                                            </span>
+                                            <form method="POST" action="{{ route('admin.products.upgrade-paths.destroy', [$product, $path]) }}" class="d-inline">
+                                                @csrf
+                                                @method('DELETE')
+                                                <button type="submit" class="btn btn-sm btn-outline-danger btn-icon" title="Remove" aria-label="Remove {{ $path->toProduct?->name }}">
+                                                    <i class="bi bi-x-lg" aria-hidden="true"></i>
+                                                </button>
+                                            </form>
+                                        </li>
+                                    @empty
+                                        <li class="list-group-item px-0 text-muted">{{ $column['empty'] }}</li>
+                                    @endforelse
+                                </ul>
+
+                                <form method="POST" action="{{ route('admin.products.upgrade-paths.store', $product) }}" class="row g-2 align-items-end">
+                                    @csrf
+                                    <input type="hidden" name="direction" value="{{ $column['key'] }}">
+                                    <div class="col-12">
+                                        <label class="form-label small text-muted mb-1" for="upgrade-target-{{ $column['key'] }}">{{ $column['addLabel'] }}</label>
+                                        <select name="to_product_id" id="upgrade-target-{{ $column['key'] }}" class="form-select form-select-sm" required>
+                                            <option value="">— Select product —</option>
+                                            @foreach ($upgradeTargets as $target)
+                                                <option value="{{ $target->id }}">{{ $target->name }}</option>
+                                            @endforeach
+                                        </select>
+                                    </div>
+                                    <div class="col-12">
+                                        <button type="submit" class="btn btn-sm btn-primary">
+                                            <i class="bi bi-plus-lg me-1" aria-hidden="true"></i> Add
+                                        </button>
+                                    </div>
+                                </form>
+                            </div>
+                        @endforeach
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 
     {{-- Per-link action forms (sync) and detach confirm modals: separate from
          the update form, referenced from the option cards via form= / modal

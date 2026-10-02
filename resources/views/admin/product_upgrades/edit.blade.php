@@ -29,6 +29,15 @@
                 </x-adminlte-select>
             </div>
         </div>
+        <div class="row">
+            <div class="col-md-6">
+                <x-adminlte-select name="direction" label="Direction" enable-old-support required>
+                    @foreach ($directions as $value => $label)
+                        <option value="{{ $value }}" @selected(old('direction', $path->direction) === $value)>{{ $label }}</option>
+                    @endforeach
+                </x-adminlte-select>
+            </div>
+        </div>
         <x-adminlte-input-switch name="enabled" label="Enabled" :checked="old('enabled', $path->enabled) === true || old('enabled', $path->enabled) === '1' || old('enabled', $path->enabled) === 1" />
     </x-adminlte.partials.form-card>
 @stop

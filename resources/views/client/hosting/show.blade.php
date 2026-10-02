@@ -201,6 +201,18 @@
                 $clientShowReset = $isCompute || $clientCanReset;
             @endphp
             <x-adminlte-card icon="bi bi-tools" title="Quick Actions">
+                @php
+                    // Upgrade/Downgrade: only for an active recurring order on a
+                    // product with enabled upgrade paths (mirrors the controller's
+                    // eligibility — the upgrade page itself 404s otherwise).
+                    $upgradeOrder = $account->order ?? null;
+                    $upgradeEligible = $upgradeOrder !== null
+                        && $upgradeOrder->status === \App\Models\Order::STATUS_ACTIVE
+                        && (\App\Models\Order::CYCLE_MONTHS[(string) $upgradeOrder->billing_cycle] ?? 0) > 0
+                        && (bool) \App\Support\AppSettings::get('product_enable_upgrades', '1')
+                        && $account->product !== null
+                        && $account->product->upgradeableTo()->whereHas('toProduct', fn ($q) => $q->where('status', 'active'))->exists();
+                @endphp
                 @if ($isCompute)
                     {{-- Standalone progress panel for queued power/reset actions.
                          The provisioning-card panel only exists while no VM is
@@ -256,6 +268,11 @@
                     ><i class="bi bi-key me-1"></i> Reset Administrator password</button>
                 @elseif (! $isCompute)
                     <button type="button" class="btn btn-outline-info w-100 mb-2" disabled aria-disabled="true" title="Coming soon"><i class="bi bi-key me-1" aria-hidden="true"></i> Change Password</button>
+                @endif
+                @if ($upgradeEligible)
+                    <a href="{{ route('client.hosting.upgrade', $upgradeOrder) }}" class="btn btn-outline-primary w-100">
+                        <i class="bi bi-arrow-up-circle me-1"></i> Upgrade/Downgrade
+                    </a>
                 @endif
             </x-adminlte-card>
 

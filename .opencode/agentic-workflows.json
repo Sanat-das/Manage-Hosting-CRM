@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "generatedAt": "2026-09-27",
+  "generatedAt": "2026-10-01",
   "generatedBy": "workflow reconciliation + hardening pass executed by build",
   "project": {
     "label": "ManageHostingCRM",
@@ -46,7 +46,7 @@
       "role": "orchestrator",
       "description": "Default coding orchestrator — runs workflow commands, delegates to explore/general, verifies results.",
       "file": "~/.config/opencode/agents/build.md",
-      "model": "opencode-go/deepseek-v4.1-flash#max",
+      "model": "opencode-go/deepseek-v4-flash#max",
       "tools": "opencode-default-full"
     },
     {
@@ -55,7 +55,7 @@
       "role": "planner",
       "description": "Read-only planner for complex work (>3 files, migrations, auth/billing/permission changes).",
       "file": "~/.config/opencode/agents/plan.md",
-      "model": "opencode-go/deepseek-v4.1-flash#max",
+      "model": "opencode-go/deepseek-v4-flash#max",
       "tools": "builtin-read-only-no-edits"
     },
     {
@@ -73,8 +73,17 @@
       "role": "parallel-work-unit",
       "description": "General-purpose subagent for multi-step work units and parallel slices.",
       "file": "~/.config/opencode/agents/general.md",
-      "model": "opencode-go/muse-spark-1.3-contributor#xhigh",
+      "model": "opencode-go/deepseek-v4-flash",
       "tools": "opencode-default-full"
+    },
+    {
+      "name": "verify",
+      "mode": "subagent",
+      "role": "adversarial-verifier",
+      "description": "Adversarial verifier — runs the gate ladder (build, typecheck, lint, tests) against a finished change and tries to falsify it. Read-only; every finding carries path:line and a reproduction.",
+      "file": "~/.config/opencode/agents/verify.md",
+      "model": "opencode-go/deepseek-v4-flash#max",
+      "tools": "read-only-edit-denied"
     }
   ],
   "skills": {
@@ -136,7 +145,7 @@
         "command": "codegraph serve --mcp",
         "enabled": true,
         "class": "prod",
-        "config": "app/opencode.jsonc",
+        "config": "opencode.jsonc",
         "use": "First stop for code questions in this repo; loads only when the session runs in the repo directory; read-only exploration.",
         "observed": "MCP tool codegraph_explore + shell 'codegraph explore'; .codegraph/ index present; binary on PATH (codegraph.cmd)"
       },

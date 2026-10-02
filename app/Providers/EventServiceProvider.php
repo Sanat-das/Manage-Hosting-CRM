@@ -14,12 +14,13 @@ use App\Events\TicketCreated;
 use App\Events\TicketReply;
 use App\Events\TicketTransferred;
 use App\Listeners\AdvanceOrderOnPayment;
+use App\Listeners\ApplyUpgradeOnInvoicePaid;
 use App\Listeners\LogCustomerLifecycle;
+use App\Listeners\RecordScheduledTaskRun;
 use App\Listeners\SendDomainExpiringNotification;
 use App\Listeners\SendInvoiceOverdueNotification;
 use App\Listeners\SendOrderCreatedNotification;
 use App\Listeners\SendOrderPaidNotification;
-use App\Listeners\RecordScheduledTaskRun;
 use App\Listeners\SendTicketCreatedNotification;
 use App\Listeners\SendTicketReplyNotification;
 use App\Listeners\SendTicketTransferredNotification;
@@ -57,6 +58,7 @@ class EventServiceProvider extends ServiceProvider
         ],
         InvoicePaid::class => [
             AdvanceOrderOnPayment::class,
+            ApplyUpgradeOnInvoicePaid::class,
         ],
         OrderCreated::class => [
             SendOrderCreatedNotification::class,

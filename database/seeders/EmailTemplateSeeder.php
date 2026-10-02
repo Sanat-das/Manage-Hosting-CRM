@@ -969,6 +969,193 @@ BODY,
 </html>
 BODY,
         ],
+
+        // ── Product upgrades ──────────────────────────────────────────────
+        // Sent by UpgradeEmailService on the upgrade lifecycle events.
+        // HTML, like order_confirmation and invoice_created: the send path
+        // detects it and derives the plain-text alternative itself.
+        [
+            'name' => 'upgrade_requested',
+            'subject' => 'Upgrade request {{upgrade_no}} received',
+            'status' => 'active',
+            'body' => <<<'BODY'
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="x-apple-disable-message-reformatting">
+</head>
+<body style="margin:0;padding:0;background:#f1f5f9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;-webkit-text-size-adjust:100%;">
+<table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;background:#f1f5f9;padding:32px 16px;">
+<tr><td align="center">
+<!-- Card -->
+<table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;max-width:600px;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #e8ecf1;box-shadow:0 2px 16px rgba(15,23,42,0.05);">
+
+<!-- ── Brand header ─────────────────────────────────────────── -->
+<tr><td style="background:#ffffff;border-bottom:1px solid #eef2f7;padding:28px 40px;text-align:center;">
+<img src="{{app_logo_url}}" alt="{{app_name}}" width="140" style="max-width:140px;height:auto;display:block;margin:0 auto 14px;">
+<div style="font-size:20px;font-weight:800;color:#0f172a;letter-spacing:-0.02em;line-height:1.2;">{{app_name}}</div>
+<div style="font-size:11px;color:#94a3b8;margin-top:6px;letter-spacing:0.12em;text-transform:uppercase;">{{company_name}}</div>
+</td></tr>
+
+<!-- ── Hero ─────────────────────────────────────────────────── -->
+<tr><td style="background:#eff6ff;padding:36px 40px;text-align:center;">
+<div style="font-size:11px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;color:{{primary_color}};margin-bottom:10px;">Upgrade request received</div>
+<div style="font-size:26px;font-weight:900;color:#0f172a;letter-spacing:-0.02em;line-height:1.25;">{{upgrade_no}}</div>
+</td></tr>
+
+<!-- ── Greeting ─────────────────────────────────────────────── -->
+<tr><td style="padding:36px 40px 0;">
+<p style="margin:0;font-size:14px;line-height:1.75;color:#475569;">We have received your request to upgrade your service from <strong style="color:#0f172a;">{{from_product_name}}</strong> to <strong style="color:#0f172a;">{{to_product_name}}</strong> for <strong style="color:#0f172a;">{{currency_symbol}}{{amount}}</strong>.</p>
+<p style="margin:14px 0 0;font-size:14px;line-height:1.75;color:#475569;">It is now pending review and payment. Our team will process it.</p>
+</td></tr>
+
+<!-- ── Note ─────────────────────────────────────────────────── -->
+<tr><td style="padding:28px 40px 32px;">
+<table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;"><tr><td style="border-top:1px solid #f1f5f9;padding-top:22px;">
+<p style="margin:0;font-size:13px;line-height:1.75;color:#64748b;">Questions about this request? Contact us at <a href="mailto:{{company_email}}" style="color:{{primary_color}};text-decoration:none;font-weight:600;">{{company_email}}</a> and quote request number {{upgrade_no}}.</p>
+</td></tr></table>
+</td></tr>
+
+<!-- ── Footer ───────────────────────────────────────────────── -->
+<tr><td style="background:#f8fafc;border-top:1px solid #e2e8f0;padding:24px 40px;text-align:center;">
+<div style="font-size:13px;font-weight:700;color:#334155;margin-bottom:4px;">{{company_name}}</div>
+<div style="font-size:12px;color:#64748b;line-height:1.7;">{{company_address}}<br>{{company_email}}<br>{{company_phone}}</div>
+<div style="margin-top:10px;font-size:11px;color:#94a3b8;">{{footer_text}} &nbsp;·&nbsp; <a href="{{app_url}}" style="color:#94a3b8;text-decoration:none;">{{app_url}}</a></div>
+</td></tr>
+
+</table>
+<!-- Sub-footer -->
+<p style="margin:16px auto 0;font-size:11px;color:#94a3b8;text-align:center;max-width:480px;line-height:1.6;">You received this because you have an account at {{app_name}}. Manage your email preferences in the <a href="{{login_url}}" style="color:#94a3b8;">client portal</a>.</p>
+</td></tr>
+</table>
+</body>
+</html>
+BODY,
+        ],
+
+        [
+            'name' => 'upgrade_applied',
+            'subject' => 'Your service upgrade to {{to_product_name}} is complete',
+            'status' => 'active',
+            'body' => <<<'BODY'
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="x-apple-disable-message-reformatting">
+</head>
+<body style="margin:0;padding:0;background:#f1f5f9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;-webkit-text-size-adjust:100%;">
+<table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;background:#f1f5f9;padding:32px 16px;">
+<tr><td align="center">
+<!-- Card -->
+<table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;max-width:600px;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #e8ecf1;box-shadow:0 2px 16px rgba(15,23,42,0.05);">
+
+<!-- ── Brand header ─────────────────────────────────────────── -->
+<tr><td style="background:#ffffff;border-bottom:1px solid #eef2f7;padding:28px 40px;text-align:center;">
+<img src="{{app_logo_url}}" alt="{{app_name}}" width="140" style="max-width:140px;height:auto;display:block;margin:0 auto 14px;">
+<div style="font-size:20px;font-weight:800;color:#0f172a;letter-spacing:-0.02em;line-height:1.2;">{{app_name}}</div>
+<div style="font-size:11px;color:#94a3b8;margin-top:6px;letter-spacing:0.12em;text-transform:uppercase;">{{company_name}}</div>
+</td></tr>
+
+<!-- ── Hero ─────────────────────────────────────────────────── -->
+<tr><td style="background:#eff6ff;padding:36px 40px;text-align:center;">
+<div style="font-size:11px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;color:{{primary_color}};margin-bottom:10px;">Upgrade complete</div>
+<div style="font-size:26px;font-weight:900;color:#0f172a;letter-spacing:-0.02em;line-height:1.25;">{{to_product_name}}</div>
+</td></tr>
+
+<!-- ── Greeting ─────────────────────────────────────────────── -->
+<tr><td style="padding:36px 40px 0;">
+<p style="margin:0;font-size:14px;line-height:1.75;color:#475569;">The service on order <strong style="color:#0f172a;">{{order_number}}</strong> now runs at <strong style="color:#0f172a;">{{to_product_name}}</strong>. Your next billing date is <strong style="color:#0f172a;">{{next_due_date}}</strong>.</p>
+<p style="margin:14px 0 0;font-size:14px;line-height:1.75;color:#475569;">The amount credited back to your account balance for this change is {{credit_amount}}.</p>
+</td></tr>
+
+<!-- ── Note ─────────────────────────────────────────────────── -->
+<tr><td style="padding:28px 40px 32px;">
+<table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;"><tr><td style="border-top:1px solid #f1f5f9;padding-top:22px;">
+<p style="margin:0;font-size:13px;line-height:1.75;color:#64748b;">Questions about your upgraded service? Contact us at <a href="mailto:{{company_email}}" style="color:{{primary_color}};text-decoration:none;font-weight:600;">{{company_email}}</a>.</p>
+</td></tr></table>
+</td></tr>
+
+<!-- ── Footer ───────────────────────────────────────────────── -->
+<tr><td style="background:#f8fafc;border-top:1px solid #e2e8f0;padding:24px 40px;text-align:center;">
+<div style="font-size:13px;font-weight:700;color:#334155;margin-bottom:4px;">{{company_name}}</div>
+<div style="font-size:12px;color:#64748b;line-height:1.7;">{{company_address}}<br>{{company_email}}<br>{{company_phone}}</div>
+<div style="margin-top:10px;font-size:11px;color:#94a3b8;">{{footer_text}} &nbsp;·&nbsp; <a href="{{app_url}}" style="color:#94a3b8;text-decoration:none;">{{app_url}}</a></div>
+</td></tr>
+
+</table>
+<!-- Sub-footer -->
+<p style="margin:16px auto 0;font-size:11px;color:#94a3b8;text-align:center;max-width:480px;line-height:1.6;">You received this because you have an account at {{app_name}}. Manage your email preferences in the <a href="{{login_url}}" style="color:#94a3b8;">client portal</a>.</p>
+</td></tr>
+</table>
+</body>
+</html>
+BODY,
+        ],
+
+        [
+            'name' => 'upgrade_cancelled',
+            'subject' => 'Upgrade request {{upgrade_no}} cancelled',
+            'status' => 'active',
+            'body' => <<<'BODY'
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="x-apple-disable-message-reformatting">
+</head>
+<body style="margin:0;padding:0;background:#f1f5f9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;-webkit-text-size-adjust:100%;">
+<table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;background:#f1f5f9;padding:32px 16px;">
+<tr><td align="center">
+<!-- Card -->
+<table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;max-width:600px;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #e8ecf1;box-shadow:0 2px 16px rgba(15,23,42,0.05);">
+
+<!-- ── Brand header ─────────────────────────────────────────── -->
+<tr><td style="background:#ffffff;border-bottom:1px solid #eef2f7;padding:28px 40px;text-align:center;">
+<img src="{{app_logo_url}}" alt="{{app_name}}" width="140" style="max-width:140px;height:auto;display:block;margin:0 auto 14px;">
+<div style="font-size:20px;font-weight:800;color:#0f172a;letter-spacing:-0.02em;line-height:1.2;">{{app_name}}</div>
+<div style="font-size:11px;color:#94a3b8;margin-top:6px;letter-spacing:0.12em;text-transform:uppercase;">{{company_name}}</div>
+</td></tr>
+
+<!-- ── Hero ─────────────────────────────────────────────────── -->
+<tr><td style="background:#fef2f2;padding:36px 40px;text-align:center;">
+<div style="font-size:11px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;color:#dc2626;margin-bottom:10px;">Upgrade cancelled</div>
+<div style="font-size:26px;font-weight:900;color:#0f172a;letter-spacing:-0.02em;line-height:1.25;">{{upgrade_no}}</div>
+</td></tr>
+
+<!-- ── Greeting ─────────────────────────────────────────────── -->
+<tr><td style="padding:36px 40px 0;">
+<p style="margin:0;font-size:14px;line-height:1.75;color:#475569;">Your upgrade request <strong style="color:#0f172a;">{{upgrade_no}}</strong> has been cancelled, and your service continues unchanged.</p>
+<p style="margin:14px 0 0;font-size:14px;line-height:1.75;color:#475569;">If you have any questions, our support team is happy to help.</p>
+</td></tr>
+
+<!-- ── Note ─────────────────────────────────────────────────── -->
+<tr><td style="padding:28px 40px 32px;">
+<table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;"><tr><td style="border-top:1px solid #f1f5f9;padding-top:22px;">
+<p style="margin:0;font-size:13px;line-height:1.75;color:#64748b;">Contact us at <a href="mailto:{{company_email}}" style="color:{{primary_color}};text-decoration:none;font-weight:600;">{{company_email}}</a> or <a href="{{support_url}}" style="color:{{primary_color}};text-decoration:none;font-weight:600;">open a support ticket</a> with any questions.</p>
+</td></tr></table>
+</td></tr>
+
+<!-- ── Footer ───────────────────────────────────────────────── -->
+<tr><td style="background:#f8fafc;border-top:1px solid #e2e8f0;padding:24px 40px;text-align:center;">
+<div style="font-size:13px;font-weight:700;color:#334155;margin-bottom:4px;">{{company_name}}</div>
+<div style="font-size:12px;color:#64748b;line-height:1.7;">{{company_address}}<br>{{company_email}}<br>{{company_phone}}</div>
+<div style="margin-top:10px;font-size:11px;color:#94a3b8;">{{footer_text}} &nbsp;·&nbsp; <a href="{{app_url}}" style="color:#94a3b8;text-decoration:none;">{{app_url}}</a></div>
+</td></tr>
+
+</table>
+<!-- Sub-footer -->
+<p style="margin:16px auto 0;font-size:11px;color:#94a3b8;text-align:center;max-width:480px;line-height:1.6;">You received this because you have an account at {{app_name}}. Manage your email preferences in the <a href="{{login_url}}" style="color:#94a3b8;">client portal</a>.</p>
+</td></tr>
+</table>
+</body>
+</html>
+BODY,
+        ],
     ];
 
     public function run(): void

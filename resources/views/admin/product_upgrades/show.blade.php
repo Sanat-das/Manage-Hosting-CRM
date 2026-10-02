@@ -15,6 +15,16 @@
             <tbody>
                 <tr><th class="text-muted w-25">From</th><td><a href="{{ route('admin.products.show', $path->fromProduct) }}">{{ $path->fromProduct->name }}</a> <span class="badge text-bg-info">{{ $path->fromProduct->group?->name ?? '' }}</span></td></tr>
                 <tr><th class="text-muted">To</th><td><a href="{{ route('admin.products.show', $path->toProduct) }}">{{ $path->toProduct->name }}</a> <span class="badge text-bg-info">{{ $path->toProduct->group?->name ?? '' }}</span></td></tr>
+                <tr><th class="text-muted">Direction</th><td>
+                    @php($directionLabels = ['upgrade' => 'Upgrade', 'downgrade' => 'Downgrade', 'both' => 'Both'])
+                    @if ($path->direction === 'upgrade')
+                        <span class="badge text-bg-primary">{{ $directionLabels[$path->direction] }}</span>
+                    @elseif ($path->direction === 'downgrade')
+                        <span class="badge text-bg-warning">{{ $directionLabels[$path->direction] }}</span>
+                    @else
+                        <span class="badge text-bg-info">{{ $directionLabels[$path->direction] }}</span>
+                    @endif
+                </td></tr>
                 <tr><th class="text-muted">Enabled</th><td>
                     @if ($path->enabled) <span class="badge text-bg-success">Enabled</span> @else <span class="badge text-bg-secondary">Disabled</span> @endif
                 </td></tr>

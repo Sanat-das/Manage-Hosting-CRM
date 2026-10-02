@@ -16,13 +16,14 @@ class ProrationCalculator
     /**
      * Calculate proration for a mid-cycle upgrade/downgrade.
      *
-     * Daily pro-rata:
+     * Daily pro-rata on BOTH sides (WHMCS "payable = debited − credited"):
      *  - totalDays   = start → end
      *  - usedDays    = start → change
      *  - remaining   = totalDays - usedDays
      *  - credit      = round(currentAmount * remaining / totalDays, 2)
-     *  - upgrade     → charge = newAmount (FULL, no proration)
-     *  - downgrade   → charge = round(newAmount * remaining / totalDays, 2)
+     *  - charge      = round(newAmount * remaining / totalDays, 2)
+     *                  for both upgrade and downgrade
+     *  - the caller nets charge − credit (a negative result is a credit)
      *  - totalDays <= 0 guard → credit 0, charge = newAmount (reference behavior)
      *
      * @param  string  $startDate  Period start date (Y-m-d).
@@ -54,10 +55,9 @@ class ProrationCalculator
         // Credit for the unused portion of the current period.
         $credit = round($currentAmount * ($remainingDays / $totalDays), 2);
 
-        // Charge for the new period (full for upgrade, prorated for downgrade).
-        $charge = $changeType === 'upgrade'
-            ? $newAmount
-            : round($newAmount * ($remainingDays / $totalDays), 2);
+        // Charge for the new period, prorated the same way (both sides
+        // prorated; the caller nets charge − credit).
+        $charge = round($newAmount * ($remainingDays / $totalDays), 2);
 
         return [
             'credit' => $credit,

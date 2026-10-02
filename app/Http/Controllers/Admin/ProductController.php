@@ -11,14 +11,22 @@ use App\Models\Product;
 use App\Models\ProductGroup;
 use App\Models\ProductModule;
 use App\Models\ProductOptionGroup;
+use App\Models\ProductUpgradePath;
 use App\Models\ServerGroup;
 use App\Services\Integrations\IntegrationRegistry;
 use App\Services\ProductOptionLinkService;
 use App\Services\Provisioning\ComputeTemplateCatalog;
+use App\Services\Provisioning\HypervTemplateCatalog;
+use App\Services\Provisioning\ModuleRequiredOptions;
 use App\Services\Provisioning\ProvisioningModuleLinker;
+use App\Services\Provisioning\ProxmoxTemplateCatalog;
+use App\Settings\BillingSettings;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 
 /**
@@ -39,8 +47,7 @@ class ProductController extends Controller
     public function __construct(
         private readonly ProductOptionLinkService $optionLinks,
         private readonly ProvisioningModuleLinker $moduleLinker,
-    ) {
-    }
+    ) {}
 
     public function index(Request $request): View
     {
@@ -136,15 +143,24 @@ class ProductController extends Controller
         $linkableModules = $this->linkablePluginModules();
         $missingRequiredOptionKeys = $this->missingRequiredOptionKeys($product);
 
+        // Per-product upgrade/downgrade targets — the same rows the standalone
+        // product-upgrades page manages globally, shown here for this product.
+        $upgradePaths = $product->upgradePaths()->with('toProduct')->orderBy('to_product_id')->get();
+        $upgradeTargets = Product::query()
+            ->where('status', 'active')
+            ->where('id', '!=', $product->id)
+            ->orderBy('name')
+            ->get(['id', 'name']);
+
         // Hyper-V per-product template restriction data (additive, isolated from WIP)
-        $hypervUnionOptions = \App\Services\Provisioning\HypervTemplateCatalog::unionOptions();
+        $hypervUnionOptions = HypervTemplateCatalog::unionOptions();
         $hypervLink = $product->moduleLinks->firstWhere('module_slug', 'hyperv');
         $hypervAllowedTemplates = [];
         if ($hypervLink) {
             try {
                 $decrypted = $registry->decryptConfigFor('hyperv', is_array($hypervLink->config) ? $hypervLink->config : []);
                 $raw = $decrypted['allowed_templates'] ?? [];
-                $hypervAllowedTemplates = \App\Services\Provisioning\HypervTemplateCatalog::sanitizeAllowed(is_array($raw) ? $raw : []);
+                $hypervAllowedTemplates = HypervTemplateCatalog::sanitizeAllowed(is_array($raw) ? $raw : []);
             } catch (\Throwable) {
                 $hypervAllowedTemplates = [];
             }
@@ -153,14 +169,14 @@ class ProductController extends Controller
         $hypervHasLink = $hypervLink !== null;
 
         // Proxmox VE per-product template restriction data (mirrors Hyper-V).
-        $proxmoxUnionOptions = \App\Services\Provisioning\ProxmoxTemplateCatalog::unionOptions();
+        $proxmoxUnionOptions = ProxmoxTemplateCatalog::unionOptions();
         $proxmoxLink = $product->moduleLinks->firstWhere('module_slug', 'proxmox');
         $proxmoxAllowedTemplates = [];
         if ($proxmoxLink) {
             try {
                 $decrypted = $registry->decryptConfigFor('proxmox', is_array($proxmoxLink->config) ? $proxmoxLink->config : []);
                 $raw = $decrypted['allowed_templates'] ?? [];
-                $proxmoxAllowedTemplates = \App\Services\Provisioning\ProxmoxTemplateCatalog::sanitizeAllowed(is_array($raw) ? $raw : []);
+                $proxmoxAllowedTemplates = ProxmoxTemplateCatalog::sanitizeAllowed(is_array($raw) ? $raw : []);
             } catch (\Throwable) {
                 $proxmoxAllowedTemplates = [];
             }
@@ -233,6 +249,8 @@ class ProductController extends Controller
             'linkableModules' => $linkableModules,
             'registry' => $registry,
             'missingRequiredOptionKeys' => $missingRequiredOptionKeys,
+            'upgradePaths' => $upgradePaths,
+            'upgradeTargets' => $upgradeTargets,
             'hypervUnionOptions' => $hypervUnionOptions,
             'hypervAllowedTemplates' => $hypervAllowedTemplates,
             'hypervIsHypervProduct' => $hypervIsHypervProduct,
@@ -294,6 +312,69 @@ class ProductController extends Controller
     }
 
     /**
+     * Add an upgrade/downgrade target for this product from the edit page's
+     * Upgrade Paths tab. The (from, to) pair is unique at the DB level, so a
+     * duplicate is surfaced as a friendly validation error rather than a 500.
+     */
+    public function storeUpgradePath(Request $request, Product $product): RedirectResponse
+    {
+        try {
+            $validated = $request->validate([
+                'to_product_id' => ['required', 'integer', 'exists:products,id', Rule::notIn([$product->id])],
+                // The tab's add forms carry a hidden direction matching their
+                // column (upgrade / downgrade) — the column heading IS the
+                // direction, so no selector is rendered. The standalone
+                // product-upgrades page still offers the full select incl. both.
+                'direction' => ['required', 'in:upgrade,downgrade'],
+            ]);
+        } catch (ValidationException $e) {
+            // Re-open the tab so the error is visible (the automatic redirect
+            // would otherwise drop back to the default Details tab).
+            return redirect()
+                ->route('admin.products.edit', $product)
+                ->withInput()
+                ->withErrors($e->errors())
+                ->with('active_tab', 'upgrade-paths');
+        }
+
+        try {
+            $product->upgradePaths()->create([
+                'to_product_id' => $validated['to_product_id'],
+                'enabled' => true,
+                'direction' => $validated['direction'],
+            ]);
+        } catch (QueryException) {
+            return redirect()
+                ->route('admin.products.edit', $product)
+                ->withInput()
+                ->withErrors(['to_product_id' => 'This upgrade path already exists.'])
+                ->with('active_tab', 'upgrade-paths');
+        }
+
+        return redirect()
+            ->route('admin.products.edit', $product)
+            ->with('active_tab', 'upgrade-paths')
+            ->with('success', 'Upgrade path added.');
+    }
+
+    /**
+     * Remove an upgrade/downgrade target from this product. Scoped to the
+     * product in the URL: a path belonging to another product 404s rather than
+     * deleting it.
+     */
+    public function destroyUpgradePath(Product $product, ProductUpgradePath $productUpgradePath): RedirectResponse
+    {
+        abort_unless((int) $productUpgradePath->from_product_id === (int) $product->id, 404);
+
+        $productUpgradePath->delete();
+
+        return redirect()
+            ->route('admin.products.edit', $product)
+            ->with('active_tab', 'upgrade-paths')
+            ->with('success', 'Upgrade path removed.');
+    }
+
+    /**
      * Modules linkable in the product UI. The six provisioning integrations
      * are builtins configured on the Details tab (provisioning module +
      * server group), so the product Modules sections only manage plugins.
@@ -344,7 +425,7 @@ class ProductController extends Controller
             'defaultCycles' => Product::DEFAULT_CYCLES,
             'provisioningModules' => $provisioningModules,
             'gstTypes' => Product::GST_TYPES,
-            'currency' => app(\App\Settings\BillingSettings::class)->currency,
+            'currency' => app(BillingSettings::class)->currency,
             'groups' => ProductGroup::query()->orderBy('sort_order')->orderBy('name')->get(),
             'serverGroups' => ServerGroup::query()->where('status', 'active')->orderBy('name')->get(),
             'emailTemplates' => EmailTemplate::query()->where('status', 'active')->orderBy('name')->get(['id', 'name']),
@@ -527,16 +608,16 @@ class ProductController extends Controller
 
         // Prefer the canonical map; fall back to missingKeys(Product) union
         // (provisioning_module + enabled moduleLinks) when available.
-        if (class_exists(\App\Services\Provisioning\ModuleRequiredOptions::class)) {
-            if (method_exists(\App\Services\Provisioning\ModuleRequiredOptions::class, 'missingKeysFor')) {
-                return \App\Services\Provisioning\ModuleRequiredOptions::missingKeysFor(
+        if (class_exists(ModuleRequiredOptions::class)) {
+            if (method_exists(ModuleRequiredOptions::class, 'missingKeysFor')) {
+                return ModuleRequiredOptions::missingKeysFor(
                     (string) ($product->provisioning_module ?? ''),
                     $attachedKeys
                 );
             }
 
-            if (method_exists(\App\Services\Provisioning\ModuleRequiredOptions::class, 'missingKeys')) {
-                return \App\Services\Provisioning\ModuleRequiredOptions::missingKeys($product);
+            if (method_exists(ModuleRequiredOptions::class, 'missingKeys')) {
+                return ModuleRequiredOptions::missingKeys($product);
             }
         }
 

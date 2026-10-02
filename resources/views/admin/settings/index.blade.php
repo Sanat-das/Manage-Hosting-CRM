@@ -578,6 +578,23 @@
                             <small class="form-text text-muted">Support / billing contact — used in <code>@{{company_email}}</code></small>
                         </div>
                     </div>
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label for="company_gstin" class="form-label fw-semibold">Company GSTIN</label>
+                            <div class="input-group">
+                                <span class="input-group-text"><i class="bi bi-receipt" aria-hidden="true"></i></span>
+                                <input type="text" name="settings[company_gstin]" id="company_gstin"
+                                    value="{{ old('settings.company_gstin', $settings['company_gstin'] ?? '') }}"
+                                    placeholder="27AAAAA0000A1Z5"
+                                    maxlength="20"
+                                    class="form-control @error('settings.company_gstin') is-invalid @enderror">
+                            </div>
+                            @error('settings.company_gstin')
+                                <span class="invalid-feedback d-block" role="alert">{{ $message }}</span>
+                            @enderror
+                            <small class="form-text text-muted">Printed on every tax invoice</small>
+                        </div>
+                    </div>
                     @php
                         $companyPhoneRaw = old('settings.company_phone', $settings['company_phone'] ?? '');
                         $cpSelectedDial = '+91';
@@ -780,16 +797,6 @@
                     </script>
                     <div class="row">
                         <div class="col-md-4">
-                            {{-- Deprecated alias: default_currency is legacy untyped; typed currency lives in Billing --}}
-                            <x-adminlte-input name="settings[default_currency]" label="Default Currency (Deprecated)"
-                                value="{{ old('settings.default_currency', $settings['default_currency'] ?? 'INR') }}" disabled />
-                            <small class="form-text text-muted">Deprecated — use <strong>Currency</strong> in Billing tab (typed <code>currency</code>). Read-only alias.</small>
-                        </div>
-                        <div class="col-md-4">
-                            <x-adminlte-input name="settings[default_tax_rate]" label="Default Tax Rate (%)"
-                                value="{{ old('settings.default_tax_rate', $settings['default_tax_rate'] ?? '18') }}" />
-                        </div>
-                        <div class="col-md-4">
                             @php $tzCurrent = old('settings.timezone', $settings['timezone'] ?? 'Asia/Kolkata'); @endphp
                             <x-adminlte-select name="settings[timezone]" label="Timezone">
                                 @foreach ($timezonesGrouped as $tzRegion => $tzZoneList)
@@ -908,6 +915,29 @@
                     </div>
                 </x-adminlte-card>
 
+                <x-adminlte-card icon="bi bi-bank" title="Invoice Bank Details">
+                    <div class="row">
+                        <div class="col-md-4">
+                            <x-adminlte-input name="settings[bank_name]" spellcheck="false" autocomplete="off" label="Bank Name"
+                                value="{{ old('settings.bank_name', $settings['bank_name'] ?? '') }}" />
+                        </div>
+                        <div class="col-md-4">
+                            <x-adminlte-input name="settings[bank_account_holder]" spellcheck="false" autocomplete="off" label="Account Holder"
+                                value="{{ old('settings.bank_account_holder', $settings['bank_account_holder'] ?? '') }}" />
+                        </div>
+                        <div class="col-md-4">
+                            <x-adminlte-input name="settings[bank_account_no]" spellcheck="false" autocomplete="off" label="Account Number" maxlength="34"
+                                value="{{ old('settings.bank_account_no', $settings['bank_account_no'] ?? '') }}" />
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-4">
+                            <x-adminlte-input name="settings[bank_ifsc]" spellcheck="false" autocomplete="off" label="IFSC Code" maxlength="11"
+                                value="{{ old('settings.bank_ifsc', $settings['bank_ifsc'] ?? '') }}" />
+                        </div>
+                    </div>
+                </x-adminlte-card>
+
                 {{--
                     GST & Tax — moved here from the standalone /admin/gst-settings
                     page so every billing switch is in one place.
@@ -925,18 +955,12 @@
                         <div class="alert alert-warning py-2 small">
                             <i class="bi bi-exclamation-triangle me-1"></i>
                             <strong>GST is off.</strong> Every invoice is being written with zero tax, whatever a
-                            product's own GST settings say. Set a GSTIN and legal name, then switch GST to
-                            <em>Enabled</em> below.
+                            product's own GST settings say. Set the company GSTIN (General tab) and legal name,
+                            then switch GST to <em>Enabled</em> below.
                         </div>
                     @endif
 
                     <div class="row">
-                        <div class="col-md-4">
-                            <x-adminlte-input name="gstin" label="GSTIN" form="gst-settings-form"
-                                value="{{ old('gstin', $gst?->gstin) }}" placeholder="22AAAAA0000A1Z5" required>
-                                <small class="form-text text-muted">Printed on every tax invoice.</small>
-                            </x-adminlte-input>
-                        </div>
                         <div class="col-md-4">
                             <x-adminlte-input name="legal_name" label="Legal Name" form="gst-settings-form"
                                 value="{{ old('legal_name', $gst?->legal_name) }}" required />
@@ -1169,18 +1193,6 @@
                 <x-adminlte-card icon="bi bi-shield-lock" title="Security Settings">
                     <div class="row">
                         <div class="col-md-4">
-                            <x-adminlte-input name="settings[session_timeout]" label="Session Timeout (minutes)" type="number" min="1"
-                                value="{{ old('settings.session_timeout', $settings['session_timeout'] ?? '120') }}">
-                                <small class="form-text text-muted">Min 1 minute</small>
-                            </x-adminlte-input>
-                        </div>
-                        <div class="col-md-4">
-                            <x-adminlte-input name="settings[max_login_attempts]" label="Max Login Attempts" type="number" min="1"
-                                value="{{ old('settings.max_login_attempts', $settings['max_login_attempts'] ?? '5') }}">
-                                <small class="form-text text-muted">Min 1</small>
-                            </x-adminlte-input>
-                        </div>
-                        <div class="col-md-4">
                             <x-adminlte-input name="settings[lockout_duration]" label="Lockout Duration (minutes)" type="number" min="0"
                                 value="{{ old('settings.lockout_duration', $settings['lockout_duration'] ?? '15') }}">
                                 <small class="form-text text-muted">Min 0 minutes</small>
@@ -1188,13 +1200,6 @@
                         </div>
                     </div>
                     <div class="row">
-                        <div class="col-md-4">
-                            <x-adminlte-select name="settings[force_2fa]" label="Force 2FA">
-                                <option value="yes" @selected(($settings['force_2fa'] ?? 'no') === 'yes')>Yes</option>
-                                <option value="no" @selected(($settings['force_2fa'] ?? 'no') === 'no')>No</option>
-                            </x-adminlte-select>
-                            <small class="form-text text-muted">Yes / No</small>
-                        </div>
                         <div class="col-md-4">
                             <x-adminlte-input name="settings[password_min_length]" label="Min Password Length" type="number" min="1"
                                 value="{{ old('settings.password_min_length', $settings['password_min_length'] ?? '8') }}">
@@ -1265,14 +1270,6 @@
                             <small class="form-text text-muted">Yes / No</small>
                         </div>
                     </div>
-                    <div class="row">
-                        <div class="col-md-4">
-                            <x-adminlte-input name="settings[domain_expiry_warning_days]" label="Domain expiry warning (days)" type="number" min="0" max="365"
-                                value="{{ old('settings.domain_expiry_warning_days', $settings['domain_expiry_warning_days'] ?? '30') }}">
-                                <small class="form-text text-muted">0 – 365 days</small>
-                            </x-adminlte-input>
-                        </div>
-                    </div>
                 </x-adminlte-card>
                 @php $lu = $lastUpdated['notification'] ?? $lastUpdated['all'] ?? null; @endphp
                 <small class="text-muted d-block mb-2 last-updated" data-section="notification">@if($lu)Last updated: {{ \Illuminate\Support\Carbon::parse($lu->created_at)->format('Y-m-d H:i:s') }} — <span title="{{ $lu->description }}">{{ \Illuminate\Support\Str::limit($lu->description, 120) }}</span>@else Last updated: never @endif</small>
@@ -1294,12 +1291,6 @@
                             <x-adminlte-select name="settings[domain_pricing_tier]" label="Pricing Tier">
                                 {!! $selectOptions($fieldOptions['pricing_tiers'] ?? [], $pricingTierValue, $blankIfUnset($pricingTierValue)) !!}
                             </x-adminlte-select>
-                        </div>
-                        <div class="col-md-4">
-                            <x-adminlte-input name="settings[domain_renewal_reminder_days]" label="Renewal Reminder (days)" type="number" min="0" max="365"
-                                value="{{ old('settings.domain_renewal_reminder_days', $settings['domain_renewal_reminder_days'] ?? '30') }}">
-                                <small class="form-text text-muted">0 – 365 days</small>
-                            </x-adminlte-input>
                         </div>
                     </div>
                     <div class="row">
@@ -1529,20 +1520,6 @@
                             <x-adminlte-input name="settings[hosting_provision_retries]" label="Provision Retries" type="number" min="0"
                                 value="{{ old('settings.hosting_provision_retries', $settings['hosting_provision_retries'] ?? '3') }}">
                                 <small class="form-text text-muted">Min 0</small>
-                            </x-adminlte-input>
-                        </div>
-                    </div>
-                    <div class="row">
-                        <div class="col-md-4">
-                            <x-adminlte-input name="settings[hosting_suspend_after_days]" label="Suspend After (days)" type="number" min="0"
-                                value="{{ old('settings.hosting_suspend_after_days', $settings['hosting_suspend_after_days'] ?? '7') }}">
-                                <small class="form-text text-muted">Min 0 days</small>
-                            </x-adminlte-input>
-                        </div>
-                        <div class="col-md-4">
-                            <x-adminlte-input name="settings[hosting_terminate_after_days]" label="Terminate After (days)" type="number" min="0"
-                                value="{{ old('settings.hosting_terminate_after_days', $settings['hosting_terminate_after_days'] ?? '30') }}">
-                                <small class="form-text text-muted">Min 0 days</small>
                             </x-adminlte-input>
                         </div>
                     </div>
@@ -2155,59 +2132,9 @@
                                 <small class="form-text text-muted">Yes / No</small>
                             </div>
                             <div class="col-md-3">
-                                <x-adminlte-select name="settings[automation_welcome_email]" label="Welcome Email">
-                                    <option value="yes" @selected(($settings['automation_welcome_email'] ?? 'yes') === 'yes')>Yes</option>
-                                    <option value="no" @selected(($settings['automation_welcome_email'] ?? 'yes') === 'no')>No</option>
-                                </x-adminlte-select>
-                                <small class="form-text text-muted">Yes / No</small>
-                            </div>
-                            <div class="col-md-3">
                                 <x-adminlte-select name="settings[automation_invoice_reminders]" label="Invoice Reminders">
                                     <option value="yes" @selected(($settings['automation_invoice_reminders'] ?? 'yes') === 'yes')>Yes</option>
                                     <option value="no" @selected(($settings['automation_invoice_reminders'] ?? 'yes') === 'no')>No</option>
-                                </x-adminlte-select>
-                                <small class="form-text text-muted">Yes / No</small>
-                            </div>
-                        </div>
-                        <div class="row">
-                            <div class="col-md-3">
-                                <x-adminlte-select name="settings[automation_overdue_actions]" label="Overdue Actions">
-                                    <option value="yes" @selected(($settings['automation_overdue_actions'] ?? 'no') === 'yes')>Yes</option>
-                                    <option value="no" @selected(($settings['automation_overdue_actions'] ?? 'no') === 'no')>No</option>
-                                </x-adminlte-select>
-                                <small class="form-text text-muted">Yes / No</small>
-                            </div>
-                            <div class="col-md-3">
-                                <x-adminlte-input name="settings[automation_suspend_after_due_days]" label="Suspend After Due (days)" type="number" min="0"
-                                    value="{{ old('settings.automation_suspend_after_due_days', $settings['automation_suspend_after_due_days'] ?? '7') }}">
-                                    <small class="form-text text-muted">Min 0 days</small>
-                                </x-adminlte-input>
-                            </div>
-                            <div class="col-md-3">
-                                <x-adminlte-input name="settings[automation_terminate_after_due_days]" label="Terminate After Due (days)" type="number" min="0"
-                                    value="{{ old('settings.automation_terminate_after_due_days', $settings['automation_terminate_after_due_days'] ?? '30') }}">
-                                    <small class="form-text text-muted">Min 0 days</small>
-                                </x-adminlte-input>
-                            </div>
-                            <div class="col-md-3">
-                                <x-adminlte-select name="settings[automation_domain_expiry_notices]" label="Domain Expiry Notices">
-                                    <option value="yes" @selected(($settings['automation_domain_expiry_notices'] ?? 'yes') === 'yes')>Yes</option>
-                                    <option value="no" @selected(($settings['automation_domain_expiry_notices'] ?? 'yes') === 'no')>No</option>
-                                </x-adminlte-select>
-                                <small class="form-text text-muted">Yes / No</small>
-                            </div>
-                        </div>
-                        <div class="row">
-                            <div class="col-md-3">
-                                <x-adminlte-input name="settings[automation_domain_expiry_reminder_days]" label="Domain Expiry Reminder (days)" type="number" min="0" max="365"
-                                    value="{{ old('settings.automation_domain_expiry_reminder_days', $settings['automation_domain_expiry_reminder_days'] ?? '30') }}">
-                                    <small class="form-text text-muted">0 – 365 days</small>
-                                </x-adminlte-input>
-                            </div>
-                            <div class="col-md-3">
-                                <x-adminlte-select name="settings[automation_renewal_invoices]" label="Renewal Invoices">
-                                    <option value="yes" @selected(($settings['automation_renewal_invoices'] ?? 'yes') === 'yes')>Yes</option>
-                                    <option value="no" @selected(($settings['automation_renewal_invoices'] ?? 'yes') === 'no')>No</option>
                                 </x-adminlte-select>
                                 <small class="form-text text-muted">Yes / No</small>
                             </div>
@@ -2363,32 +2290,6 @@
             {{-- User --}}
             <div class="tab-pane fade @if ($activeTab === 'user') show active @endif" id="pane-user" role="tabpanel" aria-labelledby="tab-user">
                 <x-adminlte-card icon="bi bi-people" title="User Settings">
-                    <div class="row">
-                        <div class="col-md-4">
-                            @php $userTzCurrent = old('settings.user_default_timezone', $settings['user_default_timezone'] ?? 'Asia/Kolkata'); @endphp
-                            <x-adminlte-select name="settings[user_default_timezone]" label="Default Timezone">
-                                @foreach ($timezonesGrouped as $tzRegion => $tzZoneList)
-                                    <optgroup label="{{ $tzRegion }}">
-                                        @foreach ($tzZoneList as $tzZone)
-                                            <option value="{{ $tzZone }}" @selected($tzZone === $userTzCurrent)>{{ $tzZone }}</option>
-                                        @endforeach
-                                    </optgroup>
-                                @endforeach
-                            </x-adminlte-select>
-                        </div>
-                        <div class="col-md-4">
-                            <x-adminlte-input name="settings[user_session_timeout_minutes]" label="Session Timeout (minutes)" type="number" min="1"
-                                value="{{ old('settings.user_session_timeout_minutes', $settings['user_session_timeout_minutes'] ?? '120') }}">
-                                <small class="form-text text-muted">Min 1 minute</small>
-                            </x-adminlte-input>
-                        </div>
-                        <div class="col-md-4">
-                            <x-adminlte-input name="settings[user_max_login_attempts]" label="Max Login Attempts" type="number" min="1"
-                                value="{{ old('settings.user_max_login_attempts', $settings['user_max_login_attempts'] ?? '5') }}">
-                                <small class="form-text text-muted">Min 1</small>
-                            </x-adminlte-input>
-                        </div>
-                    </div>
                     <div class="mt-3 settings-group">
                         <h4 class="settings-group-title">User account</h4>
                         <div class="row mt-2">
@@ -2427,13 +2328,6 @@
                                     value="{{ old('settings.user_password_expiry_days', $settings['user_password_expiry_days'] ?? '0') }}">
                                     <small class="form-text text-muted">Min 0 (0 = never)</small>
                                 </x-adminlte-input>
-                            </div>
-                            <div class="col-md-3">
-                                <x-adminlte-select name="settings[user_two_factor_enforced]" label="2FA Enforced">
-                                    <option value="yes" @selected(($settings['user_two_factor_enforced'] ?? 'no') === 'yes')>Yes</option>
-                                    <option value="no" @selected(($settings['user_two_factor_enforced'] ?? 'no') === 'no')>No</option>
-                                </x-adminlte-select>
-                                <small class="form-text text-muted">Yes / No</small>
                             </div>
                             <div class="col-md-3">
                                 <x-adminlte-input name="settings[user_inactive_lock_days]" label="Inactive Lock (days)" type="number" min="0"

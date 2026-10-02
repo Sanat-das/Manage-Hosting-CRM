@@ -62,6 +62,7 @@ class ProductUpgradePathController extends Controller
             'from_product_id' => ['required', 'integer', 'exists:products,id'],
             'to_product_id' => ['required', 'integer', 'different:from_product_id', 'exists:products,id'],
             'enabled' => ['nullable', 'boolean'],
+            'direction' => ['required', 'in:upgrade,downgrade,both'],
         ]);
 
         try {
@@ -69,6 +70,7 @@ class ProductUpgradePathController extends Controller
                 'from_product_id' => $validated['from_product_id'],
                 'to_product_id' => $validated['to_product_id'],
                 'enabled' => (bool) ($validated['enabled'] ?? true),
+                'direction' => $validated['direction'],
             ]);
         } catch (QueryException) {
             return back()
@@ -102,6 +104,7 @@ class ProductUpgradePathController extends Controller
             'from_product_id' => ['required', 'integer', 'exists:products,id'],
             'to_product_id' => ['required', 'integer', 'different:from_product_id', 'exists:products,id'],
             'enabled' => ['nullable', 'boolean'],
+            'direction' => ['required', 'in:upgrade,downgrade,both'],
         ]);
 
         try {
@@ -109,6 +112,7 @@ class ProductUpgradePathController extends Controller
                 'from_product_id' => $validated['from_product_id'],
                 'to_product_id' => $validated['to_product_id'],
                 'enabled' => (bool) ($validated['enabled'] ?? true),
+                'direction' => $validated['direction'],
             ]);
         } catch (QueryException) {
             return back()
@@ -140,6 +144,7 @@ class ProductUpgradePathController extends Controller
                 ->where('status', 'active')
                 ->orderBy('name')
                 ->get(['id', 'name']),
+            'directions' => ['upgrade' => 'Upgrade', 'downgrade' => 'Downgrade', 'both' => 'Both'],
         ];
     }
 }

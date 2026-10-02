@@ -37,8 +37,6 @@ class ProductSettings extends Settings
 
     public float $product_reseller_markup_percent = 0.0;
 
-    public bool $product_gst_applicable = true;
-
     public bool $product_version_management = false;
 
     public static function group(): string
@@ -63,7 +61,6 @@ class ProductSettings extends Settings
             'product_license_key_prefix' => ['nullable', 'string', 'max:20'],
             'product_show_in_order_form' => ['nullable', 'in:1,0,yes,no,true,false'],
             'product_reseller_markup_percent' => ['nullable', 'numeric', 'between:0,1000'],
-            'product_gst_applicable' => ['nullable', 'in:1,0,yes,no,true,false'],
             'product_version_management' => ['nullable', 'in:1,0,yes,no,true,false'],
         ];
     }

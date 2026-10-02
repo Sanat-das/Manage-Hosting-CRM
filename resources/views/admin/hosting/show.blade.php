@@ -73,6 +73,21 @@
                             <i class="bi bi-trash me-1"></i> Terminate
                         </button>
                     @endif
+                    @if ($hostingAccount->status !== 'terminated' && $hostingAccount->order)
+                        @php
+                            $upgradeOrder = $hostingAccount->order;
+                            $upgradeEligible = $upgradeOrder->status === \App\Models\Order::STATUS_ACTIVE
+                                && (\App\Models\Order::CYCLE_MONTHS[(string) $upgradeOrder->billing_cycle] ?? 0) > 0
+                                && (bool) \App\Support\AppSettings::get('product_enable_upgrades', '1')
+                                && $hostingAccount->product !== null
+                                && $hostingAccount->product->upgradeableTo()->whereHas('toProduct', fn ($q) => $q->where('status', 'active'))->exists();
+                        @endphp
+                        @if ($upgradeEligible)
+                            <a href="{{ route('admin.orders.upgrade', $upgradeOrder) }}" class="btn btn-sm btn-outline-success">
+                                <i class="bi bi-arrow-up-circle me-1"></i> Upgrade/Downgrade
+                            </a>
+                        @endif
+                    @endif
                 @endcan
             </div>
         </div>

@@ -110,4 +110,9 @@ class Order extends Model
     {
         return $this->hasMany(OrderStatusHistory::class);
     }
+
+    public function upgradeRequests(): HasMany
+    {
+        return $this->hasMany(UpgradeRequest::class);
+    }
 }

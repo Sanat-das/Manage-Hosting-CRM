@@ -35,8 +35,6 @@ class DomainSettings extends Settings
 
     public string $domain_pricing_tier = 'standard';
 
-    public int $domain_renewal_reminder_days = 30;
-
     public static function group(): string
     {
         return 'domain';
@@ -58,7 +56,6 @@ class DomainSettings extends Settings
             'domain_dns_provider' => ['nullable', 'string', 'max:255'],
             'domain_whois_privacy' => ['nullable', 'in:1,0,yes,no,true,false'],
             'domain_pricing_tier' => ['nullable', 'string', 'max:50'],
-            'domain_renewal_reminder_days' => ['nullable', 'integer', 'min:0', 'max:365'],
         ];
     }
 }

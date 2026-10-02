@@ -13,11 +13,11 @@ use Tests\TestCase;
 /**
  * Baseline inventory guard for admin/settings.
  *
- * - Captures the 198 name="settings[*]" keys rendered by
+ * - Captures the 183 name="settings[*]" keys rendered by
  *   resources/views/admin/settings/index.blade.php (84 baseline + 94 task-8 typed
  *   surfaced + 3 imap_* policy keys for ticket email piping + 4 security hardening
  *   toggles + 6 branding_* keys added with BrandingSettings + 8 company split
- *   + 1 renewal_invoice_days) and asserts the set is unchanged after refactors
+ *   + 1 renewal_invoice_days + 1 company_gstin + 4 invoice bank details) and asserts the set is unchanged after refactors
  *   (no drop/rename).
  * - Guards GET query count: 1 legacy settings pluck + 17 typed group loads = <=19.
  *   Ensures SettingsController::loadAll() does not introduce N+1 per-key queries.
@@ -27,21 +27,37 @@ class AdminSettingsInventoryTest extends TestCase
     use RefreshDatabase;
 
     /**
-      * Baseline set - 197 keys rendered by admin/settings/index.blade.php (84 + 94 typed + 3 imap policy + 4 security hardening + 6 branding + 8 company split).
-      * Global Incoming Mail host/user/pwd removed in department-only refactor (9 keys dropped).
-      * Documented verbatim so any drop or rename fails this test.
-      * Sorted alphabetically for diff stability; source order is the blade file.
-      * v6: 2026-09-05 removed 9 global imap_* (host/port/user/pwd/encryption/folder/validate/enabled/delete) — department-only; kept 2 policy keys.
-      * v7: 2026-09-05 added imap_max_new_tickets_per_hour (inbound flood cap) — 3 policy keys.
-      * v8: 2026-09-09 removed gst_enabled and product_gst_applicable — two controls
-      *     that wrote settings nothing ever read. Whether GST applies is decided by
-      *     gst_settings.enabled (+ tax_mode) and, per product, products.gst_enabled;
-      *     these two could read "Yes" while every invoice was written with zero tax.
-      *     The keys stay accepted by SettingsController (see UntypedSettingsTest) —
-      *     only the form controls are gone.
-      * v9: 2026-09-29 added renewal_invoice_days (F3 renewal invoice generation
-      *     window, BillingSettings) — a typed billing key rendered on the Billing tab.
-      */
+     * Baseline set - 183 keys rendered by admin/settings/index.blade.php (84 + 94 typed + 3 imap policy + 4 security hardening + 6 branding + 8 company split + 1 company_gstin + 4 bank).
+     * Global Incoming Mail host/user/pwd removed in department-only refactor (9 keys dropped).
+     * Documented verbatim so any drop or rename fails this test.
+     * Sorted alphabetically for diff stability; source order is the blade file.
+     * v6: 2026-09-05 removed 9 global imap_* (host/port/user/pwd/encryption/folder/validate/enabled/delete) — department-only; kept 2 policy keys.
+     * v7: 2026-09-05 added imap_max_new_tickets_per_hour (inbound flood cap) — 3 policy keys.
+     * v8: 2026-09-09 removed gst_enabled and product_gst_applicable — two controls
+     *     that wrote settings nothing ever read. Whether GST applies is decided by
+     *     gst_settings.enabled (+ tax_mode) and, per product, products.gst_enabled;
+     *     these two could read "Yes" while every invoice was written with zero tax.
+     *     The keys stay accepted by SettingsController (see UntypedSettingsTest) —
+     *     only the form controls are gone.
+     * v9: 2026-09-29 added renewal_invoice_days (F3 renewal invoice generation
+     *     window, BillingSettings) — a typed billing key rendered on the Billing tab.
+     * v10: 2026-10-02 added 9 invoice seller & bank details keys
+     *     (seller_name, seller_address, seller_gstin, seller_phone, seller_email,
+     *     bank_name, bank_account_holder, bank_account_no, bank_ifsc) — typed
+     *     nullable-string BillingSettings keys rendered on the Billing tab.
+     * v11: 2026-10-02 removed the 5 seller_* keys — seller identity already
+     *     lives in GeneralSettings (company_name/email/phone/address) — and
+     *     added company_gstin (GeneralSettings) for the invoice PDF. The
+     *     billing card now renders only the 4 bank_* keys.
+     * v12: 2026-10-02 removed 20 dead duplicate controls left by the T4.2
+     *     settings port (see migration 2026_10_02_000003_remove_dead_duplicate_settings):
+     *     default_currency, default_tax_rate, session_timeout, max_login_attempts,
+     *     force_2fa, domain_expiry_warning_days, hosting_suspend_after_days,
+     *     hosting_terminate_after_days, domain_renewal_reminder_days, the 7
+     *     automation_* duplicates, and the 4 user_* duplicates. The keys stay
+     *     accepted by SettingsController (see UntypedSettingsTest) — only the
+     *     form controls are gone.
+     */
     public const BASELINE_KEYS = [
         'analytics_anonymize_ip',
         'analytics_daily_report',
@@ -59,16 +75,13 @@ class AdminSettingsInventoryTest extends TestCase
         'automation_auto_close_ticket_days',
         'automation_auto_close_tickets',
         'automation_default_workflow',
-        'automation_domain_expiry_notices',
-        'automation_domain_expiry_reminder_days',
         'automation_invoice_reminder_days',
         'automation_invoice_reminders',
-        'automation_overdue_actions',
-        'automation_renewal_invoices',
-        'automation_suspend_after_due_days',
-        'automation_terminate_after_due_days',
-        'automation_welcome_email',
         'automation_workflows_enabled',
+        'bank_account_holder',
+        'bank_account_no',
+        'bank_ifsc',
+        'bank_name',
         'branding_accent_color',
         'branding_app_name',
         'branding_footer_text',
@@ -94,6 +107,7 @@ class AdminSettingsInventoryTest extends TestCase
         'company_city',
         'company_country',
         'company_email',
+        'company_gstin',
         'company_name',
         'company_phone',
         'company_phone_code',
@@ -119,25 +133,20 @@ class AdminSettingsInventoryTest extends TestCase
         'cron_usage_sync',
         'currency',
         'date_format',
-        'default_currency',
-        'default_tax_rate',
         'domain_auto_registration',
         'domain_default_registrar',
         'domain_dns_enabled',
         'domain_dns_provider',
-        'domain_expiry_warning_days',
         'domain_nameserver1',
         'domain_nameserver2',
         'domain_nameserver3',
         'domain_nameserver4',
         'domain_pricing_tier',
-        'domain_renewal_reminder_days',
         'domain_transfer_enabled',
         'domain_transfer_lock',
         'domain_transfer_lock_days',
         'domain_whois_privacy',
         'due_days',
-        'force_2fa',
         'hosting_allow_account_creation',
         'hosting_auto_provision',
         'hosting_backup_enabled',
@@ -146,9 +155,7 @@ class AdminSettingsInventoryTest extends TestCase
         'hosting_documentation_url',
         'hosting_max_accounts_per_server',
         'hosting_provision_retries',
-        'hosting_suspend_after_days',
         'hosting_suspend_on_overdue',
-        'hosting_terminate_after_days',
         'hosting_terms_url',
         'hosting_unsuspend_on_payment',
         'hosting_welcome_email_enabled',
@@ -180,7 +187,6 @@ class AdminSettingsInventoryTest extends TestCase
         'lockout_duration',
         'mail_from_address',
         'mail_from_name',
-        'max_login_attempts',
         'notify_domain_expiry',
         'notify_new_tickets',
         'notify_overdue_invoices',
@@ -221,7 +227,6 @@ class AdminSettingsInventoryTest extends TestCase
         'security_honeypot_enabled',
         'security_math_captcha_enabled',
         'security_strong_password_enabled',
-        'session_timeout',
         'smtp_encryption',
         'smtp_host',
         'smtp_password',
@@ -233,14 +238,10 @@ class AdminSettingsInventoryTest extends TestCase
         'timezone',
         'user_allow_self_delete',
         'user_allow_social_login',
-        'user_default_timezone',
         'user_email_verification',
         'user_inactive_lock_days',
-        'user_max_login_attempts',
         'user_password_expiry_days',
         'user_profile_editable',
-        'user_session_timeout_minutes',
-        'user_two_factor_enforced',
     ];
 
     protected function setUp(): void
@@ -271,7 +272,7 @@ class AdminSettingsInventoryTest extends TestCase
         $expected = self::BASELINE_KEYS;
         sort($expected);
 
-        $this->assertCount(198, $keys, 'Baseline field count changed - expected 198 name="settings[*]" keys. Got: ' . implode(', ', $keys));
+        $this->assertCount(183, $keys, 'Baseline field count changed - expected 183 name="settings[*]" keys. Got: '.implode(', ', $keys));
         $this->assertSame($expected, $keys, 'Baseline field set changed - keys were dropped, renamed, or added.');
     }
 
@@ -328,6 +329,7 @@ class AdminSettingsInventoryTest extends TestCase
         // and the setting-specific slice.
         $settingQueries = array_filter($queries, function (array $entry): bool {
             $sql = $entry['query'] ?? '';
+
             return str_contains($sql, 'settings') || str_contains($sql, 'settings_properties');
         });
 
@@ -338,7 +340,7 @@ class AdminSettingsInventoryTest extends TestCase
             21,
             $settingCount,
             "GET admin.settings.index issued {$settingCount} setting queries (expected <=21 = 2 plucks + 17 typed groups + 1 gst_settings + 1 registrar_settings). "
-            . "Total queries: {$totalCount}. Possible N+1. Queries: " . json_encode(array_column($settingQueries, 'query'))
+            ."Total queries: {$totalCount}. Possible N+1. Queries: ".json_encode(array_column($settingQueries, 'query'))
         );
 
         // Hard N+1 check: 160 TYPED_KEYS should never produce 160 queries.

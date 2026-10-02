@@ -47,7 +47,7 @@
     "src": "node_modules/bootstrap-icons/font/fonts/bootstrap-icons.woff2"
   },
   "resources/css/adminlte.css": {
-    "file": "assets/adminlte-BlZbsTrZ.css",
+    "file": "assets/adminlte-DzpKqViL.css",
     "name": "adminlte",
     "names": [
       "adminlte.css"
@@ -60,7 +60,7 @@
     ]
   },
   "resources/css/app.css": {
-    "file": "assets/app-DuGK_MgR.css",
+    "file": "assets/app-BwzQIkC7.css",
     "name": "app",
     "names": [
       "app.css"
@@ -103,12 +103,6 @@
     "imports": [
       "_rolldown-runtime-QTnfLwEv.js"
     ]
-  },
-  "resources/js/app.js": {
-    "file": "assets/app-BvRk9kiK.js",
-    "name": "app",
-    "src": "resources/js/app.js",
-    "isEntry": true
   },
   "resources/js/chat.js": {
     "file": "assets/chat-CUbaGjXc.js",

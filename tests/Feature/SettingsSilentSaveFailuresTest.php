@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\Permission;
 use App\Models\Role;
 use App\Models\User;
+use App\Settings\RoleSettings;
 use App\Support\AppSettings;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -203,7 +204,7 @@ class SettingsSilentSaveFailuresTest extends TestCase
             ['setting_key' => 'role_default_role'],
             ['setting_value' => 'client', 'group' => 'role', 'updated_at' => now()],
         );
-        app(\App\Settings\RoleSettings::class)->fill(['role_default_role' => 'client'])->save();
+        app(RoleSettings::class)->fill(['role_default_role' => 'client'])->save();
         app()->forgetScopedInstances();
 
         $html = $this->actingAsSettingsAdmin()
@@ -301,9 +302,9 @@ class SettingsSilentSaveFailuresTest extends TestCase
             ->getContent();
 
         $this->assertMatchesRegularExpression(
-            '/<input[^>]*name="gstin"[^>]*form="gst-settings-form"|<input[^>]*form="gst-settings-form"[^>]*name="gstin"/i',
+            '/<input[^>]*name="legal_name"[^>]*form="gst-settings-form"|<input[^>]*form="gst-settings-form"[^>]*name="legal_name"/i',
             $html,
-            'gstin must stay owned by gst-settings-form.'
+            'legal_name must stay owned by gst-settings-form.'
         );
 
         $this->assertStringContainsString(

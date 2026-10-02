@@ -29,7 +29,6 @@ class GstSettingController extends Controller
         // Seed the row on first visit so the settings page always has something
         // to render (and so `enabled` defaults to off rather than to nothing).
         GstSetting::firstOrCreate([], [
-            'gstin' => '',
             'legal_name' => '',
             'state_code' => '27',
             'state_name' => 'Maharashtra',
@@ -48,7 +47,6 @@ class GstSettingController extends Controller
     public function update(Request $request): RedirectResponse
     {
         $validated = $request->validate([
-            'gstin' => ['required', 'string', 'max:15'],
             'legal_name' => ['required', 'string', 'max:255'],
             // One of the 38 GST state codes and nothing else. This used to be
             // free text capped at two characters, which is how the company came

@@ -74,7 +74,7 @@ class NewSettingsGroupsTest extends TestCase
             'automation' => [AutomationSettings::class, 'automation_default_workflow', 'provision'],
             'cron' => [CronSettings::class, 'cron_domain_expiry_check', 'daily'],
             'role' => [RoleSettings::class, 'role_default_role', 'client'],
-            'user' => [UserSettings::class, 'user_default_timezone', 'Asia/Kolkata'],
+            'user' => [UserSettings::class, 'user_password_expiry_days', 30],
         ];
     }
 
@@ -105,7 +105,7 @@ class NewSettingsGroupsTest extends TestCase
     }
 
     #[DataProvider('roundTripProvider')]
-    public function test_each_new_group_saves_and_reads_back(string $class, string $property, string $value): void
+    public function test_each_new_group_saves_and_reads_back(string $class, string $property, string|int $value): void
     {
         $settings = app($class);
         $settings->fill([$property => $value]);
@@ -156,13 +156,11 @@ class NewSettingsGroupsTest extends TestCase
             ->post(route('admin.settings.update'), [
                 'settings' => [
                     'domain_default_registrar' => 'resellerclub',
-                    'domain_renewal_reminder_days' => '45',
                 ],
             ])
             ->assertRedirect(route('admin.settings.index'));
 
         $this->assertSame('resellerclub', app(DomainSettings::class)->domain_default_registrar);
-        $this->assertSame(45, app(DomainSettings::class)->domain_renewal_reminder_days);
 
         $this->assertDatabaseHas('settings_properties', [
             'group' => 'domain',

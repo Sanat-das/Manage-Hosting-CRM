@@ -148,7 +148,6 @@ class GstStateCodeNormalizationTest extends TestCase
         $gst = GstSetting::firstOrNew([]);
 
         $gst->fill(array_replace([
-            'gstin' => '27AAAAA0000A1Z5',
             'legal_name' => 'Acme Hosting Pvt Ltd',
             'state_code' => '27',
             'state_name' => 'Maharashtra',
@@ -187,7 +186,6 @@ class GstStateCodeNormalizationTest extends TestCase
     private function payload(array $overrides = []): array
     {
         return array_replace([
-            'gstin' => '27AAAAA0000A1Z5',
             'legal_name' => 'Acme Hosting Pvt Ltd',
             'state_code' => '27',
             'cgst_rate' => 9,

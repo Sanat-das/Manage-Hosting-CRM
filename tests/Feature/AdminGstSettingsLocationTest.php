@@ -28,20 +28,19 @@ class AdminGstSettingsLocationTest extends TestCase
 
     public function test_the_gst_form_renders_on_the_billing_tab_and_posts_to_its_own_route(): void
     {
-        $this->seedGst(['gstin' => '27AAAAA0000A1Z5', 'enabled' => true]);
+        $this->seedGst(['enabled' => true]);
 
         $html = $this->admin()->get(route('admin.settings.index', ['tab' => 'billing']))
             ->assertOk()
             ->getContent();
 
         $this->assertStringContainsString('GST &amp; Tax', $html);
-        $this->assertStringContainsString('27AAAAA0000A1Z5', $html);
 
         // Forms cannot nest, so the fields ride the settings page visually while
         // belonging to their own form via the HTML5 form= attribute.
         $this->assertStringContainsString('id="gst-settings-form"', $html);
         $this->assertStringContainsString(route('admin.gst-settings.update'), $html);
-        $this->assertMatchesRegularExpression('/name="gstin"[^>]*form="gst-settings-form"|form="gst-settings-form"[^>]*name="gstin"/', $html);
+        $this->assertMatchesRegularExpression('/name="legal_name"[^>]*form="gst-settings-form"|form="gst-settings-form"[^>]*name="legal_name"/', $html);
 
         // And it is NOT part of the settings[] payload — that is what made the
         // old duplicate toggles inert.
@@ -54,7 +53,6 @@ class AdminGstSettingsLocationTest extends TestCase
         $this->seedGst();
 
         $this->admin()->put(route('admin.gst-settings.update'), [
-            'gstin' => '27BBBBB1111B2Z6',
             'legal_name' => 'Acme Hosting Pvt Ltd',
             'state_code' => '27',
             'state_name' => 'Maharashtra',
@@ -66,7 +64,6 @@ class AdminGstSettingsLocationTest extends TestCase
         ])->assertRedirect(route('admin.settings.index', ['tab' => 'billing']));
 
         $gst = GstSetting::first();
-        $this->assertSame('27BBBBB1111B2Z6', $gst->gstin);
         $this->assertSame('per_product', $gst->tax_mode);
         $this->assertTrue((bool) $gst->enabled);
     }
@@ -126,7 +123,6 @@ class AdminGstSettingsLocationTest extends TestCase
         $gst = GstSetting::firstOrNew([]);
 
         $gst->fill(array_replace([
-            'gstin' => '27AAAAA0000A1Z5',
             'legal_name' => 'Acme Hosting Pvt Ltd',
             'state_code' => '27',
             'state_name' => 'Maharashtra',

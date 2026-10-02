@@ -1,6 +1,6 @@
 # Agentic Workflow System — ManageHostingCRM
 
-Version 2 · Reconciled 2026-09-27 · Repo: `C:\Users\Administrator\Local Sites\managehosting\app`
+Version 2 · Reconciled 2026-10-01 (monthly reconciliation run) · Repo: `C:\Users\Administrator\Local Sites\managehosting\app`
 Machine-readable twin: [`.opencode/agentic-workflows.json`](.opencode/agentic-workflows.json) — that file is the source of truth for wiring; this document explains it.
 
 Scope rules (apply to every workflow):
@@ -13,17 +13,18 @@ Scope rules (apply to every workflow):
 
 | Agent | Mode | Role | Definition | Model | Tools |
 |---|---|---|---|---|---|
-| `build` | primary | Orchestrator + implementer; runs workflows end-to-end. Default entry point. | `~/.config/opencode/agents/build.md` | `opencode-go/deepseek-v4.1-flash#max` | OpenCode defaults (full toolset) |
-| `plan` | primary | Planner for the complexity gate. Read-and-plan only; built-in plan semantics disable file edits. | `~/.config/opencode/agents/plan.md` | `opencode-go/deepseek-v4.1-flash#max` | Built-in plan semantics (no edits) |
+| `build` | primary | Orchestrator + implementer; runs workflows end-to-end. Default entry point. | `~/.config/opencode/agents/build.md` | `opencode-go/deepseek-v4-flash#max` | OpenCode defaults (full toolset) |
+| `plan` | primary | Planner for the complexity gate. Read-and-plan only; built-in plan semantics disable file edits. | `~/.config/opencode/agents/plan.md` | `opencode-go/deepseek-v4-flash#max` | Built-in plan semantics (no edits) |
 | `explore` | subagent | Fast read-only code search; returns file/symbol maps and call paths. | `~/.config/opencode/agents/explore.md` | `opencode-go/muse-spark-1.3-contributor#xhigh` | Read-only (glob/grep/read) |
-| `general` | subagent | Multi-step work units; used for parallel slices. | `~/.config/opencode/agents/general.md` | `opencode-go/muse-spark-1.3-contributor#xhigh` | OpenCode defaults |
+| `general` | subagent | Multi-step work units; used for parallel slices. | `~/.config/opencode/agents/general.md` | `opencode-go/deepseek-v4-flash` | OpenCode defaults |
+| `verify` | subagent | Adversarial verifier — runs the gate ladder and tries to falsify finished work; every finding carries `path:line` and a reproduction. | `~/.config/opencode/agents/verify.md` | `opencode-go/deepseek-v4-flash#max` | Read-only; edit + subagent denied |
 
 Notes:
 
-- Hardened 2026-09-27: all four agents carry `description:` frontmatter; `explore` denies `edit` outright; `plan` relies on OpenCode's built-in plan semantics (no edits to normal project files). Entry/child rules follow `mode`, permissions, and built-in semantics.
+- Hardened 2026-09-27: all five agents carry `description:` frontmatter; `explore` denies `edit` outright; `plan` relies on OpenCode's built-in plan semantics (no edits to normal project files). Entry/child rules follow `mode`, permissions, and built-in semantics.
 - OpenChamber's default agent for new sessions is the `Sisyphus - ultraworker` (oh-my-openagent) definition; the workflow commands assume `build`.
-- `explore` and `general` must never be session entry points — they are reachable only through the subagent tool.
-- OpenChamber project: `ManageHostingCRM` (`C:\Users\Administrator\Local Sites\managehosting\app`). One session active at reconciliation time, model `opencode-go/deepseek-v4.1-flash#max`; no scheduled tasks configured.
+- `explore`, `general`, and `verify` must never be session entry points — they are reachable only through the subagent tool (`verify` only via the verification gates, never as an entry point).
+- OpenChamber project: `ManageHostingCRM` (`C:\Users\Administrator\Local Sites\managehosting\app`). One session active at reconciliation time, model `opencode-go/deepseek-v4.1-flash#max`; 1 enabled monthly scheduled task: `Agentic workflow reconciliation (monthly)` (cron `0 9 1 * *`, Asia/Kolkata).
 
 ## 2. Router
 
@@ -106,7 +107,7 @@ Plan output and gate evidence land in `.opencode/reports/<YYYY-MM-DD>-<slug>/` (
 
 | Server | Scope | Config | Class | Observed | Use |
 |---|---|---|---|---|---|
-| `codegraph` | project | `app/opencode.jsonc` (`codegraph serve --mcp`, enabled) | prod | `codegraph_explore` tool + `codegraph explore` shell; `.codegraph/` index present | First stop for code questions in this repo. Loads only when a session runs in the repo directory (verified unavailable from chat-directory sessions). |
+| `codegraph` | project | `opencode.jsonc` (`codegraph serve --mcp`, enabled) | prod | `codegraph_explore` tool + `codegraph explore` shell; `.codegraph/` index present | First stop for code questions in this repo. Loads only when a session runs in the repo directory (verified unavailable from chat-directory sessions). |
 | `everything` | global | `~/.config/opencode/opencode.jsonc` | demo | 7 static docs + 2 dynamic templates, all `demo://resource/...` | **Smoke-test only, skip unless a `demo://` URI is explicitly referenced.** Never surface `get-env` output in logs or reports. |
 
 Notes: no other MCP servers are configured. `laravel/mcp ^1.0` is an app-side dependency (the app can expose MCP servers), not agent tooling. `.playwright-mcp/` in the repo is stale evidence from earlier runs — not a configured server.

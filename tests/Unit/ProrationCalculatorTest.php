@@ -9,7 +9,7 @@ class ProrationCalculatorTest extends TestCase
 {
     // --- calculateProration ---
 
-    public function test_upgrade_full_charge(): void
+    public function test_upgrade_prorated_charge(): void
     {
         // 30-day period, change on day 10: 20 days remaining
         $result = ProrationCalculator::calculateProration(
@@ -23,8 +23,8 @@ class ProrationCalculatorTest extends TestCase
 
         // credit = 100 * 20/30 = 66.67
         $this->assertEquals(66.67, $result['credit']);
-        // upgrade → charge = newAmount (full)
-        $this->assertEquals(200.0, $result['charge']);
+        // upgrade → charge prorated too: 200 * 20/30 = 133.33
+        $this->assertEquals(133.33, $result['charge']);
         $this->assertEquals(20, $result['proration_days']);
     }
 
@@ -76,7 +76,8 @@ class ProrationCalculatorTest extends TestCase
         );
 
         $this->assertEquals(0.0, $result['credit']);
-        $this->assertEquals(150.0, $result['charge']);
+        // upgrade → charge prorated to 0 remaining: 150 * 0/30 = 0.0
+        $this->assertEquals(0.0, $result['charge']);
         $this->assertEquals(0, $result['proration_days']);
     }
 

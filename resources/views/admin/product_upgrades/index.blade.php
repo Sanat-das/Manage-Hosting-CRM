@@ -24,6 +24,7 @@
             ['label' => 'From', 'sort' => 'from'],
             ['label' => ''],
             ['label' => 'To', 'sort' => 'to'],
+            ['label' => 'Direction'],
             ['label' => 'Enabled', 'sort' => 'enabled'],
             ['label' => 'Actions', 'class' => 'text-end'],
         ]"
@@ -39,6 +40,16 @@
                 <td class="text-muted"><i class="bi bi-arrow-right"></i></td>
                 <td><a href="{{ route('admin.products.show', $path->toProduct) }}"><strong>{{ $path->toProduct->name }}</strong></a></td>
                 <td>
+                    @php($directionLabels = ['upgrade' => 'Upgrade', 'downgrade' => 'Downgrade', 'both' => 'Both'])
+                    @if ($path->direction === 'upgrade')
+                        <span class="badge text-bg-primary">{{ $directionLabels[$path->direction] }}</span>
+                    @elseif ($path->direction === 'downgrade')
+                        <span class="badge text-bg-warning">{{ $directionLabels[$path->direction] }}</span>
+                    @else
+                        <span class="badge text-bg-info">{{ $directionLabels[$path->direction] }}</span>
+                    @endif
+                </td>
+                <td>
                     @if ($path->enabled)
                         <span class="badge text-bg-success">Enabled</span>
                     @else
@@ -52,7 +63,7 @@
                 </td>
             </tr>
         @empty
-            <x-ui.empty-table-row colSpan="5" icon="bi bi-arrow-up-right-circle" title="No upgrade paths found." />
+            <x-ui.empty-table-row colSpan="6" icon="bi bi-arrow-up-right-circle" title="No upgrade paths found." />
         @endforelse
     </x-adminlte.partials.datatable>
 @stop

@@ -98,6 +98,17 @@ Route::middleware(['web', 'auth', 'admin', 'throttle:admin'])->prefix('admin')->
         ->middleware('permission:products.edit')
         ->name('products.modules.template-default');
 
+    // Product upgrade paths (the per-product view of the global product-upgrades
+    // data: which products this one may upgrade/downgrade to). Add/remove only —
+    // the direction/enabled edits stay on the standalone product-upgrades page.
+    Route::post('products/{product}/upgrade-paths', [ProductController::class, 'storeUpgradePath'])
+        ->middleware('permission:products.edit')
+        ->name('products.upgrade-paths.store');
+
+    Route::delete('products/{product}/upgrade-paths/{productUpgradePath}', [ProductController::class, 'destroyUpgradePath'])
+        ->middleware('permission:products.edit')
+        ->name('products.upgrade-paths.destroy');
+
     // Product groups
     Route::get('product-groups', [ProductGroupController::class, 'index'])
         ->middleware('permission:products.groups')

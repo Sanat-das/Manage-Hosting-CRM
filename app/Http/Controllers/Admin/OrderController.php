@@ -12,20 +12,30 @@ use App\Models\OrderItem;
 use App\Models\Product;
 use App\Models\ProductAddon;
 use App\Models\ProductAddonPricing;
+use App\Models\ProductOptionGroupProduct;
+use App\Models\ProductPricing;
+use App\Models\ProductUpgradePath;
 use App\Models\Setting;
 use App\Services\Billing\AddOnService;
 use App\Services\Billing\BillingService;
 use App\Services\Billing\GstTaxService;
+use App\Services\Billing\UpgradeQuoteService;
+use App\Services\Billing\UpgradeRequestService;
 use App\Services\Exports\CsvStreamService;
 use App\Services\InvoiceEmailService;
+use App\Services\OptionPricingResolver;
 use App\Services\OrderActivityLogger;
 use App\Services\OrderConfigSnapshot;
 use App\Services\OrderEmailService;
 use App\Services\OrderNumberService;
 use App\Services\OrderService;
+use App\Support\AppSettings;
+use App\Support\OptionSelectionRules;
+use DomainException;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rule;
@@ -523,5 +533,518 @@ class OrderController extends Controller
     private function sendInvoiceEmail(Order $order, Invoice $invoice): void
     {
         $this->invoiceEmails->send($invoice);
+    }
+
+    /**
+     * STEP 1 of the manual upgrade wizard (Plan). Lists the enabled target
+     * products for the order's served product, each with its live quote
+     * (payable or credit) for EVERY recurring cycle it is priced for (WHMCS
+     * newproductbillingcycle). A pair is offered only when its path's
+     * direction admits the quoted change — downgrades need direction
+     * downgrade/both AND the product_enable_downgrades setting on; everything
+     * else needs upgrade/both (the same rule the client wizard applies).
+     * Pairs whose product has no pricing for the offered cycle are omitted —
+     * they can neither be quoted nor applied. The option pickers live on step
+     * 2 (configure), not here.
+     */
+    public function upgrade(Order $order): View
+    {
+        $upgradesEnabled = (bool) AppSettings::get('product_enable_upgrades', '1');
+        $downgradesEnabled = (bool) AppSettings::get('product_enable_downgrades', '0');
+        $recurring = (Order::CYCLE_MONTHS[$order->billing_cycle] ?? 0) > 0;
+
+        $targets = collect();
+
+        if ($order->status === Order::STATUS_ACTIVE && $recurring && $upgradesEnabled) {
+            $quotes = $this->quotes();
+            $recurringCycles = array_keys(array_filter(Order::CYCLE_MONTHS, fn (int $months) => $months > 0));
+
+            $served = $order->items->first(
+                fn (OrderItem $item) => $item->product_addon_id === null && (int) $item->product_id === (int) $order->product_id,
+            ) ?? $order->items->first(fn (OrderItem $item) => $item->product_addon_id === null);
+
+            $fromProductId = $served?->product_id ?? $order->product_id;
+
+            $paths = ProductUpgradePath::query()
+                ->where('from_product_id', $fromProductId)
+                ->where('enabled', true)
+                ->whereHas('toProduct', fn ($q) => $q->where('status', 'active'))
+                ->with('toProduct')
+                ->get();
+
+            foreach ($paths as $path) {
+                $to = $path->toProduct;
+
+                $cycles = ProductPricing::query()
+                    ->where('product_id', $to->id)
+                    ->whereIn('billing_cycle', $recurringCycles)
+                    ->pluck('billing_cycle')
+                    ->sortBy(fn (string $cycle) => Order::CYCLE_MONTHS[$cycle] ?? PHP_INT_MAX)
+                    ->values()
+                    ->all();
+
+                foreach ($cycles as $cycle) {
+                    try {
+                        $quote = $quotes->quote($order, $to, null, $cycle);
+                    } catch (DomainException) {
+                        // No pricing for this cycle — such a pair can neither
+                        // be quoted nor applied, so it is not offered.
+                        continue;
+                    }
+
+                    if (! $this->directionAllows($path->direction, $quote['change_type'])) {
+                        continue;
+                    }
+
+                    if ($quote['change_type'] === 'downgrade' && ! $downgradesEnabled) {
+                        continue;
+                    }
+
+                    $targets->push(['product' => $to, 'billing_cycle' => $cycle, 'quote' => $quote]);
+                }
+            }
+        }
+
+        // Group the offered (product × cycle) pairs by target product so the
+        // step-1 form renders one radio per pair (value "{product_id}:{cycle}",
+        // the client wizard's shape). The option pickers are resolved on step 2
+        // for the chosen pair only.
+        $groups = [];
+
+        foreach ($targets as $target) {
+            $groupId = (int) $target['product']->id;
+            $groups[$groupId] ??= ['product' => $target['product'], 'pairs' => []];
+            $groups[$groupId]['pairs'][] = $target;
+        }
+
+        return view('admin.orders.upgrade', compact('order', 'groups', 'upgradesEnabled', 'downgradesEnabled'));
+    }
+
+    /**
+     * STEP 2 of the manual upgrade wizard (Configure). Stateless — the chosen
+     * (product, cycle) pair travels in the step-1 form payload (or as plain
+     * fields from the review step's Edit Configuration round-trip), and the
+     * option selections post onward to preview(). Re-validates the pair against
+     * the same enabled-path / direction / downgrade guards step 1 applies, then
+     * renders the target's customer-editable option pickers.
+     */
+    public function configure(Request $request, Order $order): View|RedirectResponse
+    {
+        abort_unless($this->upgradeEligible($order), 404);
+
+        // The step-1 form ships one radio per (product × cycle) pair whose
+        // value carries both ids; direct payloads (tests, the edit round-trip)
+        // already use the plain fields.
+        if (! $request->has('to_product_id') && is_string($request->input('pair'))) {
+            [$productId, $cycle] = array_pad(explode(':', $request->input('pair'), 2), 2, null);
+            $request->merge([
+                'to_product_id' => $productId,
+                'to_billing_cycle' => $cycle,
+            ]);
+        }
+
+        $validated = $request->validate([
+            'to_product_id' => ['required', 'integer'],
+            'to_billing_cycle' => ['nullable', 'string', 'in:'.implode(',', array_keys(array_filter(Order::CYCLE_MONTHS, fn (int $months) => $months > 0)))],
+        ]);
+
+        $to = Product::where('status', 'active')->find($validated['to_product_id']);
+
+        if ($to === null) {
+            return back()->withErrors(['to_product_id' => 'The target product is not available.']);
+        }
+
+        $path = $order->product?->upgradeableTo()->where('to_product_id', $to->id)->first();
+
+        if ($path === null) {
+            return back()->withErrors(['to_product_id' => 'The target product is not available.']);
+        }
+
+        $cycle = $validated['to_billing_cycle'] ?? null;
+
+        try {
+            $quote = $this->quotes()->quote($order, $to, null, $cycle);
+        } catch (DomainException $e) {
+            return back()->withErrors(['to_product_id' => $e->getMessage()]);
+        }
+
+        if (! $this->directionAllows($path->direction, $quote['change_type'])) {
+            return back()->withErrors(['to_product_id' => 'This change is not available for the selected product.']);
+        }
+
+        if ($quote['change_type'] === 'downgrade' && ! (bool) AppSettings::get('product_enable_downgrades', '0')) {
+            return back()->withErrors(['to_product_id' => 'Downgrades are disabled.']);
+        }
+
+        $links = OptionPricingResolver::loadLinks($to)->where('customer_editable', true);
+        $servedSnapshot = $this->servedSnapshot($order);
+
+        // Repopulate the pickers from a reposted payload when present;
+        // otherwise the view preselects the served configuration for an
+        // unchanged product.
+        $submittedPreselection = $request->has('options')
+            ? $this->preselectionFrom($request, $to)
+            : null;
+
+        return view('admin.orders.upgrade_configure', compact('order', 'to', 'cycle', 'quote', 'links', 'servedSnapshot', 'submittedPreselection'));
+    }
+
+    /**
+     * STEP 3 of the manual upgrade wizard (Review & Confirm). Re-runs the live
+     * quote with the option selections submitted from configure and renders the
+     * exact prorated breakdown, the per-option old→new rows, and a REQUIRED
+     * confirmation checkbox. Stateless — nothing is persisted here, the confirm
+     * form repeats the payload to storeUpgrade().
+     */
+    public function preview(Request $request, Order $order): View|RedirectResponse
+    {
+        abort_unless($this->upgradeEligible($order), 404);
+
+        $validated = $request->validate([
+            'to_product_id' => ['required', 'integer'],
+            'to_billing_cycle' => ['nullable', 'string', 'in:'.implode(',', array_keys(array_filter(Order::CYCLE_MONTHS, fn (int $months) => $months > 0)))],
+        ]);
+
+        $to = Product::where('status', 'active')->find($validated['to_product_id']);
+
+        if ($to === null) {
+            return back()->withErrors(['to_product_id' => 'The target product is not available.']);
+        }
+
+        $path = $order->product?->upgradeableTo()->where('to_product_id', $to->id)->first();
+
+        if ($path === null) {
+            return back()->withErrors(['to_product_id' => 'The target product is not available.']);
+        }
+
+        $cycle = $validated['to_billing_cycle'] ?? null;
+        $options = $this->optionsFrom($request, $to);
+
+        try {
+            $quote = $this->quotes()->quote($order, $to, null, $cycle, $options);
+        } catch (DomainException $e) {
+            return back()->withErrors(['to_product_id' => $e->getMessage()]);
+        }
+
+        if (! $this->directionAllows($path->direction, $quote['change_type'])) {
+            return back()->withErrors(['to_product_id' => 'This change is not available for the selected product.']);
+        }
+
+        if ($quote['change_type'] === 'downgrade' && ! (bool) AppSettings::get('product_enable_downgrades', '0')) {
+            return back()->withErrors(['to_product_id' => 'Downgrades are disabled.']);
+        }
+
+        return view('admin.orders.upgrade_confirm', [
+            'order' => $order,
+            'to' => $to,
+            'cycle' => $cycle,
+            'quote' => $quote,
+            'options' => $options,
+            'option_rows' => $this->optionRows($order, $to, $quote, $options),
+        ]);
+    }
+
+    /**
+     * Place AND approve a manual upgrade for an order in one step: the admin
+     * acts for the customer, so approval is explicit here (payable → upgrade
+     * invoice; credit → wallet credit + immediate apply). All eligibility and
+     * pricing guards live in UpgradeRequestService::place() and propagate as
+     * DomainExceptions surfaced as form errors.
+     */
+    public function storeUpgrade(Request $request, Order $order): RedirectResponse
+    {
+        $validated = $request->validate([
+            'to_product_id' => ['required', 'integer', 'exists:products,id'],
+            'notes' => ['nullable', 'string', 'max:1000'],
+            'to_billing_cycle' => ['nullable', 'string', Rule::in(array_keys(array_filter(Order::CYCLE_MONTHS, fn (int $months) => $months > 0)))],
+            // Target product's option selections keyed by link id (ids or
+            // labels); OptionPricingResolver tolerates both and prices the
+            // chosen configuration into the quote and the apply.
+            'options' => ['nullable', 'array', 'max:100'],
+            // Review & Confirm step: the admin must tick the confirmation box
+            // before the request is placed and approved.
+            'confirm' => ['required', 'accepted'],
+        ], [
+            'confirm.required' => 'You must confirm the upgrade details to proceed.',
+            'confirm.accepted' => 'You must confirm the upgrade details to proceed.',
+        ]);
+
+        $upgradeRequests = app(UpgradeRequestService::class);
+
+        try {
+            $upgrade = $upgradeRequests->place(
+                $order,
+                Product::findOrFail((int) $validated['to_product_id']),
+                $validated['notes'] ?? null,
+                $validated['to_billing_cycle'] ?? null,
+                $validated['options'] ?? [],
+            );
+            $upgrade = $upgradeRequests->approve($upgrade);
+        } catch (DomainException $e) {
+            return back()->withInput()->withErrors(['error' => $e->getMessage()]);
+        }
+
+        if ($upgrade->invoice_id !== null) {
+            $invoiceNo = $upgrade->invoice?->invoice_no ?? '#'.$upgrade->invoice_id;
+
+            return redirect()
+                ->route('admin.orders.show', $order)
+                ->with('success', "Upgrade {$upgrade->upgrade_no} approved. Invoice {$invoiceNo} generated.");
+        }
+
+        if ((float) $upgrade->credit_amount > 0) {
+            return redirect()
+                ->route('admin.orders.show', $order)
+                ->with('success', 'Upgrade '.$upgrade->upgrade_no.' approved. Credit of ₹'.number_format((float) $upgrade->credit_amount, 2)." applied to the customer's wallet.");
+        }
+
+        return redirect()
+            ->route('admin.orders.show', $order)
+            ->with('success', "Upgrade {$upgrade->upgrade_no} approved and applied.");
+    }
+
+    /**
+     * Whether this order may run the manual upgrade wizard: an active
+     * recurring service, upgrades enabled, and at least one enabled path to
+     * an active target product.
+     */
+    private function upgradeEligible(Order $order): bool
+    {
+        $served = $order->items->first(
+            fn (OrderItem $item) => $item->product_addon_id === null && (int) $item->product_id === (int) $order->product_id,
+        ) ?? $order->items->first(fn (OrderItem $item) => $item->product_addon_id === null);
+
+        return $order->status === Order::STATUS_ACTIVE
+            && (Order::CYCLE_MONTHS[(string) $order->billing_cycle] ?? 0) > 0
+            && (bool) AppSettings::get('product_enable_upgrades', '1')
+            && ($served?->product ?? $order->product) !== null
+            && ($served?->product ?? $order->product)->upgradeableTo()
+                ->whereHas('toProduct', fn ($q) => $q->where('status', 'active'))
+                ->exists();
+    }
+
+    /**
+     * Whether a path's direction admits the quoted change: a downgrade needs
+     * direction downgrade/both (the global product_enable_downgrades toggle is
+     * checked separately); every other change needs direction upgrade/both. A
+     * path with no direction (pre-migration rows) is treated as 'both'.
+     */
+    private function directionAllows(?string $direction, string $changeType): bool
+    {
+        $direction = $direction ?: 'both';
+
+        if ($changeType === 'downgrade') {
+            return in_array($direction, ['downgrade', 'both'], true);
+        }
+
+        return in_array($direction, ['upgrade', 'both'], true);
+    }
+
+    private function quotes(): UpgradeQuoteService
+    {
+        return app(UpgradeQuoteService::class);
+    }
+
+    /**
+     * The submitted option selections for a target product, validated per
+     * option-link input type. A request without an `options` key keeps the
+     * pre-options engine behavior exactly (null → "no selections"); the admin
+     * store path passes [] so the target's declared FIXED options are priced
+     * and its snapshot rewritten.
+     */
+    private function optionsFrom(Request $request, Product $to): ?array
+    {
+        $links = OptionPricingResolver::loadLinks($to);
+
+        if (! $request->has('options')) {
+            return $links->isEmpty() ? null : [];
+        }
+
+        $editable = $links->where('customer_editable', true);
+
+        return $request->validate($this->optionRules($editable))['options'] ?? [];
+    }
+
+    /**
+     * Snapshot-shaped preselection rows rebuilt from a reposted option payload
+     * (the review step's "Edit Configuration" form), so the step-2 pickers
+     * re-render with the admin's selections applied. Tolerant on purpose:
+     * unknown ids simply preselect nothing, exactly like the served snapshot.
+     */
+    private function preselectionFrom(Request $request, Product $to): Collection
+    {
+        $links = OptionPricingResolver::loadLinks($to)->where('customer_editable', true);
+        $rows = [];
+
+        foreach ($request->input('options', []) as $linkId => $value) {
+            $link = $links->firstWhere('id', (int) $linkId);
+            $type = $link?->group?->type ?? 'dropdown';
+
+            $rows[(int) $linkId] = match ($type) {
+                'checkbox' => ['value_ids' => array_map('intval', (array) $value)],
+                'dropdown', 'radio' => ['value_id' => (int) $value],
+                default => ['selected' => $value],
+            };
+        }
+
+        return collect($rows);
+    }
+
+    /**
+     * Per-link validation rules for the upgrade option payload — the
+     * storefront's rules minus the membership check, so an unknown value id
+     * still previews (OptionPricingResolver ignores it) instead of erroring.
+     *
+     * @param  Collection<int, ProductOptionGroupProduct>  $editableLinks
+     * @return array<string, list<mixed>>
+     */
+    private function optionRules(Collection $editableLinks): array
+    {
+        $rules = [];
+
+        foreach ($editableLinks as $link) {
+            $key = 'options.'.$link->id;
+            $type = $link->group?->type ?? 'dropdown';
+            $presence = ($link->required ?? true) ? 'required' : 'nullable';
+
+            switch ($type) {
+                case 'checkbox':
+                    $maxCheckboxes = (int) ($link->input_max ?? $link->group?->input_max ?? $link->linkValues->count());
+                    $rules[$key] = [$presence, 'array', 'max:'.max(1, $maxCheckboxes)];
+                    $rules[$key.'.*'] = ['integer'];
+                    break;
+
+                case 'quantity':
+                    $rules[$key] = [$presence, 'integer', 'min:'.OptionSelectionRules::inputMin($link)];
+                    if (OptionSelectionRules::inputMax($link) !== null) {
+                        $rules[$key][] = 'max:'.OptionSelectionRules::inputMax($link);
+                    }
+                    break;
+
+                case 'number':
+                    $rules[$key] = [$presence, 'numeric', 'min:'.OptionSelectionRules::inputMin($link), 'max:'.(OptionSelectionRules::inputMax($link) ?? PHP_FLOAT_MAX), OptionSelectionRules::stepRule($link)];
+                    break;
+
+                case 'slider':
+                    $rules[$key] = [$presence, 'numeric', 'min:'.OptionSelectionRules::inputMin($link), 'max:'.(OptionSelectionRules::inputMax($link) ?? 100), OptionSelectionRules::stepRule($link)];
+                    break;
+
+                case 'text':
+                    $rules[$key] = [$presence, 'string', 'max:255'];
+                    break;
+
+                default: // dropdown / radio — link-value ids
+                    $rules[$key] = [$presence, 'integer'];
+                    break;
+            }
+        }
+
+        return $rules;
+    }
+
+    /**
+     * Per-option change rows for the confirm view: group name, the served
+     * selection vs the submitted selection, and the new per-cycle unit rate,
+     * one row per editable link that actually changes (selection, rate or
+     * applied price).
+     *
+     * @return array<int, array{name: string, old: string|null, new: string|null, unit: string, price_unit: float|null}>
+     */
+    private function optionRows(Order $order, Product $to, array $quote, ?array $selections): array
+    {
+        if ($selections === null) {
+            return [];
+        }
+
+        $cycle = (string) ($quote['to']['billing_cycle'] ?? $order->billing_cycle);
+        $links = OptionPricingResolver::loadLinks($to);
+        $resolved = (new OptionPricingResolver)->resolve($to, $selections, $cycle, $links);
+        $snapshot = $this->servedSnapshot($order);
+
+        $rows = [];
+
+        foreach ($links as $link) {
+            $line = $resolved['lines'][$link->id] ?? null;
+
+            if ($line === null) {
+                continue;
+            }
+
+            $old = $snapshot !== null ? ($snapshot[$link->id] ?? null) : null;
+            $oldSelected = $old !== null
+                ? $this->displaySelected($old['selected'] ?? null, $old['value_id'] ?? null, $old['value_ids'] ?? [], $link)
+                : null;
+            $newSelected = $this->displaySelected($line['selected'] ?? null, $line['value_id'] ?? null, $line['value_ids'] ?? [], $link);
+
+            $oldUnit = $old !== null && ($old['price_unit'] ?? null) !== null ? (float) $old['price_unit'] : null;
+            $oldApplied = $old !== null ? (float) ($old['price_applied'] ?? 0) : 0.0;
+            $newUnit = $line['price_unit'] !== null ? (float) $line['price_unit'] : null;
+
+            if ($oldSelected === $newSelected
+                && $oldUnit === $newUnit
+                && $oldApplied === (float) $line['price_applied']) {
+                continue;
+            }
+
+            $rows[] = [
+                'name' => (string) ($link->group?->name ?? ''),
+                'old' => $oldSelected,
+                'new' => $newSelected,
+                'unit' => (string) ($link->group?->unit ?? ''),
+                'price_unit' => $line['price_unit'],
+            ];
+        }
+
+        return $rows;
+    }
+
+    /**
+     * Render a selection for display: label(s) for discrete values, the raw
+     * amount for continuous ones, falling back to the value id's label when
+     * the resolver left the label empty.
+     */
+    private function displaySelected(mixed $selected, mixed $valueId, array $valueIds, ProductOptionGroupProduct $link): ?string
+    {
+        if (is_array($selected)) {
+            $labels = array_values(array_filter(array_map('strval', $selected), static fn (string $s) => $s !== ''));
+
+            return $labels === [] ? null : implode(', ', $labels);
+        }
+
+        if ($selected !== null && $selected !== '') {
+            return (string) $selected;
+        }
+
+        if ($valueIds !== []) {
+            $label = $link->linkValues->firstWhere('id', (int) $valueIds[0])?->label;
+
+            if ($label !== null) {
+                return (string) $label;
+            }
+        }
+
+        if ($valueId !== null) {
+            return (string) ($link->linkValues->firstWhere('id', (int) $valueId)?->label ?? '');
+        }
+
+        return null;
+    }
+
+    /**
+     * The served order item's option snapshot keyed by option-link id, or null
+     * when the item carries none. Preselects on the configure step and feeds
+     * the "current" side of the confirm view's per-option rows.
+     */
+    private function servedSnapshot(Order $order): ?Collection
+    {
+        $served = $order->items->first(
+            fn (OrderItem $item) => $item->product_addon_id === null && (int) $item->product_id === (int) $order->product_id,
+        ) ?? $order->items->first(fn (OrderItem $item) => $item->product_addon_id === null);
+
+        if ($served === null || ! is_array($served->config_options)) {
+            return null;
+        }
+
+        return collect($served->config_options['options'] ?? [])->keyBy('id');
     }
 }

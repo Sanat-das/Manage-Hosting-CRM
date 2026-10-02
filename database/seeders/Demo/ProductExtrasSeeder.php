@@ -287,16 +287,19 @@ class ProductExtrasSeeder extends Seeder
                 'from_product_id' => $products['Demo Starter Shared Hosting'],
                 'to_product_id' => $products['Demo Business Shared Hosting'],
                 'enabled' => true,
+                'direction' => 'upgrade',
             ],
             [
                 'from_product_id' => $products['Demo Cloud VPS 2GB'],
                 'to_product_id' => $products['Demo Cloud VPS 8GB'],
                 'enabled' => true,
+                'direction' => 'both',
             ],
             [
                 'from_product_id' => $products['Demo Business Shared Hosting'],
                 'to_product_id' => $products['Demo Reseller Bronze'],
                 'enabled' => true,
+                'direction' => 'downgrade',
             ],
         ];
 

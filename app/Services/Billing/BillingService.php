@@ -814,6 +814,11 @@ class BillingService
                     'notes' => 'Auto-generated renewal invoice',
                 ], $items, $customerStateCode);
 
+                // WHMCS rule: an upgrade still unpaid when the renewal cron
+                // bills the service is superseded by that renewal invoice —
+                // cancel it now that the invoice exists.
+                app(UpgradeRequestService::class)->cancelUnpaidForOrder($order);
+
                 // Advance each billed item on ITS cycle FROM ITS OWN due date
                 // (not the run date) so an early-generation window never drifts
                 // the billing anniversary; the order summary date becomes the

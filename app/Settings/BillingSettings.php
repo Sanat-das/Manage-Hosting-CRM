@@ -23,6 +23,14 @@ class BillingSettings extends Settings
      */
     public int $renewal_invoice_days = 0;
 
+    public ?string $bank_name = null;
+
+    public ?string $bank_account_holder = null;
+
+    public ?string $bank_account_no = null;
+
+    public ?string $bank_ifsc = null;
+
     public static function group(): string
     {
         return 'billing';
@@ -36,6 +44,10 @@ class BillingSettings extends Settings
             'invoice_prefix' => ['nullable', 'string', 'max:20'],
             'tax_rate' => ['nullable', 'numeric', 'min:0', 'max:100'],
             'renewal_invoice_days' => ['nullable', 'integer', 'min:0', 'max:90'],
+            'bank_name' => ['nullable', 'string', 'max:255'],
+            'bank_account_holder' => ['nullable', 'string', 'max:255'],
+            'bank_account_no' => ['nullable', 'string', 'max:34'],
+            'bank_ifsc' => ['nullable', 'string', 'max:11'],
         ];
     }
 }

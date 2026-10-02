@@ -11,6 +11,7 @@ use App\Http\Controllers\Client\PaymentController;
 use App\Http\Controllers\Client\ProfileController;
 use App\Http\Controllers\Client\StoreController;
 use App\Http\Controllers\Client\TicketController;
+use App\Http\Controllers\Client\UpgradeController;
 use App\Http\Controllers\Client\WalletController;
 use Illuminate\Support\Facades\Route;
 
@@ -50,6 +51,12 @@ Route::middleware(['web', 'auth', 'client', 'customer.record'])->prefix('client'
     Route::post('hosting/{hostingAccount}/reset-vm-password', [HostingController::class, 'resetVmPassword'])->middleware('throttle:10,1')->name('hosting.reset-vm-password');
     Route::post('hosting/{hostingAccount}/vm-power', [HostingController::class, 'vmPower'])->middleware('throttle:10,1')->name('hosting.vm-power');
 
+    // Upgrade / downgrade (per active service)
+    Route::get('hosting/{order}/upgrade', [UpgradeController::class, 'index'])->name('hosting.upgrade');
+    Route::post('hosting/{order}/upgrade/preview', [UpgradeController::class, 'preview'])->name('hosting.upgrade.preview');
+    Route::post('hosting/{order}/upgrade/configure', [UpgradeController::class, 'configure'])->name('hosting.upgrade.configure');
+    Route::post('hosting/{order}/upgrade', [UpgradeController::class, 'store'])->name('hosting.upgrade.store');
+
     // Domains
     Route::get('domains', [DomainController::class, 'index'])->name('domains.index');
     Route::get('domains/register', [DomainController::class, 'register'])->name('domains.register');
@@ -75,7 +82,7 @@ Route::middleware(['web', 'auth', 'client', 'customer.record'])->prefix('client'
     Route::post('tickets', [TicketController::class, 'store'])->name('tickets.store');
     Route::get('tickets/{id}', [TicketController::class, 'show'])->name('tickets.show');
     Route::post('tickets/{id}/reply', [TicketController::class, 'reply'])->name('tickets.reply');
-Route::get('tickets/{id}/attachments/{attachment}', [TicketController::class, 'showAttachment'])->name('tickets.attachments.show');
+    Route::get('tickets/{id}/attachments/{attachment}', [TicketController::class, 'showAttachment'])->name('tickets.attachments.show');
 
     // Knowledge Base
     Route::get('kb', [KbController::class, 'index'])->name('kb.index');

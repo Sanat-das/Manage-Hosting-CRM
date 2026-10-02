@@ -11,13 +11,14 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * A directed product upgrade path (from -> to). Configuration only — the
  * billing engine that prices the upgrade is out of scope (T4.4).
  */
-#[Fillable(['from_product_id', 'to_product_id', 'enabled'])]
+#[Fillable(['from_product_id', 'to_product_id', 'enabled', 'direction'])]
 class ProductUpgradePath extends Model
 {
     use HasFactory;
 
     protected $casts = [
         'enabled' => 'boolean',
+        'direction' => 'string',
     ];
 
     public function fromProduct(): BelongsTo

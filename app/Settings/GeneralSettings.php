@@ -18,6 +18,8 @@ class GeneralSettings extends Settings
 
     public string $company_address = '';
 
+    public string $company_gstin = '';
+
     // Ecommerce sundered address — mirrors customer phone/address structure (customer User model)
     public string $company_address_line1 = '';
 
@@ -49,6 +51,7 @@ class GeneralSettings extends Settings
             'company_phone' => ['nullable', 'string', 'max:50', 'regex:/^[\+\d][\d\s\-\.\(\)]{6,49}$/'],
             // Multiline address (invoice header). Newlines preserved, 500 chars, rendered as textarea.
             'company_address' => ['nullable', 'string', 'max:500'],
+            'company_gstin' => ['nullable', 'string', 'max:20'],
             // Sundered ecommerce address — same limits as customer create (User model)
             'company_address_line1' => ['nullable', 'string', 'max:255'],
             'company_address_line2' => ['nullable', 'string', 'max:255'],

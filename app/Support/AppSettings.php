@@ -43,6 +43,7 @@ class AppSettings
         'company_email' => GeneralSettings::class,
         'company_phone' => GeneralSettings::class,
         'company_address' => GeneralSettings::class,
+        'company_gstin' => GeneralSettings::class,
         'company_address_line1' => GeneralSettings::class,
         'company_address_line2' => GeneralSettings::class,
         'company_city' => GeneralSettings::class,
@@ -57,6 +58,10 @@ class AppSettings
         'invoice_prefix' => BillingSettings::class,
         'tax_rate' => BillingSettings::class,
         'renewal_invoice_days' => BillingSettings::class,
+        'bank_name' => BillingSettings::class,
+        'bank_account_holder' => BillingSettings::class,
+        'bank_account_no' => BillingSettings::class,
+        'bank_ifsc' => BillingSettings::class,
         // email
         'smtp_host' => EmailSettings::class,
         'smtp_port' => EmailSettings::class,
@@ -85,7 +90,6 @@ class AppSettings
         'domain_dns_provider' => DomainSettings::class,
         'domain_whois_privacy' => DomainSettings::class,
         'domain_pricing_tier' => DomainSettings::class,
-        'domain_renewal_reminder_days' => DomainSettings::class,
         // integration (T4.2)
         'cpanel_enabled' => IntegrationSettings::class,
         'cpanel_host' => IntegrationSettings::class,
@@ -106,8 +110,6 @@ class AppSettings
         'hosting_auto_provision' => HostingSettings::class,
         'hosting_provision_retries' => HostingSettings::class,
         'hosting_suspend_on_overdue' => HostingSettings::class,
-        'hosting_suspend_after_days' => HostingSettings::class,
-        'hosting_terminate_after_days' => HostingSettings::class,
         'hosting_unsuspend_on_payment' => HostingSettings::class,
         'hosting_allow_account_creation' => HostingSettings::class,
         'hosting_max_accounts_per_server' => HostingSettings::class,
@@ -166,7 +168,6 @@ class AppSettings
         'product_license_key_prefix' => ProductSettings::class,
         'product_show_in_order_form' => ProductSettings::class,
         'product_reseller_markup_percent' => ProductSettings::class,
-        'product_gst_applicable' => ProductSettings::class,
         'product_version_management' => ProductSettings::class,
         // analytics (T4.2)
         'analytics_enabled' => AnalyticsSettings::class,
@@ -186,15 +187,8 @@ class AppSettings
         'automation_default_workflow' => AutomationSettings::class,
         'automation_auto_close_tickets' => AutomationSettings::class,
         'automation_auto_close_ticket_days' => AutomationSettings::class,
-        'automation_welcome_email' => AutomationSettings::class,
         'automation_invoice_reminders' => AutomationSettings::class,
         'automation_invoice_reminder_days' => AutomationSettings::class,
-        'automation_overdue_actions' => AutomationSettings::class,
-        'automation_suspend_after_due_days' => AutomationSettings::class,
-        'automation_terminate_after_due_days' => AutomationSettings::class,
-        'automation_domain_expiry_notices' => AutomationSettings::class,
-        'automation_domain_expiry_reminder_days' => AutomationSettings::class,
-        'automation_renewal_invoices' => AutomationSettings::class,
         // cron (T4.2)
         'cron_scheduler_enabled' => CronSettings::class,
         'cron_heartbeat_enabled' => CronSettings::class,
@@ -216,16 +210,12 @@ class AppSettings
         'role_guard' => RoleSettings::class,
         'role_protect_system_roles' => RoleSettings::class,
         // user (T4.2)
-        'user_default_timezone' => UserSettings::class,
         'user_email_verification' => UserSettings::class,
         'user_allow_social_login' => UserSettings::class,
         'user_profile_editable' => UserSettings::class,
         'user_allow_self_delete' => UserSettings::class,
         'user_password_expiry_days' => UserSettings::class,
-        'user_session_timeout_minutes' => UserSettings::class,
-        'user_two_factor_enforced' => UserSettings::class,
         'user_inactive_lock_days' => UserSettings::class,
-        'user_max_login_attempts' => UserSettings::class,
         // branding
         'branding_app_name' => BrandingSettings::class,
         'branding_tagline' => BrandingSettings::class,
@@ -309,20 +299,14 @@ class AppSettings
         // Legacy untyped keys — explicit tab assignment.
         $legacy = [
             'registration_enabled' => 'portal',
-            'default_currency' => 'general',
-            'default_tax_rate' => 'general',
             'quote_prefix' => 'billing',
             'auto_generate_invoice' => 'billing',
             'due_days' => 'billing',
-            'gst_enabled' => 'billing',
             // Counter, not a typed setting — see SupportSettings.
             'ticket_next_number' => 'billing',
             'mail_from_address' => 'email',
             'mail_from_name' => 'email',
-            'session_timeout' => 'security',
-            'max_login_attempts' => 'security',
             'lockout_duration' => 'security',
-            'force_2fa' => 'security',
             'password_min_length' => 'security',
             'security_honeypot_enabled' => 'security',
             'security_headers_enabled' => 'security',
@@ -331,7 +315,6 @@ class AppSettings
             'notify_overdue_invoices' => 'notification',
             'notify_domain_expiry' => 'notification',
             'notify_new_tickets' => 'notification',
-            'domain_expiry_warning_days' => 'notification',
         ];
         foreach ($legacy as $k => $tab) {
             $map[$k] = $tab;

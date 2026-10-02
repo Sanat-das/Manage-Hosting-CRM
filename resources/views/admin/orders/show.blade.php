@@ -47,12 +47,20 @@
         };
     };
 
+    // Product upgrade/downgrade history for this order (one query, used by
+    // both the tab badge and the tab body).
+    $upgradeRequests = $order->upgradeRequests()
+        ->with(['fromProduct', 'toProduct'])
+        ->orderByDesc('id')
+        ->get();
+
     $activeTab = (string) request()->query('tab', 'order-info');
     $tabs = [
         ['id' => 'order-info', 'label' => 'Order Info', 'icon' => 'bi bi-receipt'],
         ['id' => 'items', 'label' => 'Items', 'icon' => 'bi bi-box-seam', 'badge' => $order->items->count()],
         ['id' => 'addons', 'label' => 'Add-ons', 'icon' => 'bi bi-puzzle', 'badge' => $order->items->whereNotNull('product_addon_id')->count()],
         ['id' => 'status-history', 'label' => 'Status History', 'icon' => 'bi bi-clock-history', 'badge' => $statusHistory->count()],
+        ['id' => 'upgrades', 'label' => 'Upgrades', 'icon' => 'bi bi-arrow-up-right-circle', 'badge' => $upgradeRequests->count()],
     ];
 
     $billingCycleLabels = [
@@ -80,6 +88,17 @@
         'wallet' => 'Wallet',
         'manual' => 'Manual',
     ];
+
+    // The manual upgrade form is offered only when the upgrade could actually
+    // be placed: active + recurring + upgrades enabled + an enabled path out
+    // of the order's product. Mirrors OrderController::upgrade()'s gates.
+    $upgradeEligible = $order->status === \App\Models\Order::STATUS_ACTIVE
+        && (\App\Models\Order::CYCLE_MONTHS[$order->billing_cycle] ?? 0) > 0
+        && (bool) \App\Support\AppSettings::get('product_enable_upgrades', '1')
+        && \App\Models\ProductUpgradePath::query()
+            ->where('from_product_id', $order->product_id)
+            ->where('enabled', true)
+            ->exists();
 @endphp
 
 @section('content')
@@ -125,6 +144,15 @@
                                     {{ $label }}
                                 </button>
                         @endforeach
+                    </div>
+                @endif
+            @endcan
+            @can('product-upgrades.view')
+                @if ($upgradeEligible)
+                    <div class="d-flex gap-2">
+                        <a href="{{ route('admin.orders.upgrade', $order) }}" class="btn btn-sm btn-outline-primary">
+                            <i class="bi bi-arrow-up-right-circle me-1"></i>Upgrade/Downgrade
+                        </a>
                     </div>
                 @endif
             @endcan
@@ -423,6 +451,58 @@
                                 </tr>
                             @empty
                                 <x-ui.empty-table-row colSpan="4" icon="bi bi-clock-history" title="No status history recorded." />
+                            @endforelse
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            {{-- Upgrade history (product upgrade/downgrade requests) --}}
+            <div class="tab-pane fade {{ $activeTab === 'upgrades' ? 'show active' : '' }}" id="upgrades"
+                 role="tabpanel" aria-labelledby="upgrades-tab">
+                <div class="table-responsive">
+                    <table class="table table-sm align-middle mb-0">
+                        <thead>
+                            <tr>
+                                <th>Upgrade</th>
+                                <th>Change</th>
+                                <th>Type</th>
+                                <th>Amount</th>
+                                <th>Status</th>
+                                <th>Requested</th>
+                                <th class="text-end">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @forelse ($upgradeRequests as $upgradeRequest)
+                                <tr>
+                                    <td><a href="{{ route('admin.upgrade-requests.show', $upgradeRequest) }}"><strong>{{ $upgradeRequest->upgrade_no }}</strong></a></td>
+                                    <td>
+                                        <span class="text-muted">{{ $upgradeRequest->fromProduct?->name ?? '—' }}</span>
+                                        <i class="bi bi-arrow-right text-muted mx-1"></i>
+                                        <strong>{{ $upgradeRequest->toProduct?->name ?? '—' }}</strong>
+                                    </td>
+                                    <td>{!! $upgradeRequest->changeTypeBadge() !!}</td>
+                                    <td>
+                                        @if ((float) $upgradeRequest->payable > 0)
+                                            <x-adminlte.partials.currency :value="$upgradeRequest->payable" />
+                                        @elseif ((float) $upgradeRequest->credit_amount > 0)
+                                            <span class="text-success">Credit <x-adminlte.partials.currency :value="$upgradeRequest->credit_amount" /></span>
+                                        @else
+                                            <span class="text-muted">—</span>
+                                        @endif
+                                    </td>
+                                    <td>
+                                        <x-adminlte.partials.status-badge :status="$upgradeRequest->status"
+                                            :map="['pending' => 'warning', 'applied' => 'success', 'cancelled' => 'secondary']" />
+                                    </td>
+                                    <td class="text-muted">{{ $upgradeRequest->created_at?->format('M j, Y H:i') }}</td>
+                                    <td class="text-end">
+                                        <a href="{{ route('admin.upgrade-requests.show', $upgradeRequest) }}" class="btn btn-sm btn-outline-secondary btn-icon" title="View" aria-label="View"><i class="bi bi-eye"></i></a>
+                                    </td>
+                                </tr>
+                            @empty
+                                <x-ui.empty-table-row colSpan="7" icon="bi bi-arrow-up-right-circle" title="No upgrade requests for this order." />
                             @endforelse
                         </tbody>
                     </table>

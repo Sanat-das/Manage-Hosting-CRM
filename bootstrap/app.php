@@ -71,6 +71,7 @@ return Application::configure(basePath: dirname(__DIR__))
             require base_path('routes/admin/tax-rates.php');
             require base_path('routes/admin/product-bundles.php');
             require base_path('routes/admin/product-upgrades.php');
+            require base_path('routes/admin/upgrade-requests.php');
             require base_path('routes/admin/modules.php');
             require base_path('routes/admin/cron.php');
             require base_path('routes/admin/system.php');
