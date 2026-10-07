@@ -181,6 +181,108 @@ class IpAssignmentServiceTest extends TestCase
         $this->assertSame(2, IpAllocationHistory::where('action', 'released')->count());
     }
 
+    public function test_assign_specific_refuses_a_special_type_ip_without_overwriting_it(): void
+    {
+        $subnet = $this->makeSubnet();
+        $gateway = $this->makeIp($subnet, '10.1.0.254');
+        $gateway->forceFill(['type' => 'gateway'])->save();
+        $account = $this->makeAccount();
+
+        try {
+            $this->service->assignSpecific($account, $gateway->id);
+            $this->fail('A special-type IP must not be leased.');
+        } catch (NoAvailableIpException) {
+            // expected: the leasable pool is available rows only
+        }
+
+        $fresh = $gateway->fresh();
+        $this->assertSame('gateway', $fresh->type);
+        $this->assertNull($fresh->assigned_to_type);
+        $this->assertNull($fresh->assigned_to_id);
+        $this->assertSame(0, IpAllocationHistory::where('ip_address_id', $gateway->id)->count());
+    }
+
+    public function test_assign_specific_leases_a_normal_available_ip(): void
+    {
+        $subnet = $this->makeSubnet();
+        $free = $this->makeIp($subnet, '10.1.0.20');
+        $account = $this->makeAccount();
+
+        $assigned = $this->service->assignSpecific($account, $free->id);
+
+        $this->assertSame($free->id, $assigned->id);
+        $this->assertSame('assigned', $free->fresh()->type);
+        $this->assertSame(HostingAccount::class, $free->fresh()->assigned_to_type);
+    }
+
+    public function test_release_from_asset_demotes_an_inventory_asset_id_only_row_to_available(): void
+    {
+        $subnet = $this->makeSubnet();
+        $ip = $this->makeIp($subnet, '10.1.0.30');
+        // Hand-written/legacy row: linked only by inventory_asset_id, no owner
+        // pair, but marked assigned — release must not leave it ownerless.
+        $ip->forceFill(['inventory_asset_id' => 123, 'type' => 'assigned'])->save();
+
+        $this->service->releaseFromAsset($ip);
+
+        $fresh = $ip->fresh();
+        $this->assertNull($fresh->inventory_asset_id);
+        $this->assertNull($fresh->assigned_to_type);
+        $this->assertNull($fresh->assigned_to_id);
+        $this->assertSame('available', $fresh->type);
+    }
+
+    public function test_release_from_asset_leaves_a_gateway_row_type_untouched(): void
+    {
+        $subnet = $this->makeSubnet();
+        $ip = $this->makeIp($subnet, '10.1.0.31');
+        $ip->forceFill(['inventory_asset_id' => 123, 'type' => 'gateway'])->save();
+
+        $this->service->releaseFromAsset($ip);
+
+        $fresh = $ip->fresh();
+        $this->assertNull($fresh->inventory_asset_id);
+        $this->assertNull($fresh->assigned_to_type);
+        $this->assertSame('gateway', $fresh->type);
+    }
+
+    public function test_release_from_asset_leaves_a_reserved_row_type_untouched(): void
+    {
+        $subnet = $this->makeSubnet();
+        $ip = $this->makeIp($subnet, '10.1.0.32');
+        $ip->forceFill(['inventory_asset_id' => 123, 'type' => 'reserved'])->save();
+
+        $this->service->releaseFromAsset($ip);
+
+        $fresh = $ip->fresh();
+        $this->assertNull($fresh->inventory_asset_id);
+        $this->assertNull($fresh->assigned_to_type);
+        $this->assertSame('reserved', $fresh->type);
+    }
+
+    public function test_release_from_asset_keeps_an_account_owned_row_assigned(): void
+    {
+        $subnet = $this->makeSubnet();
+        $ip = $this->makeIp($subnet, '10.1.0.33');
+        $account = $this->makeAccount();
+        // Linked to an asset while also leased to a hosting account: releasing
+        // the asset link clears only the asset column, never the account lease.
+        $ip->forceFill([
+            'inventory_asset_id' => 123,
+            'assigned_to_type' => HostingAccount::class,
+            'assigned_to_id' => $account->id,
+            'type' => 'assigned',
+        ])->save();
+
+        $this->service->releaseFromAsset($ip);
+
+        $fresh = $ip->fresh();
+        $this->assertNull($fresh->inventory_asset_id);
+        $this->assertSame(HostingAccount::class, $fresh->assigned_to_type);
+        $this->assertSame($account->id, $fresh->assigned_to_id);
+        $this->assertSame('assigned', $fresh->type);
+    }
+
     private function makeSubnet(string $networkType = 'private'): IpSubnet
     {
         static $sequence = 0;

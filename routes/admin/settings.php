@@ -60,6 +60,10 @@ Route::middleware(['web', 'auth', 'admin', 'throttle:admin'])->prefix('admin')->
             ->middleware('permission:reports.view')
             ->name('sales');
 
+        Route::get('inventory', [ReportsController::class, 'inventory'])
+            ->middleware('permission:reports.view')
+            ->name('inventory');
+
         Route::get('export', [ReportsController::class, 'export'])
             ->middleware('permission:reports.export')
             ->name('export');

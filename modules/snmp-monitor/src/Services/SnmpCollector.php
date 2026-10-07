@@ -19,7 +19,8 @@ use Modules\SnmpMonitor\Exceptions\SnmpException;
  * Linux, UCD-SNMP-MIB OIDs and normalizes them into a single array consumed
  * by the polling pipeline:
  *
- *   ['hostname' => string, 'os' => string, 'uptime_human' => string,
+ *   ['hostname' => string, 'os' => string, 'sys_object_id' => ?string,
+ *    'uptime_human' => string,
  *    'cpu_load' => ?float, 'cpu_source' => string (linux only), 'cpu_cores' => ?int,
  *    'memory_total_mb' => ?int, 'memory_used_mb' => ?int,
  *    'disks' => [['label' => string, 'total_gb' => float, 'used_gb' => float], ...]]
@@ -53,6 +54,9 @@ final class SnmpCollector
     private const OID_SYS_NAME = '1.3.6.1.2.1.1.5.0';
 
     private const OID_SYS_DESCR = '1.3.6.1.2.1.1.1.0';
+
+    /** sysObjectID: the vendor's authoritative OID prefix. */
+    private const OID_SYS_OBJECT_ID = '1.3.6.1.2.1.1.2.0';
 
     private const OID_SYS_UPTIME = '1.3.6.1.2.1.1.3.0';
 
@@ -115,7 +119,7 @@ final class SnmpCollector
      *                         snmp_auth_protocol, snmp_auth_password,
      *                         snmp_priv_protocol, snmp_priv_password,
      *                         snmp_port, snmp_timeout and the collect_* toggles.
-     * @return array{hostname: string, os: string, uptime_human: string, cpu_load?: float, cpu_source?: string, cpu_cores?: int, memory_total_mb?: int, memory_used_mb?: int, disks?: array<int, array{label: string, total_gb: float, used_gb: float}>, interfaces?: array<int, array<string, mixed>>, processes?: array<int, array<string, mixed>>}
+     * @return array{hostname: string, os: string, sys_object_id: ?string, uptime_human: string, cpu_load?: float, cpu_source?: string, cpu_cores?: int, memory_total_mb?: int, memory_used_mb?: int, disks?: array<int, array{label: string, total_gb: float, used_gb: float}>, interfaces?: array<int, array<string, mixed>>, processes?: array<int, array<string, mixed>>}
      *
      * @throws SnmpException on any SNMP failure or an empty response.
      */
@@ -132,6 +136,7 @@ final class SnmpCollector
             }
 
             $os = $this->sanitizeString($this->fetchString($client, self::OID_SYS_DESCR) ?? '');
+            $sysObjectId = $this->sanitizeString($this->fetchString($client, self::OID_SYS_OBJECT_ID));
             $uptimeHuman = $this->formatUptime(
                 $this->numericValue($this->fetchOid($client, self::OID_SYS_UPTIME)) ?? 0.0
             );
@@ -145,6 +150,7 @@ final class SnmpCollector
             $payload = [
                 'hostname' => $this->sanitizeString($hostname),
                 'os' => $os,
+                'sys_object_id' => $sysObjectId,
                 'uptime_human' => $uptimeHuman,
             ];
 
@@ -273,14 +279,14 @@ final class SnmpCollector
     }
 
     /**
-      * Linux CPU strategy: average of all hrProcessorLoad values (one per
-      * core). net-snmp agents often expose nothing under this subtree, in
-      * which case the UCD-SNMP-MIB 1-minute load average is used instead.
-      * The core count (number of hrProcessorLoad entries) is returned as the
-      * third element so the panel can display "23.5% · 4 cores".
-      *
-      * @return array{0: float, 1: string, 2: ?int}|null Array of [load, source, cores]; null when both sources are unavailable.
-      */
+     * Linux CPU strategy: average of all hrProcessorLoad values (one per
+     * core). net-snmp agents often expose nothing under this subtree, in
+     * which case the UCD-SNMP-MIB 1-minute load average is used instead.
+     * The core count (number of hrProcessorLoad entries) is returned as the
+     * third element so the panel can display "23.5% · 4 cores".
+     *
+     * @return array{0: float, 1: string, 2: ?int}|null Array of [load, source, cores]; null when both sources are unavailable.
+     */
     private function fetchLinuxCpuLoad(SnmpClient $client): ?array
     {
         $loads = [];
@@ -307,13 +313,13 @@ final class SnmpCollector
     }
 
     /**
-      * Windows CPU strategy: plain average of all hrProcessorLoad values
-      * (one per core); null when empty. Windows agents always populate this
-      * table, so there is no fallback and no 'cpu_source'. Returns
-      * [averageLoad, coreCount] so the panel can display core count.
-      *
-      * @return array{0: float, 1: int}|null
-      */
+     * Windows CPU strategy: plain average of all hrProcessorLoad values
+     * (one per core); null when empty. Windows agents always populate this
+     * table, so there is no fallback and no 'cpu_source'. Returns
+     * [averageLoad, coreCount] so the panel can display core count.
+     *
+     * @return array{0: float, 1: int}|null
+     */
     private function fetchWindowsCpuLoad(SnmpClient $client): ?array
     {
         $loads = [];

@@ -114,6 +114,24 @@ final class SnmpCollectorOsStrategyTest extends TestCase
         $this->assertSame('32 days, 20:45:30', $linux['uptime_human']);
     }
 
+    public function test_sys_object_id_is_collected_and_null_safe_when_absent(): void
+    {
+        $client = $this->fakeClient();
+        $client->gets['1.3.6.1.2.1.1.2.0'] = Oid::fromOid(
+            '1.3.6.1.2.1.1.2.0',
+            '1.3.6.1.4.1.8072.3.2.10'
+        );
+
+        $present = (new SnmpCollector($client))->collect('192.0.2.10', []);
+        $this->assertSame('1.3.6.1.4.1.8072.3.2.10', $present['sys_object_id']);
+
+        // Agents without sysObjectID (or a silently dropped varbind) must yield
+        // a NULL key, never an empty string or a missing key.
+        $absent = (new SnmpCollector($this->fakeClient()))->collect('192.0.2.10', []);
+        $this->assertArrayHasKey('sys_object_id', $absent);
+        $this->assertNull($absent['sys_object_id']);
+    }
+
     public function test_client_failure_is_wrapped_into_snmp_exception(): void
     {
         $client = $this->fakeClient();

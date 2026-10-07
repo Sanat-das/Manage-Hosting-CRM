@@ -34,7 +34,7 @@ use Tests\TestCase;
  * The shared foundation every provider is built on: escaping, ranking,
  * permission gating and the query budget.
  *
- * The stubs at the bottom stand in for the 17 production providers so the
+ * The stubs at the bottom stand in for the 19 production providers so the
  * contract stays provable while those classes land.
  */
 class GlobalSearchServiceTest extends TestCase
@@ -45,7 +45,7 @@ class GlobalSearchServiceTest extends TestCase
     use RefreshDatabase;
 
     /**
-     * Every distinct permission the 17 providers gate on, so the whole
+     * Every distinct permission the 19 providers gate on, so the whole
      * registry is admitted: transactions and quotes share `invoices.view`,
      * the hosting trio shares `hosting.view`, and contacts share
      * `customers.view`.
@@ -63,6 +63,8 @@ class GlobalSearchServiceTest extends TestCase
         'catalog-products.view',
         'products.view',
         'users.view',
+        'inventory.view',
+        'ip-addresses.view',
     ];
 
     // --- LikePattern ------------------------------------------------------
@@ -284,11 +286,11 @@ class GlobalSearchServiceTest extends TestCase
     // --- registry-wide query budget (FU-2) --------------------------------
 
     /**
-     * The real 17-provider registry, zero matching rows: one data query per
+     * The real 19-provider registry, zero matching rows: one data query per
      * admitted provider + one permission pluck, and nothing else.
      *
      * The ceiling is MEASURED off DB::getQueryLog(), never assumed. Empty
-     * result sets fire no eager load, so 17 + 1 = 18 is the whole budget. A
+     * result sets fire no eager load, so 19 + 1 = 20 is the whole budget. A
      * per-provider permission check would add 1-2 queries per provider and
      * blow this ceiling, which is the regression this test exists to catch.
      */
@@ -296,11 +298,11 @@ class GlobalSearchServiceTest extends TestCase
     {
         $user = $this->panelUserWith(...self::ALL_PROVIDER_PERMISSIONS);
 
-        $service = new GlobalSearchService();
+        $service = new GlobalSearchService;
 
         // A shrinking registry must fail loudly here rather than quietly
         // lowering the budget the assertions below measure.
-        $this->assertCount(17, $service->providers());
+        $this->assertCount(19, $service->providers());
 
         DB::enableQueryLog();
         $groups = $service->groups($service->permissionNames($user), 'zzz-no-match-zzz', 5);
@@ -312,9 +314,9 @@ class GlobalSearchServiceTest extends TestCase
         $sql = implode(' | ', array_column($queries, 'query'));
 
         $this->assertLessThanOrEqual(
-            18,
+            20,
             count($queries),
-            'Query budget exceeded (17 provider queries + 1 permission pluck): '.$sql,
+            'Query budget exceeded (19 provider queries + 1 permission pluck): '.$sql,
         );
 
         $this->assertStringNotContainsString('count(*)', strtolower($sql));
@@ -323,13 +325,13 @@ class GlobalSearchServiceTest extends TestCase
     /**
      * The same registry with rows in two providers, both of which eager load.
      *
-     * Budget: 15 zero-match providers x 1 + customer data 1 + `with('user')` 1
-     * + contact data 1 + `with('customer')` 1 + permission pluck 1 = 20.
+     * Budget: 17 zero-match providers x 1 + customer data 1 + `with('user')` 1
+     * + contact data 1 + `with('customer')` 1 + permission pluck 1 = 22.
      *
      * Non-vacuity (why the rows matter): a dropped eager load becomes one lazy
      * query PER ROW inside toResult(), so 3 customers would cost 3 instead of 1
-     * (22 total) and 2 contacts would cost 2 instead of 1 (21 total) - both
-     * above the 20 ceiling. With a single row the count would be identical to
+     * (24 total) and 2 contacts would cost 2 instead of 1 (23 total) - both
+     * above the 22 ceiling. With a single row the count would be identical to
      * the eager-load budget and the assertion could not fail.
      */
     public function test_the_full_registry_stays_within_the_query_budget_with_rows_and_eager_loads(): void
@@ -342,9 +344,9 @@ class GlobalSearchServiceTest extends TestCase
         $this->makeContact($parent, 'Jane', 'Doe', 'jane.acme@example.com');
         $this->makeContact($parent, 'John', 'Roe', 'john.acme@example.com');
 
-        $service = new GlobalSearchService();
+        $service = new GlobalSearchService;
 
-        $this->assertCount(17, $service->providers());
+        $this->assertCount(19, $service->providers());
 
         DB::enableQueryLog();
         $groups = $service->groups($service->permissionNames($user), 'acme', 5);
@@ -357,9 +359,9 @@ class GlobalSearchServiceTest extends TestCase
         $sql = implode(' | ', array_column($queries, 'query'));
 
         $this->assertLessThanOrEqual(
-            20,
+            22,
             count($queries),
-            'Query budget exceeded (15 zero-match providers + 2 data queries + 2 eager loads + 1 pluck): '.$sql,
+            'Query budget exceeded (17 zero-match providers + 2 data queries + 2 eager loads + 1 pluck): '.$sql,
         );
 
         $this->assertStringNotContainsString('count(*)', strtolower($sql));
@@ -423,7 +425,7 @@ class GlobalSearchServiceTest extends TestCase
     public function test_the_manage_expansion_stays_one_query_and_preserves_exact_names(): void
     {
         $user = $this->panelUserWith('hosting.manage', 'customers.view');
-        $service = new GlobalSearchService();
+        $service = new GlobalSearchService;
 
         DB::enableQueryLog();
         $names = $service->permissionNames($user);

@@ -62,7 +62,7 @@
                 </div>
                 <button type="button" class="btn btn-sm btn-outline-danger option-group-detach-btn"
                         data-option-card="option-card-{{ $group->id }}">
-                    <i class="bi bi-unlink me-1"></i> Detach
+                    <i class="bi bi-x-lg me-1"></i> Detach
                 </button>
             </div>
 

@@ -1904,14 +1904,17 @@ class HostingController extends Controller
         $result = $this->ipAssignmentService->assignMany($hostingAccount, $validated['ip_address_ids']);
 
         if ($result['assigned']->isEmpty()) {
-            return back()->with('error', 'None of the selected IPs could be assigned (already in use).');
+            $reasons = array_values(array_unique($result['failed']));
+
+            return back()->with('error', 'None of the selected IPs could be assigned. '.implode(' ', $reasons));
         }
 
         $message = 'Assigned '.$result['assigned']->count().' IP(s) to #'.$hostingAccount->id.': '
             .$result['assigned']->pluck('ip_address')->implode(', ').'.';
 
         if ($result['failed'] !== []) {
-            $message .= ' Skipped '.count($result['failed']).' already-assigned IP(s).';
+            $reasons = array_values(array_unique($result['failed']));
+            $message .= ' Skipped '.count($result['failed']).' IP(s): '.implode(' ', $reasons);
         }
 
         return back()->with('success', $message);

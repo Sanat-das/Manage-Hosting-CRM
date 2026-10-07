@@ -47,6 +47,18 @@
                                             <i class="bi bi-box-arrow-up-right ms-1" style="font-size:0.75rem"></i>
                                         </div>
                                     </a>
+                                @elseif ($ipAddress->assigned_to_type === 'inventory')
+                                    @if ($ipAddress->inventoryAsset)
+                                        <a href="{{ route('admin.inventory-assets.show', $ipAddress->inventoryAsset) }}" class="text-decoration-none">
+                                            <span class="badge text-bg-secondary"><i class="bi bi-hdd-stack me-1"></i>Inventory Asset</span>
+                                            <div class="small mt-1 text-secondary">
+                                                <strong>{{ $ipAddress->inventoryAsset->asset_tag }}</strong>
+                                                <i class="bi bi-box-arrow-up-right ms-1" style="font-size:0.75rem"></i>
+                                            </div>
+                                        </a>
+                                    @else
+                                        <span class="badge text-bg-secondary"><i class="bi bi-hdd-stack me-1"></i>Inventory Asset #{{ $ipAddress->assigned_to_id }}</span>
+                                    @endif
                                 @else
                                     <span class="badge text-bg-primary">{{ class_basename($ipAddress->assigned_to_type) }} #{{ $ipAddress->assigned_to_id }}</span>
                                     @if ($ipAddress->assignedTo)
@@ -61,6 +73,16 @@
                         </td></tr>
                         <tr><th class="text-muted">Subnet</th><td>{{ $ipAddress->subnet?->subnet_cidr ? $ipAddress->subnet->subnet_cidr.' ('.$ipAddress->subnet->name.')' : '—' }}</td></tr>
                         <tr><th class="text-muted">VLAN</th><td>{{ $ipAddress->subnet?->vlan?->name ? $ipAddress->subnet->vlan->name.' (ID '.$ipAddress->subnet->vlan->vlan_id.')' : '—' }}</td></tr>
+                        <tr><th class="text-muted">Inventory Asset</th><td>
+                            @if ($ipAddress->inventoryAsset)
+                                <a href="{{ route('admin.inventory-assets.show', $ipAddress->inventoryAsset) }}" class="text-decoration-none">
+                                    <span class="badge text-bg-secondary"><i class="bi bi-hdd-stack me-1"></i>{{ $ipAddress->inventoryAsset->asset_tag }}</span>
+                                    <i class="bi bi-box-arrow-up-right ms-1" style="font-size:0.75rem"></i>
+                                </a>
+                            @else
+                                —
+                            @endif
+                        </td></tr>
                         <tr><th class="text-muted">PTR Record</th><td>{{ $ipAddress->ptr_record ?? '—' }}</td></tr>
                         <tr><th class="text-muted">Notes</th><td>{{ $ipAddress->notes ?? '—' }}</td></tr>
                         <tr><th class="text-muted">Last Seen</th><td>{{ $ipAddress->last_seen_at?->diffForHumans() ?? '—' }}</td></tr>

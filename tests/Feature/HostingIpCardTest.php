@@ -58,6 +58,66 @@ class HostingIpCardTest extends TestCase
         ]);
     }
 
+    public function test_assign_ips_surfaces_the_real_reason_for_a_refused_special_type(): void
+    {
+        $subnet = $this->makeSubnet();
+        $free = $this->makeIp($subnet, '10.1.0.6');
+        $gateway = $this->makeIp($subnet, '10.1.0.254');
+        $gateway->forceFill(['type' => 'gateway'])->save();
+        $account = $this->makeAccount();
+
+        $response = $this->actingAsAdmin()
+            ->post(route('admin.hosting.assign-ips', $account), ['ip_address_ids' => [$free->id, $gateway->id]]);
+
+        $response->assertRedirect();
+        $response->assertSessionHas('success', fn (string $message): bool => str_contains(
+            $message,
+            'Skipped 1 IP(s): IP address 10.1.0.254 is not available for assignment.',
+        ));
+
+        $this->assertDatabaseHas('ip_addresses', [
+            'id' => $free->id,
+            'assigned_to_type' => HostingAccount::class,
+            'assigned_to_id' => $account->id,
+        ]);
+        $this->assertDatabaseHas('ip_addresses', [
+            'id' => $gateway->id,
+            'type' => 'gateway',
+            'assigned_to_type' => null,
+        ]);
+    }
+
+    public function test_assign_ips_reports_when_none_of_the_selected_ips_can_be_assigned(): void
+    {
+        $subnet = $this->makeSubnet();
+        $account = $this->makeAccount();
+        $first = $this->makeIp($subnet, '10.1.0.7', assigned: true);
+        $second = $this->makeIp($subnet, '10.1.0.8', assigned: true);
+
+        $response = $this->actingAsAdmin()
+            ->post(route('admin.hosting.assign-ips', $account), ['ip_address_ids' => [$first->id, $second->id]]);
+
+        $response->assertRedirect();
+        $response->assertSessionHas('error', fn (string $message): bool => str_contains(
+            $message,
+            'None of the selected IPs could be assigned.',
+        ) && str_contains($message, 'is already assigned'));
+
+        // Every row is untouched — still held by its original (server) lease,
+        // and the target account holds none of them.
+        $this->assertDatabaseHas('ip_addresses', [
+            'id' => $first->id,
+            'assigned_to_type' => 'server',
+            'assigned_to_id' => 999,
+        ]);
+        $this->assertDatabaseHas('ip_addresses', [
+            'id' => $second->id,
+            'assigned_to_type' => 'server',
+            'assigned_to_id' => 999,
+        ]);
+        $this->assertSame(0, IpAddress::where('assigned_to_id', $account->id)->count());
+    }
+
     public function test_release_ip_clears_the_lease(): void
     {
         $subnet = $this->makeSubnet();

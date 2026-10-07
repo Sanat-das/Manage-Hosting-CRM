@@ -43,6 +43,21 @@ Schedule::command('ssl:check-expiry --days=30')
     ->withoutOverlapping()
     ->runInBackground();
 
+Schedule::command('inventory:check-warranty-expiry --days=30')
+    ->dailyAt('03:15')
+    ->withoutOverlapping()
+    ->runInBackground();
+
+Schedule::command('licenses:check-expiry --days=30')
+    ->dailyAt('03:30')
+    ->withoutOverlapping()
+    ->runInBackground();
+
+Schedule::command('licenses:reconcile-seats')
+    ->dailyAt('03:45')
+    ->withoutOverlapping()
+    ->runInBackground();
+
 Schedule::command('invoices:overdue-check')
     ->dailyAt('03:30')
     ->withoutOverlapping()
@@ -104,6 +119,10 @@ Schedule::call(fn () => RollupHourlyAggregates::dispatch())
 
 Schedule::command('snmp:maintain-partitions')
     ->dailyAt('00:10')
+    ->withoutOverlapping();
+
+Schedule::command('snmp:sync-ports')
+    ->dailyAt('04:10')
     ->withoutOverlapping();
 
 /*

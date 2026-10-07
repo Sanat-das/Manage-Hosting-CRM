@@ -10,7 +10,7 @@ class StoreAssetRelationshipRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return $this->user()?->hasPermission('hosting.manage') ?? false;
+        return $this->user()?->hasPermission('asset-relationships.manage') ?? false;
     }
 
     /**

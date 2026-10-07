@@ -23,10 +23,10 @@
     $items = $filteredItems;
     unset($filteredItems, $pendingHeader, $_item);
 @endphp
-<aside class="app-sidebar {{ $sidebarClasses }}" @if ($sidebarTheme === 'dark') data-bs-theme="dark" @endif>
+<aside class="app-sidebar {{ $sidebarClasses }}" @if ($sidebarTheme === 'dark') data-bs-theme="dark" @endif aria-label="{{ __('Main sidebar') }}">
     {{-- Brand --}}
     <div class="sidebar-brand {{ config('adminlte.classes_brand') }}">
-        <a href="{{ url('/') }}" class="brand-link">
+        <a href="{{ url('/') }}" class="brand-link" aria-label="{{ config('app.name') }} home">
             @php
                 $_b = $branding ?? \App\Support\Branding::all();
                 // When the wordmark is rendered inside brand-text (custom upload OR
@@ -62,14 +62,16 @@
             <ul class="nav sidebar-menu flex-column {{ config('adminlte.classes_sidebar_nav') }}"
                 data-lte-toggle="treeview"
                 data-accordion="false"
-                role="menu"
                 id="navigation">
                 @foreach ($items as $item)
                     @include('adminlte::partials.menu-item', ['item' => $item])
                 @endforeach
+                @if (empty($items))
+                    <p class="px-3 py-2 text-body-secondary small">No navigation items available.</p>
+                @endif
             </ul>
 
-            @if (config('adminlte.sidebar_docs_url'))
+            @if (config('adminlte.sidebar_docs_url') && config('adminlte.docs') !== false)
                 <div class="sidebar-docs-cta mt-3 border-top border-secondary border-opacity-25">
                     <a href="{{ config('adminlte.sidebar_docs_url') }}"
                        class="btn btn-sm btn-outline-light w-100 d-flex align-items-center justify-content-center gap-2"
@@ -84,55 +86,4 @@
     </div>
 </aside>
 
-@once
-    {{-- Inline (not @push('css'): this partial renders in the body, after the head's @stack('css')). --}}
-    <style>
-        /* Brand — Instrument Sans + tight tracking, enterprise weight */
-        .app-sidebar .sidebar-brand .brand-link {
-            font-family: var(--font-sans);
-            letter-spacing: var(--tracking-tight);
-            font-weight: var(--font-weight-semibold);
-            gap: var(--space-2);
-            padding-block: var(--space-3);
-            transition: opacity var(--duration-base) var(--ease-default);
-        }
-        .app-sidebar .sidebar-brand .brand-text { font-size: var(--text-md); line-height: var(--leading-tight); }
-        .app-sidebar .sidebar-brand .brand-text b { font-weight: var(--font-weight-bold); }
-
-        /* Docs CTA — tokens for spacing / radius / transition; collapsed rail hides label */
-        .sidebar-docs-cta {
-            padding: var(--space-4);
-            border-color: var(--bs-border-color) !important;
-            transition: padding var(--duration-base) var(--ease-default);
-        }
-        .sidebar-docs-cta .btn {
-            border-radius: var(--radius-md);
-            font-size: var(--text-sm);
-            transition: all var(--duration-base) var(--ease-default);
-        }
-        .sidebar-docs-cta__text {
-            transition: opacity var(--duration-base) var(--ease-default);
-        }
-        /* When the sidebar is collapsed to icons (and not hovered open), shrink the
-           docs button to icon-only so it doesn't overflow the narrow rail. */
-        .sidebar-mini.sidebar-collapse .app-sidebar:not(:hover) .sidebar-docs-cta { padding: var(--space-2); }
-        .sidebar-mini.sidebar-collapse .app-sidebar:not(:hover) .sidebar-docs-cta__text { display: none; }
-        /* Fully-collapsed (non-mini) sidebars hide off-canvas, so hide the CTA outright. */
-        .sidebar-collapse:not(.sidebar-mini) .sidebar-docs-cta { display: none; }
-
-        /* Sidebar nav — 8px rhythm, token transition, subtle active polish */
-        .app-sidebar .nav-sidebar .nav-link {
-            gap: var(--space-2);
-            border-radius: var(--radius-sm);
-            transition: background-color var(--duration-base) var(--ease-default), color var(--duration-base) var(--ease-default);
-        }
-        .app-sidebar .nav-sidebar .nav-link.active {
-            background-color: color-mix(in srgb, var(--color-primary) 14%, transparent);
-            color: var(--color-primary);
-        }
-        [data-bs-theme="dark"] .app-sidebar .nav-sidebar .nav-link.active {
-            background-color: color-mix(in srgb, var(--color-primary-400) 18%, transparent);
-            color: var(--color-primary-300);
-        }
-    </style>
-@endonce
+{{-- styles moved to adminlte.css --}}

@@ -32,13 +32,13 @@
     <x-adminlte-card icon="bi bi-hdd-rack" title="Racks in {{ $datacenter->name }}">
         <div class="table-responsive">
             <table class="table table-hover align-middle mb-0">
-                <thead><tr><th>Name</th><th>U Height</th><th>U Available</th><th>Power</th><th>Status</th></tr></thead>
+                <thead><tr><th>Name</th><th>U Height</th><th>Assets</th><th>Power</th><th>Status</th></tr></thead>
                 <tbody>
                     @forelse ($datacenter->racks as $rack)
                         <tr>
                             <td><a href="{{ route('admin.racks.show', $rack) }}"><strong>{{ $rack->name }}</strong></a></td>
                             <td>{{ $rack->u_height ?? '—' }}U</td>
-                            <td>{{ $rack->u_available ?? '—' }}U</td>
+                            <td>{{ $rack->inventory_assets_count }}</td>
                             <td>{{ $rack->power_capacity_watts ? $rack->power_capacity_watts . ' W' : '—' }}</td>
                             <td><x-adminlte.partials.status-badge :status="$rack->status" /></td>
                         </tr>

@@ -3,9 +3,12 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\InventoryAsset;
 use App\Models\License;
+use App\Services\Licenses\LicenseSeatReconciler;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 
 class LicenseController extends Controller
@@ -44,12 +47,22 @@ class LicenseController extends Controller
 
     public function create(): View
     {
-        return view('admin.licenses.create');
+        $inventoryAssets = InventoryAsset::where('asset_type', 'software_license')
+            ->orderBy('asset_tag')
+            ->get(['id', 'asset_tag']);
+
+        return view('admin.licenses.create', compact('inventoryAssets'));
     }
 
     public function store(Request $request): RedirectResponse
     {
         $validated = $request->validate([
+            'inventory_asset_id' => [
+                'required',
+                'integer',
+                Rule::exists('inventory_assets', 'id')->where('asset_type', 'software_license'),
+                Rule::unique('licenses', 'inventory_asset_id'),
+            ],
             'license_type' => ['required', 'string', 'max:100'],
             'license_key' => ['required', 'string', 'max:500'],
             'seats' => ['nullable', 'integer', 'min:1'],
@@ -58,7 +71,7 @@ class LicenseController extends Controller
             'expiry_date' => ['nullable', 'date'],
             'renewal_date' => ['nullable', 'date'],
             'cost' => ['nullable', 'numeric', 'min:0'],
-            'status' => ['sometimes', 'string', 'in:active,expired,revoked'],
+            'status' => ['sometimes', 'string', 'in:active,expired,revoked,pending'],
             'notes' => ['nullable', 'string', 'max:1000'],
         ]);
         $validated['status'] = $validated['status'] ?? 'active';
@@ -70,7 +83,7 @@ class LicenseController extends Controller
 
     public function show(License $license): View
     {
-        $license->load('assignments');
+        $license->load('assignments', 'asset');
 
         return view('admin.licenses.show', compact('license'));
     }
@@ -82,6 +95,9 @@ class LicenseController extends Controller
 
     public function update(Request $request, License $license): RedirectResponse
     {
+        // `inventory_asset_id` is intentionally immutable after creation: a
+        // license is 1:1 with its inventory asset (validated in store()), so
+        // the field is deliberately absent from this update payload.
         $validated = $request->validate([
             'license_type' => ['sometimes', 'string', 'max:100'],
             'license_key' => ['sometimes', 'string', 'max:500'],
@@ -89,10 +105,17 @@ class LicenseController extends Controller
             'vendor' => ['nullable', 'string', 'max:255'],
             'expiry_date' => ['nullable', 'date'],
             'cost' => ['nullable', 'numeric', 'min:0'],
-            'status' => ['sometimes', 'string', 'in:active,expired,revoked'],
+            'status' => ['sometimes', 'string', 'in:active,expired,revoked,pending'],
             'notes' => ['nullable', 'string', 'max:1000'],
         ]);
         $license->update($validated);
+
+        // A new seat total changes how many seats are still available; the
+        // derived counter must be recomputed or a `seats` reduction can leave
+        // seats_available above seats (invariant inverted).
+        if (array_key_exists('seats', $validated)) {
+            app(LicenseSeatReconciler::class)->reconcile($license);
+        }
 
         return redirect()->route('admin.licenses.show', $license)->with('success', 'License updated.');
     }

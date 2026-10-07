@@ -59,7 +59,7 @@ class SecurityHeaders
             "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net",
             "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net",
             "font-src 'self' https://cdn.jsdelivr.net data:",
-            "img-src 'self' data: https:",
+            "img-src 'self' data: https: http:",
             'connect-src '.ReverbConfig::cspConnectSrc(),
             "frame-ancestors 'self'",
             "object-src 'none'",

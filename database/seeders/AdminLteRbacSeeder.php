@@ -56,12 +56,12 @@ class AdminLteRbacSeeder extends Seeder
             'payments.create' => 'Record Payments',
 
             // hosting
-            'hosting.view'         => 'View Hosting Services',
-            'hosting.create'       => 'Create Hosting Services',
-            'hosting.edit'         => 'Edit Hosting Services',
-            'hosting.suspend'      => 'Suspend / Unsuspend Hosting Services',
-            'hosting.delete'       => 'Delete Hosting Services',
-            'hosting.manage'       => 'Manage Servers',
+            'hosting.view' => 'View Hosting Services',
+            'hosting.create' => 'Create Hosting Services',
+            'hosting.edit' => 'Edit Hosting Services',
+            'hosting.suspend' => 'Suspend / Unsuspend Hosting Services',
+            'hosting.delete' => 'Delete Hosting Services',
+            'hosting.manage' => 'Manage Servers',
             'hosting.server_groups' => 'Manage Server Groups',
 
             // infrastructure — granular per sub-resource (enterprise/dns/inventory/provisioning)
@@ -95,6 +95,8 @@ class AdminLteRbacSeeder extends Seeder
             'asset-relationships.manage' => 'Manage Asset Relationships',
             'inventory.view' => 'View Inventory',
             'inventory.manage' => 'Manage Inventory',
+            'ports.view' => 'View Ports & Connections',
+            'ports.manage' => 'Manage Ports & Connections',
             'tax-rates.view' => 'View Tax Rates',
             'tax-rates.manage' => 'Manage Tax Rates',
             'product-bundles.view' => 'View Product Bundles',
@@ -205,6 +207,8 @@ class AdminLteRbacSeeder extends Seeder
                     'payments.view',
                     'hosting.view',
                     'domains.view',
+                    'inventory.view',
+                    'ports.view',
                     'tickets.view', 'tickets.create', 'tickets.edit', 'tickets.assign', 'tickets.transfer',
                     'kb.view', 'kb.create', 'kb.edit',
                     'chat.view', 'chat.create_channel',

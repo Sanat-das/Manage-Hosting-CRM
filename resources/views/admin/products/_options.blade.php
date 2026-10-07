@@ -75,7 +75,7 @@
                 @endif
                 <button type="button" class="btn btn-sm btn-outline-danger" data-bs-toggle="modal"
                         data-bs-target="#detach-link-{{ $link->id }}">
-                    <i class="bi bi-unlink me-1"></i> Detach
+                    <i class="bi bi-x-lg me-1"></i> Detach
                 </button>
             </div>
         </div>

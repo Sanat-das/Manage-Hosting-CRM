@@ -124,7 +124,6 @@ class AppSettings
         'ipam_default_ipv6_prefix' => IpamSettings::class,
         'ipam_allow_public_ipv6' => IpamSettings::class,
         'ipam_reservation_hold_days' => IpamSettings::class,
-        'ipam_scan_interval_minutes' => IpamSettings::class,
         'ipam_dns_reverse_zone' => IpamSettings::class,
         'ipam_low_capacity_warning_percent' => IpamSettings::class,
         'ipam_auto_release_unused' => IpamSettings::class,

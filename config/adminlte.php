@@ -404,6 +404,12 @@ return [
             'can' => 'inventory.view',
         ],
         [
+            'text' => 'Connections',
+            'route' => 'admin.port-connections.index',
+            'icon' => 'bi bi-plug',
+            'can' => 'ports.view',
+        ],
+        [
             'text' => 'Licenses',
             'route' => 'admin.licenses.index',
             'icon' => 'bi bi-key',

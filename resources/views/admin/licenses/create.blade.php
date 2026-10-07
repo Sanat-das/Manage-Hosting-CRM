@@ -10,6 +10,12 @@
     <x-adminlte.partials.flash-alert />
 
     <x-adminlte.partials.form-card icon="bi bi-key" title="New License" :action="route('admin.licenses.store')" submit-label="Save License" :cancel-url="route('admin.licenses.index')">
+        <x-adminlte-select name="inventory_asset_id" label="Inventory Asset" required>
+            <option value="">— Select an asset —</option>
+            @foreach ($inventoryAssets as $inventoryAsset)
+                <option value="{{ $inventoryAsset->id }}" @selected(old('inventory_asset_id') == $inventoryAsset->id)>{{ $inventoryAsset->asset_tag }}</option>
+            @endforeach
+        </x-adminlte-select>
         <div class="row">
             <div class="col-md-6">
                 <x-adminlte-input name="license_type" label="License Type" placeholder="e.g. cPanel Solo" value="{{ old('license_type') }}" required />

@@ -566,7 +566,7 @@ function centerActiveMenuItem() {
   const maxScroll = scroller.scrollHeight - scroller.clientHeight
   const clamped = Math.max(0, Math.min(target, maxScroll))
 
-  scroller.scrollTo({ top: clamped, behavior: 'smooth' })
+  scroller.scrollTo({ top: clamped, behavior: (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) ? 'auto' : 'smooth' })
 }
 
 function initFormValidation() {
@@ -610,7 +610,7 @@ whenReady(() => {
   const sidebar = document.querySelector('.sidebar-wrapper')
   if (sidebar && window.innerWidth > 992) {
     OverlayScrollbars(sidebar, {
-      scrollbars: { theme: 'os-theme-light', autoHide: 'leave', clickScroll: true },
+      scrollbars: { theme: (document.documentElement.getAttribute('data-bs-theme') === 'light' ? 'os-theme-dark' : 'os-theme-light'), autoHide: 'leave', clickScroll: true },
     })
   }
 

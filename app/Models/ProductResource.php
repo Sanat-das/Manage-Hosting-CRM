@@ -11,6 +11,9 @@ class ProductResource extends Model
 {
     protected $table = 'product_resources';
 
+    // product_resources has a created_at column but no updated_at column.
+    const UPDATED_AT = null;
+
     protected function casts(): array
     {
         return [

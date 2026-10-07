@@ -59,11 +59,12 @@ class SnmpMonitorModuleTest extends TestCase
     }
 
     // ------------------------------------------------------------------
-    // Config schema: 14 fields from rdp-console copied verbatim, plus
-    // the product-level poll_interval default.
+    // Config schema: 14 fields from rdp-console copied verbatim, plus the
+    // product-level poll_interval default and the discovery auto_inventory /
+    // auto_ports toggles.
     // ------------------------------------------------------------------
 
-    public function test_config_schema_has_fifteen_fields(): void
+    public function test_config_schema_has_seventeen_fields(): void
     {
         $module = $this->activateSnmpMonitorModule();
 
@@ -89,11 +90,13 @@ class SnmpMonitorModuleTest extends TestCase
             'collect_disks',
             'collect_network',
             'collect_processes',
+            'auto_inventory',
+            'auto_ports',
         ] as $requiredKey) {
             $this->assertContains($requiredKey, $keys, "Schema must contain {$requiredKey}");
         }
 
-        $this->assertCount(15, $fields, 'Schema must have exactly 15 fields.');
+        $this->assertCount(17, $fields, 'Schema must have exactly 17 fields.');
     }
 
     // ------------------------------------------------------------------

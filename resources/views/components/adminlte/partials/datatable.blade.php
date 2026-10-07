@@ -140,6 +140,11 @@
                 </div>
             </div>
         </div>
+        @isset($filters)
+            <div class="row g-2 mt-1">
+                <div class="col-12 d-flex flex-wrap gap-2 align-items-center grid-toolbar-filters">{{ $filters }}</div>
+            </div>
+        @endisset
     </form>
 
     @if ($showCheckboxes && isset($bulkActions))

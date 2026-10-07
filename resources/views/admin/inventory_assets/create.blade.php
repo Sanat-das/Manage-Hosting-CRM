@@ -9,7 +9,7 @@
         <div class="row">
             <div class="col-md-6"><x-adminlte-input name="asset_tag" label="Asset Tag" placeholder="e.g. SRV-0001" value="{{ old('asset_tag') }}" required /></div>
             <div class="col-md-6">
-                <x-adminlte-select name="asset_type" label="Type">
+                <x-adminlte-select name="asset_type" id="asset_type" label="Type">
                     @foreach ($assetTypes as $t)
                         <option value="{{ $t }}" @selected(old('asset_type', 'server') === $t)>{{ ucfirst(str_replace('_', ' ', $t)) }}</option>
                     @endforeach
@@ -40,6 +40,7 @@
             </div>
             <div class="col-md-4"><x-adminlte-input name="rack_u_position" label="U Position" type="number" min="1" value="{{ old('rack_u_position') }}" /></div>
         </div>
+        @include('admin.inventory_assets._ip_picker')
         <div class="row">
             <div class="col-md-4"><x-adminlte-input name="purchase_date" label="Purchase Date" type="date" value="{{ old('purchase_date') }}" /></div>
             <div class="col-md-4"><x-adminlte-input name="warranty_expiry" label="Warranty Expiry" type="date" value="{{ old('warranty_expiry') }}" /></div>
@@ -50,6 +51,10 @@
                     @endforeach
                 </x-adminlte-select>
             </div>
+        </div>
+        <div class="row">
+            <div class="col-md-6"><x-adminlte-input name="vendor" label="Vendor" value="{{ old('vendor') }}" /></div>
+            <div class="col-md-6"><x-adminlte-input name="purchase_cost" label="Purchase Cost" type="number" step="0.01" min="0" value="{{ old('purchase_cost') }}" /></div>
         </div>
         <x-adminlte-textarea name="notes" label="Notes" rows="2">{{ old('notes') }}</x-adminlte-textarea>
     </x-adminlte.partials.form-card>

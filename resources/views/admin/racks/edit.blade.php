@@ -21,7 +21,6 @@
             </div>
             <div class="col-md-6">
                 <x-adminlte-select name="datacenter_id" label="Datacenter">
-                    <option value="">— None —</option>
                     @foreach ($datacenters as $dc)
                         <option value="{{ $dc->id }}" @selected(old('datacenter_id', $rack->datacenter_id) == $dc->id)>{{ $dc->name }}</option>
                     @endforeach
@@ -33,14 +32,11 @@
                 <x-adminlte-input name="u_height" label="U Height" type="number" value="{{ old('u_height', $rack->u_height) }}" min="1" />
             </div>
             <div class="col-md-4">
-                <x-adminlte-input name="u_available" label="U Available" type="number" value="{{ old('u_available', $rack->u_available) }}" min="0" />
-            </div>
-            <div class="col-md-4">
                 <x-adminlte-input name="power_capacity_watts" label="Power Capacity (W)" type="number" value="{{ old('power_capacity_watts', $rack->power_capacity_watts) }}" min="0" />
             </div>
         </div>
         <x-adminlte-select name="status" label="Status">
-            @foreach (['active' => 'Active', 'maintenance' => 'Maintenance', 'decommissioned' => 'Decommissioned'] as $val => $lbl)
+            @foreach (['active' => 'Active', 'inactive' => 'Inactive', 'maintenance' => 'Maintenance'] as $val => $lbl)
                 <option value="{{ $val }}" @selected(old('status', $rack->status) === $val)>{{ $lbl }}</option>
             @endforeach
         </x-adminlte-select>

@@ -18,7 +18,7 @@ class DatacenterController extends Controller
         $search = trim((string) $request->query('search'));
         $status = $request->query('status');
 
-        $statuses = ['active' => 'Active', 'maintenance' => 'Maintenance', 'decommissioned' => 'Decommissioned'];
+        $statuses = ['active' => 'Active', 'inactive' => 'Inactive', 'maintenance' => 'Maintenance'];
 
         $query = Datacenter::withCount('racks');
 
@@ -66,7 +66,7 @@ class DatacenterController extends Controller
             'state' => ['nullable', 'string', 'max:100'],
             'country' => ['nullable', 'string', 'max:100'],
             'timezone' => ['nullable', 'string', 'max:100'],
-            'status' => ['sometimes', 'string', 'in:active,maintenance,decommissioned'],
+            'status' => ['sometimes', 'string', 'in:active,inactive,maintenance'],
         ]);
         $validated['status'] = $validated['status'] ?? 'active';
 
@@ -77,7 +77,7 @@ class DatacenterController extends Controller
 
     public function show(Datacenter $datacenter): View
     {
-        $datacenter->load(['racks', 'subnets']);
+        $datacenter->load(['subnets', 'racks' => fn ($query) => $query->withCount('inventoryAssets')]);
 
         return view('admin.datacenters.show', compact('datacenter'));
     }
@@ -97,7 +97,7 @@ class DatacenterController extends Controller
             'state' => ['nullable', 'string', 'max:100'],
             'country' => ['nullable', 'string', 'max:100'],
             'timezone' => ['nullable', 'string', 'max:100'],
-            'status' => ['sometimes', 'string', 'in:active,maintenance,decommissioned'],
+            'status' => ['sometimes', 'string', 'in:active,inactive,maintenance'],
         ]);
         $datacenter->update($validated);
 

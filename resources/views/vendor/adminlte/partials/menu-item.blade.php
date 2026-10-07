@@ -1,5 +1,6 @@
 @php
     use ColorlibHQ\AdminLte\Menu\MenuItemHelper;
+    use Illuminate\Support\Str;
     $isHeader  = MenuItemHelper::isHeader($item);
     $isSubmenu = MenuItemHelper::isSubmenu($item);
     $isActive  = ! empty($item['active']);
@@ -9,8 +10,11 @@
     <li class="nav-header">{{ $item['header'] }}</li>
 
 @elseif ($isSubmenu)
+    @php
+        $submenuId = 'sidebar-submenu-'.Str::slug($item['text']);
+    @endphp
     <li class="nav-item {{ $isActive ? 'menu-open' : '' }}">
-        <a href="#" class="nav-link {{ $isActive ? 'active' : '' }}" role="button" aria-expanded="{{ $isActive ? 'true' : 'false' }}">
+        <a href="#" class="nav-link {{ $isActive ? 'active' : '' }}" role="button" aria-expanded="{{ $isActive ? 'true' : 'false' }}" aria-haspopup="true" aria-controls="{{ $submenuId }}" title="{{ $item['text'] }}">
             @isset($item['icon'])
                 <i class="nav-icon {{ $item['icon'] }} {{ isset($item['icon_color']) ? 'text-'.$item['icon_color'] : '' }}" aria-hidden="true"></i>
             @endisset
@@ -22,7 +26,7 @@
                 @endisset
             </p>
         </a>
-        <ul class="nav nav-treeview">
+        <ul class="nav nav-treeview" id="{{ $submenuId }}">
             @foreach ($item['submenu'] as $child)
                 @include('adminlte::partials.menu-item', ['item' => $child])
             @endforeach
@@ -33,6 +37,8 @@
     <li class="nav-item">
         <a href="{{ $item['href'] ?? '#' }}"
            class="nav-link {{ $isActive ? 'active' : '' }}"
+           @if ($isActive) aria-current="page" @endif
+           title="{{ $item['text'] }}"
            @isset($item['target']) target="{{ $item['target'] }}" rel="noopener" @endisset>
             @isset($item['icon'])
                 <i class="nav-icon {{ $item['icon'] }} {{ isset($item['icon_color']) ? 'text-'.$item['icon_color'] : '' }}" aria-hidden="true"></i>

@@ -80,21 +80,21 @@ class InfrastructureSeeder extends Seeder
      * Racks keyed by the datacenter code they belong to. "Rack A1" under DC01
      * is the pre-existing `InitialDataSeeder` rack and is matched, not recreated.
      *
-     * @var array<string, list<array{name: string, u_height: int, u_available: int, power_capacity_watts: int, status: string}>>
+     * @var array<string, list<array{name: string, u_height: int, power_capacity_watts: int, status: string}>>
      */
     private const RACKS = [
         'DC01' => [
-            ['name' => 'Rack A1', 'u_height' => 42, 'u_available' => 30, 'power_capacity_watts' => 8000, 'status' => 'active'],
-            ['name' => 'Rack A2', 'u_height' => 42, 'u_available' => 38, 'power_capacity_watts' => 8000, 'status' => 'active'],
+            ['name' => 'Rack A1', 'u_height' => 42, 'power_capacity_watts' => 8000, 'status' => 'active'],
+            ['name' => 'Rack A2', 'u_height' => 42, 'power_capacity_watts' => 8000, 'status' => 'active'],
         ],
         'DC02' => [
-            ['name' => 'Rack B1', 'u_height' => 47, 'u_available' => 41, 'power_capacity_watts' => 10000, 'status' => 'active'],
-            ['name' => 'Rack B2', 'u_height' => 47, 'u_available' => 47, 'power_capacity_watts' => 10000, 'status' => 'inactive'],
+            ['name' => 'Rack B1', 'u_height' => 47, 'power_capacity_watts' => 10000, 'status' => 'active'],
+            ['name' => 'Rack B2', 'u_height' => 47, 'power_capacity_watts' => 10000, 'status' => 'inactive'],
         ],
         'DC03' => [
-            ['name' => 'Rack C1', 'u_height' => 42, 'u_available' => 36, 'power_capacity_watts' => 6000, 'status' => 'active'],
-            ['name' => 'Rack C2', 'u_height' => 42, 'u_available' => 42, 'power_capacity_watts' => 6000, 'status' => 'maintenance'],
-            ['name' => 'Rack C3', 'u_height' => 42, 'u_available' => 40, 'power_capacity_watts' => 6000, 'status' => 'active'],
+            ['name' => 'Rack C1', 'u_height' => 42, 'power_capacity_watts' => 6000, 'status' => 'active'],
+            ['name' => 'Rack C2', 'u_height' => 42, 'power_capacity_watts' => 6000, 'status' => 'maintenance'],
+            ['name' => 'Rack C3', 'u_height' => 42, 'power_capacity_watts' => 6000, 'status' => 'active'],
         ],
     ];
 

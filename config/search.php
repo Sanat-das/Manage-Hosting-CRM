@@ -1,5 +1,25 @@
 <?php
 
+use App\Services\Search\Providers\CatalogProductSearchProvider;
+use App\Services\Search\Providers\ContactSearchProvider;
+use App\Services\Search\Providers\CustomerSearchProvider;
+use App\Services\Search\Providers\DomainSearchProvider;
+use App\Services\Search\Providers\HostingAccountSearchProvider;
+use App\Services\Search\Providers\InventoryAssetSearchProvider;
+use App\Services\Search\Providers\InvoiceSearchProvider;
+use App\Services\Search\Providers\IpAddressSearchProvider;
+use App\Services\Search\Providers\KnowledgeBaseSearchProvider;
+use App\Services\Search\Providers\OrderSearchProvider;
+use App\Services\Search\Providers\PaymentSearchProvider;
+use App\Services\Search\Providers\ProductSearchProvider;
+use App\Services\Search\Providers\QuoteSearchProvider;
+use App\Services\Search\Providers\ServerSearchProvider;
+use App\Services\Search\Providers\ServiceInstanceSearchProvider;
+use App\Services\Search\Providers\SslCertificateSearchProvider;
+use App\Services\Search\Providers\StaffUserSearchProvider;
+use App\Services\Search\Providers\TicketSearchProvider;
+use App\Services\Search\Providers\TransactionSearchProvider;
+
 /**
  * Global search provider registry.
  *
@@ -10,22 +30,24 @@
  */
 return [
     'providers' => [
-        \App\Services\Search\Providers\CustomerSearchProvider::class,
-        \App\Services\Search\Providers\ContactSearchProvider::class,
-        \App\Services\Search\Providers\StaffUserSearchProvider::class,
-        \App\Services\Search\Providers\OrderSearchProvider::class,
-        \App\Services\Search\Providers\InvoiceSearchProvider::class,
-        \App\Services\Search\Providers\PaymentSearchProvider::class,
-        \App\Services\Search\Providers\TransactionSearchProvider::class,
-        \App\Services\Search\Providers\QuoteSearchProvider::class,
-        \App\Services\Search\Providers\ServiceInstanceSearchProvider::class,
-        \App\Services\Search\Providers\HostingAccountSearchProvider::class,
-        \App\Services\Search\Providers\ServerSearchProvider::class,
-        \App\Services\Search\Providers\DomainSearchProvider::class,
-        \App\Services\Search\Providers\SslCertificateSearchProvider::class,
-        \App\Services\Search\Providers\TicketSearchProvider::class,
-        \App\Services\Search\Providers\KnowledgeBaseSearchProvider::class,
-        \App\Services\Search\Providers\CatalogProductSearchProvider::class,
-        \App\Services\Search\Providers\ProductSearchProvider::class,
+        CustomerSearchProvider::class,
+        ContactSearchProvider::class,
+        StaffUserSearchProvider::class,
+        OrderSearchProvider::class,
+        InvoiceSearchProvider::class,
+        PaymentSearchProvider::class,
+        TransactionSearchProvider::class,
+        QuoteSearchProvider::class,
+        ServiceInstanceSearchProvider::class,
+        HostingAccountSearchProvider::class,
+        ServerSearchProvider::class,
+        DomainSearchProvider::class,
+        SslCertificateSearchProvider::class,
+        TicketSearchProvider::class,
+        KnowledgeBaseSearchProvider::class,
+        CatalogProductSearchProvider::class,
+        ProductSearchProvider::class,
+        InventoryAssetSearchProvider::class,
+        IpAddressSearchProvider::class,
     ],
 ];

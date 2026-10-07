@@ -35,7 +35,7 @@
         <div class="row">
             <div class="col-8">
                 <div class="form-check">
-                    <input type="checkbox" name="remember" class="form-check-input" id="remember">
+                    <input type="checkbox" name="remember" class="form-check-input" id="remember" aria-label="{{ __('adminlte.remember_me') }}">
                     <label class="form-check-label" for="remember">{{ __('adminlte.remember_me') }}</label>
                 </div>
             </div>

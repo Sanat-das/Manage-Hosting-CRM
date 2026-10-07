@@ -10,6 +10,12 @@ class ResourceAllocation extends Model
 {
     protected $table = 'resource_allocations';
 
+    /**
+     * The table records its own `allocated_at` / `released_at` moments; it
+     * has no created_at / updated_at columns.
+     */
+    public $timestamps = false;
+
     protected function casts(): array
     {
         return [

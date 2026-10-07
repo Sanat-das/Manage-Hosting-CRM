@@ -15,7 +15,7 @@ class RackController extends Controller
     {
         $search = trim((string) $request->query('search'));
 
-        $query = Rack::with('datacenter');
+        $query = Rack::with('datacenter')->withCount('inventoryAssets');
 
         if ($search !== '') {
             $query->where('name', 'like', "%{$search}%");
@@ -30,7 +30,6 @@ class RackController extends Controller
                 'name' => 'name',
                 'datacenter' => 'datacenter.name',
                 'u_height' => 'u_height',
-                'u_available' => 'u_available',
                 'power' => 'power_capacity_watts',
                 'status' => 'status',
             ])
@@ -53,9 +52,8 @@ class RackController extends Controller
             'datacenter_id' => ['required', 'integer', 'exists:datacenters,id'],
             'name' => ['required', 'string', 'max:255'],
             'u_height' => ['nullable', 'integer', 'min:1'],
-            'u_available' => ['nullable', 'integer', 'min:0'],
             'power_capacity_watts' => ['nullable', 'integer', 'min:0'],
-            'status' => ['sometimes', 'string', 'in:active,maintenance,decommissioned'],
+            'status' => ['sometimes', 'string', 'in:active,inactive,maintenance'],
         ]);
         $validated['status'] = $validated['status'] ?? 'active';
         Rack::create($validated);
@@ -65,7 +63,7 @@ class RackController extends Controller
 
     public function show(Rack $rack): View
     {
-        $rack->load('datacenter');
+        $rack->load(['datacenter', 'inventoryAssets']);
 
         return view('admin.racks.show', compact('rack'));
     }
@@ -80,11 +78,11 @@ class RackController extends Controller
     public function update(Request $request, Rack $rack): RedirectResponse
     {
         $validated = $request->validate([
+            'datacenter_id' => ['required', 'integer', 'exists:datacenters,id'],
             'name' => ['sometimes', 'string', 'max:255'],
             'u_height' => ['nullable', 'integer', 'min:1'],
-            'u_available' => ['nullable', 'integer', 'min:0'],
             'power_capacity_watts' => ['nullable', 'integer', 'min:0'],
-            'status' => ['sometimes', 'string', 'in:active,maintenance,decommissioned'],
+            'status' => ['sometimes', 'string', 'in:active,inactive,maintenance'],
         ]);
         $rack->update($validated);
 

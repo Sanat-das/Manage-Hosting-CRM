@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\Permission;
 use App\Models\Role;
 use App\Models\User;
+use App\Settings\IpamSettings;
 use App\Support\AppSettings;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -13,7 +14,7 @@ use Tests\TestCase;
 /**
  * Baseline inventory guard for admin/settings.
  *
- * - Captures the 183 name="settings[*]" keys rendered by
+ * - Captures the 182 name="settings[*]" keys rendered by
  *   resources/views/admin/settings/index.blade.php (84 baseline + 94 task-8 typed
  *   surfaced + 3 imap_* policy keys for ticket email piping + 4 security hardening
  *   toggles + 6 branding_* keys added with BrandingSettings + 8 company split
@@ -27,7 +28,7 @@ class AdminSettingsInventoryTest extends TestCase
     use RefreshDatabase;
 
     /**
-     * Baseline set - 183 keys rendered by admin/settings/index.blade.php (84 + 94 typed + 3 imap policy + 4 security hardening + 6 branding + 8 company split + 1 company_gstin + 4 bank).
+     * Baseline set - 182 keys rendered by admin/settings/index.blade.php (84 + 94 typed + 3 imap policy + 4 security hardening + 6 branding + 8 company split + 1 company_gstin + 4 bank).
      * Global Incoming Mail host/user/pwd removed in department-only refactor (9 keys dropped).
      * Documented verbatim so any drop or rename fails this test.
      * Sorted alphabetically for diff stability; source order is the blade file.
@@ -57,6 +58,9 @@ class AdminSettingsInventoryTest extends TestCase
      *     automation_* duplicates, and the 4 user_* duplicates. The keys stay
      *     accepted by SettingsController (see UntypedSettingsTest) — only the
      *     form controls are gone.
+     * v13: 2026-10-05 removed ipam_scan_interval_minutes — a control nothing
+     *     ever read (no scheduler entry, job or command scanned on an
+     *     interval). See migration 2026_10_05_170000_remove_dead_ipam_scan_setting.
      */
     public const BASELINE_KEYS = [
         'analytics_anonymize_ip',
@@ -180,7 +184,6 @@ class AdminSettingsInventoryTest extends TestCase
         'ipam_enabled',
         'ipam_low_capacity_warning_percent',
         'ipam_reservation_hold_days',
-        'ipam_scan_interval_minutes',
         'ipam_unused_release_days',
         'ipam_validate_networks',
         'ipam_vlan_tracking',
@@ -272,8 +275,48 @@ class AdminSettingsInventoryTest extends TestCase
         $expected = self::BASELINE_KEYS;
         sort($expected);
 
-        $this->assertCount(183, $keys, 'Baseline field count changed - expected 183 name="settings[*]" keys. Got: '.implode(', ', $keys));
+        $this->assertCount(182, $keys, 'Baseline field count changed - expected 182 name="settings[*]" keys. Got: '.implode(', ', $keys));
         $this->assertSame($expected, $keys, 'Baseline field set changed - keys were dropped, renamed, or added.');
+    }
+
+    /**
+     * The dead `ipam_scan_interval_minutes` knob is absent from every
+     * definition surface (typed property, back-compat key map, rendered
+     * form), the migration drops its persisted row, and down() restores it.
+     */
+    public function test_removed_dead_ipam_scan_setting_is_gone_and_down_restores_it(): void
+    {
+        $this->assertArrayNotHasKey(
+            'ipam_scan_interval_minutes',
+            AppSettings::TYPED_KEYS,
+            'AppSettings must no longer route the dead ipam_scan_interval_minutes setting.',
+        );
+        $this->assertFalse(
+            (new \ReflectionClass(IpamSettings::class))->hasProperty('ipam_scan_interval_minutes'),
+            'IpamSettings must no longer declare the dead property.',
+        );
+        $this->assertStringNotContainsString(
+            'ipam_scan_interval_minutes',
+            $this->actingAsSettingsAdmin()->get(route('admin.settings.index'))->assertStatus(200)->getContent(),
+            'The settings form must no longer render the dead control.',
+        );
+
+        $table = config('settings.repositories.database.table', 'settings_properties');
+
+        // Re-create the row so the test proves up() drops it (RefreshDatabase
+        // already ran the migration, so a pre-removal row would be absent).
+        DB::table($table)->updateOrInsert(
+            ['group' => 'ipam', 'name' => 'ipam_scan_interval_minutes'],
+            ['payload' => '60', 'locked' => false, 'created_at' => now(), 'updated_at' => now()],
+        );
+
+        $migration = require base_path('database/migrations/2026_10_05_170000_remove_dead_ipam_scan_setting.php');
+
+        $migration->up();
+        $this->assertDatabaseMissing($table, ['group' => 'ipam', 'name' => 'ipam_scan_interval_minutes']);
+
+        $migration->down();
+        $this->assertDatabaseHas($table, ['group' => 'ipam', 'name' => 'ipam_scan_interval_minutes']);
     }
 
     /**

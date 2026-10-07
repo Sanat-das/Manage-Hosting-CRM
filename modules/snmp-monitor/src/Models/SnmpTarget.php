@@ -40,6 +40,11 @@ class SnmpTarget extends Model
         'last_polled_at',
         'next_poll_at',
         'last_response_ms',
+        'sys_name',
+        'sys_descr',
+        'sys_object_id',
+        'inventory_asset_id',
+        'last_discovered_at',
     ];
 
     protected function casts(): array
@@ -53,6 +58,8 @@ class SnmpTarget extends Model
             'last_polled_at' => 'datetime',
             'next_poll_at' => 'datetime',
             'last_response_ms' => 'integer',
+            'inventory_asset_id' => 'integer',
+            'last_discovered_at' => 'datetime',
         ];
     }
 

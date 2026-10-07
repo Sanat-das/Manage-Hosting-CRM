@@ -61,7 +61,6 @@ class InitialDataSeeder extends Seeder
             'datacenter_id' => 1,
             'name' => 'Rack A1',
             'u_height' => 42,
-            'u_available' => 42,
             'status' => 'active',
             'created_at' => now(),
             'updated_at' => now(),

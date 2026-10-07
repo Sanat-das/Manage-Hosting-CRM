@@ -18,6 +18,13 @@
                 <table class="table table-sm table-borderless mb-0">
                     <tbody>
                         <tr><th class="text-muted w-25">Type</th><td>{{ $license->license_type }}</td></tr>
+                        <tr><th class="text-muted">Asset</th><td>
+                            @if ($license->asset)
+                                <a href="{{ route('admin.inventory-assets.show', $license->asset) }}">{{ $license->asset->asset_tag }}</a>
+                            @else
+                                —
+                            @endif
+                        </td></tr>
                         <tr><th class="text-muted">Vendor</th><td>{{ $license->vendor ?? '—' }}</td></tr>
                         <tr><th class="text-muted">Key</th><td><code>{{ $license->license_key }}</code></td></tr>
                         <tr><th class="text-muted">Seats</th><td>{{ $license->seats_available ?? '—' }} / {{ $license->seats ?? '—' }}</td></tr>

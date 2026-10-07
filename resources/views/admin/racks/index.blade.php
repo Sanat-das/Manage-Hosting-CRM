@@ -22,7 +22,7 @@
             ['label' => 'Name', 'sort' => 'name'],
             ['label' => 'Datacenter', 'sort' => 'datacenter'],
             ['label' => 'U Height', 'sort' => 'u_height'],
-            ['label' => 'U Available', 'sort' => 'u_available'],
+            ['label' => 'Assets'],
             ['label' => 'Power (W)', 'sort' => 'power'],
             ['label' => 'Status', 'sort' => 'status'],
             ['label' => 'Actions', 'class' => 'text-end'],
@@ -52,7 +52,7 @@
                 <td><a href="{{ route('admin.racks.show', $rack) }}"><strong>{{ $rack->name }}</strong></a></td>
                 <td>{{ $rack->datacenter?->name ?? '—' }}</td>
                 <td>{{ $rack->u_height ?? '—' }}</td>
-                <td>{{ $rack->u_available ?? '—' }}</td>
+                <td>{{ $rack->inventory_assets_count }}</td>
                 <td>{{ $rack->power_capacity_watts ?? '—' }}</td>
                 <td><x-adminlte.partials.status-badge :status="$rack->status" /></td>
                 <td class="text-end">

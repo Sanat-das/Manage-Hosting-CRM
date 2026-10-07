@@ -26,8 +26,8 @@
             <div class="col-md-6">
                 <x-adminlte-select name="status" label="Status">
                     <option value="active" @selected(old('status') === 'active')>Active</option>
+                    <option value="inactive" @selected(old('status') === 'inactive')>Inactive</option>
                     <option value="maintenance" @selected(old('status') === 'maintenance')>Maintenance</option>
-                    <option value="decommissioned" @selected(old('status') === 'decommissioned')>Decommissioned</option>
                 </x-adminlte-select>
             </div>
         </div>

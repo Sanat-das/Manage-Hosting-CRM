@@ -12,6 +12,17 @@
             <div class="col-md-6"><x-adminlte-input name="serial_number" label="Serial Number" value="{{ old('serial_number', $inventoryAsset->serial_number) }}" /></div>
         </div>
         <div class="row">
+            <div class="col-md-4">
+                <x-adminlte-select name="asset_type" id="asset_type" label="Type">
+                    @foreach ($assetTypes as $t)
+                        <option value="{{ $t }}" @selected(old('asset_type', $inventoryAsset->asset_type) === $t)>{{ ucfirst(str_replace('_', ' ', $t)) }}</option>
+                    @endforeach
+                </x-adminlte-select>
+            </div>
+            <div class="col-md-4"><x-adminlte-input name="manufacturer" label="Manufacturer" value="{{ old('manufacturer', $inventoryAsset->manufacturer) }}" /></div>
+            <div class="col-md-4"><x-adminlte-input name="purchase_date" label="Purchase Date" type="date" value="{{ old('purchase_date', $inventoryAsset->purchase_date?->format('Y-m-d')) }}" /></div>
+        </div>
+        <div class="row">
             <div class="col-md-4"><x-adminlte-input name="model" label="Model" value="{{ old('model', $inventoryAsset->model) }}" /></div>
             <div class="col-md-4">
                 <x-adminlte-select name="datacenter_id" label="Datacenter">
@@ -40,6 +51,11 @@
                 </x-adminlte-select>
             </div>
             <div class="col-md-4"><x-adminlte-input name="warranty_expiry" label="Warranty Expiry" type="date" value="{{ old('warranty_expiry', $inventoryAsset->warranty_expiry?->format('Y-m-d')) }}" /></div>
+        </div>
+        @include('admin.inventory_assets._ip_picker')
+        <div class="row">
+            <div class="col-md-6"><x-adminlte-input name="vendor" label="Vendor" value="{{ old('vendor', $inventoryAsset->vendor) }}" /></div>
+            <div class="col-md-6"><x-adminlte-input name="purchase_cost" label="Purchase Cost" type="number" step="0.01" min="0" value="{{ old('purchase_cost', $inventoryAsset->purchase_cost) }}" /></div>
         </div>
         <x-adminlte-textarea name="notes" label="Notes" rows="2">{{ old('notes', $inventoryAsset->notes) }}</x-adminlte-textarea>
     </x-adminlte.partials.form-card>

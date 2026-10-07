@@ -5,12 +5,15 @@ declare(strict_types=1);
 namespace Tests\Feature;
 
 use App\Jobs\ProvisionComputeVm;
+use App\Models\IpAddress;
+use App\Models\IpSubnet;
 use App\Services\Modules\ModuleManager;
 use FreeDSx\Snmp\Oid;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Facades\Schema;
 use Modules\SnmpMonitor\Jobs\PollHostBatch;
 use Modules\SnmpMonitor\Jobs\RollupHourlyAggregates;
 use Modules\SnmpMonitor\Models\SnmpTarget;
@@ -485,6 +488,80 @@ final class SnmpPollingPipelineTest extends TestCase
         $this->assertSame(SnmpTarget::STATUS_UP, $good->fresh()->status);
         $this->assertSame(1, $bad->fresh()->consecutive_failures, 'Bad target accumulates failures independently.');
         $this->assertNotNull($bad->fresh()->next_poll_at, 'Failed target still advances its schedule.');
+    }
+
+    // ------------------------------------------------------------------
+    // IPAM liveness: a successful poll stamps last_seen_at on every
+    // main-app ip_addresses row carrying the monitored host, and a failure
+    // in that stamp can never turn a good poll into a recorded failure.
+    // ------------------------------------------------------------------
+
+    public function test_successful_poll_stamps_matching_ipam_rows_last_seen_at(): void
+    {
+        Carbon::setTestNow($t0 = Carbon::parse('2026-08-25 10:00:00'));
+
+        $manager = app(ModuleManager::class);
+        $module = $this->activateSnmpMonitorModule($manager);
+        $product = $this->makeMonitoredProduct($manager, $module);
+        $target = $this->makeTarget($this->makeAccount($product), ['host' => '192.0.2.50']);
+
+        // The same address can be leased in more than one subnet; both rows
+        // are evidence of liveness and must be stamped. Reusing one address
+        // for two subnets also proves the update is not limited to a single
+        // row.
+        $subnetA = IpSubnet::create(['name' => 'Liveness A', 'subnet_cidr' => '192.0.2.0/24', 'network_type' => 'public']);
+        $subnetB = IpSubnet::create(['name' => 'Liveness B', 'subnet_cidr' => '198.51.100.0/24', 'network_type' => 'private']);
+        $match = IpAddress::create(['subnet_id' => $subnetA->id, 'ip_address' => '192.0.2.50', 'type' => 'assigned']);
+        $matchOtherSubnet = IpAddress::create(['subnet_id' => $subnetB->id, 'ip_address' => '192.0.2.50', 'type' => 'assigned']);
+        $untouched = IpAddress::create(['subnet_id' => $subnetA->id, 'ip_address' => '192.0.2.99', 'type' => 'assigned']);
+
+        $this->assertNull($match->last_seen_at, 'last_seen_at starts stale/NULL for the assertion to mean anything.');
+
+        $this->bindCapturingCollector($this->fakeSnmpClient());
+
+        (new PollHostBatch([$target->id]))->handle($manager);
+
+        $this->assertSame(
+            $t0->getTimestamp(),
+            $match->fresh()->last_seen_at?->getTimestamp(),
+            'A successful poll must stamp the matching ip_addresses row.'
+        );
+        $this->assertNotNull(
+            $matchOtherSubnet->fresh()->last_seen_at,
+            'Every row carrying the address must be stamped, not just the first.'
+        );
+        $this->assertNull(
+            $untouched->fresh()->last_seen_at,
+            'An address the poll did not touch must keep its last_seen_at NULL.'
+        );
+    }
+
+    public function test_ipam_liveness_failure_does_not_break_a_successful_poll(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-08-25 10:00:00'));
+
+        $manager = app(ModuleManager::class);
+        $module = $this->activateSnmpMonitorModule($manager);
+        $target = $this->makeTarget($this->makeAccount($this->makeMonitoredProduct($manager, $module)));
+
+        // Remove the store the liveness touch writes to: the update throws,
+        // and the job's guard must swallow it. If it escaped, handle()'s
+        // per-target catch would call recordFailure() and mark a host that
+        // just answered as failing.
+        Schema::withoutForeignKeyConstraints(fn () => Schema::drop('ip_addresses'));
+
+        $this->bindCapturingCollector($this->fakeSnmpClient());
+
+        (new PollHostBatch([$target->id]))->handle($manager);
+
+        $fresh = $target->fresh();
+        $this->assertSame(SnmpTarget::STATUS_UP, $fresh->status);
+        $this->assertSame(0, $fresh->consecutive_failures, 'A swallowed IPAM error must never count as a poll failure.');
+        $this->assertSame(
+            1,
+            $this->monitoring()->table('snmp_host_samples')->where('host_id', $target->id)->count(),
+            'Samples are still written when only the IPAM liveness touch fails.'
+        );
     }
 
     // ------------------------------------------------------------------

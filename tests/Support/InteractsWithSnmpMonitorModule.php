@@ -117,6 +117,7 @@ trait InteractsWithSnmpMonitorModule
             'collect_disks' => true,
             'collect_network' => true,
             'collect_processes' => false,
+            'auto_inventory' => true,
         ], $config);
 
         ProductModule::create([
@@ -206,6 +207,11 @@ trait InteractsWithSnmpMonitorModule
         $client->gets['1.3.6.1.2.1.1.1.0'] = Oid::fromString(
             '1.3.6.1.2.1.1.1.0',
             'Linux linux-vps-01 5.15.0-91-generic #101-Ubuntu SMP Tue Nov 22 14:00:00 UTC 2022 x86_64'
+        );
+        // sysObjectID: Net-SNMP's enterprise prefix (linux agent default).
+        $client->gets['1.3.6.1.2.1.1.2.0'] = Oid::fromOid(
+            '1.3.6.1.2.1.1.2.0',
+            '1.3.6.1.4.1.8072.3.2.10'
         );
         // 283953000 hundredths of a second = 32 days, 20:45:30.
         $client->gets['1.3.6.1.2.1.1.3.0'] = Oid::fromTimeticks('1.3.6.1.2.1.1.3.0', 283953000);

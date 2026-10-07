@@ -5,6 +5,12 @@
     <div class="{{ config('adminlte.classes_topnav_container', 'container-fluid') }}">
         {{-- Left side --}}
         <ul class="navbar-nav">
+            <li class="nav-item d-lg-none">
+                <button class="nav-link navbar-toggler" type="button" data-lte-toggle="sidebar" aria-label="{{ __('Toggle navigation') }}">
+                    <i class="bi bi-list" aria-hidden="true"></i>
+                </button>
+            </li>
+
             <li class="nav-item">
                 <a class="nav-link" data-lte-toggle="sidebar" href="#" role="button" aria-label="{{ __('Toggle sidebar') }}">
                     <i class="bi bi-list" aria-hidden="true"></i>

@@ -37,7 +37,7 @@ use Illuminate\Support\Facades\DB;
  * router, `pdu` for the UPS/power feed, `ssd`/`hdd` for storage) and records
  * the real-world role in `notes`.
  *
- * `status` and `lifecycle_state` share one enum: ordered, received, in_stock,
+ * `status` is the single lifecycle enum: ordered, received, in_stock,
  * installed, assigned, maintenance, retired, disposed.
  *
  * `asset_relationships.relationship_type` is a plain `string(50)` in the
@@ -169,7 +169,6 @@ class InventorySeeder extends Seeder
                 'warranty_expiry' => '2027-02-14',
                 'rack_u_position' => 12,
                 'status' => 'installed',
-                'lifecycle_state' => 'installed',
                 'notes' => 'Demo primary hypervisor host.',
             ],
             [
@@ -184,7 +183,6 @@ class InventorySeeder extends Seeder
                 'warranty_expiry' => '2027-05-02',
                 'rack_u_position' => 14,
                 'status' => 'installed',
-                'lifecycle_state' => 'installed',
                 'notes' => 'Demo secondary hypervisor host.',
             ],
             [
@@ -199,7 +197,6 @@ class InventorySeeder extends Seeder
                 'warranty_expiry' => '2026-11-20',
                 'rack_u_position' => 40,
                 'status' => 'installed',
-                'lifecycle_state' => 'installed',
                 'notes' => 'Demo top-of-rack access switch.',
             ],
             [
@@ -214,7 +211,6 @@ class InventorySeeder extends Seeder
                 'warranty_expiry' => '2027-01-09',
                 'rack_u_position' => 41,
                 'status' => 'in_stock',
-                'lifecycle_state' => 'received',
                 'notes' => 'Demo spare aggregation switch, not yet cabled.',
             ],
             [
@@ -230,7 +226,6 @@ class InventorySeeder extends Seeder
                 'warranty_expiry' => '2026-09-01',
                 'rack_u_position' => 42,
                 'status' => 'installed',
-                'lifecycle_state' => 'installed',
                 'notes' => 'Role: edge router (enum has no `router` member).',
             ],
             [
@@ -246,7 +241,6 @@ class InventorySeeder extends Seeder
                 'warranty_expiry' => '2026-07-18',
                 'rack_u_position' => 1,
                 'status' => 'installed',
-                'lifecycle_state' => 'installed',
                 'notes' => 'Role: rack UPS / power feed (enum has no `ups` member).',
             ],
             [
@@ -261,7 +255,6 @@ class InventorySeeder extends Seeder
                 'purchase_cost' => 78400.00,
                 'warranty_expiry' => '2029-02-14',
                 'status' => 'assigned',
-                'lifecycle_state' => 'assigned',
                 'notes' => 'Role: NVMe storage tier (enum has no `storage` member).',
                 'parent_tag' => self::TAG_PREFIX.'-SRV-0001',
             ],
@@ -276,7 +269,6 @@ class InventorySeeder extends Seeder
                 'purchase_cost' => 34900.00,
                 'warranty_expiry' => '2029-05-02',
                 'status' => 'assigned',
-                'lifecycle_state' => 'assigned',
                 'notes' => 'Role: backup storage tier.',
                 'parent_tag' => self::TAG_PREFIX.'-SRV-0002',
             ],
@@ -291,7 +283,6 @@ class InventorySeeder extends Seeder
                 'purchase_cost' => 22600.00,
                 'warranty_expiry' => '2027-02-14',
                 'status' => 'assigned',
-                'lifecycle_state' => 'assigned',
                 'notes' => 'Dual-port 10GbE uplink card.',
                 'parent_tag' => self::TAG_PREFIX.'-SRV-0001',
             ],
@@ -306,7 +297,6 @@ class InventorySeeder extends Seeder
                 'purchase_cost' => 11200.00,
                 'warranty_expiry' => '2029-02-14',
                 'status' => 'assigned',
-                'lifecycle_state' => 'assigned',
                 'notes' => 'Registered ECC DIMM.',
                 'parent_tag' => self::TAG_PREFIX.'-SRV-0001',
             ],
@@ -399,7 +389,6 @@ class InventorySeeder extends Seeder
             'model' => 'Demo Filler Unit '.$n,
             'vendor' => 'Demo Vendor',
             'status' => 'in_stock',
-            'lifecycle_state' => 'received',
             'notes' => 'Auto-generated to satisfy DummyDataConfig::ROWS.',
         ];
     }

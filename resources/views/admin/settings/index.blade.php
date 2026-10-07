@@ -1626,12 +1626,6 @@
                     </div>
                     <div class="row">
                         <div class="col-md-4">
-                            <x-adminlte-input name="settings[ipam_scan_interval_minutes]" label="Scan Interval (minutes)" type="number" min="1"
-                                value="{{ old('settings.ipam_scan_interval_minutes', $settings['ipam_scan_interval_minutes'] ?? '60') }}">
-                                <small class="form-text text-muted">Min 1 minute</small>
-                            </x-adminlte-input>
-                        </div>
-                        <div class="col-md-4">
                             <x-adminlte-input name="settings[ipam_dns_reverse_zone]" spellcheck="false" autocapitalize="none" autocomplete="off" inputmode="url" label="DNS Reverse Zone"
                                 value="{{ old('settings.ipam_dns_reverse_zone', $settings['ipam_dns_reverse_zone'] ?? '') }}" />
                         </div>

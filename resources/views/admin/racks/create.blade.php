@@ -32,16 +32,13 @@
                 <x-adminlte-input name="u_height" label="U Height" type="number" value="{{ old('u_height', 42) }}" min="1" />
             </div>
             <div class="col-md-4">
-                <x-adminlte-input name="u_available" label="U Available" type="number" value="{{ old('u_available') }}" min="0" />
-            </div>
-            <div class="col-md-4">
                 <x-adminlte-input name="power_capacity_watts" label="Power Capacity (W)" type="number" value="{{ old('power_capacity_watts') }}" min="0" />
             </div>
         </div>
         <x-adminlte-select name="status" label="Status">
             <option value="active" @selected(old('status', 'active') === 'active')>Active</option>
+            <option value="inactive" @selected(old('status') === 'inactive')>Inactive</option>
             <option value="maintenance" @selected(old('status') === 'maintenance')>Maintenance</option>
-            <option value="decommissioned" @selected(old('status') === 'decommissioned')>Decommissioned</option>
         </x-adminlte-select>
     </x-adminlte.partials.form-card>
 @stop

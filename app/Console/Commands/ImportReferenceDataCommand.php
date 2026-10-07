@@ -56,14 +56,16 @@ class ImportReferenceDataCommand extends Command
 
     /**
      * Columns that existed in the reference schema but were removed from the
-     * target (products.type and the 10 quota_* columns). Seed rows still carry
-     * them; they are stripped before insert so the query builder never writes
-     * a column the migrated schema no longer has.
+     * target (products.type, the 10 quota_* columns and inventory_assets'
+     * lifecycle_state). Seed rows still carry them; they are stripped before
+     * insert so the query builder never writes a column the migrated schema
+     * no longer has.
      *
      * @var array<string, list<string>>
      */
     private const REMOVED_COLUMNS = [
         'products' => ['type', 'quota_disk', 'quota_bandwidth', 'quota_email', 'quota_database', 'quota_cpu_cores', 'quota_cpu_speed', 'quota_ram', 'quota_ips', 'quota_ftp_accounts', 'quota_subdomains'],
+        'inventory_assets' => ['lifecycle_state'],
     ];
 
     /** @var array<string, array<int, int>> old-id => new-id maps per remapped table */
@@ -220,6 +222,14 @@ class ImportReferenceDataCommand extends Command
             $source['columns'],
             array_map([$this, 'castValue'], $raw),
         ), $source['rows']);
+
+        $rows = array_map(function (array $row): array {
+            foreach (self::REMOVED_COLUMNS['inventory_assets'] ?? [] as $column) {
+                unset($row[$column]);
+            }
+
+            return $row;
+        }, $rows);
 
         $ids = [];
         foreach ($rows as $row) {

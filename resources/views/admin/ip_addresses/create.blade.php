@@ -43,6 +43,16 @@
                 <p class="form-text small text-muted">Status is now derived from assignment — new IPs start as Available. Use Assign on the detail page to lease to a hosting account (becomes Assigned).</p>
             </div>
         </div>
+        <div class="row">
+            <div class="col-md-6">
+                <x-adminlte-select name="inventory_asset_id" label="Inventory Asset">
+                    <option value="">— None —</option>
+                    @foreach ($inventoryAssets as $asset)
+                        <option value="{{ $asset->id }}" @selected(old('inventory_asset_id') == $asset->id)>{{ $asset->asset_tag }}</option>
+                    @endforeach
+                </x-adminlte-select>
+            </div>
+        </div>
         <x-adminlte-input name="ptr_record" label="PTR Record" placeholder="Optional reverse DNS" value="{{ old('ptr_record') }}" />
         <x-adminlte-textarea name="notes" label="Notes" rows="2">{{ old('notes') }}</x-adminlte-textarea>
     </x-adminlte.partials.form-card>

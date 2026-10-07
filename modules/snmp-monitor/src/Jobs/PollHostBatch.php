@@ -4,7 +4,10 @@ declare(strict_types=1);
 
 namespace Modules\SnmpMonitor\Jobs;
 
+use App\Models\InventoryAsset;
+use App\Models\IpAddress;
 use App\Models\Module;
+use App\Services\Inventory\PortDiscoveryService;
 use App\Services\Modules\ModuleManager;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -13,6 +16,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Modules\SnmpMonitor\Exceptions\SnmpException;
 use Modules\SnmpMonitor\Models\SnmpTarget;
+use Modules\SnmpMonitor\Services\InventoryDiscoveryService;
 use Modules\SnmpMonitor\Services\SnmpCollector;
 use Modules\SnmpMonitor\Services\TargetService;
 use Throwable;
@@ -191,6 +195,64 @@ class PollHostBatch implements ShouldQueue
 
         $this->persistSamples($target, $payload, Carbon::now(), $responseMs, $intervalSeconds);
         $this->recordSuccess($target, $intervalSeconds, $responseMs);
+
+        // Best-effort IPAM liveness: a successful poll is direct evidence the
+        // monitored host is up, so stamp every main-app ip_addresses row that
+        // carries that address (the same address can be leased in several
+        // subnets). Isolated in its own try/catch — were it to escape,
+        // handle()'s per-target catch would run recordFailure() and mark a
+        // host that just answered as failing.
+        try {
+            IpAddress::query()
+                ->where('ip_address', $host)
+                ->update(['last_seen_at' => Carbon::now()]);
+        } catch (Throwable $e) {
+            Log::warning('SNMP IPAM liveness stamp failed.', [
+                'target_id' => $target->id,
+                'host' => $host,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        // Best-effort inventory discovery: the same success signal as the
+        // liveness stamp feeds the discovered device's identity into core
+        // inventory. Isolated in its own try/catch for the identical reason —
+        // an inventory failure must never turn a host that just answered into
+        // a recorded poll failure.
+        try {
+            app(InventoryDiscoveryService::class)->discover($target, $payload, $config);
+        } catch (Throwable $e) {
+            Log::warning('SNMP inventory discovery failed.', [
+                'target_id' => $target->id,
+                'host' => $host,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        // Best-effort port discovery: import the polled interfaces as device
+        // ports on the linked inventory asset, behind the `auto_ports` toggle.
+        // Same isolation contract as the blocks above — a port failure must
+        // never fail a poll that just answered.
+        if ((bool) ($config['auto_ports'] ?? false)) {
+            try {
+                $interfaces = (array) ($payload['interfaces'] ?? []);
+                $assetId = $target->fresh()->inventory_asset_id;
+
+                if ($interfaces !== [] && $assetId !== null) {
+                    $asset = InventoryAsset::find($assetId);
+
+                    if ($asset !== null) {
+                        app(PortDiscoveryService::class)->syncForAsset($asset, $interfaces);
+                    }
+                }
+            } catch (Throwable $e) {
+                Log::warning('SNMP port sync failed.', [
+                    'target_id' => $target->id,
+                    'host' => $host,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
     }
 
     /**

@@ -164,6 +164,21 @@ a:hover { text-decoration-thickness: from-font; }
   color: var(--hostvexa-primary);
 }
 
+/* Docs CTA — `.btn-outline-light` is near-white and vanishes on a light
+   sidebar. Repaint it navy with a strong border, and tint on hover. Dark
+   sidebars keep Bootstrap's outline-light untouched. */
+[data-bs-theme="light"] .app-sidebar .sidebar-docs-cta .btn-outline-light,
+.sidebar-light .sidebar-docs-cta .btn-outline-light {
+  color: var(--hostvexa-navy);
+  border-color: var(--color-border-strong);
+}
+[data-bs-theme="light"] .app-sidebar .sidebar-docs-cta .btn-outline-light:hover,
+.sidebar-light .sidebar-docs-cta .btn-outline-light:hover {
+  background-color: color-mix(in srgb, var(--color-primary) 8%, transparent);
+  color: var(--hostvexa-navy);
+  border-color: var(--color-border-strong);
+}
+
 /* Auth pages — card-header is white, so white brand text would be invisible. */
 .login-page .brand-logo-hostvexa,
 .register-page .brand-logo-hostvexa,

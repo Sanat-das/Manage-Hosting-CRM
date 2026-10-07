@@ -21,8 +21,6 @@ class IpamSettings extends Settings
 
     public int $ipam_reservation_hold_days = 14;
 
-    public int $ipam_scan_interval_minutes = 60;
-
     public string $ipam_dns_reverse_zone = '';
 
     public int $ipam_low_capacity_warning_percent = 20;
@@ -51,7 +49,6 @@ class IpamSettings extends Settings
             'ipam_default_ipv6_prefix' => ['nullable', 'string', 'max:255'],
             'ipam_allow_public_ipv6' => ['nullable', 'in:1,0,yes,no,true,false'],
             'ipam_reservation_hold_days' => ['nullable', 'integer', 'min:0'],
-            'ipam_scan_interval_minutes' => ['nullable', 'integer', 'min:1'],
             'ipam_dns_reverse_zone' => ['nullable', 'string', 'max:255'],
             'ipam_low_capacity_warning_percent' => ['nullable', 'integer', 'between:0,100'],
             'ipam_auto_release_unused' => ['nullable', 'in:1,0,yes,no,true,false'],

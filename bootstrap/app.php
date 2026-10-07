@@ -93,6 +93,7 @@ return Application::configure(basePath: dirname(__DIR__))
             require base_path('routes/api/hosting.php');
             require base_path('routes/api/users.php');
             require base_path('routes/api/support.php');
+            require base_path('routes/api/inventory.php');
         },
     )
     // Websocket channel authorisation for the chat (routes/channels.php). This

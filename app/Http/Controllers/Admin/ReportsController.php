@@ -6,9 +6,14 @@ use App\Http\Controllers\Controller;
 use App\Models\Customer;
 use App\Models\Domain;
 use App\Models\HostingAccount;
+use App\Models\InventoryAsset;
 use App\Models\Invoice;
+use App\Models\IpSubnet;
+use App\Models\License;
 use App\Models\Order;
+use App\Models\Rack;
 use App\Models\Ticket;
+use App\Models\Vlan;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -117,6 +122,56 @@ class ReportsController extends Controller
     }
 
     /**
+     * Inventory & capacity report — assets, racks, licenses and IPAM utilization.
+     */
+    public function inventory(Request $request): View
+    {
+        $assetsByType = InventoryAsset::selectRaw('asset_type, COUNT(*) as count')
+            ->groupBy('asset_type')
+            ->pluck('count', 'asset_type');
+
+        $assetsByStatus = InventoryAsset::selectRaw('status, COUNT(*) as count')
+            ->groupBy('status')
+            ->pluck('count', 'status');
+
+        $racks = Rack::withCount('inventoryAssets')
+            ->with('datacenter')
+            ->orderBy('name')
+            ->get();
+
+        $licensesByStatus = License::selectRaw('status, COUNT(*) as count')
+            ->groupBy('status')
+            ->pluck('count', 'status');
+
+        $licensesExpiring = License::where('status', 'active')
+            ->where('expiry_date', '<=', now()->addDays(30))
+            ->where('expiry_date', '>=', now())
+            ->orderBy('expiry_date')
+            ->get();
+
+        $licensesExhausted = License::where('seats_available', '<=', 0)
+            ->orderBy('id')
+            ->get();
+
+        $subnets = IpSubnet::withCount('ipAddresses')
+            ->orderBy('name')
+            ->get();
+
+        $vlanCount = Vlan::count();
+
+        return view('admin.reports.inventory', compact(
+            'assetsByType',
+            'assetsByStatus',
+            'racks',
+            'licensesByStatus',
+            'licensesExpiring',
+            'licensesExhausted',
+            'subnets',
+            'vlanCount',
+        ));
+    }
+
+    /**
      * Export report data as CSV download.
      */
     public function export(Request $request): StreamedResponse
@@ -139,6 +194,7 @@ class ReportsController extends Controller
                 'invoices' => $this->exportInvoices($handle, $from, $to),
                 'customers' => $this->exportCustomers($handle),
                 'orders' => $this->exportOrders($handle, $from, $to),
+                'inventory' => $this->exportInventory($handle),
                 default => $this->exportInvoices($handle, $from, $to),
             };
 
@@ -204,6 +260,30 @@ class ReportsController extends Controller
                         $o->total,
                         $o->status,
                         $o->created_at?->format('Y-m-d H:i') ?? '',
+                    ]);
+                }
+            });
+    }
+
+    private function exportInventory($handle): void
+    {
+        fputcsv($handle, ['Asset Tag', 'Type', 'Status', 'Datacenter', 'Rack', 'U Position', 'Vendor', 'Purchase Date', 'Purchase Cost', 'Warranty Expiry']);
+
+        InventoryAsset::with(['datacenter', 'rack'])
+            ->orderBy('id')
+            ->chunk(500, function ($assets) use ($handle) {
+                foreach ($assets as $a) {
+                    fputcsv($handle, [
+                        $a->asset_tag,
+                        $a->asset_type,
+                        $a->status,
+                        $a->datacenter?->name ?? '',
+                        $a->rack?->name ?? '',
+                        $a->rack_u_position,
+                        $a->vendor ?? '',
+                        $a->purchase_date?->format('Y-m-d') ?? '',
+                        $a->purchase_cost,
+                        $a->warranty_expiry?->format('Y-m-d') ?? '',
                     ]);
                 }
             });

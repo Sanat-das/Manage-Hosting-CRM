@@ -370,6 +370,7 @@
 
             {{-- Inventory Assets --}}
             <div class="tab-pane fade {{ $activeTab === 'assets' ? 'show active' : '' }}" id="assets" role="tabpanel" aria-labelledby="assets-tab">
+                @can('asset-relationships.manage')
                 <div class="border rounded p-3 mb-3">
                     <h6 class="text-primary mb-3"><i class="bi bi-plus-circle me-1"></i> Link an inventory asset</h6>
                     <form method="POST" action="{{ route('admin.asset-relationships.store') }}">
@@ -412,6 +413,7 @@
                         </div>
                     </form>
                 </div>
+                @endcan
 
                 @if ($assetRelationships->isEmpty())
                     <p class="text-muted mb-0">No inventory assets are linked to this account.</p>
@@ -455,10 +457,12 @@
                                         </td>
                                         <td class="text-muted">{{ $relationship->label ?? '—' }}</td>
                                         <td class="text-end">
-                                            <button type="button" class="btn btn-sm btn-outline-danger" title="Remove link"
-                                                    data-bs-toggle="modal" data-bs-target="#remove-asset-{{ $relationship->id }}">
-                                                <i class="bi bi-unlink"></i>
-                                            </button>
+                                            @can('asset-relationships.manage')
+                                                <button type="button" class="btn btn-sm btn-outline-danger" title="Remove link"
+                                                        data-bs-toggle="modal" data-bs-target="#remove-asset-{{ $relationship->id }}">
+                                                    <i class="bi bi-x-lg"></i>
+                                                </button>
+                                            @endcan
                                         </td>
                                     </tr>
                                 @endforeach
@@ -473,6 +477,7 @@
     {{-- Remove-link confirm modals: outside the tab container so they stay
          functional regardless of which pane is active. --}}
     @foreach ($assetRelationships as $relationship)
+        @can('asset-relationships.manage')
         <x-adminlte.partials.confirm-modal
             :id="'remove-asset-' . $relationship->id"
             title="Remove asset link"
@@ -480,6 +485,7 @@
             :action="route('admin.asset-relationships.destroy', $relationship)"
             confirm-label="Remove link"
         />
+        @endcan
     @endforeach
 
     @push('js')

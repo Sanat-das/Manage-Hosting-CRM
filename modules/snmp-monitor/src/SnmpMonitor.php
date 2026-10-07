@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace Modules\SnmpMonitor;
 
-use App\Contracts\Module\AbstractModule;
 use App\Contracts\Integrations\Capabilities\HostingAccountInfoProvider;
+use App\Contracts\Module\AbstractModule;
 use App\Contracts\Module\ModuleContext;
 use App\Models\HostingAccount;
 use App\Services\Modules\ModuleManager;
@@ -13,6 +13,7 @@ use Illuminate\Console\Application as ConsoleApplication;
 use Illuminate\Routing\Router;
 use Illuminate\Support\Facades\View;
 use Modules\SnmpMonitor\Console\MaintainSnmpPartitions;
+use Modules\SnmpMonitor\Console\SyncInventoryPortsCommand;
 use Modules\SnmpMonitor\Http\Controllers\DashboardController;
 use Modules\SnmpMonitor\Http\Controllers\PollController;
 use Modules\SnmpMonitor\Http\Controllers\TargetHostController;
@@ -41,6 +42,7 @@ final class SnmpMonitor extends AbstractModule implements HostingAccountInfoProv
         if (app()->runningInConsole()) {
             ConsoleApplication::starting(function ($artisan): void {
                 $artisan->add(app(MaintainSnmpPartitions::class));
+                $artisan->add(app(SyncInventoryPortsCommand::class));
             });
         }
     }
@@ -226,6 +228,22 @@ final class SnmpMonitor extends AbstractModule implements HostingAccountInfoProv
                 'default' => false,
                 'section' => 'Metrics',
                 'help' => 'Collect running processes via hrSWRunTable (top N by CPU/memory). High SNMP walk cost — may be slow on busy hosts.',
+            ],
+            [
+                'key' => 'auto_inventory',
+                'label' => 'Auto-Populate Inventory',
+                'type' => 'checkbox',
+                'default' => true,
+                'section' => 'Inventory',
+                'help' => 'Create or update a core inventory asset from each monitored device\'s SNMP identity (sysName / sysDescr / sysObjectID). A device that was discovered before is reused, never duplicated, and manually edited fields are preserved. Turn off to leave inventory untouched.',
+            ],
+            [
+                'key' => 'auto_ports',
+                'label' => 'Auto-Import Device Ports',
+                'type' => 'checkbox',
+                'default' => false,
+                'section' => 'Inventory',
+                'help' => 'Auto-import SNMP interfaces as device ports on the linked inventory asset.',
             ],
         ]];
     }

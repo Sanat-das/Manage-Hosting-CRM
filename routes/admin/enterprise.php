@@ -25,9 +25,9 @@ use Illuminate\Support\Facades\Route;
 | the admin. name prefix, matching the sidebar contract.
 |
 | Permission gates: granular per sub-resource (e.g. datacenters.view,
- | ip-subnets.manage) as declared in AdminLteRbacSeeder, the sole permission
- | inventory. Fallback to hosting.view/manage is handled in
-| PermissionMiddleware for backward compatibility.
+| ip-subnets.manage) as declared in AdminLteRbacSeeder, the sole permission
+| inventory. Asset relationships use their own granular
+| asset-relationships.view / asset-relationships.manage pair.
 */
 
 Route::middleware(['web', 'auth', 'admin', 'throttle:admin'])->prefix('admin')->name('admin.')->group(function () {
@@ -84,6 +84,8 @@ Route::middleware(['web', 'auth', 'admin', 'throttle:admin'])->prefix('admin')->
     // IP addresses
     Route::get('ip-addresses', [IpAddressController::class, 'index'])
         ->middleware('permission:ip-addresses.view')->name('ip-addresses.index');
+    Route::get('ip-addresses/search', [IpAddressController::class, 'search'])
+        ->middleware('permission:inventory.view')->name('ip-addresses.search');
     Route::get('ip-addresses/create', [IpAddressController::class, 'create'])
         ->middleware('permission:ip-addresses.manage')->name('ip-addresses.create');
     Route::post('ip-addresses', [IpAddressController::class, 'store'])

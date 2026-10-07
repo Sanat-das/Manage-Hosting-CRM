@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Exceptions\NoAvailableIpException;
 use App\Models\HostingAccount;
+use App\Models\InventoryAsset;
 use App\Models\IpAddress;
 use App\Models\IpAllocationHistory;
 use Illuminate\Support\Collection;
@@ -101,6 +102,15 @@ class IpAssignmentService
                 throw new NoAvailableIpException("IP address {$ip->ip_address} is already assigned.");
             }
 
+            // Mirror the safe assignNextAvailable() availability condition:
+            // a special-type row (gateway / broadcast / network / reserved /
+            // floating / nat) is not part of the leasable pool, and leasing it
+            // would overwrite its type. Only an unassigned `available` row may
+            // be leased.
+            if ($ip->type !== 'available') {
+                throw new NoAvailableIpException("IP address {$ip->ip_address} is not available for assignment.");
+            }
+
             return $this->lease($account, $ip, "Assigned IP {$ip->ip_address} to hosting account {$account->id}");
         });
     }
@@ -111,7 +121,7 @@ class IpAssignmentService
      * already-assigned address does not roll back the others.
      *
      * @param  list<int>  $ipAddressIds
-     * @return array{assigned: Collection<int, IpAddress>, failed: array<int, string>}  failed keyed by ip id
+     * @return array{assigned: Collection<int, IpAddress>, failed: array<int, string>} failed keyed by ip id
      */
     public function assignMany(HostingAccount $account, array $ipAddressIds): array
     {
@@ -167,6 +177,158 @@ class IpAssignmentService
                 );
             }
         });
+    }
+
+    /**
+     * Link an IP address to an inventory asset through the polymorphic
+     * assignment columns, so IPAM reads the address as assigned and the
+     * hosting leasing pool (scopeAvailable) skips it.
+     *
+     * The row is re-selected under a FOR UPDATE lock inside a transaction.
+     * A conflicting owner throws; re-linking the same asset is a no-op so a
+     * re-saved picker chip does not write a duplicate history row. The
+     * `type` column is promoted to assigned only from available, preserving
+     * reserved / gateway / etc.
+     */
+    public function assignToAsset(IpAddress $ip, InventoryAsset $asset): void
+    {
+        DB::transaction(function () use ($ip, $asset): void {
+            $fresh = IpAddress::query()->whereKey($ip->getKey())->lockForUpdate()->firstOrFail();
+
+            if ($fresh->assigned_to_type !== null
+                && ! ($fresh->assigned_to_type === 'inventory' && (int) $fresh->assigned_to_id === (int) $asset->id)) {
+                throw new \RuntimeException(
+                    $this->linkConflictMessage($fresh, (int) $asset->id)
+                        ?? "IP {$fresh->ip_address} is already assigned.",
+                );
+            }
+
+            if ($fresh->assigned_to_type === 'inventory'
+                && (int) $fresh->assigned_to_id === (int) $asset->id
+                && (int) $fresh->inventory_asset_id === (int) $asset->id) {
+                return;
+            }
+
+            $snapshot = json_encode($fresh->getAttributes());
+            $previousType = $fresh->assigned_to_type;
+            $previousId = $fresh->assigned_to_id;
+
+            $fresh->assigned_to_type = 'inventory';
+            $fresh->assigned_to_id = $asset->id;
+            $fresh->inventory_asset_id = $asset->id;
+
+            if ($fresh->type === 'available') {
+                $fresh->type = 'assigned';
+            }
+
+            $fresh->save();
+
+            $this->writeHistory(
+                $fresh,
+                'assigned',
+                $previousType,
+                $previousId,
+                'inventory',
+                $asset->id,
+                $snapshot,
+                "Assigned IP {$fresh->ip_address} to asset {$asset->asset_tag}",
+            );
+        });
+    }
+
+    /**
+     * Unlink an inventory asset from an IP address, clearing the polymorphic
+     * assignment when it points at inventory and returning the address to the
+     * pool. A no-op when nothing is linked, so it is safe to call for every
+     * row that is no longer chosen.
+     */
+    public function releaseFromAsset(IpAddress $ip, ?string $reason = null): void
+    {
+        DB::transaction(function () use ($ip, $reason): void {
+            $fresh = IpAddress::query()->whereKey($ip->getKey())->lockForUpdate()->firstOrFail();
+
+            $wasInventory = $fresh->assigned_to_type === 'inventory';
+
+            if (! $wasInventory && $fresh->inventory_asset_id === null) {
+                return;
+            }
+
+            $tag = $fresh->inventory_asset_id !== null
+                ? InventoryAsset::query()->whereKey($fresh->inventory_asset_id)->value('asset_tag')
+                : null;
+
+            $snapshot = json_encode($fresh->getAttributes());
+            $previousType = $fresh->assigned_to_type;
+            $previousId = $fresh->assigned_to_id;
+            $assetLabel = $tag ?? $fresh->inventory_asset_id ?? $previousId ?? $fresh->id;
+
+            $fresh->inventory_asset_id = null;
+
+            if ($wasInventory) {
+                $fresh->assigned_to_type = null;
+                $fresh->assigned_to_id = null;
+            }
+
+            if ($fresh->assigned_to_type === null && $fresh->type === 'assigned') {
+                $fresh->type = 'available';
+            }
+
+            $fresh->save();
+
+            $this->writeHistory(
+                $fresh,
+                'released',
+                $previousType,
+                $previousId,
+                null,
+                null,
+                $snapshot,
+                $reason ?? "Unlinked IP {$fresh->ip_address} from asset {$assetLabel}",
+            );
+        });
+    }
+
+    /**
+     * Human-readable reason the given IP cannot be linked to the asset, or
+     * null when it can. Shared by the inventory-asset and IP form validation
+     * closures so both reject the same conflicts with the same wording.
+     */
+    public function linkConflictMessage(IpAddress $ip, int $assetId): ?string
+    {
+        $type = $ip->assigned_to_type;
+
+        if ($type === 'inventory') {
+            return (int) $ip->assigned_to_id === $assetId
+                ? null
+                : 'This IP is already linked to another asset.';
+        }
+
+        if ($ip->inventory_asset_id !== null) {
+            return (int) $ip->inventory_asset_id === $assetId
+                ? null
+                : 'This IP is already linked to another asset.';
+        }
+
+        if ($type !== null && $type !== '') {
+            return 'This IP is already assigned to '.$this->assignmentLabel($type).'.';
+        }
+
+        return null;
+    }
+
+    /**
+     * The readable owner kind for a stored morph value (short code or the
+     * HostingAccount class-string).
+     */
+    private function assignmentLabel(string $type): string
+    {
+        return match ($type) {
+            HostingAccount::class => 'hosting account',
+            'customer' => 'customer',
+            'server' => 'server',
+            'service' => 'service',
+            default => class_basename($type),
+        };
     }
 
     /**
