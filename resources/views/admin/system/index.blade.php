@@ -684,6 +684,9 @@
                                             @endif
                                         </td>
                                         <td class="small text-muted" style="max-width: 260px;">
+                                            @if (($row->action ?? null) === 'system.rolledback' && trim((string) ($row->description ?? '')) !== '')
+                                                <div class="mb-1">{{ $row->description }}</div>
+                                            @endif
                                             @if (trim((string) $outputExcerpt) !== '')
                                                 <a class="text-decoration-none" data-bs-toggle="collapse" href="#{{ $collapseId }}" role="button" aria-expanded="false">
                                                     <i class="bi bi-terminal me-1"></i>View log
@@ -696,7 +699,7 @@
                                             @endif
                                         </td>
                                         <td>
-                                            @if ($statusHist === 'success' && ! empty($from))
+                                            @if (($row->action ?? 'system.updated') === 'system.updated' && $statusHist === 'success' && ! empty($from))
                                                 <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-toggle="modal" data-bs-target="#rollback-confirm-modal" data-hash="{{ $from }}" data-short="{{ $from ? Str::limit($from, 7, '') : '?' }}">
                                                     <i class="bi bi-arrow-counterclockwise me-1"></i>Rollback
                                                 </button>
@@ -978,6 +981,84 @@ document.addEventListener('DOMContentLoaded', function () {
             if (input) input.value = hash;
         });
     }
+
+    // ---------------------------------------------------------------
+    // Rollback submit via fetch + progress polling
+    // ---------------------------------------------------------------
+    var rollbackProgressUrl = '{{ route('admin.system.update.progress') }}';
+
+    function bindRollbackForm(form) {
+        if (!form) return;
+        var submitBtn = form.querySelector('button[type="submit"]');
+
+        form.addEventListener('submit', function (event) {
+            event.preventDefault();
+            if (form.dataset.busy === '1') return;
+            form.dataset.busy = '1';
+
+            if (submitBtn) {
+                submitBtn.disabled = true;
+                submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status"></span>Rolling back…';
+            }
+
+            var isDone = false;
+            var polling = false;
+            var pollTimer = null;
+
+            function stopPoll() {
+                if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+            }
+
+            function finish(payload) {
+                if (isDone) return;
+                isDone = true;
+                stopPoll();
+                if (payload && payload.status === 'success') {
+                    window.location.reload();
+                    return;
+                }
+                alert((payload && payload.message) || 'Rollback failed.');
+                window.location.reload();
+            }
+
+            function poll() {
+                if (isDone || polling) return;
+                polling = true;
+                fetch(rollbackProgressUrl, {
+                    headers: { 'Accept': 'application/json', 'X-CSRF-TOKEN': csrfToken, 'X-Requested-With': 'XMLHttpRequest' }
+                }).then(function (r) { return r.json(); }).then(function (data) {
+                    polling = false;
+                    if (isDone || !data) return;
+                    if (data.done) finish(data);
+                }).catch(function () {
+                    // Transient failure — the interval retries while the page stays open.
+                    polling = false;
+                });
+            }
+
+            fetch(form.action, {
+                method: 'POST',
+                headers: { 'Accept': 'application/json', 'X-CSRF-TOKEN': csrfToken, 'X-Requested-With': 'XMLHttpRequest' },
+                body: new FormData(form)
+            }).then(function (r) {
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                return r.json();
+            }).then(function (data) {
+                if (isDone) return;
+                if (data && data.status === 'started') {
+                    if (!pollTimer) pollTimer = setInterval(poll, 2000);
+                    return;
+                }
+                finish(data);
+            }).catch(function () {
+                alert('Rollback could not be started.');
+                window.location.reload();
+            });
+        });
+    }
+
+    bindRollbackForm(document.getElementById('rollback-after-update-form'));
+    bindRollbackForm(document.getElementById('rollback-history-form'));
 });
 </script>
 @endpush

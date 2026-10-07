@@ -8,6 +8,7 @@ use App\Models\User;
 use App\Services\System\UpdateService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use ReflectionMethod;
 use RuntimeException;
 use Tests\TestCase;
@@ -44,7 +45,7 @@ final class UpdateServiceDeploySafetyTest extends TestCase
 
     private function tempDir(string $label): string
     {
-        $dir = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'mh_test_' . $label . '_' . bin2hex(random_bytes(5));
+        $dir = sys_get_temp_dir().DIRECTORY_SEPARATOR.'mh_test_'.$label.'_'.bin2hex(random_bytes(5));
         mkdir($dir, 0755, true);
         $this->tempDirs[] = $dir;
 
@@ -104,10 +105,15 @@ final class UpdateServiceDeploySafetyTest extends TestCase
      *
      * $pending defaults to the sentinel `false`, meaning "use the real
      * migration check against the test database". Pass an array to force it.
+     *
+     * $composer makes composerAvailable() report true; $failComposer makes the
+     * stubbed runProcess() fail for any composer command; and
+     * $failRestorePointWrites makes writeRestorePoint() report a write failure.
      */
-    private function stubbedService(?string $appRoot = null, ?string $restoreRoot = null, array|null|false $pending = false): UpdateService
+    private function stubbedService(?string $appRoot = null, ?string $restoreRoot = null, array|null|false $pending = false, bool $composer = false, bool $failComposer = false, bool $failRestorePointWrites = false): UpdateService
     {
-        return new class($appRoot, $restoreRoot, $pending) extends UpdateService {
+        return new class($appRoot, $restoreRoot, $pending, $composer, $failComposer, $failRestorePointWrites) extends UpdateService
+        {
             /** @var list<string> */
             public array $commands = [];
 
@@ -115,6 +121,9 @@ final class UpdateServiceDeploySafetyTest extends TestCase
                 private readonly ?string $rootOverride,
                 private readonly ?string $restoreOverride,
                 private readonly array|null|false $pendingOverride = false,
+                private readonly bool $composerOverride = false,
+                private readonly bool $failComposerOverride = false,
+                private readonly bool $failRestorePointWritesOverride = false,
             ) {}
 
             protected function pendingMigrations(): ?array
@@ -141,12 +150,25 @@ final class UpdateServiceDeploySafetyTest extends TestCase
 
             protected function composerAvailable(): bool
             {
-                return false;
+                return $this->composerOverride;
+            }
+
+            protected function writeRestorePoint(string $dir, array $manifest): bool
+            {
+                if ($this->failRestorePointWritesOverride) {
+                    return false;
+                }
+
+                return parent::writeRestorePoint($dir, $manifest);
             }
 
             protected function runProcess(array $cmd, int $timeout = 3): array
             {
                 $this->commands[] = implode(' ', $cmd);
+
+                if ($this->failComposerOverride && str_contains(implode(' ', $cmd), 'composer')) {
+                    return ['output' => 'composer failed', 'exit' => 1, 'success' => false];
+                }
 
                 return ['output' => '', 'exit' => 0, 'success' => true];
             }
@@ -159,13 +181,13 @@ final class UpdateServiceDeploySafetyTest extends TestCase
 
     public function test_deploy_records_changed_and_added_files_and_snapshots_the_originals(): void
     {
-        $src    = $this->tempDir('src');
-        $dest   = $this->tempDir('dest');
+        $src = $this->tempDir('src');
+        $dest = $this->tempDir('dest');
         $backup = $this->tempDir('backup');
 
-        $this->writeFile($src . '/app/Existing.php', 'new contents');
-        $this->writeFile($src . '/app/Brand New.php', 'brand new');
-        $this->writeFile($dest . '/app/Existing.php', 'old contents');
+        $this->writeFile($src.'/app/Existing.php', 'new contents');
+        $this->writeFile($src.'/app/Brand New.php', 'brand new');
+        $this->writeFile($dest.'/app/Existing.php', 'old contents');
 
         $manifest = [];
         $this->callSyncDeploy($this->stubbedService(), $src, $dest, [], $backup, $manifest);
@@ -173,21 +195,21 @@ final class UpdateServiceDeploySafetyTest extends TestCase
         $this->assertSame(['app/Existing.php'], $manifest['changed']);
         $this->assertSame(['app/Brand New.php'], $manifest['added']);
 
-        $this->assertSame('new contents', file_get_contents($dest . '/app/Existing.php'));
-        $this->assertSame('brand new', file_get_contents($dest . '/app/Brand New.php'));
+        $this->assertSame('new contents', file_get_contents($dest.'/app/Existing.php'));
+        $this->assertSame('brand new', file_get_contents($dest.'/app/Brand New.php'));
 
         // The pre-update copy is what rollback restores from.
-        $this->assertSame('old contents', file_get_contents($backup . '/app/Existing.php'));
+        $this->assertSame('old contents', file_get_contents($backup.'/app/Existing.php'));
     }
 
     public function test_deploy_skips_identical_files_rather_than_snapshotting_them(): void
     {
-        $src    = $this->tempDir('src');
-        $dest   = $this->tempDir('dest');
+        $src = $this->tempDir('src');
+        $dest = $this->tempDir('dest');
         $backup = $this->tempDir('backup');
 
-        $this->writeFile($src . '/vendor/big/File.php', 'unchanged between releases');
-        $this->writeFile($dest . '/vendor/big/File.php', 'unchanged between releases');
+        $this->writeFile($src.'/vendor/big/File.php', 'unchanged between releases');
+        $this->writeFile($dest.'/vendor/big/File.php', 'unchanged between releases');
 
         $manifest = [];
         $this->callSyncDeploy($this->stubbedService(), $src, $dest, [], $backup, $manifest);
@@ -198,27 +220,27 @@ final class UpdateServiceDeploySafetyTest extends TestCase
 
         // Nothing to undo, so nothing is snapshotted — this is what keeps a
         // restore point small despite the archive shipping all of vendor/.
-        $this->assertFileDoesNotExist($backup . '/vendor/big/File.php');
+        $this->assertFileDoesNotExist($backup.'/vendor/big/File.php');
     }
 
     public function test_deploy_never_touches_preserved_paths(): void
     {
-        $src    = $this->tempDir('src');
-        $dest   = $this->tempDir('dest');
+        $src = $this->tempDir('src');
+        $dest = $this->tempDir('dest');
 
-        $this->writeFile($src . '/.env', 'APP_ENV=from-archive');
-        $this->writeFile($src . '/storage/logs/laravel.log', 'archive log');
-        $this->writeFile($src . '/app/Real.php', 'deploy me');
+        $this->writeFile($src.'/.env', 'APP_ENV=from-archive');
+        $this->writeFile($src.'/storage/logs/laravel.log', 'archive log');
+        $this->writeFile($src.'/app/Real.php', 'deploy me');
 
-        $this->writeFile($dest . '/.env', 'APP_ENV=production');
-        $this->writeFile($dest . '/storage/logs/laravel.log', 'live log');
+        $this->writeFile($dest.'/.env', 'APP_ENV=production');
+        $this->writeFile($dest.'/storage/logs/laravel.log', 'live log');
 
         $manifest = [];
         $this->callSyncDeploy($this->stubbedService(), $src, $dest, ['.env', 'storage'], null, $manifest);
 
-        $this->assertSame('APP_ENV=production', file_get_contents($dest . '/.env'));
-        $this->assertSame('live log', file_get_contents($dest . '/storage/logs/laravel.log'));
-        $this->assertSame('deploy me', file_get_contents($dest . '/app/Real.php'));
+        $this->assertSame('APP_ENV=production', file_get_contents($dest.'/.env'));
+        $this->assertSame('live log', file_get_contents($dest.'/storage/logs/laravel.log'));
+        $this->assertSame('deploy me', file_get_contents($dest.'/app/Real.php'));
         $this->assertSame(['app/Real.php'], $manifest['added']);
     }
 
@@ -228,14 +250,14 @@ final class UpdateServiceDeploySafetyTest extends TestCase
 
     public function test_deploy_throws_when_a_file_cannot_be_written(): void
     {
-        $src  = $this->tempDir('src');
+        $src = $this->tempDir('src');
         $dest = $this->tempDir('dest');
 
-        $this->writeFile($src . '/app/Blocked.php', 'contents');
+        $this->writeFile($src.'/app/Blocked.php', 'contents');
 
         // A directory sitting where the file must go makes copy() fail the same
         // way a locked file or a denied ACL does.
-        mkdir($dest . '/app/Blocked.php', 0755, true);
+        mkdir($dest.'/app/Blocked.php', 0755, true);
 
         $manifest = [];
 
@@ -247,14 +269,14 @@ final class UpdateServiceDeploySafetyTest extends TestCase
 
     public function test_manifest_survives_a_mid_deploy_failure(): void
     {
-        $src    = $this->tempDir('src');
-        $dest   = $this->tempDir('dest');
+        $src = $this->tempDir('src');
+        $dest = $this->tempDir('dest');
         $backup = $this->tempDir('backup');
 
-        $this->writeFile($src . '/a.php', 'new a');
-        $this->writeFile($src . '/z.php', 'new z');
-        $this->writeFile($dest . '/a.php', 'old a');
-        mkdir($dest . '/z.php', 0755, true);
+        $this->writeFile($src.'/a.php', 'new a');
+        $this->writeFile($src.'/z.php', 'new z');
+        $this->writeFile($dest.'/a.php', 'old a');
+        mkdir($dest.'/z.php', 0755, true);
 
         $manifest = [];
 
@@ -273,7 +295,7 @@ final class UpdateServiceDeploySafetyTest extends TestCase
 
         // Whatever did land first must have been snapshotted before being overwritten.
         if (in_array('a.php', $manifest['changed'], true)) {
-            $this->assertSame('old a', file_get_contents($backup . '/a.php'));
+            $this->assertSame('old a', file_get_contents($backup.'/a.php'));
         }
     }
 
@@ -283,8 +305,8 @@ final class UpdateServiceDeploySafetyTest extends TestCase
 
     public function test_a_github_error_body_is_not_accepted_as_an_archive(): void
     {
-        $dir  = $this->tempDir('dl');
-        $path = $dir . '/update.zip';
+        $dir = $this->tempDir('dl');
+        $path = $dir.'/update.zip';
 
         // What curl without --fail used to leave on disk, exit code 0 and all.
         file_put_contents($path, '{"message":"API rate limit exceeded","documentation_url":"https://docs.github.com"}');
@@ -294,19 +316,19 @@ final class UpdateServiceDeploySafetyTest extends TestCase
 
     public function test_a_real_zip_archive_is_accepted(): void
     {
-        $dir  = $this->tempDir('dl');
-        $path = $dir . '/update.zip';
+        $dir = $this->tempDir('dl');
+        $path = $dir.'/update.zip';
 
         // PK\x03\x04 header plus enough bytes to clear MIN_ZIP_BYTES.
-        file_put_contents($path, "PK\x03\x04" . str_repeat("\0", UpdateService::MIN_ZIP_BYTES));
+        file_put_contents($path, "PK\x03\x04".str_repeat("\0", UpdateService::MIN_ZIP_BYTES));
 
         $this->assertTrue($this->invokePrivate($this->stubbedService(), 'isZipArchive', [$path]));
     }
 
     public function test_a_truncated_archive_is_rejected(): void
     {
-        $dir  = $this->tempDir('dl');
-        $path = $dir . '/update.zip';
+        $dir = $this->tempDir('dl');
+        $path = $dir.'/update.zip';
 
         file_put_contents($path, "PK\x03\x04");
 
@@ -316,7 +338,7 @@ final class UpdateServiceDeploySafetyTest extends TestCase
     public function test_an_archive_without_the_app_markers_is_refused(): void
     {
         $root = $this->tempDir('root');
-        $this->writeFile($root . '/README.md', 'some other project');
+        $this->writeFile($root.'/README.md', 'some other project');
 
         $this->assertFalse($this->invokePrivate($this->stubbedService(), 'looksLikeAppRoot', [$root]));
     }
@@ -324,10 +346,10 @@ final class UpdateServiceDeploySafetyTest extends TestCase
     public function test_an_archive_with_the_app_markers_is_accepted(): void
     {
         $root = $this->tempDir('root');
-        $this->writeFile($root . '/artisan', '#!/usr/bin/env php');
-        $this->writeFile($root . '/composer.json', '{}');
-        mkdir($root . '/app', 0755, true);
-        mkdir($root . '/bootstrap', 0755, true);
+        $this->writeFile($root.'/artisan', '#!/usr/bin/env php');
+        $this->writeFile($root.'/composer.json', '{}');
+        mkdir($root.'/app', 0755, true);
+        mkdir($root.'/bootstrap', 0755, true);
 
         $this->assertTrue($this->invokePrivate($this->stubbedService(), 'looksLikeAppRoot', [$root]));
     }
@@ -376,10 +398,10 @@ final class UpdateServiceDeploySafetyTest extends TestCase
         $service = $this->stubbedService($appRoot);
 
         $this->assertTrue($this->invokePrivate($service, 'writeVersionMarker', [str_repeat('a', 40)]));
-        $this->assertSame('aaaaaaa', file_get_contents($appRoot . '/VERSION'));
+        $this->assertSame('aaaaaaa', file_get_contents($appRoot.'/VERSION'));
 
         $this->assertTrue($this->invokePrivate($service, 'writeVersionMarker', ['1.2.3']));
-        $this->assertSame('1.2.3', file_get_contents($appRoot . '/VERSION'));
+        $this->assertSame('1.2.3', file_get_contents($appRoot.'/VERSION'));
 
         // And it reads back through the same root it was written to.
         $this->assertSame('1.2.3', $this->invokePrivate($service, 'resolveLocalVersion'));
@@ -407,7 +429,7 @@ final class UpdateServiceDeploySafetyTest extends TestCase
         };
 
         $this->assertFalse($this->invokePrivate($service, 'writeVersionMarker', [str_repeat('a', 40)]));
-        $this->assertFileDoesNotExist($appRoot . '/VERSION');
+        $this->assertFileDoesNotExist($appRoot.'/VERSION');
     }
 
     public function test_an_empty_version_is_not_stamped(): void
@@ -415,17 +437,17 @@ final class UpdateServiceDeploySafetyTest extends TestCase
         $appRoot = $this->tempDir('app');
 
         $this->assertFalse($this->invokePrivate($this->stubbedService($appRoot), 'writeVersionMarker', ['  ']));
-        $this->assertFileDoesNotExist($appRoot . '/VERSION');
+        $this->assertFileDoesNotExist($appRoot.'/VERSION');
     }
 
     public function test_the_deploy_target_is_read_from_the_newest_restore_point(): void
     {
         $restoreRoot = $this->tempDir('restore');
 
-        $this->writeFile($restoreRoot . '/20260901-100000-aaaaaa/manifest.json', (string) json_encode([
+        $this->writeFile($restoreRoot.'/20260901-100000-aaaaaa/manifest.json', (string) json_encode([
             'id' => '20260901-100000-aaaaaa', 'from' => 'old', 'to' => 'aaaaaaa',
         ]));
-        $this->writeFile($restoreRoot . '/20260910-120000-bbbbbb/manifest.json', (string) json_encode([
+        $this->writeFile($restoreRoot.'/20260910-120000-bbbbbb/manifest.json', (string) json_encode([
             'id' => '20260910-120000-bbbbbb', 'from' => 'aaaaaaa', 'to' => 'bbbbbbb',
         ]));
 
@@ -448,7 +470,7 @@ final class UpdateServiceDeploySafetyTest extends TestCase
 
         // Rolling back deliberately backs out of `to`. Re-stamping it later
         // would claim a version the operator had just removed.
-        $this->writeFile($restoreRoot . '/20260910-120000-bbbbbb/manifest.json', (string) json_encode([
+        $this->writeFile($restoreRoot.'/20260910-120000-bbbbbb/manifest.json', (string) json_encode([
             'id' => '20260910-120000-bbbbbb', 'from' => 'aaaaaaa', 'to' => 'bbbbbbb',
             'restored_at' => '2026-09-10T13:00:00+00:00',
         ]));
@@ -463,7 +485,7 @@ final class UpdateServiceDeploySafetyTest extends TestCase
         $restoreRoot = $this->tempDir('restore');
 
         // Deploy failed before the target was resolved, so `to` was never set.
-        $this->writeFile($restoreRoot . '/20260910-120000-bbbbbb/manifest.json', (string) json_encode([
+        $this->writeFile($restoreRoot.'/20260910-120000-bbbbbb/manifest.json', (string) json_encode([
             'id' => '20260910-120000-bbbbbb', 'from' => 'aaaaaaa', 'to' => null, 'complete' => false,
         ]));
 
@@ -474,28 +496,28 @@ final class UpdateServiceDeploySafetyTest extends TestCase
 
     public function test_a_rollback_leaves_no_deploy_target_behind_for_finalize(): void
     {
-        $user        = User::factory()->create();
-        $appRoot     = $this->tempDir('app');
+        $user = User::factory()->create();
+        $appRoot = $this->tempDir('app');
         $restoreRoot = $this->tempDir('restore');
 
-        $this->writeFile($appRoot . '/app/Existing.php', 'version 2');
-        $this->writeFile($appRoot . '/VERSION', 'bbbbbbb');
+        $this->writeFile($appRoot.'/app/Existing.php', 'version 2');
+        $this->writeFile($appRoot.'/VERSION', 'bbbbbbb');
 
-        $point = $restoreRoot . '/20260910-120000-bbbbbb';
-        $this->writeFile($point . '/files/app/Existing.php', 'version 1');
-        $this->writeFile($point . '/manifest.json', (string) json_encode([
+        $point = $restoreRoot.'/20260910-120000-bbbbbb';
+        $this->writeFile($point.'/files/app/Existing.php', 'version 1');
+        $this->writeFile($point.'/manifest.json', (string) json_encode([
             'id' => '20260910-120000-bbbbbb', 'from' => 'aaaaaaa', 'to' => 'bbbbbbb',
             'changed' => ['app/Existing.php'], 'added' => [],
         ]));
 
         $service = $this->stubbedService($appRoot, $restoreRoot, pending: []);
         $this->assertSame('success', $service->rollback('aaaaaaa', $user)['status']);
-        $this->assertSame('aaaaaaa', file_get_contents($appRoot . '/VERSION'));
+        $this->assertSame('aaaaaaa', file_get_contents($appRoot.'/VERSION'));
 
         // A finalize afterwards must not undo the rollback by re-stamping.
         $service->finalize();
 
-        $this->assertSame('aaaaaaa', file_get_contents($appRoot . '/VERSION'));
+        $this->assertSame('aaaaaaa', file_get_contents($appRoot.'/VERSION'));
     }
 
     // ------------------------------------------------------------------
@@ -504,13 +526,13 @@ final class UpdateServiceDeploySafetyTest extends TestCase
 
     public function test_a_manual_repair_stamps_the_version_the_deploy_was_heading_for(): void
     {
-        $appRoot     = $this->tempDir('app');
+        $appRoot = $this->tempDir('app');
         $restoreRoot = $this->tempDir('restore');
 
         // The state a failed migrate leaves behind: files deployed, target
         // recorded, VERSION still on the old value.
-        $this->writeFile($appRoot . '/VERSION', 'aaaaaaa');
-        $this->writeFile($restoreRoot . '/20260910-120000-bbbbbb/manifest.json', (string) json_encode([
+        $this->writeFile($appRoot.'/VERSION', 'aaaaaaa');
+        $this->writeFile($restoreRoot.'/20260910-120000-bbbbbb/manifest.json', (string) json_encode([
             'id' => '20260910-120000-bbbbbb', 'from' => 'aaaaaaa', 'to' => 'bbbbbbb',
         ]));
 
@@ -521,16 +543,16 @@ final class UpdateServiceDeploySafetyTest extends TestCase
 
         // Without this, check() re-offered the same update forever and every run
         // re-downloaded and re-deployed byte-identical code.
-        $this->assertSame('bbbbbbb', file_get_contents($appRoot . '/VERSION'));
+        $this->assertSame('bbbbbbb', file_get_contents($appRoot.'/VERSION'));
     }
 
     public function test_a_repair_that_leaves_migrations_pending_does_not_stamp_the_version(): void
     {
-        $appRoot     = $this->tempDir('app');
+        $appRoot = $this->tempDir('app');
         $restoreRoot = $this->tempDir('restore');
 
-        $this->writeFile($appRoot . '/VERSION', 'aaaaaaa');
-        $this->writeFile($restoreRoot . '/20260910-120000-bbbbbb/manifest.json', (string) json_encode([
+        $this->writeFile($appRoot.'/VERSION', 'aaaaaaa');
+        $this->writeFile($restoreRoot.'/20260910-120000-bbbbbb/manifest.json', (string) json_encode([
             'id' => '20260910-120000-bbbbbb', 'from' => 'aaaaaaa', 'to' => 'bbbbbbb',
         ]));
 
@@ -539,13 +561,13 @@ final class UpdateServiceDeploySafetyTest extends TestCase
         $this->assertSame('incomplete', $result['status']);
 
         // New code against an old schema must keep advertising the update.
-        $this->assertSame('aaaaaaa', file_get_contents($appRoot . '/VERSION'));
+        $this->assertSame('aaaaaaa', file_get_contents($appRoot.'/VERSION'));
     }
 
     public function test_a_repair_with_nothing_to_finish_leaves_the_version_alone(): void
     {
         $appRoot = $this->tempDir('app');
-        $this->writeFile($appRoot . '/VERSION', 'aaaaaaa');
+        $this->writeFile($appRoot.'/VERSION', 'aaaaaaa');
 
         // No restore point, so nothing was deployed that needs stamping — a
         // finalize run by hand must not claim a version off the internet.
@@ -553,7 +575,7 @@ final class UpdateServiceDeploySafetyTest extends TestCase
 
         $this->assertSame('success', $result['status']);
         $this->assertSame('Post-update steps completed.', $result['message']);
-        $this->assertSame('aaaaaaa', file_get_contents($appRoot . '/VERSION'));
+        $this->assertSame('aaaaaaa', file_get_contents($appRoot.'/VERSION'));
     }
 
     // ------------------------------------------------------------------
@@ -569,7 +591,7 @@ final class UpdateServiceDeploySafetyTest extends TestCase
 
         try {
             $service = $this->stubbedService();
-            $result  = $service->runZip($user);
+            $result = $service->runZip($user);
 
             $this->assertSame('busy', $result['status']);
             $this->assertStringContainsString('already running', $result['message']);
@@ -602,7 +624,9 @@ final class UpdateServiceDeploySafetyTest extends TestCase
 
         try {
             $this->invokePrivate($service, 'withUpdateLock', [
-                static function (): string { throw new RuntimeException('boom'); },
+                static function (): string {
+                    throw new RuntimeException('boom');
+                },
                 static fn (): string => 'busy',
             ]);
             $this->fail('Expected the callback to throw.');
@@ -638,37 +662,192 @@ final class UpdateServiceDeploySafetyTest extends TestCase
 
     public function test_zip_rollback_restores_overwritten_files_and_removes_added_ones(): void
     {
-        $user        = User::factory()->create();
-        $appRoot     = $this->tempDir('app');
+        $user = User::factory()->create();
+        $appRoot = $this->tempDir('app');
         $restoreRoot = $this->tempDir('restore');
 
         // State after an update: Existing.php was overwritten, Added.php is new.
-        $this->writeFile($appRoot . '/app/Existing.php', 'version 2');
-        $this->writeFile($appRoot . '/app/Added.php', 'only in version 2');
-        $this->writeFile($appRoot . '/VERSION', 'bbbbbbb');
+        $this->writeFile($appRoot.'/app/Existing.php', 'version 2');
+        $this->writeFile($appRoot.'/app/Added.php', 'only in version 2');
+        $this->writeFile($appRoot.'/VERSION', 'bbbbbbb');
 
-        $point = $restoreRoot . '/20260910-120000-abc123';
-        $this->writeFile($point . '/files/app/Existing.php', 'version 1');
-        $this->writeFile($point . '/manifest.json', (string) json_encode([
-            'id'      => '20260910-120000-abc123',
-            'method'  => 'zip',
-            'from'    => 'aaaaaaa',
-            'to'      => 'bbbbbbb',
+        $point = $restoreRoot.'/20260910-120000-abc123';
+        $this->writeFile($point.'/files/app/Existing.php', 'version 1');
+        $this->writeFile($point.'/manifest.json', (string) json_encode([
+            'id' => '20260910-120000-abc123',
+            'method' => 'zip',
+            'from' => 'aaaaaaa',
+            'to' => 'bbbbbbb',
             'changed' => ['app/Existing.php'],
-            'added'   => ['app/Added.php'],
+            'added' => ['app/Added.php'],
         ]));
 
         $result = $this->stubbedService($appRoot, $restoreRoot)->rollback('aaaaaaa', $user);
 
         $this->assertSame('success', $result['status']);
-        $this->assertSame('version 1', file_get_contents($appRoot . '/app/Existing.php'));
-        $this->assertFileDoesNotExist($appRoot . '/app/Added.php');
+        $this->assertSame('version 1', file_get_contents($appRoot.'/app/Existing.php'));
+        $this->assertFileDoesNotExist($appRoot.'/app/Added.php');
 
         // The version marker goes back too, or check() keeps advertising the
         // update that was just undone.
-        $this->assertSame('aaaaaaa', file_get_contents($appRoot . '/VERSION'));
+        $this->assertSame('aaaaaaa', file_get_contents($appRoot.'/VERSION'));
 
         $this->assertDatabaseHas('activity_log', ['action' => 'system.rolledback']);
+
+        $row = DB::table('activity_log')->where('action', 'system.rolledback')->orderByDesc('id')->first();
+        $this->assertNotNull($row);
+        $this->assertSame('success', json_decode((string) $row->metadata, true)['status']);
+    }
+
+    public function test_rollback_publishes_progress_events(): void
+    {
+        $user = User::factory()->create();
+        $appRoot = $this->tempDir('app');
+        $restoreRoot = $this->tempDir('restore');
+
+        // State after an update: Existing.php was overwritten.
+        $this->writeFile($appRoot.'/app/Existing.php', 'version 2');
+        $this->writeFile($appRoot.'/VERSION', 'bbbbbbb');
+
+        $point = $restoreRoot.'/20260910-120000-abc123';
+        $this->writeFile($point.'/files/app/Existing.php', 'version 1');
+        $this->writeFile($point.'/manifest.json', (string) json_encode([
+            'id' => '20260910-120000-abc123',
+            'method' => 'zip',
+            'from' => 'aaaaaaa',
+            'to' => 'bbbbbbb',
+            'changed' => ['app/Existing.php'],
+            'added' => [],
+        ]));
+
+        /** @var list<array{step: string, message: string, progress: int, done: bool, extra: array<string, mixed>}> $events */
+        $events = [];
+        $emit = function (string $step, string $message, int $progress, bool $done = false, array $extra = []) use (&$events): void {
+            $events[] = compact('step', 'message', 'progress', 'done', 'extra');
+        };
+
+        $result = $this->stubbedService($appRoot, $restoreRoot)->rollback('aaaaaaa', $user, $emit);
+
+        $this->assertSame('success', $result['status']);
+        $this->assertNotEmpty($events);
+
+        // The poller reads the cache the terminal event writes; it must be last
+        // and carry the final status, not an intermediate step.
+        $last = end($events);
+        $this->assertSame('done', $last['step']);
+        $this->assertTrue($last['done']);
+        $this->assertSame('success', $last['extra']['status']);
+
+        // The file-restore step is what the UI shows while the rollback runs.
+        $this->assertContains('restore', array_column($events, 'step'));
+    }
+
+    public function test_zip_rollback_failure_is_audited(): void
+    {
+        $user = User::factory()->create();
+
+        // An empty restore root is the plain failure path.
+        $result = $this->stubbedService($this->tempDir('app'), $this->tempDir('restore'))->rollback('aaaaaaa', $user);
+
+        $this->assertSame('failed', $result['status']);
+
+        $row = DB::table('activity_log')->where('action', 'system.rolledback')->orderByDesc('id')->first();
+        $this->assertNotNull($row);
+        $this->assertSame('failed', json_decode((string) $row->metadata, true)['status']);
+        $this->assertStringContainsString('[failed]', (string) $row->description);
+    }
+
+    public function test_zip_rollback_surfaces_composer_failure_in_the_message(): void
+    {
+        $user = User::factory()->create();
+        $appRoot = $this->tempDir('app');
+        $restoreRoot = $this->tempDir('restore');
+
+        $this->writeFile($appRoot.'/app/Existing.php', 'version 2');
+        $this->writeFile($appRoot.'/VERSION', 'bbbbbbb');
+
+        $point = $restoreRoot.'/20260910-120000-abc123';
+        $this->writeFile($point.'/files/app/Existing.php', 'version 1');
+        $this->writeFile($point.'/manifest.json', (string) json_encode([
+            'id' => '20260910-120000-abc123',
+            'method' => 'zip',
+            'from' => 'aaaaaaa',
+            'to' => 'bbbbbbb',
+            'changed' => ['app/Existing.php'],
+            'added' => [],
+        ]));
+
+        $result = $this->stubbedService($appRoot, $restoreRoot, composer: true, failComposer: true)->rollback('aaaaaaa', $user);
+
+        // A composer failure is a warning, not a rollback failure: the files
+        // were restored and that is the part the operator asked for.
+        $this->assertSame('success', $result['status']);
+        $this->assertStringContainsString('Composer install reported an error', $result['message']);
+        $this->assertSame('version 1', file_get_contents($appRoot.'/app/Existing.php'));
+    }
+
+    public function test_zip_rollback_reports_added_files_that_could_not_be_removed(): void
+    {
+        if (DIRECTORY_SEPARATOR !== '\\') {
+            $this->markTestSkipped('readonly attribute only blocks unlink on Windows');
+        }
+
+        $user = User::factory()->create();
+        $appRoot = $this->tempDir('app');
+        $restoreRoot = $this->tempDir('restore');
+
+        $this->writeFile($appRoot.'/app/Added.php', 'only in version 2');
+        $this->writeFile($appRoot.'/VERSION', 'bbbbbbb');
+
+        $point = $restoreRoot.'/20260910-120000-abc123';
+        $this->writeFile($point.'/manifest.json', (string) json_encode([
+            'id' => '20260910-120000-abc123',
+            'method' => 'zip',
+            'from' => 'aaaaaaa',
+            'to' => 'bbbbbbb',
+            'changed' => [],
+            'added' => ['app/Added.php'],
+        ]));
+
+        // Defensive probe: some filesystems (or an elevated process) do not
+        // enforce the readonly attribute, in which case this test would assert
+        // nothing. Confirm it blocks unlink before relying on it.
+        $probe = $appRoot.'/readonly-probe.txt';
+        $this->writeFile($probe, 'probe');
+        chmod($probe, 0444);
+
+        if (@unlink($probe)) {
+            chmod($probe, 0644);
+            $this->markTestSkipped('this environment does not enforce the readonly attribute on unlink');
+        }
+
+        chmod($probe, 0644);
+        @unlink($probe);
+
+        $added = $appRoot.'/app/Added.php';
+        chmod($added, 0444);
+
+        try {
+            $result = $this->stubbedService($appRoot, $restoreRoot)->rollback('aaaaaaa', $user);
+
+            $this->assertSame('success', $result['status']);
+            $this->assertStringContainsString('could not be removed', $result['message']);
+        } finally {
+            // Clear the readonly attribute so tearDown can delete the tree.
+            chmod($added, 0644);
+        }
+    }
+
+    public function test_write_restore_point_reports_failure_when_the_manifest_cannot_be_written(): void
+    {
+        // A file standing where the restore point directory must go: mkdir()
+        // fails, so the manifest cannot be written.
+        $blocker = $this->tempDir('restore').'/not-a-directory';
+        $this->writeFile($blocker, 'this is a file, not a directory');
+
+        $written = $this->invokePrivate($this->stubbedService(), 'writeRestorePoint', [$blocker.'/sub', ['id' => 'x']]);
+
+        $this->assertFalse($written);
     }
 
     public function test_zip_rollback_reports_when_no_restore_point_exists(): void
@@ -683,11 +862,11 @@ final class UpdateServiceDeploySafetyTest extends TestCase
 
     public function test_zip_rollback_names_the_available_points_when_the_target_is_unknown(): void
     {
-        $user        = User::factory()->create();
+        $user = User::factory()->create();
         $restoreRoot = $this->tempDir('restore');
 
-        $point = $restoreRoot . '/20260910-120000-abc123';
-        $this->writeFile($point . '/manifest.json', (string) json_encode([
+        $point = $restoreRoot.'/20260910-120000-abc123';
+        $this->writeFile($point.'/manifest.json', (string) json_encode([
             'id' => '20260910-120000-abc123', 'from' => 'aaaaaaa', 'changed' => [], 'added' => [],
         ]));
 
@@ -699,15 +878,15 @@ final class UpdateServiceDeploySafetyTest extends TestCase
 
     public function test_zip_rollback_fails_loudly_when_the_snapshot_is_incomplete(): void
     {
-        $user        = User::factory()->create();
-        $appRoot     = $this->tempDir('app');
+        $user = User::factory()->create();
+        $appRoot = $this->tempDir('app');
         $restoreRoot = $this->tempDir('restore');
 
-        $this->writeFile($appRoot . '/app/Existing.php', 'version 2');
+        $this->writeFile($appRoot.'/app/Existing.php', 'version 2');
 
         // Manifest claims a file the snapshot does not hold.
-        $point = $restoreRoot . '/20260910-120000-abc123';
-        $this->writeFile($point . '/manifest.json', (string) json_encode([
+        $point = $restoreRoot.'/20260910-120000-abc123';
+        $this->writeFile($point.'/manifest.json', (string) json_encode([
             'id' => '20260910-120000-abc123', 'from' => 'aaaaaaa', 'changed' => ['app/Existing.php'], 'added' => [],
         ]));
 
@@ -717,7 +896,7 @@ final class UpdateServiceDeploySafetyTest extends TestCase
         $this->assertStringContainsString('missing', $result['message']);
 
         // Nothing half-restored and silently called a success.
-        $this->assertSame('version 2', file_get_contents($appRoot . '/app/Existing.php'));
+        $this->assertSame('version 2', file_get_contents($appRoot.'/app/Existing.php'));
     }
 
     // ------------------------------------------------------------------
@@ -777,7 +956,7 @@ final class UpdateServiceDeploySafetyTest extends TestCase
 
         foreach (['20260901-100000-aaaaaa', '20260910-120000-bbbbbb', '20260905-090000-cccccc'] as $id) {
             $this->writeFile(
-                $restoreRoot . '/' . $id . '/manifest.json',
+                $restoreRoot.'/'.$id.'/manifest.json',
                 (string) json_encode(['id' => $id, 'from' => 'x', 'changed' => [], 'added' => []])
             );
         }

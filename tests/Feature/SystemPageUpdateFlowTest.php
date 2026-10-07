@@ -9,6 +9,7 @@ use App\Models\Role;
 use App\Models\User;
 use App\Services\System\UpdateService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\ViewErrorBag;
 use Tests\TestCase;
 
@@ -31,7 +32,7 @@ final class SystemPageUpdateFlowTest extends TestCase
     private function adminUser(): User
     {
         $admin = User::factory()->create(['role' => 'admin']);
-        $role  = Role::firstOrCreate(['name' => 'admin'], ['label' => 'Administrator']);
+        $role = Role::firstOrCreate(['name' => 'admin'], ['label' => 'Administrator']);
         $admin->roles()->syncWithoutDetaching($role);
 
         $perm = Permission::firstOrCreate(['name' => 'system.view'], ['label' => 'View System & About']);
@@ -41,23 +42,23 @@ final class SystemPageUpdateFlowTest extends TestCase
     }
 
     /**
-     * @param array<string, mixed> $overrides
+     * @param  array<string, mixed>  $overrides
      * @return array<string, mixed>
      */
     private function checkResult(array $overrides = []): array
     {
         return array_merge([
-            'status'          => 'up_to_date',
-            'message'         => 'Up to date.',
-            'behind'          => 0,
-            'commits'         => [],
-            'diffStat'        => null,
-            'localHash'       => 'abc1234',
-            'remoteHash'      => 'abc1234',
-            'branch'          => 'main',
+            'status' => 'up_to_date',
+            'message' => 'Up to date.',
+            'behind' => 0,
+            'commits' => [],
+            'diffStat' => null,
+            'localHash' => 'abc1234',
+            'remoteHash' => 'abc1234',
+            'branch' => 'main',
             'remoteSanitized' => 'https://github.com/Sanat-das/Manage-Hosting-CRM',
-            'remoteUrlRaw'    => 'https://github.com/Sanat-das/Manage-Hosting-CRM.git',
-            'dirty'           => false,
+            'remoteUrlRaw' => 'https://github.com/Sanat-das/Manage-Hosting-CRM.git',
+            'dirty' => false,
         ], $overrides);
     }
 
@@ -67,22 +68,32 @@ final class SystemPageUpdateFlowTest extends TestCase
         for ($i = 0; $i < $n; $i++) {
             $hash = str_pad((string) $i, 40, 'f');
             $commits[] = [
-                'hash'    => $hash,
-                'short'   => substr($hash, 0, 7),
+                'hash' => $hash,
+                'short' => substr($hash, 0, 7),
                 'message' => "Release commit $i",
-                'author'  => 'Test Author',
-                'date'    => '2026-09-03T12:00:00Z',
+                'author' => 'Test Author',
+                'date' => '2026-09-03T12:00:00Z',
             ];
         }
+
         return $commits;
     }
 
     private function bindFakeUpdater(array $result): void
     {
-        $fake = new class($result) extends UpdateService {
+        $fake = new class($result) extends UpdateService
+        {
             public function __construct(private readonly array $result) {}
-            public function check(): array { return $this->result; }
-            protected function isGitRepo(): bool { return false; }
+
+            public function check(): array
+            {
+                return $this->result;
+            }
+
+            protected function isGitRepo(): bool
+            {
+                return false;
+            }
         };
         $this->app->instance(UpdateService::class, $fake);
     }
@@ -117,12 +128,12 @@ final class SystemPageUpdateFlowTest extends TestCase
         $this->actingAs($this->adminUser());
 
         return view('admin.system.index', [
-            'appInfo'   => $appInfo,
-            'check'     => $check,
-            'history'   => collect(),
+            'appInfo' => $appInfo,
+            'check' => $check,
+            'history' => collect(),
             'activeTab' => $tab,
             // Normally shared by ShareErrorsFromSession during a real request.
-            'errors'    => new ViewErrorBag(),
+            'errors' => new ViewErrorBag,
         ])->render();
     }
 
@@ -150,8 +161,8 @@ final class SystemPageUpdateFlowTest extends TestCase
         $html = $this->renderSystemPage(
             $this->zipInstallAppInfo('abc1234'),
             $this->checkResult([
-                'status'  => 'no_git',
-                'behind'  => 3,
+                'status' => 'no_git',
+                'behind' => 3,
                 'commits' => $this->fakeCommits(3),
             ])
         );
@@ -188,9 +199,9 @@ final class SystemPageUpdateFlowTest extends TestCase
     {
         $commits = $this->fakeCommits(4);
         $this->bindFakeUpdater($this->checkResult([
-            'status'  => 'behind',
+            'status' => 'behind',
             'message' => 'You are 4 commits behind origin/main.',
-            'behind'  => 4,
+            'behind' => 4,
             'commits' => $commits,
         ]));
 
@@ -210,14 +221,14 @@ final class SystemPageUpdateFlowTest extends TestCase
     {
         $commits = $this->fakeCommits(3);
         $this->bindFakeUpdater($this->checkResult([
-            'status'          => 'no_git',
-            'message'         => 'This is a ZIP/manual install (local version 1.0.0). Latest on GitHub is fff0000 from 2026-09-03T12:00:00Z — download the latest ZIP from GitHub, replace files (keep .env, storage/, install.lock), then run composer install --no-dev --optimize-autoloader && php artisan migrate --force && php artisan optimize:clear.',
-            'behind'          => 3,
-            'commits'         => $commits,
-            'branch'          => 'main',
+            'status' => 'no_git',
+            'message' => 'This is a ZIP/manual install (local version 1.0.0). Latest on GitHub is fff0000 from 2026-09-03T12:00:00Z — download the latest ZIP from GitHub, replace files (keep .env, storage/, install.lock), then run composer install --no-dev --optimize-autoloader && php artisan migrate --force && php artisan optimize:clear.',
+            'behind' => 3,
+            'commits' => $commits,
+            'branch' => 'main',
             'remoteSanitized' => 'https://github.com/Sanat-das/Manage-Hosting-CRM',
-            'remoteUrlRaw'    => 'https://github.com/Sanat-das/Manage-Hosting-CRM.git',
-            'dirty'           => null,
+            'remoteUrlRaw' => 'https://github.com/Sanat-das/Manage-Hosting-CRM.git',
+            'dirty' => null,
         ]));
 
         $response = $this->actingAs($this->adminUser())
@@ -234,11 +245,11 @@ final class SystemPageUpdateFlowTest extends TestCase
     public function test_no_git_without_api_fallback_shows_no_behind_count(): void
     {
         $this->bindFakeUpdater($this->checkResult([
-            'status'          => 'no_git',
-            'message'         => 'This installation was not deployed via git. To update, download the latest ZIP from GitHub.',
-            'behind'          => 0,
-            'commits'         => [],
-            'branch'          => null,
+            'status' => 'no_git',
+            'message' => 'This installation was not deployed via git. To update, download the latest ZIP from GitHub.',
+            'behind' => 0,
+            'commits' => [],
+            'branch' => null,
             'remoteSanitized' => null,
         ]));
 
@@ -296,14 +307,14 @@ final class SystemPageUpdateFlowTest extends TestCase
         // plain no-git result (behind=0, empty commits). The page must render a
         // 200 with the no_git badge and the manual-update instructions — no 500.
         $this->bindFakeUpdater($this->checkResult([
-            'status'          => 'no_git',
-            'message'         => 'This installation was not deployed via git. To update, download the latest ZIP from GitHub, replace files (keep .env, storage/, install.lock), then run composer install --no-dev --optimize-autoloader && php artisan migrate --force && php artisan optimize:clear.',
-            'behind'          => 0,
-            'commits'         => [],
-            'branch'          => null,
+            'status' => 'no_git',
+            'message' => 'This installation was not deployed via git. To update, download the latest ZIP from GitHub, replace files (keep .env, storage/, install.lock), then run composer install --no-dev --optimize-autoloader && php artisan migrate --force && php artisan optimize:clear.',
+            'behind' => 0,
+            'commits' => [],
+            'branch' => null,
             'remoteSanitized' => null,
-            'remoteUrlRaw'    => null,
-            'dirty'           => null,
+            'remoteUrlRaw' => null,
+            'dirty' => null,
         ]));
 
         $response = $this->actingAs($this->adminUser())
@@ -321,8 +332,8 @@ final class SystemPageUpdateFlowTest extends TestCase
 
         $commits = $this->fakeCommits(2);
         $flashedResult = $this->checkResult([
-            'status'  => 'behind',
-            'behind'  => 2,
+            'status' => 'behind',
+            'behind' => 2,
             'commits' => $commits,
             'message' => 'You are 2 commits behind.',
         ]);
@@ -334,5 +345,45 @@ final class SystemPageUpdateFlowTest extends TestCase
         $response->assertOk();
         $response->assertSee('2 improvements are ready');
         $response->assertSee($commits[0]['message']);
+    }
+
+    public function test_update_history_surfaces_rollback_rows(): void
+    {
+        $this->bindFakeUpdater($this->checkResult());
+
+        $admin = $this->adminUser();
+
+        DB::table('activity_log')->insert([
+            'user_id' => $admin->id,
+            'action' => 'system.rolledback',
+            'description' => 'System rolled back from bbbbbbb to aaaaaaa [success]',
+            'metadata' => json_encode(['from' => 'bbbbbbb', 'to' => 'aaaaaaa', 'status' => 'success']),
+            'properties' => json_encode(['from' => 'bbbbbbb', 'to' => 'aaaaaaa', 'status' => 'success']),
+            'event' => 'rolledback',
+            'subject_type' => 'system',
+            'created_at' => now(),
+        ]);
+
+        DB::table('activity_log')->insert([
+            'user_id' => $admin->id,
+            'action' => 'system.updated',
+            'description' => 'System updated from ccccccc to ddddddd [success]',
+            'metadata' => json_encode(['from' => 'ccccccc', 'status' => 'success']),
+            'properties' => json_encode(['from' => 'ccccccc', 'status' => 'success']),
+            'event' => 'updated',
+            'subject_type' => 'system',
+            'created_at' => now(),
+        ]);
+
+        $response = $this->actingAs($admin)->get(route('admin.system.index', ['tab' => 'updates']));
+
+        $response->assertOk();
+        $response->assertSee('System rolled back from bbbbbbb to aaaaaaa');
+
+        // Only a `system.updated` success row offers a rollback trigger: the
+        // update row renders one carrying its own `from` hash, while the
+        // rolledback row must not render a trigger for its `from` hash at all.
+        $this->assertStringContainsString('data-hash="ccccccc"', $response->getContent());
+        $this->assertStringNotContainsString('data-hash="bbbbbbb"', $response->getContent());
     }
 }

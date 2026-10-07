@@ -6,6 +6,8 @@ namespace App\Services\System;
 
 use App\Models\User;
 use App\Support\SecretRedactor;
+use Illuminate\Database\Migrations\Migrator;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
@@ -88,20 +90,20 @@ class UpdateService
         if (! $this->isGitRepo()) {
             $api = $this->fetchGithubCommits(self::COMMIT_WINDOW);
             if ($api !== null && ! empty($api['commits'])) {
-                $latest        = $api['commits'][0];
-                $latestShort   = $latest['short'] ?? substr($latest['hash'] ?? '', 0, 7);
-                $localVersion  = $this->resolveLocalVersion();
+                $latest = $api['commits'][0];
+                $latestShort = $latest['short'] ?? substr($latest['hash'] ?? '', 0, 7);
+                $localVersion = $this->resolveLocalVersion();
 
                 // Locate the installed commit in the window. Without a git
                 // checkout this is the only available signal, and "behind" used
                 // to be simply the number of commits fetched — so a ZIP install
                 // advertised an update forever, including straight after one.
-                $behind  = null;
+                $behind = null;
                 $commits = $api['commits'];
 
                 foreach ($api['commits'] as $i => $commit) {
                     if ($this->isInstalledCommit($localVersion, $commit)) {
-                        $behind  = $i;
+                        $behind = $i;
                         $commits = array_slice($api['commits'], 0, $i);
                         break;
                     }
@@ -187,7 +189,7 @@ class UpdateService
 
             return [
                 'status' => 'dirty',
-                'message' => 'Working tree has local changes — commit or stash them first. ' . ($statusExcerpt !== '' ? 'Excerpt: ' . $statusExcerpt : ''),
+                'message' => 'Working tree has local changes — commit or stash them first. '.($statusExcerpt !== '' ? 'Excerpt: '.$statusExcerpt : ''),
                 'behind' => 0,
                 'commits' => [],
                 'diffStat' => null,
@@ -234,7 +236,7 @@ class UpdateService
         if (! $fetchState['ok']) {
             return [
                 'status' => 'fetch_failed',
-                'message' => 'Could not reach GitHub — check outbound firewall / proxy. ' . $fetchState['error'],
+                'message' => 'Could not reach GitHub — check outbound firewall / proxy. '.$fetchState['error'],
                 'behind' => 0,
                 'commits' => [],
                 'diffStat' => null,
@@ -332,6 +334,7 @@ class UpdateService
      * Re-entrant within an instance, because run() delegates to runZip().
      *
      * @template TResult
+     *
      * @param  callable(): TResult  $callback
      * @param  callable(): TResult  $onBusy
      * @return TResult
@@ -454,6 +457,7 @@ class UpdateService
                     output: 'No remote origin.'
                 );
                 $emit('error', $result['message'], 0, true, $result);
+
                 return $result;
             }
 
@@ -480,6 +484,7 @@ class UpdateService
                     output: $excerpt !== '' ? $excerpt : 'Dirty working tree.'
                 );
                 $emit('error', $result['message'], 0, true, $result);
+
                 return $result;
             }
 
@@ -502,6 +507,7 @@ class UpdateService
                     output: Str::limit($capturedOutput, self::OUTPUT_LIMIT)
                 );
                 $emit('error', $result['message'], 15, true, $result);
+
                 return $result;
             }
 
@@ -525,12 +531,13 @@ class UpdateService
                 );
                 $this->audit($actor, $result, $capturedOutput, 0);
                 $emit('error', $result['message'], 15, true, $result);
+
                 return $result;
             }
 
             $upstreamBranch = $this->upstreamBranchName($upstream);
 
-            $behindRes = $this->runProcess(['git', 'rev-list', 'HEAD..' . $upstream, '--count'], 3);
+            $behindRes = $this->runProcess(['git', 'rev-list', 'HEAD..'.$upstream, '--count'], 3);
             $behind = 0;
             if ($behindRes['success'] && trim($behindRes['output']) !== '') {
                 $behind = (int) trim($behindRes['output']);
@@ -551,19 +558,20 @@ class UpdateService
                 );
                 $this->audit($actor, $result, $capturedOutput, $behind);
                 $emit('done', $result['message'], 100, true, $result);
+
                 return $result;
             }
 
             // Step: Maintenance mode
             $emit('maintenance', 'Enabling maintenance mode...', 30);
-            $down = $this->runProcess(['php', 'artisan', 'down', '--secret=' . Str::random(16)], 15);
+            $down = $this->runProcess(['php', 'artisan', 'down', '--secret='.Str::random(16)], 15);
             $appendOutput('php artisan down', $down['output'], $down['exit']);
             $didDown = $down['success'] || str_contains(strtolower($down['output']), 'already');
 
             // Step: Pull
             $emit('pull', 'Downloading and applying update...', 45);
             $pull = $this->runProcess(['git', 'pull', '--ff-only', 'origin', $upstreamBranch], 60);
-            $appendOutput('git pull --ff-only origin ' . $upstreamBranch, $pull['output'], $pull['exit']);
+            $appendOutput('git pull --ff-only origin '.$upstreamBranch, $pull['output'], $pull['exit']);
 
             if (! $pull['success']) {
                 $message = 'Update could not be applied — the working directory has uncommitted changes. Please contact support or resolve via SSH.';
@@ -573,7 +581,7 @@ class UpdateService
 
                 $result = $this->buildRunResult(
                     status: 'failed',
-                    message: $message . ' ' . trim(Str::limit($pull['output'], 1500)),
+                    message: $message.' '.trim(Str::limit($pull['output'], 1500)),
                     behind: $behind,
                     from: $fromHash,
                     to: $this->resolveLocalHash(),
@@ -585,6 +593,7 @@ class UpdateService
                 );
                 $this->audit($actor, $result, $capturedOutput, $behind);
                 $emit('error', $result['message'], 45, true, $result);
+
                 return $result;
             }
 
@@ -605,23 +614,32 @@ class UpdateService
                     $vendorExists = is_file(base_path('vendor/autoload.php'));
                     if ($isHomeError && $vendorExists) {
                         $appendOutput('composer install', 'composer HOME error — vendor/ ships with the update, continuing (migrate will run next).', 0);
-                        try { Log::warning('UpdateService: composer HOME error ignored — vendor/ present, continuing update.'); } catch (Throwable) {}
+                        try {
+                            Log::warning('UpdateService: composer HOME error ignored — vendor/ present, continuing update.');
+                        } catch (Throwable) {
+                        }
                     } elseif ($isPhpVersionError) {
                         // Shared hosts often have web PHP 8.5.10 but CLI `php`/`composer` still on 8.3.33.
                         // The lock requires >=8.4.1 (symfony/clock 8.1). Vendor ships pre-built, so
                         // retry with --ignore-platform-reqs; if vendor exists we can continue anyway.
-                        $appendOutput('composer install', 'PHP version mismatch detected (web PHP ' . PHP_VERSION . ' vs Composer PHP 8.3.33) — retrying with --ignore-platform-reqs...', 0);
+                        $appendOutput('composer install', 'PHP version mismatch detected (web PHP '.PHP_VERSION.' vs Composer PHP 8.3.33) — retrying with --ignore-platform-reqs...', 0);
                         $composerRetry = $this->runProcess($this->composerInstall(ignorePlatformReqs: true), 180);
                         $appendOutput('composer install --ignore-platform-reqs', $composerRetry['output'], $composerRetry['exit']);
                         if ($composerRetry['success']) {
-                            try { Log::warning('UpdateService: composer retry with --ignore-platform-reqs succeeded (PHP mismatch ignored, vendor shipped).'); } catch (Throwable) {}
+                            try {
+                                Log::warning('UpdateService: composer retry with --ignore-platform-reqs succeeded (PHP mismatch ignored, vendor shipped).');
+                            } catch (Throwable) {
+                            }
                         } elseif ($vendorExists) {
                             $appendOutput('composer install', 'Composer still failed but vendor/autoload.php exists — continuing (vendor ships with update, PHP 8.5.10 will run it).', 0);
-                            try { Log::warning('UpdateService: composer failed even with --ignore-platform-reqs but vendor exists — continuing.'); } catch (Throwable) {}
+                            try {
+                                Log::warning('UpdateService: composer failed even with --ignore-platform-reqs but vendor exists — continuing.');
+                            } catch (Throwable) {
+                            }
                         } else {
                             $result = $this->buildRunResult(
                                 status: 'failed',
-                                message: 'Dependencies failed: Composer PHP (8.3.33 from PATH) does not match web PHP (' . PHP_VERSION . ') and lock requires >=8.4.1. Fix: cPanel → MultiPHP Manager → set BOTH web and CLI to ea-php84/ea-php85 (or set CLI via cPanel → Terminal → `ln -s /opt/alt/php85/usr/bin/php ~/bin/php`), then retry. Raw: ' . trim(Str::limit($composer['output'], 1500)),
+                                message: 'Dependencies failed: Composer PHP (8.3.33 from PATH) does not match web PHP ('.PHP_VERSION.') and lock requires >=8.4.1. Fix: cPanel → MultiPHP Manager → set BOTH web and CLI to ea-php84/ea-php85 (or set CLI via cPanel → Terminal → `ln -s /opt/alt/php85/usr/bin/php ~/bin/php`), then retry. Raw: '.trim(Str::limit($composer['output'], 1500)),
                                 behind: $behind,
                                 from: $fromHash,
                                 to: $this->resolveLocalHash(),
@@ -633,12 +651,13 @@ class UpdateService
                             );
                             $this->audit($actor, $result, $capturedOutput, $behind);
                             $emit('error', $result['message'], 60, true, $result);
+
                             return $result;
                         }
                     } else {
                         $result = $this->buildRunResult(
                             status: 'failed',
-                            message: 'Update downloaded but dependencies failed — run composer install manually. ' . trim(Str::limit($composer['output'], 1500)),
+                            message: 'Update downloaded but dependencies failed — run composer install manually. '.trim(Str::limit($composer['output'], 1500)),
                             behind: $behind,
                             from: $fromHash,
                             to: $this->resolveLocalHash(),
@@ -650,6 +669,7 @@ class UpdateService
                         );
                         $this->audit($actor, $result, $capturedOutput, $behind);
                         $emit('error', $result['message'], 60, true, $result);
+
                         return $result;
                     }
                 }
@@ -677,7 +697,7 @@ class UpdateService
                 if (! $retry['success']) {
                     $result = $this->buildRunResult(
                         status: 'failed',
-                        message: 'Database update failed — your existing data is intact. Code is updated; finish with: php artisan system:update:finalize. ' . trim(Str::limit($migrate['output'], 1500)),
+                        message: 'Database update failed — your existing data is intact. Code is updated; finish with: php artisan system:update:finalize. '.trim(Str::limit($migrate['output'], 1500)),
                         behind: $behind,
                         from: $fromHash,
                         to: $this->resolveLocalHash(),
@@ -689,6 +709,7 @@ class UpdateService
                     );
                     $this->audit($actor, $result, $capturedOutput, $behind);
                     $emit('error', $result['message'], 75, true, $result);
+
                     return $result;
                 }
 
@@ -728,6 +749,7 @@ class UpdateService
                 );
                 $this->audit($actor, $result, $capturedOutput, $behind);
                 $emit('error', $result['message'], 95, true, $result);
+
                 return $result;
             }
 
@@ -745,10 +767,11 @@ class UpdateService
             );
             $this->audit($actor, $result, $capturedOutput, $behind);
             $emit('done', $result['message'], 100, true, $result);
+
             return $result;
         } catch (Throwable $e) {
             Log::error('UpdateService::run failed.', ['error' => $e->getMessage()]);
-            $capturedOutput .= "\n[exception] " . $e->getMessage() . "\n";
+            $capturedOutput .= "\n[exception] ".$e->getMessage()."\n";
 
             $result = $this->buildRunResult(
                 status: 'unknown',
@@ -767,6 +790,7 @@ class UpdateService
             } catch (Throwable) {
             }
             $emit('error', $result['message'], 0, true, $result);
+
             return $result;
         } finally {
             // Ensure site is back up even when a step failed
@@ -775,13 +799,13 @@ class UpdateService
                 if (! $up['success']) {
                     // Fallback via Artisan facade — covers custom maintenance driver edge cases
                     try {
-                        \Illuminate\Support\Facades\Artisan::call('up');
+                        Artisan::call('up');
                     } catch (Throwable) {
                     }
                 }
             } catch (Throwable) {
                 try {
-                    \Illuminate\Support\Facades\Artisan::call('up');
+                    Artisan::call('up');
                 } catch (Throwable) {
                 }
             }
@@ -855,15 +879,15 @@ class UpdateService
      */
     private function runZipLocked(User $actor, callable $emit): array
     {
-        $startedAt   = microtime(true);
+        $startedAt = microtime(true);
         $capturedOutput = '';
-        $appRoot     = $this->appRoot();
+        $appRoot = $this->appRoot();
         $remoteSanitized = 'https://github.com/Sanat-das/Manage-Hosting-CRM';
         $fromVersion = $this->resolveLocalVersion();
-        $rand        = Str::random(8);
-        $tmpDir      = storage_path('tmp' . DIRECTORY_SEPARATOR . 'mh_update_' . $rand);
-        $zipPath     = storage_path('tmp' . DIRECTORY_SEPARATOR . 'mh_update_' . $rand . '.zip');
-        $didDown     = false;
+        $rand = Str::random(8);
+        $tmpDir = storage_path('tmp'.DIRECTORY_SEPARATOR.'mh_update_'.$rand);
+        $zipPath = storage_path('tmp'.DIRECTORY_SEPARATOR.'mh_update_'.$rand.'.zip');
+        $didDown = false;
 
         $appendOutput = function (string $label, string $output, int $exit) use (&$capturedOutput): void {
             $capturedOutput .= sprintf("\n[%s] exit=%d\n%s\n", $label, $exit, trim($output));
@@ -875,18 +899,20 @@ class UpdateService
 
         // Shared log path used by sentinel, step checkpoints, and finally block.
         $logPath = storage_path('logs/update.log');
-        $logDir  = dirname($logPath);
-        if (! is_dir($logDir)) { @mkdir($logDir, 0755, true); }
+        $logDir = dirname($logPath);
+        if (! is_dir($logDir)) {
+            @mkdir($logDir, 0755, true);
+        }
 
         // Checkpoint helper — writes a timestamped line immediately to update.log so every
         // step is traceable even if the process is killed before finally runs.
         $checkpoint = static function (string $entry) use ($logPath): void {
-            @file_put_contents($logPath, '[' . date('Y-m-d H:i:s') . '] ' . $entry . "\n", FILE_APPEND | LOCK_EX);
+            @file_put_contents($logPath, '['.date('Y-m-d H:i:s').'] '.$entry."\n", FILE_APPEND | LOCK_EX);
         };
 
         // Sentinel — always written first so we know runZip() was invoked.
-        $curlDiag    = $this->findCurlBin() ?? 'not found';
-        $tmpSys      = sys_get_temp_dir();
+        $curlDiag = $this->findCurlBin() ?? 'not found';
+        $tmpSys = sys_get_temp_dir();
         $tmpWritable = is_writable($tmpSys) ? 'yes' : 'no';
         $checkpoint(sprintf(
             'actor=%s method=zip status=started from=%s curl=%s tmpdir=%s writable=%s zippath=%s',
@@ -897,27 +923,29 @@ class UpdateService
             if (! class_exists(\ZipArchive::class)) {
                 $result = $this->buildRunResult('failed', 'PHP ZipArchive extension is not available — enable the zip extension or update via SSH.', 0, $fromVersion, null, 'main', $remoteSanitized, 1, $startedAt, 'ZipArchive not available.');
                 $emit('error', $result['message'], 0, true, $result);
+
                 return $result;
             }
 
             @mkdir(storage_path('tmp'), 0755, true);
-        @mkdir($tmpDir, 0755, true);
+            @mkdir($tmpDir, 0755, true);
 
             // Step: Download — emit heartbeats every 5s so IIS FastCGI activityTimeout doesn't fire
             $checkpoint('step=download status=starting');
             $emit('download', 'Downloading latest update from GitHub...', 10);
-            $zipUrl    = 'https://api.github.com/repos/Sanat-das/Manage-Hosting-CRM/zipball/main';
+            $zipUrl = 'https://api.github.com/repos/Sanat-das/Manage-Hosting-CRM/zipball/main';
             $heartbeat = function () use ($emit): void {
                 $emit('download', 'Downloading latest update from GitHub...', 10);
             };
             $downloaded = $this->downloadZip($zipUrl, $zipPath, $heartbeat);
             $sizeMb = is_file($zipPath) ? number_format((float) (filesize($zipPath) / 1024 / 1024), 1) : '0';
-            $checkpoint('step=download status=' . ($downloaded ? 'done size=' . $sizeMb . 'MB' : 'failed'));
-            $appendOutput('download zip', $downloaded ? 'Downloaded ' . $sizeMb . ' MB' : 'Download failed', $downloaded ? 0 : 1);
+            $checkpoint('step=download status='.($downloaded ? 'done size='.$sizeMb.'MB' : 'failed'));
+            $appendOutput('download zip', $downloaded ? 'Downloaded '.$sizeMb.' MB' : 'Download failed', $downloaded ? 0 : 1);
 
             if (! $downloaded) {
                 $result = $this->buildRunResult('fetch_failed', 'Could not download update from GitHub — check network connection and try again.', 0, $fromVersion, null, 'main', $remoteSanitized, 1, $startedAt, $capturedOutput);
                 $emit('error', $result['message'], 10, true, $result);
+
                 return $result;
             }
 
@@ -927,16 +955,17 @@ class UpdateService
             $extractTick = 0;
             $extractHeartbeat = function () use ($emit, $checkpoint, &$extractTick): void {
                 $extractTick++;
-                $checkpoint('step=extract status=running tick=' . $extractTick . ' elapsed=' . ($extractTick * 5) . 's');
+                $checkpoint('step=extract status=running tick='.$extractTick.' elapsed='.($extractTick * 5).'s');
                 $emit('extract', 'Unpacking update files...', 30);
             };
             $extractedRoot = $this->extractZip($zipPath, $tmpDir, $extractHeartbeat);
-            $checkpoint('step=extract status=' . ($extractedRoot !== null ? 'done root=' . basename($extractedRoot) : 'failed'));
-            $appendOutput('extract zip', $extractedRoot !== null ? 'Extracted to ' . basename($extractedRoot) : 'Extraction failed', $extractedRoot !== null ? 0 : 1);
+            $checkpoint('step=extract status='.($extractedRoot !== null ? 'done root='.basename($extractedRoot) : 'failed'));
+            $appendOutput('extract zip', $extractedRoot !== null ? 'Extracted to '.basename($extractedRoot) : 'Extraction failed', $extractedRoot !== null ? 0 : 1);
 
             if ($extractedRoot === null) {
                 $result = $this->buildRunResult('failed', 'Could not extract update archive. The disk may be full or the download was corrupted.', 0, $fromVersion, null, 'main', $remoteSanitized, 1, $startedAt, $capturedOutput);
                 $emit('error', $result['message'], 30, true, $result);
+
                 return $result;
             }
 
@@ -947,21 +976,22 @@ class UpdateService
                 $appendOutput('verify archive', 'Extracted archive is missing artisan/composer.json/app/bootstrap.', 1);
                 $result = $this->buildRunResult('failed', 'The downloaded archive does not look like a Manage Hosting release — nothing was changed. Try again, or update via SSH.', 0, $fromVersion, null, 'main', $remoteSanitized, 1, $startedAt, $capturedOutput);
                 $emit('error', $result['message'], 30, true, $result);
+
                 return $result;
             }
 
             // Step: Maintenance mode
             $checkpoint('step=maintenance status=starting');
             $emit('maintenance', 'Enabling maintenance mode...', 42);
-            $down   = $this->runProcess(['php', 'artisan', 'down', '--secret=' . Str::random(16)], 15);
+            $down = $this->runProcess(['php', 'artisan', 'down', '--secret='.Str::random(16)], 15);
             $appendOutput('php artisan down', $down['output'], $down['exit']);
             $didDown = $down['success'] || str_contains(strtolower($down['output']), 'already');
-            $checkpoint('step=maintenance status=' . ($didDown ? 'done' : 'warn exit=' . $down['exit']));
+            $checkpoint('step=maintenance status='.($didDown ? 'done' : 'warn exit='.$down['exit']));
 
             // Step: Deploy files (preserve .env, storage/, install.lock)
             $checkpoint('step=deploy status=starting');
             $emit('deploy', 'Installing update files...', 55);
-            $preserve = ['.env', 'storage', 'install.lock', 'public' . DIRECTORY_SEPARATOR . 'storage'];
+            $preserve = ['.env', 'storage', 'install.lock', 'public'.DIRECTORY_SEPARATOR.'storage'];
             $deployHeartbeat = function () use ($emit, $checkpoint): void {
                 $checkpoint('step=deploy status=running');
                 $emit('deploy', 'Installing update files...', 55);
@@ -970,32 +1000,32 @@ class UpdateService
             // Snapshot every file before it is overwritten. Only genuinely
             // changed files are copied, so this stays small even though the
             // archive carries a full vendor/ tree.
-            $restoreId  = date('Ymd-His') . '-' . strtolower(Str::random(6));
-            $restoreDir = $this->restorePointRoot() . DIRECTORY_SEPARATOR . $restoreId;
-            $backupDir  = $restoreDir . DIRECTORY_SEPARATOR . 'files';
-            $manifest   = ['changed' => [], 'added' => [], 'skipped' => 0];
+            $restoreId = date('Ymd-His').'-'.strtolower(Str::random(6));
+            $restoreDir = $this->restorePointRoot().DIRECTORY_SEPARATOR.$restoreId;
+            $backupDir = $restoreDir.DIRECTORY_SEPARATOR.'files';
+            $manifest = ['changed' => [], 'added' => [], 'skipped' => 0];
 
             // Bound by reference, not an arrow function: syncDeploy() rewrites
             // $manifest as it runs, and an arrow fn would have frozen the empty
             // value captured here at definition time.
             $restorePoint = function (bool $complete, ?string $to = null) use (&$manifest, $restoreId, $fromVersion, $actor): array {
                 return [
-                    'id'         => $restoreId,
-                    'method'     => 'zip',
-                    'complete'   => $complete,
-                    'from'       => $fromVersion,
-                    'to'         => $to,
+                    'id' => $restoreId,
+                    'method' => 'zip',
+                    'complete' => $complete,
+                    'from' => $fromVersion,
+                    'to' => $to,
                     'created_at' => now()->toIso8601String(),
-                    'actor'      => $actor->id ?? null,
-                    'changed'    => $manifest['changed'],
-                    'added'      => $manifest['added'],
-                    'skipped'    => $manifest['skipped'],
+                    'actor' => $actor->id ?? null,
+                    'changed' => $manifest['changed'],
+                    'added' => $manifest['added'],
+                    'skipped' => $manifest['skipped'],
                 ];
             };
 
             try {
                 $this->syncDeploy($extractedRoot, $appRoot, $preserve, $backupDir, $manifest, $deployHeartbeat);
-                $this->writeRestorePoint($restoreDir, $restorePoint(true));
+                $restorePointSaved = $this->writeRestorePoint($restoreDir, $restorePoint(true));
                 $checkpoint(sprintf(
                     'step=deploy status=done changed=%d added=%d unchanged=%d restore=%s',
                     count($manifest['changed']), count($manifest['added']), $manifest['skipped'], $restoreId
@@ -1007,20 +1037,25 @@ class UpdateService
             } catch (Throwable $e) {
                 // Record what was already touched — a half-deploy is exactly the
                 // state that needs a rollback, so the restore point matters most here.
-                $this->writeRestorePoint($restoreDir, $restorePoint(false));
-                $checkpoint('step=deploy status=failed err=' . $e->getMessage());
+                $restorePointSaved = $this->writeRestorePoint($restoreDir, $restorePoint(false));
+                $checkpoint('step=deploy status=failed err='.$e->getMessage());
                 $appendOutput('sync deploy', $e->getMessage(), 1);
+                $savedNote = $restorePointSaved
+                    ? 'The previous files were saved — use Rollback to restore them.'
+                    : 'The previous files could not be saved for rollback — restore them from a backup or via SSH.';
                 $result = $this->buildRunResult(
                     'failed',
                     sprintf(
-                        'File deployment failed after updating %d file(s): %s. The previous files were saved — use Rollback to restore them.',
+                        'File deployment failed after updating %d file(s): %s. %s',
                         count($manifest['changed']) + count($manifest['added']),
-                        $e->getMessage()
+                        $e->getMessage(),
+                        $savedNote
                     ),
                     0, $fromVersion, null, 'main', $remoteSanitized, 1, $startedAt, $capturedOutput
                 );
                 $this->audit($actor, $result, $capturedOutput, 0);
                 $emit('error', $result['message'], 55, true, $result);
+
                 return $result;
             }
 
@@ -1031,7 +1066,7 @@ class UpdateService
                 $composerCmd = $this->composerInstall();
                 $composer = $this->runProcess($composerCmd, 180);
                 $appendOutput(implode(' ', $composerCmd), $composer['output'], $composer['exit']);
-                $checkpoint('step=composer status=' . ($composer['success'] ? 'done' : 'failed exit=' . $composer['exit']));
+                $checkpoint('step=composer status='.($composer['success'] ? 'done' : 'failed exit='.$composer['exit']));
                 if (! $composer['success']) {
                     $isHomeError = str_contains(strtolower($composer['output']), 'home or composer_home')
                         || str_contains(strtolower($composer['output']), 'the home or composer_home');
@@ -1041,36 +1076,50 @@ class UpdateService
                     if ($isHomeError && $vendorExists) {
                         $checkpoint('step=composer status=skipped (HOME error but vendor/ present)');
                         $appendOutput('composer install', 'composer HOME error — vendor/ ships in ZIP, continuing.', 0);
-                        try { Log::warning('UpdateService: composer HOME error ignored during ZIP update — vendor/ present.'); } catch (Throwable) {}
+                        try {
+                            Log::warning('UpdateService: composer HOME error ignored during ZIP update — vendor/ present.');
+                        } catch (Throwable) {
+                        }
                     } elseif ($isPhpVersionError) {
                         $checkpoint('step=composer status=retrying with --ignore-platform-reqs (PHP mismatch)');
-                        $appendOutput('composer install', 'PHP version mismatch (web PHP ' . PHP_VERSION . ' vs Composer PHP) — retrying with --ignore-platform-reqs...', 0);
+                        $appendOutput('composer install', 'PHP version mismatch (web PHP '.PHP_VERSION.' vs Composer PHP) — retrying with --ignore-platform-reqs...', 0);
                         $composerRetry = $this->runProcess($this->composerInstall(ignorePlatformReqs: true), 300);
                         $appendOutput('composer install --ignore-platform-reqs', $composerRetry['output'], $composerRetry['exit']);
-                        $checkpoint('step=composer status=' . ($composerRetry['success'] ? 'done (retry)' : 'failed retry exit=' . $composerRetry['exit']));
+                        $checkpoint('step=composer status='.($composerRetry['success'] ? 'done (retry)' : 'failed retry exit='.$composerRetry['exit']));
                         if ($composerRetry['success']) {
-                            try { Log::warning('UpdateService: composer ZIP retry with --ignore-platform-reqs succeeded.'); } catch (Throwable) {}
+                            try {
+                                Log::warning('UpdateService: composer ZIP retry with --ignore-platform-reqs succeeded.');
+                            } catch (Throwable) {
+                            }
                         } elseif ($vendorExists) {
                             $checkpoint('step=composer status=skipped (retry failed but vendor/ present)');
                             $appendOutput('composer install', 'Composer retry failed but vendor/autoload.php exists — continuing (vendor ships in ZIP).', 0);
-                            try { Log::warning('UpdateService: composer ZIP retry failed but vendor exists — continuing.'); } catch (Throwable) {}
+                            try {
+                                Log::warning('UpdateService: composer ZIP retry failed but vendor exists — continuing.');
+                            } catch (Throwable) {
+                            }
                         } else {
-                            $result = $this->buildRunResult('failed', 'Dependencies failed: Composer PHP does not satisfy lock (requires >=8.4.1) but your web PHP is ' . PHP_VERSION . '. Fix: cPanel → MultiPHP Manager → set to ea-php85 (8.5) for BOTH web and CLI, or SSH: `composer install --ignore-platform-reqs`. Raw: ' . Str::limit($composer['output'], 500), 0, $fromVersion, null, 'main', $remoteSanitized, $composer['exit'], $startedAt, $capturedOutput);
+                            $result = $this->buildRunResult('failed', 'Dependencies failed: Composer PHP does not satisfy lock (requires >=8.4.1) but your web PHP is '.PHP_VERSION.'. Fix: cPanel → MultiPHP Manager → set to ea-php85 (8.5) for BOTH web and CLI, or SSH: `composer install --ignore-platform-reqs`. Raw: '.Str::limit($composer['output'], 500), 0, $fromVersion, null, 'main', $remoteSanitized, $composer['exit'], $startedAt, $capturedOutput);
                             $this->audit($actor, $result, $capturedOutput, 0);
                             $emit('error', $result['message'], 65, true, $result);
+
                             return $result;
                         }
                     } else {
-                        $result = $this->buildRunResult('failed', 'Files updated but dependencies failed — run composer install via SSH. ' . Str::limit($composer['output'], 500), 0, $fromVersion, null, 'main', $remoteSanitized, $composer['exit'], $startedAt, $capturedOutput);
+                        $result = $this->buildRunResult('failed', 'Files updated but dependencies failed — run composer install via SSH. '.Str::limit($composer['output'], 500), 0, $fromVersion, null, 'main', $remoteSanitized, $composer['exit'], $startedAt, $capturedOutput);
                         $this->audit($actor, $result, $capturedOutput, 0);
                         $emit('error', $result['message'], 65, true, $result);
+
                         return $result;
                     }
                 }
             } else {
                 $checkpoint('step=composer status=skipped (not in PATH)');
                 $appendOutput('composer install', 'composer not found in PATH — skipped (vendor/ ships in ZIP).', 0);
-                try { Log::warning('UpdateService: composer not found during ZIP update — vendor/ ships in archive.'); } catch (Throwable) {}
+                try {
+                    Log::warning('UpdateService: composer not found during ZIP update — vendor/ ships in archive.');
+                } catch (Throwable) {
+                }
             }
 
             // Step: Migrate
@@ -1078,7 +1127,7 @@ class UpdateService
             $emit('migrate', 'Updating database schema (your data is preserved)...', 78);
             $migrate = $this->runProcess(['php', 'artisan', 'migrate', '--force'], 60);
             $appendOutput('php artisan migrate --force', $migrate['output'], $migrate['exit']);
-            $checkpoint('step=migrate status=' . ($migrate['success'] ? 'done' : 'failed exit=' . $migrate['exit']));
+            $checkpoint('step=migrate status='.($migrate['success'] ? 'done' : 'failed exit='.$migrate['exit']));
             if (! $migrate['success']) {
                 // This process is still running the previous release's logic
                 // (it was loaded before the files above replaced it), so the
@@ -1088,12 +1137,13 @@ class UpdateService
                 $emit('migrate', 'Retrying with the updated code...', 80);
                 $retry = $this->finalizeWithNewCode();
                 $appendOutput('php artisan system:update:finalize', $retry['output'], $retry['exit']);
-                $checkpoint('step=finalize status=' . ($retry['success'] ? 'done' : 'failed exit=' . $retry['exit']));
+                $checkpoint('step=finalize status='.($retry['success'] ? 'done' : 'failed exit='.$retry['exit']));
 
                 if (! $retry['success']) {
-                    $result = $this->buildRunResult('failed', 'Database update failed — your existing data is intact. Files are updated; finish with: php artisan system:update:finalize. ' . Str::limit($migrate['output'], 500), 0, $fromVersion, null, 'main', $remoteSanitized, $migrate['exit'], $startedAt, $capturedOutput);
+                    $result = $this->buildRunResult('failed', 'Database update failed — your existing data is intact. Files are updated; finish with: php artisan system:update:finalize. '.Str::limit($migrate['output'], 500), 0, $fromVersion, null, 'main', $remoteSanitized, $migrate['exit'], $startedAt, $capturedOutput);
                     $this->audit($actor, $result, $capturedOutput, 0);
                     $emit('error', $result['message'], 78, true, $result);
+
                     return $result;
                 }
 
@@ -1118,19 +1168,20 @@ class UpdateService
             try {
                 $api = $this->fetchGithubCommits(1);
                 $toVersion = $api['remoteHash'] ?? null;
-            } catch (Throwable) {}
+            } catch (Throwable) {
+            }
 
             $short = $toVersion ? substr($toVersion, 0, 7) : 'latest';
 
-            $this->writeRestorePoint($restoreDir, $restorePoint(true, $toVersion !== null ? $short : null));
+            $restorePointSaved = $this->writeRestorePoint($restoreDir, $restorePoint(true, $toVersion !== null ? $short : null)) || $restorePointSaved;
 
             // Don't claim success on a half-updated install: new code against an
             // old schema is the state that is expensive to discover later.
             $pending = $this->pendingMigrations();
-            $checkpoint('step=verify pending_migrations=' . ($pending === null ? 'unknown' : (string) count($pending)));
+            $checkpoint('step=verify pending_migrations='.($pending === null ? 'unknown' : (string) count($pending)));
 
             if ($pending !== null && $pending !== []) {
-                $appendOutput('verify', 'Migrations are still pending after the update: ' . $this->describePending($pending), 1);
+                $appendOutput('verify', 'Migrations are still pending after the update: '.$this->describePending($pending), 1);
                 // VERSION is deliberately left at the old value: the code is new
                 // but the schema is not, so check() must keep offering this
                 // update until the repair completes. Restore points are kept for
@@ -1139,6 +1190,7 @@ class UpdateService
                 $result = $this->buildRunResult('failed', sprintf('Updated to %s but %d migration(s) are still pending (%s) — finish with: php artisan system:update:finalize', $short, count($pending), $this->describePending($pending)), 0, $fromVersion, $toVersion, 'main', $remoteSanitized, 1, $startedAt, $capturedOutput);
                 $this->audit($actor, $result, $capturedOutput, 0);
                 $emit('error', $result['message'], 95, true, $result);
+
                 return $result;
             }
 
@@ -1149,41 +1201,62 @@ class UpdateService
 
             $this->pruneRestorePoints();
 
-            $checkpoint('step=done version=' . $short);
-            $result = $this->buildRunResult('success', sprintf('Successfully updated to version %s.', $short), 0, $fromVersion, $toVersion, 'main', $remoteSanitized, 0, $startedAt, $capturedOutput);
+            $checkpoint('step=done version='.$short);
+            $successMessage = sprintf('Successfully updated to version %s.', $short);
+            if (! $restorePointSaved) {
+                $successMessage .= ' Note: the restore point for this update could not be recorded — Rollback will not be available for it.';
+            }
+            $result = $this->buildRunResult('success', $successMessage, 0, $fromVersion, $toVersion, 'main', $remoteSanitized, 0, $startedAt, $capturedOutput);
             $this->audit($actor, $result, $capturedOutput, 0);
             $emit('done', $result['message'], 100, true, $result);
+
             return $result;
 
         } catch (Throwable $e) {
             Log::error('UpdateService::runZip failed.', ['error' => $e->getMessage()]);
-            $capturedOutput .= "\n[exception] " . $e->getMessage() . "\n";
+            $capturedOutput .= "\n[exception] ".$e->getMessage()."\n";
             $result = $this->buildRunResult('unknown', 'Update failed unexpectedly. Please contact support.', 0, $fromVersion, null, 'main', $remoteSanitized, 1, $startedAt, Str::limit($capturedOutput, self::OUTPUT_LIMIT));
-            try { $this->audit($actor, $result, $capturedOutput, 0); } catch (Throwable) {}
+            try {
+                $this->audit($actor, $result, $capturedOutput, 0);
+            } catch (Throwable) {
+            }
             $emit('error', $result['message'], 0, true, $result);
+
             return $result;
         } finally {
             // Bring site back up even on failure
             try {
                 $up = $this->runProcess(['php', 'artisan', 'up'], 15);
                 if (! $up['success']) {
-                    try { \Illuminate\Support\Facades\Artisan::call('up'); } catch (Throwable) {}
+                    try {
+                        Artisan::call('up');
+                    } catch (Throwable) {
+                    }
                 }
             } catch (Throwable) {
-                try { \Illuminate\Support\Facades\Artisan::call('up'); } catch (Throwable) {}
+                try {
+                    Artisan::call('up');
+                } catch (Throwable) {
+                }
             }
 
             // Log full captured output to update.log (always — records killed/timed-out runs)
             try {
                 $body = trim($capturedOutput) !== '' ? Str::limit($capturedOutput, self::OUTPUT_LIMIT) : '(no output — process may have been killed mid-step)';
                 @file_put_contents($logPath, sprintf("[%s] actor=%s method=zip from=%s\n%s\n---\n", now()->toDateTimeString(), (string) ($actor->id ?? 'unknown'), $fromVersion, $body), FILE_APPEND | LOCK_EX);
-            } catch (Throwable) {}
+            } catch (Throwable) {
+            }
 
             // Clean up temp files
             try {
-                if (is_file($zipPath)) { @unlink($zipPath); }
-                if (is_dir($tmpDir))   { $this->rrmdir($tmpDir); }
-            } catch (Throwable) {}
+                if (is_file($zipPath)) {
+                    @unlink($zipPath);
+                }
+                if (is_dir($tmpDir)) {
+                    $this->rrmdir($tmpDir);
+                }
+            } catch (Throwable) {
+            }
         }
     }
 
@@ -1224,6 +1297,7 @@ class UpdateService
             if ($this->isPrunedVendorDeletion($line)) {
                 continue;
             }
+
             return true;
         }
 
@@ -1282,6 +1356,7 @@ class UpdateService
 
             if ($this->isPrunedVendorDeletion($line)) {
                 $pruned++;
+
                 continue;
             }
 
@@ -1384,21 +1459,30 @@ class UpdateService
                 $vendorExists = is_file(base_path('vendor/autoload.php'));
                 if ($isHomeError && $vendorExists) {
                     $append('composer install', 'composer HOME error — vendor/ ships in archive, continuing.', 0);
-                    try { Log::warning('UpdateService: composer HOME error ignored in finalize — vendor/ present.'); } catch (Throwable) {}
+                    try {
+                        Log::warning('UpdateService: composer HOME error ignored in finalize — vendor/ present.');
+                    } catch (Throwable) {
+                    }
                 } elseif ($isPhpVersionError) {
-                    $append('composer install', 'PHP version mismatch — retrying with --ignore-platform-reqs (web PHP ' . PHP_VERSION . ')...', 0);
+                    $append('composer install', 'PHP version mismatch — retrying with --ignore-platform-reqs (web PHP '.PHP_VERSION.')...', 0);
                     $composerRetry = $this->runProcess($this->composerInstall(ignorePlatformReqs: true), 300);
                     $append('composer install --ignore-platform-reqs', $composerRetry['output'], $composerRetry['exit']);
                     if ($composerRetry['success']) {
-                        try { Log::warning('UpdateService: composer finalize retry with --ignore-platform-reqs succeeded.'); } catch (Throwable) {}
+                        try {
+                            Log::warning('UpdateService: composer finalize retry with --ignore-platform-reqs succeeded.');
+                        } catch (Throwable) {
+                        }
                     } elseif ($vendorExists) {
                         $append('composer install', 'Composer retry failed but vendor exists — continuing (vendor ships).', 0);
-                        try { Log::warning('UpdateService: composer finalize retry failed but vendor exists — continuing.'); } catch (Throwable) {}
+                        try {
+                            Log::warning('UpdateService: composer finalize retry failed but vendor exists — continuing.');
+                        } catch (Throwable) {
+                        }
                     } else {
-                        return $fail('Dependencies failed: your server PHP (' . PHP_VERSION . ') does not satisfy the update (requires PHP >=8.4.1). Fix: cPanel → MultiPHP Manager → set to ea-php85 (8.5) → retry. ' . trim(Str::limit($composer['output'], 1500)), $composer['exit']);
+                        return $fail('Dependencies failed: your server PHP ('.PHP_VERSION.') does not satisfy the update (requires PHP >=8.4.1). Fix: cPanel → MultiPHP Manager → set to ea-php85 (8.5) → retry. '.trim(Str::limit($composer['output'], 1500)), $composer['exit']);
                     }
                 } else {
-                    return $fail('Dependencies failed to install. ' . trim(Str::limit($composer['output'], 500)), $composer['exit']);
+                    return $fail('Dependencies failed to install. '.trim(Str::limit($composer['output'], 500)), $composer['exit']);
                 }
             }
         } else {
@@ -1411,7 +1495,7 @@ class UpdateService
         $append('php artisan migrate --force', $migrate['output'], $migrate['exit']);
 
         if (! $migrate['success']) {
-            return $fail('Database update failed — your existing data is intact. ' . trim(Str::limit($migrate['output'], 500)), $migrate['exit']);
+            return $fail('Database update failed — your existing data is intact. '.trim(Str::limit($migrate['output'], 500)), $migrate['exit']);
         }
 
         // Caches.
@@ -1436,11 +1520,11 @@ class UpdateService
         // Verify rather than assume: a migrate step that "succeeded" but left
         // migrations pending is exactly the half-updated state we want to catch.
         $pendingList = $this->pendingMigrations();
-        $pending     = $pendingList === null ? null : $pendingList !== [];
+        $pending = $pendingList === null ? null : $pendingList !== [];
 
         if ($pending === true) {
             $message = sprintf('Update finished but %d migration(s) are still pending (%s) — run: php artisan migrate --force', count($pendingList), $this->describePending($pendingList));
-            $result  = ['status' => 'incomplete', 'message' => $message, 'output' => Str::limit($output, self::OUTPUT_LIMIT), 'exit' => 1, 'pending' => true];
+            $result = ['status' => 'incomplete', 'message' => $message, 'output' => Str::limit($output, self::OUTPUT_LIMIT), 'exit' => 1, 'pending' => true];
             $emit('error', $message, 90, true, $result);
 
             return $result;
@@ -1452,17 +1536,17 @@ class UpdateService
         // check() re-offered the same update forever, re-downloading and
         // re-deploying byte-identical code every time.
         $stamped = null;
-        $target  = $this->pendingVersionTarget();
+        $target = $this->pendingVersionTarget();
 
         if ($target !== null && $target !== $this->resolveLocalVersion() && $this->writeVersionMarker($target)) {
             $stamped = $target;
-            $append('version', 'Stamped VERSION as ' . $target . '.', 0);
+            $append('version', 'Stamped VERSION as '.$target.'.', 0);
         }
 
         $message = $stamped !== null
             ? sprintf('Post-update steps completed — now on version %s.', $stamped)
             : 'Post-update steps completed.';
-        $result  = ['status' => 'success', 'message' => $message, 'output' => Str::limit($output, self::OUTPUT_LIMIT), 'exit' => 0, 'pending' => $pending];
+        $result = ['status' => 'success', 'message' => $message, 'output' => Str::limit($output, self::OUTPUT_LIMIT), 'exit' => 0, 'pending' => $pending];
         $emit('done', $message, 100, true, $result);
 
         return $result;
@@ -1487,12 +1571,12 @@ class UpdateService
      * the schema is current" rule is only worth having if both branches are
      * exercised.
      *
-     * @return list<string>|null  null when the answer cannot be determined.
+     * @return list<string>|null null when the answer cannot be determined.
      */
     protected function pendingMigrations(): ?array
     {
         try {
-            /** @var \Illuminate\Database\Migrations\Migrator $migrator */
+            /** @var Migrator $migrator */
             $migrator = app('migrator');
 
             // No repository at all means the app was never migrated, which is a
@@ -1502,7 +1586,7 @@ class UpdateService
                 return null;
             }
 
-            $ran   = $migrator->getRepository()->getRan();
+            $ran = $migrator->getRepository()->getRan();
             $files = $migrator->getMigrationFiles(
                 array_merge($migrator->paths(), [database_path('migrations')])
             );
@@ -1522,9 +1606,9 @@ class UpdateService
     private function describePending(array $pending): string
     {
         $shown = array_slice($pending, 0, 3);
-        $more  = count($pending) - count($shown);
+        $more = count($pending) - count($shown);
 
-        return implode(', ', $shown) . ($more > 0 ? sprintf(' and %d more', $more) : '');
+        return implode(', ', $shown).($more > 0 ? sprintf(' and %d more', $more) : '');
     }
 
     /**
@@ -1617,14 +1701,14 @@ class UpdateService
             return $resolved;
         }
 
-        $sibling = dirname(PHP_BINARY) . DIRECTORY_SEPARATOR
-            . (DIRECTORY_SEPARATOR === '\\' ? 'php.exe' : 'php');
+        $sibling = dirname(PHP_BINARY).DIRECTORY_SEPARATOR
+            .(DIRECTORY_SEPARATOR === '\\' ? 'php.exe' : 'php');
 
         if (is_file($sibling)) {
             return $resolved = $sibling;
         }
 
-        $found = (new PhpExecutableFinder())->find(false);
+        $found = (new PhpExecutableFinder)->find(false);
 
         if (is_string($found) && $found !== '' && is_file($found)) {
             return $resolved = $found;
@@ -1698,7 +1782,7 @@ class UpdateService
                 if ($home === null || $home === '') {
                     $home = sys_get_temp_dir();
                 }
-                $composerHome = getenv('COMPOSER_HOME') ?: ($_SERVER['COMPOSER_HOME'] ?? null) ?: ($_ENV['COMPOSER_HOME'] ?? null) ?: ($home . DIRECTORY_SEPARATOR . '.composer');
+                $composerHome = getenv('COMPOSER_HOME') ?: ($_SERVER['COMPOSER_HOME'] ?? null) ?: ($_ENV['COMPOSER_HOME'] ?? null) ?: ($home.DIRECTORY_SEPARATOR.'.composer');
                 // Build env for the child process — merge current env so PATH etc. are preserved
                 $env = array_merge(
                     array_filter($_ENV ?? [], static fn ($v) => is_string($v) || is_numeric($v)),
@@ -1750,7 +1834,7 @@ class UpdateService
     private function isInstalledCommit(string $localVersion, array $commit): bool
     {
         $local = strtolower(trim($localVersion));
-        $hash  = strtolower((string) ($commit['hash'] ?? ''));
+        $hash = strtolower((string) ($commit['hash'] ?? ''));
 
         if ($local === '' || $hash === '' || strlen($local) < 7 || ! ctype_xdigit($local)) {
             return false;
@@ -1792,7 +1876,7 @@ class UpdateService
             ? substr($version, 0, 7)
             : $version;
 
-        return @file_put_contents($this->appRoot() . DIRECTORY_SEPARATOR . 'VERSION', $marker) !== false;
+        return @file_put_contents($this->appRoot().DIRECTORY_SEPARATOR.'VERSION', $marker) !== false;
     }
 
     /**
@@ -1823,7 +1907,7 @@ class UpdateService
         // appRoot(), not base_path(), so this reads back exactly what
         // writeVersionMarker() wrote — identical in production, and it keeps the
         // pair honest under tests that redirect the install root.
-        $marker = $this->appRoot() . DIRECTORY_SEPARATOR . 'VERSION';
+        $marker = $this->appRoot().DIRECTORY_SEPARATOR.'VERSION';
         $ver = trim((string) (is_file($marker) ? file_get_contents($marker) : config('app.version', 'dev')));
 
         return $ver !== '' ? $ver : 'dev';
@@ -1840,7 +1924,7 @@ class UpdateService
     private function downloadZip(string $url, string $destPath, ?callable $heartbeat = null): bool
     {
         $heartbeat ??= static function (): void {};
-        $caBundle   = storage_path('cacert.pem');
+        $caBundle = storage_path('cacert.pem');
 
         // ── Non-blocking curl process (preferred on IIS / Windows Server) ──────
         $curlBin = $this->findCurlBin();
@@ -1869,8 +1953,8 @@ class UpdateService
                 }
                 $process->wait();
 
-                $curlExit  = $process->getExitCode();
-                $curlSize  = is_file($destPath) ? filesize($destPath) : 0;
+                $curlExit = $process->getExitCode();
+                $curlSize = is_file($destPath) ? filesize($destPath) : 0;
                 $curlError = substr($process->getErrorOutput(), 0, 300);
                 @file_put_contents(storage_path('logs/update.log'), sprintf("[%s] curl-done: exit=%d size=%d err=%s\n", now()->toDateTimeString(), $curlExit ?? -1, $curlSize, $curlError ?: 'none'), FILE_APPEND | LOCK_EX);
 
@@ -1879,9 +1963,9 @@ class UpdateService
                 }
 
                 Log::warning('UpdateService: curl ZIP download failed.', [
-                    'exit'  => $curlExit,
-                    'size'  => $curlSize,
-                    'zip'   => $this->isZipArchive($destPath),
+                    'exit' => $curlExit,
+                    'size' => $curlSize,
+                    'zip' => $this->isZipArchive($destPath),
                     'error' => $curlError,
                 ]);
 
@@ -1909,7 +1993,7 @@ class UpdateService
 
             Log::warning('UpdateService: HTTP ZIP download did not yield an archive.', [
                 'status' => $response->status(),
-                'size'   => is_file($destPath) ? filesize($destPath) : 0,
+                'size' => is_file($destPath) ? filesize($destPath) : 0,
             ]);
 
             if (is_file($destPath)) {
@@ -1960,7 +2044,7 @@ class UpdateService
     private function looksLikeAppRoot(string $root): bool
     {
         foreach (['artisan', 'composer.json', 'app', 'bootstrap'] as $marker) {
-            if (! file_exists($root . DIRECTORY_SEPARATOR . $marker)) {
+            if (! file_exists($root.DIRECTORY_SEPARATOR.$marker)) {
                 return false;
             }
         }
@@ -2014,15 +2098,16 @@ class UpdateService
 
                 $tarErr = trim($process->getErrorOutput());
                 if ($process->isSuccessful() && $tarErr === '') {
-                    $entries = glob($destDir . DIRECTORY_SEPARATOR . '*', GLOB_ONLYDIR);
+                    $entries = glob($destDir.DIRECTORY_SEPARATOR.'*', GLOB_ONLYDIR);
                     if (! empty($entries)) {
                         Log::info('UpdateService: tar extraction succeeded.', $logCtx);
+
                         return $entries[0];
                     }
                 }
 
                 Log::warning('UpdateService: tar extraction incomplete/failed — falling through to PowerShell.', array_merge($logCtx, [
-                    'exit'   => $process->getExitCode(),
+                    'exit' => $process->getExitCode(),
                     'stderr' => substr($tarErr, 0, 500),
                 ]));
 
@@ -2043,11 +2128,11 @@ class UpdateService
         if ($psCheck['success']) {
             Log::info('UpdateService: extracting via PowerShell Expand-Archive.', $logCtx);
             try {
-                $safeZip  = str_replace("'", "''", $zipPath);
+                $safeZip = str_replace("'", "''", $zipPath);
                 $safeDest = str_replace("'", "''", $destDir);
-                $process  = new Process(
+                $process = new Process(
                     ['powershell', '-NoProfile', '-NonInteractive', '-Command',
-                     "Expand-Archive -LiteralPath '" . $safeZip . "' -DestinationPath '" . $safeDest . "' -Force"],
+                        "Expand-Archive -LiteralPath '".$safeZip."' -DestinationPath '".$safeDest."' -Force"],
                     base_path(), null, null, 300.0
                 );
                 $process->start();
@@ -2058,15 +2143,16 @@ class UpdateService
                 $process->wait();
 
                 if ($process->isSuccessful()) {
-                    $entries = glob($destDir . DIRECTORY_SEPARATOR . '*', GLOB_ONLYDIR);
+                    $entries = glob($destDir.DIRECTORY_SEPARATOR.'*', GLOB_ONLYDIR);
                     if (! empty($entries)) {
                         Log::info('UpdateService: PowerShell extraction succeeded.', $logCtx);
+
                         return $entries[0];
                     }
                 }
 
                 Log::warning('UpdateService: PowerShell Expand-Archive failed.', array_merge($logCtx, [
-                    'exit'  => $process->getExitCode(),
+                    'exit' => $process->getExitCode(),
                     'error' => substr($process->getErrorOutput(), 0, 500),
                 ]));
             } catch (Throwable $e) {
@@ -2077,18 +2163,21 @@ class UpdateService
         // ── 3. Last resort: blocking ZipArchive ──────────────────────────────
         if (! class_exists(\ZipArchive::class)) {
             Log::warning('UpdateService: ZipArchive not available.', $logCtx);
+
             return null;
         }
         Log::info('UpdateService: extracting via ZipArchive (blocking).', $logCtx);
-        $zip = new \ZipArchive();
+        $zip = new \ZipArchive;
         if ($zip->open($zipPath) !== true) {
             Log::warning('UpdateService: ZipArchive::open failed.', $logCtx);
+
             return null;
         }
         $zip->extractTo($destDir);
         $zip->close();
 
-        $entries = glob($destDir . DIRECTORY_SEPARATOR . '*', GLOB_ONLYDIR);
+        $entries = glob($destDir.DIRECTORY_SEPARATOR.'*', GLOB_ONLYDIR);
+
         return ! empty($entries) ? $entries[0] : null;
     }
 
@@ -2118,7 +2207,7 @@ class UpdateService
         array &$manifest,
         ?callable $heartbeat = null
     ): void {
-        $heartbeat     ??= static function (): void {};
+        $heartbeat ??= static function (): void {};
         $lastHeartbeat = time();
 
         $sep = DIRECTORY_SEPARATOR;
@@ -2145,12 +2234,12 @@ class UpdateService
 
             // Skip any path that matches or is under a preserved prefix
             foreach ($normalizedPreserve as $p) {
-                if ($relativePath === $p || str_starts_with($relativePath, $p . $sep)) {
+                if ($relativePath === $p || str_starts_with($relativePath, $p.$sep)) {
                     continue 2;
                 }
             }
 
-            $destPath = $destDir . $sep . $relativePath;
+            $destPath = $destDir.$sep.$relativePath;
 
             if ($item->isDir()) {
                 $this->ensureDirectory($destPath);
@@ -2172,7 +2261,7 @@ class UpdateService
 
             if (is_file($destPath)) {
                 if ($backupDir !== null) {
-                    $this->snapshotFile($destPath, $backupDir . $sep . $relativePath);
+                    $this->snapshotFile($destPath, $backupDir.$sep.$relativePath);
                 }
 
                 $manifest['changed'][] = str_replace('\\', '/', $relativePath);
@@ -2249,7 +2338,7 @@ class UpdateService
      */
     protected function restorePointRoot(): string
     {
-        return storage_path('app' . DIRECTORY_SEPARATOR . 'update-restore-points');
+        return storage_path('app'.DIRECTORY_SEPARATOR.'update-restore-points');
     }
 
     /**
@@ -2269,8 +2358,8 @@ class UpdateService
 
         $points = [];
 
-        foreach ((array) glob($root . DIRECTORY_SEPARATOR . '*', GLOB_ONLYDIR) as $dir) {
-            $manifestPath = $dir . DIRECTORY_SEPARATOR . 'manifest.json';
+        foreach ((array) glob($root.DIRECTORY_SEPARATOR.'*', GLOB_ONLYDIR) as $dir) {
+            $manifestPath = $dir.DIRECTORY_SEPARATOR.'manifest.json';
 
             if (! is_file($manifestPath)) {
                 continue;
@@ -2282,7 +2371,7 @@ class UpdateService
                 continue;
             }
 
-            $manifest['id']  = (string) ($manifest['id'] ?? basename($dir));
+            $manifest['id'] = (string) ($manifest['id'] ?? basename($dir));
             $manifest['dir'] = $dir;
             $points[] = $manifest;
         }
@@ -2295,22 +2384,29 @@ class UpdateService
     /**
      * Persist (or update) a restore point manifest.
      *
+     * Protected rather than private as a test seam, like isGitRepo() and
+     * resolveLocalVersion().
+     *
      * @param  array<string, mixed>  $manifest
      */
-    private function writeRestorePoint(string $dir, array $manifest): void
+    protected function writeRestorePoint(string $dir, array $manifest): bool
     {
         try {
             $this->ensureDirectory($dir);
 
-            @file_put_contents(
-                $dir . DIRECTORY_SEPARATOR . 'manifest.json',
+            $written = @file_put_contents(
+                $dir.DIRECTORY_SEPARATOR.'manifest.json',
                 (string) json_encode($manifest, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES)
             );
+
+            return $written !== false;
         } catch (Throwable $e) {
             try {
                 Log::warning('UpdateService: could not write restore point manifest.', ['error' => $e->getMessage()]);
             } catch (Throwable) {
             }
+
+            return false;
         }
     }
 
@@ -2384,7 +2480,7 @@ class UpdateService
      *
      * Call after fetching — a ref that has never been fetched does not exist locally.
      *
-     * @return string|null  null when neither ref is present.
+     * @return string|null null when neither ref is present.
      */
     private function resolveUpstreamRef(): ?string
     {
@@ -2638,7 +2734,7 @@ class UpdateService
         // check() to locate the installed commit inside it.
         $slice = static fn (array $result): array => [
             'remoteHash' => $result['remoteHash'] ?? null,
-            'commits'    => array_slice($result['commits'] ?? [], 0, max(1, $limit)),
+            'commits' => array_slice($result['commits'] ?? [], 0, max(1, $limit)),
         ];
 
         // Only cache successful results — failed/rate-limited responses must not
@@ -2662,8 +2758,9 @@ class UpdateService
             if (! $response->successful()) {
                 Log::warning('UpdateService: GitHub API returned non-2xx.', [
                     'status' => $response->status(),
-                    'body'   => substr($response->body(), 0, 300),
+                    'body' => substr($response->body(), 0, 300),
                 ]);
+
                 return null;
             }
 
@@ -2676,17 +2773,17 @@ class UpdateService
             foreach ($items as $item) {
                 $hash = $item['sha'] ?? '';
                 $commits[] = [
-                    'hash'    => $hash,
-                    'short'   => substr($hash, 0, 7),
+                    'hash' => $hash,
+                    'short' => substr($hash, 0, 7),
                     'message' => $item['commit']['message'] ?? '',
-                    'author'  => $item['commit']['author']['name'] ?? '',
-                    'date'    => $item['commit']['author']['date'] ?? '',
+                    'author' => $item['commit']['author']['name'] ?? '',
+                    'date' => $item['commit']['author']['date'] ?? '',
                 ];
             }
 
             $result = [
                 'remoteHash' => $commits[0]['hash'] ?? null,
-                'commits'    => $commits,
+                'commits' => $commits,
             ];
 
             Cache::put('system.github_commits', $result, 300);
@@ -2697,6 +2794,7 @@ class UpdateService
                 'error' => $e->getMessage(),
                 'class' => get_class($e),
             ]);
+
             return null;
         }
     }
@@ -2706,16 +2804,29 @@ class UpdateService
      *
      * @return array{status: string, message: string, behind: int, from: string|null, to: string|null, branch: string|null, remoteSanitized: string|null, exit: int, durationMs: int, output: string}
      */
-    public function rollback(string $fromHash, User $actor): array
+    public function rollback(string $fromHash, User $actor, ?callable $emit = null): array
     {
         $noop = static function (string $step, string $message, int $progress, bool $done = false, array $extra = []): void {};
+        $emit ??= $noop;
 
-        return $this->withUpdateLock(
+        // Rollback runs composer and the cache clears inside the request just like
+        // runZipLocked() does, which raises the limit to dodge the default 30s
+        // PHP/FastCGI execution timeout — without it a killed request leaves
+        // maintenance mode and the update lock behind.
+        @set_time_limit(0);
+
+        $result = $this->withUpdateLock(
             fn (): array => $this->isGitRepo()
-                ? $this->rollbackGit($fromHash, $actor)
-                : $this->rollbackZip($fromHash, $actor),
-            fn (): array => $this->busyResult($noop)
+                ? $this->rollbackGit($fromHash, $actor, $emit)
+                : $this->rollbackZip($fromHash, $actor, $emit),
+            fn (): array => $this->busyResult($emit)
         );
+
+        if (($result['status'] ?? '') !== 'busy') {
+            $emit(($result['status'] ?? '') === 'success' ? 'done' : 'error', (string) ($result['message'] ?? ''), 100, true, $result);
+        }
+
+        return $result;
     }
 
     /**
@@ -2728,14 +2839,14 @@ class UpdateService
      *
      * @return array{status: string, message: string, behind: int, from: string|null, to: string|null, branch: string|null, remoteSanitized: string|null, exit: int, durationMs: int, output: string}
      */
-    private function rollbackZip(string $target, User $actor): array
+    private function rollbackZip(string $target, User $actor, callable $emit): array
     {
-        $startedAt       = microtime(true);
-        $capturedOutput  = '';
+        $startedAt = microtime(true);
+        $capturedOutput = '';
         $remoteSanitized = 'https://github.com/Sanat-das/Manage-Hosting-CRM';
-        $currentVersion  = $this->resolveLocalVersion();
-        $appRoot         = $this->appRoot();
-        $sep             = DIRECTORY_SEPARATOR;
+        $currentVersion = $this->resolveLocalVersion();
+        $appRoot = $this->appRoot();
+        $sep = DIRECTORY_SEPARATOR;
 
         $appendOutput = function (string $label, string $output, int $exit) use (&$capturedOutput): void {
             $capturedOutput .= sprintf("\n[%s] exit=%d\n%s\n", $label, $exit, trim($output));
@@ -2744,13 +2855,16 @@ class UpdateService
         $points = $this->restorePoints();
 
         if ($points === []) {
-            return $this->buildRunResult('failed', 'No restore point is available — rollback only covers updates applied by this installer.', 0, $currentVersion, null, 'main', $remoteSanitized, 1, $startedAt, 'No restore points on disk.');
+            $result = $this->buildRunResult('failed', 'No restore point is available — rollback only covers updates applied by this installer.', 0, $currentVersion, null, 'main', $remoteSanitized, 1, $startedAt, 'No restore points on disk.');
+            $this->auditRollback($actor, $currentVersion, '', (int) round((microtime(true) - $startedAt) * 1000), 'failed', 'No restore points on disk.');
+
+            return $result;
         }
 
         // The history table posts the `from` version of the update to undo; the
         // id is also accepted so a specific snapshot can be named directly.
         $target = trim($target);
-        $point  = null;
+        $point = null;
 
         foreach ($points as $candidate) {
             if ($target !== '' && (string) $candidate['id'] === $target) {
@@ -2769,25 +2883,31 @@ class UpdateService
                 array_slice($points, 0, self::RESTORE_POINTS_KEPT)
             ));
 
-            return $this->buildRunResult('failed', 'No restore point matches version ' . ($target !== '' ? $target : '(none given)') . '. Available: ' . $available, 0, $currentVersion, null, 'main', $remoteSanitized, 1, $startedAt, 'Restore point not found.');
+            $result = $this->buildRunResult('failed', 'No restore point matches version '.($target !== '' ? $target : '(none given)').'. Available: '.$available, 0, $currentVersion, null, 'main', $remoteSanitized, 1, $startedAt, 'Restore point not found.');
+            $this->auditRollback($actor, $currentVersion, $target, (int) round((microtime(true) - $startedAt) * 1000), 'failed', 'Restore point not found.');
+
+            return $result;
         }
 
-        $backupDir = $point['dir'] . $sep . 'files';
-        $restored  = 0;
-        $removed   = 0;
-        $didDown   = false;
+        $backupDir = $point['dir'].$sep.'files';
+        $restored = 0;
+        $removed = 0;
+        $didDown = false;
 
         try {
-            $down = $this->runProcess(['php', 'artisan', 'down', '--secret=' . Str::random(16)], 15);
+            $down = $this->runProcess(['php', 'artisan', 'down', '--secret='.Str::random(16)], 15);
             $appendOutput('php artisan down', $down['output'], $down['exit']);
             $didDown = $down['success'] || str_contains(strtolower($down['output']), 'already');
+            $emit('maintenance', 'Preparing rollback...', 20);
+
+            $emit('restore', 'Restoring previous files...', 35);
 
             foreach ((array) ($point['changed'] ?? []) as $relative) {
-                $source = $backupDir . $sep . str_replace('/', $sep, (string) $relative);
-                $dest   = $appRoot . $sep . str_replace('/', $sep, (string) $relative);
+                $source = $backupDir.$sep.str_replace('/', $sep, (string) $relative);
+                $dest = $appRoot.$sep.str_replace('/', $sep, (string) $relative);
 
                 if (! is_file($source)) {
-                    throw new RuntimeException('Restore point is missing ' . $relative);
+                    throw new RuntimeException('Restore point is missing '.$relative);
                 }
 
                 $this->ensureDirectory(dirname($dest));
@@ -2803,15 +2923,34 @@ class UpdateService
                 $restored++;
             }
 
-            foreach ((array) ($point['added'] ?? []) as $relative) {
-                $dest = $appRoot . $sep . str_replace('/', $sep, (string) $relative);
+            $unlinkFailures = [];
 
-                if (is_file($dest) && @unlink($dest)) {
+            foreach ((array) ($point['added'] ?? []) as $relative) {
+                $dest = $appRoot.$sep.str_replace('/', $sep, (string) $relative);
+
+                if (! is_file($dest)) {
+                    continue;
+                }
+
+                if (@unlink($dest)) {
                     $removed++;
+                } else {
+                    $unlinkFailures[] = (string) $relative;
                 }
             }
 
             $appendOutput('restore files', sprintf('%d file(s) restored, %d added file(s) removed.', $restored, $removed), 0);
+            $emit('restore', sprintf('%d file(s) restored, %d removed.', $restored, $removed), 55);
+
+            $unlinkWarning = '';
+            if ($unlinkFailures !== []) {
+                $appendOutput('added files', sprintf(
+                    '%d added file(s) could not be removed: %s',
+                    count($unlinkFailures),
+                    implode(', ', array_slice($unlinkFailures, 0, 5))
+                ), 1);
+                $unlinkWarning = sprintf(' %d file(s) added by the update could not be removed (locked?) — remove them manually.', count($unlinkFailures));
+            }
 
             // Put the version marker back so check() stops advertising the
             // update that was just undone.
@@ -2819,24 +2958,41 @@ class UpdateService
                 $this->writeVersionMarker((string) $point['from']);
             }
 
+            $composerWarning = '';
             if ($this->composerAvailable()) {
+                $emit('composer', 'Installing dependencies...', 70);
                 $composer = $this->runProcess($this->composerInstall(), 300);
                 $appendOutput('composer install', $composer['output'], $composer['exit']);
+                if (! $composer['success']) {
+                    $composerWarning = sprintf(' Composer install reported an error (exit %d) — run composer install via SSH to sync dependencies.', $composer['exit']);
+                }
             }
 
+            $emit('cache', 'Clearing caches...', 88);
             foreach ([['php', 'artisan', 'optimize:clear'], ['php', 'artisan', 'config:clear'], ['php', 'artisan', 'view:clear']] as $cmd) {
                 $res = $this->runProcess($cmd, 60);
                 $appendOutput(implode(' ', $cmd), $res['output'], $res['exit']);
             }
 
-            $this->writeRestorePoint($point['dir'], array_merge(
+            $markedRestored = $this->writeRestorePoint($point['dir'], array_merge(
                 array_diff_key($point, ['dir' => null]),
                 ['restored_at' => now()->toIso8601String()]
             ));
 
+            $restoreNote = '';
+            if (! $markedRestored) {
+                $appendOutput('restore point', 'The restore point could not be marked as restored — a later system:update:finalize may stamp the wrong version.', 1);
+                $restoreNote = ' The restore point could not be marked as restored — a later system:update:finalize may stamp the wrong version.';
+            }
+
+            $successMessage = sprintf('Rolled back to version %s (%d file(s) restored). Note: database schema changes were not reversed.', (string) ($point['from'] ?? 'previous'), $restored)
+                .$composerWarning
+                .$unlinkWarning
+                .$restoreNote;
+
             $result = $this->buildRunResult(
                 'success',
-                sprintf('Rolled back to version %s (%d file(s) restored). Note: database schema changes were not reversed.', (string) ($point['from'] ?? 'previous'), $restored),
+                $successMessage,
                 0,
                 $currentVersion,
                 (string) ($point['from'] ?? ''),
@@ -2847,13 +3003,13 @@ class UpdateService
                 Str::limit($capturedOutput, self::OUTPUT_LIMIT)
             );
 
-            $this->auditRollback($actor, $currentVersion, (string) ($point['from'] ?? ''), $result['durationMs']);
+            $this->auditRollback($actor, $currentVersion, (string) ($point['from'] ?? ''), $result['durationMs'], 'success', $capturedOutput);
 
             return $result;
         } catch (Throwable $e) {
             $appendOutput('restore files', $e->getMessage(), 1);
 
-            return $this->buildRunResult(
+            $result = $this->buildRunResult(
                 'failed',
                 sprintf('Rollback failed after restoring %d file(s): %s. The restore point is intact — retry, or restore from %s via SSH.', $restored, $e->getMessage(), $backupDir),
                 0,
@@ -2865,15 +3021,25 @@ class UpdateService
                 $startedAt,
                 Str::limit($capturedOutput, self::OUTPUT_LIMIT)
             );
+
+            $this->auditRollback($actor, $currentVersion, (string) ($point['from'] ?? ''), (int) round((microtime(true) - $startedAt) * 1000), 'failed', $capturedOutput);
+
+            return $result;
         } finally {
             if ($didDown) {
                 try {
                     $up = $this->runProcess(['php', 'artisan', 'up'], 15);
                     if (! $up['success']) {
-                        try { \Illuminate\Support\Facades\Artisan::call('up'); } catch (Throwable) {}
+                        try {
+                            Artisan::call('up');
+                        } catch (Throwable) {
+                        }
                     }
                 } catch (Throwable) {
-                    try { \Illuminate\Support\Facades\Artisan::call('up'); } catch (Throwable) {}
+                    try {
+                        Artisan::call('up');
+                    } catch (Throwable) {
+                    }
                 }
             }
         }
@@ -2882,7 +3048,7 @@ class UpdateService
     /**
      * @return array{status: string, message: string, behind: int, from: string|null, to: string|null, branch: string|null, remoteSanitized: string|null, exit: int, durationMs: int, output: string}
      */
-    private function rollbackGit(string $fromHash, User $actor): array
+    private function rollbackGit(string $fromHash, User $actor, callable $emit): array
     {
         $startedAt = microtime(true);
         $capturedOutput = '';
@@ -2895,26 +3061,44 @@ class UpdateService
             $capturedOutput .= sprintf("\n[%s] exit=%d\n%s\n", $label, $exit, trim($output));
         };
 
+        $didDown = false;
+
         try {
             if (! preg_match('/^[0-9a-f]{7,40}$/i', $fromHash)) {
-                return $this->buildRunResult('failed', 'Invalid rollback target hash.', 0, $currentHash, null, $branch, $remoteSanitized, 1, $startedAt, 'Invalid hash.');
+                $result = $this->buildRunResult('failed', 'Invalid rollback target hash.', 0, $currentHash, null, $branch, $remoteSanitized, 1, $startedAt, 'Invalid hash.');
+                $this->auditRollback($actor, (string) $currentHash, $fromHash, (int) round((microtime(true) - $startedAt) * 1000), 'failed', 'Invalid hash.');
+
+                return $result;
             }
 
-            $down = $this->runProcess(['php', 'artisan', 'down', '--secret=' . Str::random(16)], 15);
+            $down = $this->runProcess(['php', 'artisan', 'down', '--secret='.Str::random(16)], 15);
             $appendOutput('php artisan down', $down['output'], $down['exit']);
+            $didDown = $down['success'] || str_contains(strtolower($down['output']), 'already');
+            $emit('maintenance', 'Preparing rollback...', 20);
 
             $reset = $this->runProcess(['git', 'reset', '--hard', $fromHash], 30);
-            $appendOutput('git reset --hard ' . $fromHash, $reset['output'], $reset['exit']);
+            $appendOutput('git reset --hard '.$fromHash, $reset['output'], $reset['exit']);
 
             if (! $reset['success']) {
-                return $this->buildRunResult('failed', 'Rollback failed — could not reset to the previous version. Check logs.', 0, $currentHash, null, $branch, $remoteSanitized, $reset['exit'], $startedAt, Str::limit($capturedOutput, self::OUTPUT_LIMIT));
+                $result = $this->buildRunResult('failed', 'Rollback failed — could not reset to the previous version. Check logs.', 0, $currentHash, null, $branch, $remoteSanitized, $reset['exit'], $startedAt, Str::limit($capturedOutput, self::OUTPUT_LIMIT));
+                $this->auditRollback($actor, (string) $currentHash, $fromHash, (int) round((microtime(true) - $startedAt) * 1000), 'failed', $capturedOutput);
+
+                return $result;
             }
 
+            $emit('restore', 'Code reset to the target version.', 45);
+
+            $composerWarning = '';
             if ($this->composerAvailable()) {
+                $emit('composer', 'Installing dependencies...', 70);
                 $composer = $this->runProcess($this->composerInstall(), 120);
                 $appendOutput('composer install', $composer['output'], $composer['exit']);
+                if (! $composer['success']) {
+                    $composerWarning = sprintf(' Composer install reported an error (exit %d) — run composer install via SSH to sync dependencies.', $composer['exit']);
+                }
             }
 
+            $emit('cache', 'Clearing caches...', 88);
             foreach ([['php', 'artisan', 'optimize:clear'], ['php', 'artisan', 'config:clear'], ['php', 'artisan', 'view:clear']] as $cmd) {
                 $res = $this->runProcess($cmd, 30);
                 $appendOutput(implode(' ', $cmd), $res['output'], $res['exit']);
@@ -2923,30 +3107,53 @@ class UpdateService
             $restoredHash = $this->resolveLocalHash();
             $short = $restoredHash !== null ? substr($restoredHash, 0, 7) : substr($fromHash, 0, 7);
 
-            $result = $this->buildRunResult('success', sprintf('Rolled back to version %s. Note: database schema changes were not reversed.', $short), 0, $currentHash, $restoredHash, $branch, $remoteSanitized, 0, $startedAt, Str::limit($capturedOutput, self::OUTPUT_LIMIT));
+            $successMessage = sprintf('Rolled back to version %s. Note: database schema changes were not reversed.', $short).$composerWarning;
 
-            $this->auditRollback($actor, (string) $currentHash, (string) $restoredHash, $result['durationMs']);
+            $result = $this->buildRunResult('success', $successMessage, 0, $currentHash, $restoredHash, $branch, $remoteSanitized, 0, $startedAt, Str::limit($capturedOutput, self::OUTPUT_LIMIT));
+
+            $this->auditRollback($actor, (string) $currentHash, (string) $restoredHash, $result['durationMs'], 'success', $capturedOutput);
 
             return $result;
 
         } catch (Throwable $e) {
-            return $this->buildRunResult('unknown', 'Rollback failed unexpectedly: ' . $e->getMessage(), 0, $currentHash, null, $branch, $remoteSanitized, 1, $startedAt, Str::limit($capturedOutput . "\n" . $e->getMessage(), self::OUTPUT_LIMIT));
+            $limited = Str::limit($capturedOutput."\n".$e->getMessage(), self::OUTPUT_LIMIT);
+            $result = $this->buildRunResult('unknown', 'Rollback failed unexpectedly: '.$e->getMessage(), 0, $currentHash, null, $branch, $remoteSanitized, 1, $startedAt, $limited);
+            $this->auditRollback($actor, (string) $currentHash, $fromHash, (int) round((microtime(true) - $startedAt) * 1000), 'unknown', $limited);
+
+            return $result;
         } finally {
-            try {
-                $up = $this->runProcess(['php', 'artisan', 'up'], 15);
-                if (! $up['success']) {
-                    try { \Illuminate\Support\Facades\Artisan::call('up'); } catch (Throwable) {}
+            if ($didDown) {
+                try {
+                    $up = $this->runProcess(['php', 'artisan', 'up'], 15);
+                    if (! $up['success']) {
+                        try {
+                            Artisan::call('up');
+                        } catch (Throwable) {
+                        }
+                    }
+                } catch (Throwable) {
+                    try {
+                        Artisan::call('up');
+                    } catch (Throwable) {
+                    }
                 }
-            } catch (Throwable) {
-                try { \Illuminate\Support\Facades\Artisan::call('up'); } catch (Throwable) {}
             }
         }
     }
 
     /** Write the activity_log row for a rollback. Shared by the git and ZIP paths; never throws. */
-    private function auditRollback(User $actor, string $from, string $to, int $durationMs): void
+    private function auditRollback(User $actor, string $from, string $to, int $durationMs, string $status = 'success', string $output = ''): void
     {
-        $metadata = ['from' => $from, 'to' => $to, 'status' => 'success', 'duration_ms' => $durationMs];
+        $metadata = [
+            'from' => $from,
+            'to' => $to,
+            'status' => $status,
+            'duration_ms' => $durationMs,
+            'output_excerpt' => Str::limit($output, self::OUTPUT_LIMIT),
+        ];
+
+        $shortFrom = $from !== '' ? substr($from, 0, 7) : 'unknown';
+        $shortTo = $to !== '' ? substr($to, 0, 7) : 'unknown';
 
         try {
             $ip = null;
@@ -2962,7 +3169,7 @@ class UpdateService
                 'user_id' => $actor->id ?? null,
                 'customer_id' => null,
                 'action' => 'system.rolledback',
-                'description' => sprintf('System rolled back from %s to %s', substr($from, 0, 7), substr($to, 0, 7)),
+                'description' => sprintf('System rolled back from %s to %s [%s]', $shortFrom, $shortTo, $status),
                 'metadata' => json_encode($metadata),
                 'properties' => json_encode($metadata),
                 'event' => 'rolledback',

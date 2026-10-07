@@ -33,7 +33,7 @@ class SystemController extends Controller
         $history = collect();
         try {
             $history = DB::table('activity_log')
-                ->where('action', 'system.updated')
+                ->whereIn('action', ['system.updated', 'system.rolledback'])
                 ->orderByDesc('created_at')
                 ->limit(20)
                 ->get();
@@ -49,9 +49,6 @@ class SystemController extends Controller
         return view('admin.system.index', compact('appInfo', 'check', 'history', 'activeTab'));
     }
 
-    /**
-     * @return RedirectResponse|JsonResponse
-     */
     public function check(Request $request): RedirectResponse|JsonResponse
     {
         // "Check for updates" must never answer from cache — neither the update
@@ -71,12 +68,9 @@ class SystemController extends Controller
             ->with('activeTab', 'updates');
     }
 
-    /**
-     * @return RedirectResponse|JsonResponse|StreamedResponse
-     */
     public function update(Request $request): RedirectResponse|JsonResponse|StreamedResponse
     {
-        $cacheKey = 'system.update_progress.' . $request->user()->id;
+        $cacheKey = 'system.update_progress.'.$request->user()->id;
 
         // Clear a finished run's result so the poller doesn't read it as this
         // run's outcome — but leave an in-flight run's progress alone, or a
@@ -90,63 +84,17 @@ class SystemController extends Controller
         // the update runs in a fully detached process (not subject to IIS requestTimeout).
         $isAjax = $request->expectsJson() || str_contains($request->header('Accept', ''), 'text/event-stream');
         if ($isAjax) {
-            // Prefer php.exe over php-cgi.exe for CLI invocation
-            $phpDir = dirname(PHP_BINARY);
-            $phpBin = is_file($phpDir . DIRECTORY_SEPARATOR . 'php.exe')
-                ? $phpDir . DIRECTORY_SEPARATOR . 'php.exe'
-                : PHP_BINARY;
-
             $actorId = (int) $request->user()->id;
-            $bgLog   = storage_path('logs/update-bg.log');
-
-            // Argument quoting is not survivable across the PHP -> shell ->
-            // launcher layers on Windows: PowerShell's -ArgumentList joins its
-            // entries with spaces without re-quoting them, and embedded double
-            // quotes are stripped in transit. Either way an install path
-            // containing a space ("C:\Program Files\...", "...\Local Sites\...")
-            // reaches php.exe split in two, and the process dies instantly with
-            // "Could not open input file" and no trace. Writing a .cmd wrapper
-            // keeps every quote inside a file this code generates, leaving the
-            // shell exactly one path to handle.
-            $launcher = storage_path('app/system-update-launch.cmd');
-            file_put_contents($launcher, implode("\r\n", [
-                '@echo off',
-                'cd /d "' . base_path() . '"',
-                '"' . $phpBin . '" "' . base_path('artisan') . '" system:run-update --actor=' . $actorId
-                    . ' > "' . $bgLog . '" 2>&1',
-                '',
-            ]));
-
-            // `start "" /B` detaches: cmd returns immediately and the grandchild
-            // outlives the request. Its output goes to a file rather than an
-            // inherited pipe, so nothing here blocks waiting for EOF.
-            $bgProcess = Process::fromShellCommandline(
-                'start "" /B "' . $launcher . '"',
-                base_path(), null, null, 15.0
-            );
 
             Cache::put($cacheKey, ['step' => 'waiting', 'progress' => 2, 'message' => 'Starting update...', 'done' => false], 600);
-            $bgProcess->run();
 
-            // Logged unconditionally: on IIS this is the only proof the launch
-            // branch was reached at all, and which php binary it picked.
-            Log::info('SystemController: background update launch attempted.', [
-                'php'     => $phpBin,
-                'actor'   => $actorId,
-                'exit'    => $bgProcess->getExitCode(),
-                'stderr'  => substr(trim($bgProcess->getErrorOutput()), 0, 500),
-                'bgLog'   => $bgLog,
-            ]);
-
-            if ($bgProcess->isSuccessful()) {
+            // Detached launch; see launchDetached() for why the .cmd wrapper exists.
+            if ($this->launchDetached('system:run-update --actor='.$actorId, 'system-update-launch.cmd', storage_path('logs/update-bg.log'))) {
                 return response()->json(['status' => 'started', 'message' => 'Update started in background.']);
             }
 
             // PowerShell unavailable or failed — fall through to synchronous paths below.
-            Log::warning('SystemController: background update launch failed, falling back to synchronous.', [
-                'exit'   => $bgProcess->getExitCode(),
-                'error'  => substr($bgProcess->getErrorOutput(), 0, 300),
-            ]);
+            Log::warning('SystemController: background update launch failed, falling back to synchronous.');
         }
 
         // Streaming mode: the JS progress UI sends Accept: text/event-stream
@@ -160,7 +108,7 @@ class SystemController extends Controller
                 $emit = function (string $step, string $message, int $progress, bool $done = false, array $extra = []) use ($cacheKey) {
                     $data = array_merge(['step' => $step, 'message' => $message, 'progress' => $progress, 'done' => $done], $extra);
                     Cache::put($cacheKey, $data, 600);
-                    echo 'data: ' . json_encode($data) . "\n\n";
+                    echo 'data: '.json_encode($data)."\n\n";
                     flush();
                 };
 
@@ -170,7 +118,7 @@ class SystemController extends Controller
                     report($e);
                     $data = ['step' => 'error', 'message' => 'Update failed unexpectedly. Please contact support.', 'progress' => 0, 'done' => true, 'status' => 'unknown'];
                     Cache::put($cacheKey, $data, 600);
-                    echo 'data: ' . json_encode($data) . "\n\n";
+                    echo 'data: '.json_encode($data)."\n\n";
                     flush();
                 }
             }, 200, [
@@ -213,31 +161,54 @@ class SystemController extends Controller
             if ($request->expectsJson()) {
                 return response()->json([
                     'status' => 'unknown',
-                    'message' => 'Update failed: ' . $e->getMessage(),
+                    'message' => 'Update failed: '.$e->getMessage(),
                 ], 500);
             }
 
             return back()
-                ->withErrors(['update' => 'Update failed: ' . $e->getMessage()])
+                ->withErrors(['update' => 'Update failed: '.$e->getMessage()])
                 ->with('activeTab', 'updates');
         }
     }
 
     public function progressStatus(Request $request): JsonResponse
     {
-        $data = Cache::get('system.update_progress.' . $request->user()->id);
+        $data = Cache::get('system.update_progress.'.$request->user()->id);
+
         return response()->json($data ?? ['step' => 'waiting', 'progress' => 0, 'message' => 'Waiting...', 'done' => false]);
     }
 
-    /**
-     * @return RedirectResponse|JsonResponse
-     */
     public function rollback(Request $request): RedirectResponse|JsonResponse
     {
         $fromHash = (string) $request->input('from_hash', '');
+        $cacheKey = 'system.update_progress.'.$request->user()->id;
+
+        $isAjax = $request->expectsJson() || str_contains($request->header('Accept', ''), 'text/event-stream');
+
+        // Only a plain token is safe to embed in the generated .cmd launcher; anything
+        // else takes the synchronous path, where the service validates the target.
+        if ($isAjax && strlen($fromHash) <= 100 && preg_match('/^[A-Za-z0-9._-]+$/', $fromHash) === 1) {
+            $existing = Cache::get($cacheKey);
+            if (! is_array($existing) || ($existing['done'] ?? true)) {
+                Cache::forget($cacheKey);
+            }
+
+            Cache::put($cacheKey, ['step' => 'waiting', 'progress' => 2, 'message' => 'Starting rollback...', 'done' => false], 600);
+
+            if ($this->launchDetached('system:run-rollback --actor='.(int) $request->user()->id.' --from='.$fromHash, 'system-rollback-launch.cmd', storage_path('logs/rollback-bg.log'))) {
+                return response()->json(['status' => 'started', 'message' => 'Rollback started in background.']);
+            }
+
+            Log::warning('SystemController: background rollback launch failed, falling back to synchronous.');
+        }
+
+        // JSON / form path — emit writes progress to cache for the polling endpoint
+        $emit = function (string $step, string $message, int $progress, bool $done = false, array $extra = []) use ($cacheKey) {
+            Cache::put($cacheKey, array_merge(['step' => $step, 'message' => $message, 'progress' => $progress, 'done' => $done], $extra), 600);
+        };
 
         try {
-            $result = $this->updater->rollback($fromHash, $request->user());
+            $result = $this->updater->rollback($fromHash, $request->user(), $emit);
 
             if ($request->expectsJson()) {
                 return response()->json($result);
@@ -259,12 +230,65 @@ class SystemController extends Controller
             report($e);
 
             if ($request->expectsJson()) {
-                return response()->json(['status' => 'unknown', 'message' => 'Rollback failed: ' . $e->getMessage()], 500);
+                return response()->json(['status' => 'unknown', 'message' => 'Rollback failed: '.$e->getMessage()], 500);
             }
 
             return back()
-                ->withErrors(['update' => 'Rollback failed: ' . $e->getMessage()])
+                ->withErrors(['update' => 'Rollback failed: '.$e->getMessage()])
                 ->with('activeTab', 'updates');
         }
+    }
+
+    /**
+     * Launch an artisan command as a fully detached background process.
+     *
+     * Argument quoting is not survivable across the PHP -> shell -> launcher
+     * layers on Windows: PowerShell's -ArgumentList joins its entries with
+     * spaces without re-quoting them, and embedded double quotes are stripped
+     * in transit. Either way an install path containing a space ("C:\Program
+     * Files\...", "...\Local Sites\...") reaches php.exe split in two, and the
+     * process dies instantly with "Could not open input file" and no trace.
+     * Writing a .cmd wrapper keeps every quote inside a file this code
+     * generates, leaving the shell exactly one path to handle.
+     *
+     * `start "" /B` detaches: cmd returns immediately and the grandchild
+     * outlives the request. Its output goes to a file rather than an inherited
+     * pipe, so nothing here blocks waiting for EOF.
+     */
+    protected function launchDetached(string $artisanCommand, string $launcherName, string $bgLog): bool
+    {
+        // Prefer php.exe over php-cgi.exe for CLI invocation
+        $phpDir = dirname(PHP_BINARY);
+        $phpBin = is_file($phpDir.DIRECTORY_SEPARATOR.'php.exe')
+            ? $phpDir.DIRECTORY_SEPARATOR.'php.exe'
+            : PHP_BINARY;
+
+        $launcher = storage_path('app'.DIRECTORY_SEPARATOR.$launcherName);
+        file_put_contents($launcher, implode("\r\n", [
+            '@echo off',
+            'cd /d "'.base_path().'"',
+            '"'.$phpBin.'" "'.base_path('artisan').'" '.$artisanCommand
+                .' > "'.$bgLog.'" 2>&1',
+            '',
+        ]));
+
+        $bgProcess = Process::fromShellCommandline(
+            'start "" /B "'.$launcher.'"',
+            base_path(), null, null, 15.0
+        );
+
+        $bgProcess->run();
+
+        // Logged unconditionally: on IIS this is the only proof the launch
+        // branch was reached at all, and which php binary it picked.
+        Log::info('SystemController: background launch attempted.', [
+            'command' => $artisanCommand,
+            'php' => $phpBin,
+            'exit' => $bgProcess->getExitCode(),
+            'stderr' => substr(trim($bgProcess->getErrorOutput()), 0, 500),
+            'launcher' => $launcher,
+        ]);
+
+        return $bgProcess->isSuccessful();
     }
 }
