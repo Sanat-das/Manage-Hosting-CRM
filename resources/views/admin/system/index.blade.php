@@ -1000,13 +1000,18 @@ document.addEventListener('DOMContentLoaded', function () {
 
             if (submitBtn) {
                 submitBtn.disabled = true;
-                submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status"></span>Rolling back…';
+                submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status"></span><span class="js-rollback-label">Rolling back…</span>';
             }
+            var labelEl = submitBtn ? submitBtn.querySelector('.js-rollback-label') : null;
 
             var isDone = false;
+            var startedAt = Date.now();
+            var lastMessage = '';
             var watchdog = setTimeout(function () { if (isDone) { return; } alert('Rollback is taking longer than expected. Refresh to check Update History for the result.'); window.location.reload(); }, 600000);
+            var ticker = setInterval(function () { if (isDone || !labelEl) { return; } var secs = Math.round((Date.now() - startedAt) / 1000); labelEl.textContent = 'Rolling back… ' + secs + 's' + (lastMessage ? ' · ' + lastMessage : ''); }, 1000);
             var polling = false;
             var pollTimer = null;
+            pollTimer = setInterval(poll, 2000);
 
             function stopPoll() {
                 if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
@@ -1016,6 +1021,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 if (isDone) return;
                 isDone = true;
                 clearTimeout(watchdog);
+                clearInterval(ticker);
                 stopPoll();
                 if (payload && payload.status === 'success') {
                     window.location.reload();
@@ -1033,6 +1039,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 }).then(function (r) { return r.json(); }).then(function (data) {
                     polling = false;
                     if (isDone || !data) return;
+                    if (data.step !== 'waiting' && data.message) { lastMessage = data.message; }
                     if (data.done) finish(data);
                 }).catch(function () {
                     // Transient failure — the interval retries while the page stays open.
@@ -1050,11 +1057,11 @@ document.addEventListener('DOMContentLoaded', function () {
             }).then(function (data) {
                 if (isDone) return;
                 if (data && data.status === 'started') {
-                    if (!pollTimer) pollTimer = setInterval(poll, 2000);
                     return;
                 }
                 finish(data);
             }).catch(function () {
+                clearInterval(ticker);
                 alert('Rollback could not be started.');
                 window.location.reload();
             });
