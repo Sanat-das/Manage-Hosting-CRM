@@ -257,6 +257,7 @@ final class SystemRollbackLaunchTest extends TestCase
         $cmd = $method->invoke($controller, "--from=we'ird", $log);
 
         $this->assertStringStartsWith('nohup ', $cmd);
+        $this->assertStringContainsString('setsid -f', $cmd);
         $this->assertStringEndsWith(' &', $cmd);
 
         // Paths are single-quoted, and a single quote inside a token is escaped

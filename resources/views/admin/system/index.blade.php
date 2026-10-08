@@ -1002,6 +1002,7 @@ document.addEventListener('DOMContentLoaded', function () {
             }
 
             var isDone = false;
+            var watchdog = setTimeout(function () { if (isDone) { return; } alert('Rollback is taking longer than expected. Refresh to check Update History for the result.'); window.location.reload(); }, 600000);
             var polling = false;
             var pollTimer = null;
 
@@ -1012,6 +1013,7 @@ document.addEventListener('DOMContentLoaded', function () {
             function finish(payload) {
                 if (isDone) return;
                 isDone = true;
+                clearTimeout(watchdog);
                 stopPoll();
                 if (payload && payload.status === 'success') {
                     window.location.reload();

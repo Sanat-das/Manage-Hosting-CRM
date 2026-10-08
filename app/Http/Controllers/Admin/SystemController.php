@@ -326,8 +326,10 @@ class SystemController extends Controller
     /**
      * Build the detached POSIX shell command for an artisan run.
      *
-     * `nohup ... &` lets the process outlive the request, with stdout and
-     * stderr redirected to the background log.
+     * `nohup setsid -f` puts the child in a new session so the web server
+     * tearing down the request's process group cannot reap it; nohup remains
+     * as belt-and-braces. stdout and stderr are redirected to the background
+     * log.
      */
     protected function posixLaunchCommand(string $artisanCommand, string $bgLog): string
     {
@@ -336,7 +338,7 @@ class SystemController extends Controller
             explode(' ', $artisanCommand)
         );
 
-        return 'nohup '.$this->posixEscape(PHP_BINARY)
+        return 'nohup setsid -f '.$this->posixEscape(PHP_BINARY)
             .' '.$this->posixEscape(base_path('artisan'))
             .' '.implode(' ', $tokens)
             .' > '.$this->posixEscape($bgLog).' 2>&1 &';
