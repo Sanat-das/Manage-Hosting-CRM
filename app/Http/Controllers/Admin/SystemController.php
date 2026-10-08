@@ -90,7 +90,7 @@ class SystemController extends Controller
                 Cache::put($cacheKey, ['step' => 'waiting', 'progress' => 2, 'message' => 'Starting update...', 'done' => false], 600);
 
                 // Detached launch; see launchDetached() for why the .cmd wrapper exists.
-                if ($this->launchDetached('system:run-update --actor='.$actorId, 'system-update-launch.cmd', storage_path('logs/update-bg.log'))) {
+                if ($this->launchDetached('system:run-update --actor='.$actorId, 'system-update-launch.cmd', storage_path('logs/update-bg.log'), storage_path('logs/update.log'))) {
                     return response()->json(['status' => 'started', 'message' => 'Update started in background.']);
                 }
 
@@ -200,7 +200,7 @@ class SystemController extends Controller
 
                 Cache::put($cacheKey, ['step' => 'waiting', 'progress' => 2, 'message' => 'Starting rollback...', 'done' => false], 600);
 
-                if ($this->launchDetached('system:run-rollback --actor='.(int) $request->user()->id.' --from='.$fromHash, 'system-rollback-launch.cmd', storage_path('logs/rollback-bg.log'))) {
+                if ($this->launchDetached('system:run-rollback --actor='.(int) $request->user()->id.' --from='.$fromHash, 'system-rollback-launch.cmd', storage_path('logs/rollback-bg.log'), storage_path('logs/rollback.log'))) {
                     return response()->json(['status' => 'started', 'message' => 'Rollback started in background.']);
                 }
 
@@ -253,8 +253,10 @@ class SystemController extends Controller
      * Windows detaches through a generated .cmd wrapper; POSIX through
      * `nohup ... &`. See each branch for the platform-specific reasoning.
      */
-    protected function launchDetached(string $artisanCommand, string $launcherName, string $bgLog): bool
+    protected function launchDetached(string $artisanCommand, string $launcherName, string $bgLog, ?string $verifyLog = null): bool
     {
+        $beforeSize = ($verifyLog !== null && is_file($verifyLog)) ? (int) filesize($verifyLog) : 0;
+
         if (DIRECTORY_SEPARATOR === '\\') {
             // Argument quoting is not survivable across the PHP -> shell -> launcher
             // layers on Windows: PowerShell's -ArgumentList joins its entries with
@@ -299,28 +301,64 @@ class SystemController extends Controller
                 'stderr' => substr(trim($bgProcess->getErrorOutput()), 0, 500),
                 'launcher' => $launcher,
             ]);
+        } else {
+            // `start "" /B` is Windows-only; on Linux the launch used to fail and
+            // long update/rollback runs fell back to executing inside the request.
+            $bgProcess = Process::fromShellCommandline(
+                $this->posixLaunchCommand($artisanCommand, $bgLog),
+                base_path(), null, null, 15.0
+            );
 
-            return $bgProcess->isSuccessful();
+            $bgProcess->run();
+
+            Log::info('SystemController: background launch attempted.', [
+                'command' => $artisanCommand,
+                'php' => PHP_BINARY,
+                'platform' => 'posix',
+                'exit' => $bgProcess->getExitCode(),
+                'stderr' => substr(trim($bgProcess->getErrorOutput()), 0, 500),
+            ]);
         }
 
-        // `start "" /B` is Windows-only; on Linux the launch used to fail and
-        // long update/rollback runs fell back to executing inside the request.
-        $bgProcess = Process::fromShellCommandline(
-            $this->posixLaunchCommand($artisanCommand, $bgLog),
-            base_path(), null, null, 15.0
-        );
+        // The shell reports success the moment it backgrounds the command, even
+        // when the child itself never runs (missing binary, killed at exec) — the
+        // mark file is the only reliable proof the child actually started.
+        if (! $bgProcess->isSuccessful()) {
+            return false;
+        }
 
-        $bgProcess->run();
+        if ($verifyLog !== null && ! $this->detachedChildStarted($verifyLog, $beforeSize)) {
+            Log::warning('SystemController: detached launch produced no child output — falling back to synchronous.', ['command' => $artisanCommand, 'verify' => $verifyLog]);
 
-        Log::info('SystemController: background launch attempted.', [
-            'command' => $artisanCommand,
-            'php' => PHP_BINARY,
-            'platform' => 'posix',
-            'exit' => $bgProcess->getExitCode(),
-            'stderr' => substr(trim($bgProcess->getErrorOutput()), 0, 500),
-        ]);
+            return false;
+        }
 
-        return $bgProcess->isSuccessful();
+        return true;
+    }
+
+    /**
+     * Whether a detached child actually produced output since the launch.
+     *
+     * The detached commands write a `booted` mark as their first instruction, so
+     * a log that grows past its pre-launch size is the signal the child started.
+     */
+    protected function detachedChildStarted(string $logFile, int $beforeSize, float $timeoutSeconds = 3.0): bool
+    {
+        $deadline = microtime(true) + $timeoutSeconds;
+
+        do {
+            clearstatcache(true, $logFile);
+
+            if (is_file($logFile) && filesize($logFile) > $beforeSize) {
+                return true;
+            }
+
+            if (microtime(true) >= $deadline) {
+                return false;
+            }
+
+            usleep(250000);
+        } while (true);
     }
 
     /**

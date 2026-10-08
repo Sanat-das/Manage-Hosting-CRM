@@ -108,9 +108,9 @@ final class SystemRollbackLaunchTest extends TestCase
                 parent::__construct($info, $updater);
             }
 
-            protected function launchDetached(string $artisanCommand, string $launcherName, string $bgLog): bool
+            protected function launchDetached(string $artisanCommand, string $launcherName, string $bgLog, ?string $verifyLog = null): bool
             {
-                $this->launchCalls[] = ['command' => $artisanCommand, 'launcher' => $launcherName, 'log' => $bgLog];
+                $this->launchCalls[] = ['command' => $artisanCommand, 'launcher' => $launcherName, 'log' => $bgLog, 'verify' => $verifyLog];
 
                 return $this->launchResult;
             }
@@ -157,7 +157,7 @@ final class SystemRollbackLaunchTest extends TestCase
                 parent::__construct($info, $updater);
             }
 
-            protected function launchDetached(string $artisanCommand, string $launcherName, string $bgLog): bool
+            protected function launchDetached(string $artisanCommand, string $launcherName, string $bgLog, ?string $verifyLog = null): bool
             {
                 throw new \RuntimeException('detached launch exploded');
             }
@@ -282,5 +282,45 @@ final class SystemRollbackLaunchTest extends TestCase
 
         $this->assertCount(1, $fake->rollbackCalls);
         $this->assertSame('aaaaaaa', $fake->rollbackCalls[0]['from']);
+    }
+
+    public function test_detached_child_start_detects_log_growth(): void
+    {
+        $controller = new class extends SystemController
+        {
+            public function __construct() {}
+        };
+
+        $method = new ReflectionMethod($controller, 'detachedChildStarted');
+        $method->setAccessible(true);
+
+        $log = tempnam(sys_get_temp_dir(), 'sc_verify_');
+        file_put_contents($log, 'existing');
+
+        try {
+            // No growth past the pre-launch size → the child is not proven to
+            // have started.
+            $this->assertFalse($method->invoke($controller, $log, strlen('existing'), 0.2));
+
+            // Any growth past the recorded size → started.
+            $this->assertTrue($method->invoke($controller, $log, strlen('existing') - 1, 0.2));
+        } finally {
+            @unlink($log);
+        }
+    }
+
+    public function test_detached_child_start_is_false_for_a_missing_log(): void
+    {
+        $controller = new class extends SystemController
+        {
+            public function __construct() {}
+        };
+
+        $method = new ReflectionMethod($controller, 'detachedChildStarted');
+        $method->setAccessible(true);
+
+        $missing = sys_get_temp_dir().DIRECTORY_SEPARATOR.'sc_verify_missing_'.uniqid().'.log';
+
+        $this->assertFalse($method->invoke($controller, $missing, 0, 0.2));
     }
 }
