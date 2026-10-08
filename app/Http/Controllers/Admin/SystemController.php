@@ -84,17 +84,21 @@ class SystemController extends Controller
         // the update runs in a fully detached process (not subject to IIS requestTimeout).
         $isAjax = $request->expectsJson() || str_contains($request->header('Accept', ''), 'text/event-stream');
         if ($isAjax) {
-            $actorId = (int) $request->user()->id;
+            try {
+                $actorId = (int) $request->user()->id;
 
-            Cache::put($cacheKey, ['step' => 'waiting', 'progress' => 2, 'message' => 'Starting update...', 'done' => false], 600);
+                Cache::put($cacheKey, ['step' => 'waiting', 'progress' => 2, 'message' => 'Starting update...', 'done' => false], 600);
 
-            // Detached launch; see launchDetached() for why the .cmd wrapper exists.
-            if ($this->launchDetached('system:run-update --actor='.$actorId, 'system-update-launch.cmd', storage_path('logs/update-bg.log'))) {
-                return response()->json(['status' => 'started', 'message' => 'Update started in background.']);
+                // Detached launch; see launchDetached() for why the .cmd wrapper exists.
+                if ($this->launchDetached('system:run-update --actor='.$actorId, 'system-update-launch.cmd', storage_path('logs/update-bg.log'))) {
+                    return response()->json(['status' => 'started', 'message' => 'Update started in background.']);
+                }
+
+                // PowerShell unavailable or failed — fall through to synchronous paths below.
+                Log::warning('SystemController: background update launch failed, falling back to synchronous.');
+            } catch (Throwable $e) {
+                Log::warning('SystemController: background update launch failed, falling back to synchronous.', ['error' => $e->getMessage()]);
             }
-
-            // PowerShell unavailable or failed — fall through to synchronous paths below.
-            Log::warning('SystemController: background update launch failed, falling back to synchronous.');
         }
 
         // Streaming mode: the JS progress UI sends Accept: text/event-stream
@@ -188,18 +192,22 @@ class SystemController extends Controller
         // Only a plain token is safe to embed in the generated .cmd launcher; anything
         // else takes the synchronous path, where the service validates the target.
         if ($isAjax && strlen($fromHash) <= 100 && preg_match('/^[A-Za-z0-9._-]+$/', $fromHash) === 1) {
-            $existing = Cache::get($cacheKey);
-            if (! is_array($existing) || ($existing['done'] ?? true)) {
-                Cache::forget($cacheKey);
+            try {
+                $existing = Cache::get($cacheKey);
+                if (! is_array($existing) || ($existing['done'] ?? true)) {
+                    Cache::forget($cacheKey);
+                }
+
+                Cache::put($cacheKey, ['step' => 'waiting', 'progress' => 2, 'message' => 'Starting rollback...', 'done' => false], 600);
+
+                if ($this->launchDetached('system:run-rollback --actor='.(int) $request->user()->id.' --from='.$fromHash, 'system-rollback-launch.cmd', storage_path('logs/rollback-bg.log'))) {
+                    return response()->json(['status' => 'started', 'message' => 'Rollback started in background.']);
+                }
+
+                Log::warning('SystemController: background rollback launch failed, falling back to synchronous.');
+            } catch (Throwable $e) {
+                Log::warning('SystemController: background rollback launch failed, falling back to synchronous.', ['error' => $e->getMessage()]);
             }
-
-            Cache::put($cacheKey, ['step' => 'waiting', 'progress' => 2, 'message' => 'Starting rollback...', 'done' => false], 600);
-
-            if ($this->launchDetached('system:run-rollback --actor='.(int) $request->user()->id.' --from='.$fromHash, 'system-rollback-launch.cmd', storage_path('logs/rollback-bg.log'))) {
-                return response()->json(['status' => 'started', 'message' => 'Rollback started in background.']);
-            }
-
-            Log::warning('SystemController: background rollback launch failed, falling back to synchronous.');
         }
 
         // JSON / form path — emit writes progress to cache for the polling endpoint
@@ -242,53 +250,107 @@ class SystemController extends Controller
     /**
      * Launch an artisan command as a fully detached background process.
      *
-     * Argument quoting is not survivable across the PHP -> shell -> launcher
-     * layers on Windows: PowerShell's -ArgumentList joins its entries with
-     * spaces without re-quoting them, and embedded double quotes are stripped
-     * in transit. Either way an install path containing a space ("C:\Program
-     * Files\...", "...\Local Sites\...") reaches php.exe split in two, and the
-     * process dies instantly with "Could not open input file" and no trace.
-     * Writing a .cmd wrapper keeps every quote inside a file this code
-     * generates, leaving the shell exactly one path to handle.
-     *
-     * `start "" /B` detaches: cmd returns immediately and the grandchild
-     * outlives the request. Its output goes to a file rather than an inherited
-     * pipe, so nothing here blocks waiting for EOF.
+     * Windows detaches through a generated .cmd wrapper; POSIX through
+     * `nohup ... &`. See each branch for the platform-specific reasoning.
      */
     protected function launchDetached(string $artisanCommand, string $launcherName, string $bgLog): bool
     {
-        // Prefer php.exe over php-cgi.exe for CLI invocation
-        $phpDir = dirname(PHP_BINARY);
-        $phpBin = is_file($phpDir.DIRECTORY_SEPARATOR.'php.exe')
-            ? $phpDir.DIRECTORY_SEPARATOR.'php.exe'
-            : PHP_BINARY;
+        if (DIRECTORY_SEPARATOR === '\\') {
+            // Argument quoting is not survivable across the PHP -> shell -> launcher
+            // layers on Windows: PowerShell's -ArgumentList joins its entries with
+            // spaces without re-quoting them, and embedded double quotes are stripped
+            // in transit. Either way an install path containing a space ("C:\Program
+            // Files\...", "...\Local Sites\...") reaches php.exe split in two, and the
+            // process dies instantly with "Could not open input file" and no trace.
+            // Writing a .cmd wrapper keeps every quote inside a file this code
+            // generates, leaving the shell exactly one path to handle.
+            //
+            // `start "" /B` detaches: cmd returns immediately and the grandchild
+            // outlives the request. Its output goes to a file rather than an inherited
+            // pipe, so nothing here blocks waiting for EOF.
+            // Prefer php.exe over php-cgi.exe for CLI invocation
+            $phpDir = dirname(PHP_BINARY);
+            $phpBin = is_file($phpDir.DIRECTORY_SEPARATOR.'php.exe')
+                ? $phpDir.DIRECTORY_SEPARATOR.'php.exe'
+                : PHP_BINARY;
 
-        $launcher = storage_path('app'.DIRECTORY_SEPARATOR.$launcherName);
-        file_put_contents($launcher, implode("\r\n", [
-            '@echo off',
-            'cd /d "'.base_path().'"',
-            '"'.$phpBin.'" "'.base_path('artisan').'" '.$artisanCommand
-                .' > "'.$bgLog.'" 2>&1',
-            '',
-        ]));
+            $launcher = storage_path('app'.DIRECTORY_SEPARATOR.$launcherName);
+            file_put_contents($launcher, implode("\r\n", [
+                '@echo off',
+                'cd /d "'.base_path().'"',
+                '"'.$phpBin.'" "'.base_path('artisan').'" '.$artisanCommand
+                    .' > "'.$bgLog.'" 2>&1',
+                '',
+            ]));
 
+            $bgProcess = Process::fromShellCommandline(
+                'start "" /B "'.$launcher.'"',
+                base_path(), null, null, 15.0
+            );
+
+            $bgProcess->run();
+
+            // Logged unconditionally: on IIS this is the only proof the launch
+            // branch was reached at all, and which php binary it picked.
+            Log::info('SystemController: background launch attempted.', [
+                'command' => $artisanCommand,
+                'php' => $phpBin,
+                'exit' => $bgProcess->getExitCode(),
+                'stderr' => substr(trim($bgProcess->getErrorOutput()), 0, 500),
+                'launcher' => $launcher,
+            ]);
+
+            return $bgProcess->isSuccessful();
+        }
+
+        // `start "" /B` is Windows-only; on Linux the launch used to fail and
+        // long update/rollback runs fell back to executing inside the request.
         $bgProcess = Process::fromShellCommandline(
-            'start "" /B "'.$launcher.'"',
+            $this->posixLaunchCommand($artisanCommand, $bgLog),
             base_path(), null, null, 15.0
         );
 
         $bgProcess->run();
 
-        // Logged unconditionally: on IIS this is the only proof the launch
-        // branch was reached at all, and which php binary it picked.
         Log::info('SystemController: background launch attempted.', [
             'command' => $artisanCommand,
-            'php' => $phpBin,
+            'php' => PHP_BINARY,
+            'platform' => 'posix',
             'exit' => $bgProcess->getExitCode(),
             'stderr' => substr(trim($bgProcess->getErrorOutput()), 0, 500),
-            'launcher' => $launcher,
         ]);
 
         return $bgProcess->isSuccessful();
+    }
+
+    /**
+     * Build the detached POSIX shell command for an artisan run.
+     *
+     * `nohup ... &` lets the process outlive the request, with stdout and
+     * stderr redirected to the background log.
+     */
+    protected function posixLaunchCommand(string $artisanCommand, string $bgLog): string
+    {
+        $tokens = array_map(
+            fn (string $token): string => $this->posixEscape($token),
+            explode(' ', $artisanCommand)
+        );
+
+        return 'nohup '.$this->posixEscape(PHP_BINARY)
+            .' '.$this->posixEscape(base_path('artisan'))
+            .' '.implode(' ', $tokens)
+            .' > '.$this->posixEscape($bgLog).' 2>&1 &';
+    }
+
+    /**
+     * Escape a single shell argument for POSIX sh.
+     *
+     * escapeshellarg() is platform-dependent: on Windows it emits double-quote
+     * wrapping, which is wrong for the POSIX command built here. Always emit the
+     * single-quote form so the command is correct on the Linux host that runs it.
+     */
+    protected function posixEscape(string $value): string
+    {
+        return "'".str_replace("'", "'\\''", $value)."'";
     }
 }

@@ -12,6 +12,7 @@ use App\Services\System\AppInfoService;
 use App\Services\System\UpdateService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
+use ReflectionMethod;
 use Tests\TestCase;
 
 /**
@@ -120,6 +121,53 @@ final class SystemRollbackLaunchTest extends TestCase
         return [$controller, $fake];
     }
 
+    /**
+     * Bind the controller with a launchDetached() that throws, plus a recording
+     * UpdateService, to prove a failed launch can never 500 the request.
+     *
+     * @return array{0: object, 1: object}
+     */
+    private function bindThrowingController(): array
+    {
+        $result = $this->cannedResult();
+
+        $fake = new class($result) extends UpdateService
+        {
+            /** @var list<array{from: string, actor: User}> */
+            public array $rollbackCalls = [];
+
+            public function __construct(private readonly array $result) {}
+
+            public function rollback(string $fromHash, User $actor, ?callable $emit = null): array
+            {
+                $this->rollbackCalls[] = ['from' => $fromHash, 'actor' => $actor];
+
+                if ($emit !== null) {
+                    $emit('done', 'canned', 100, true, ['status' => 'success']);
+                }
+
+                return $this->result;
+            }
+        };
+
+        $controller = new class(new AppInfoService, $fake) extends SystemController
+        {
+            public function __construct(AppInfoService $info, UpdateService $updater)
+            {
+                parent::__construct($info, $updater);
+            }
+
+            protected function launchDetached(string $artisanCommand, string $launcherName, string $bgLog): bool
+            {
+                throw new \RuntimeException('detached launch exploded');
+            }
+        };
+
+        $this->app->bind(SystemController::class, fn () => $controller);
+
+        return [$controller, $fake];
+    }
+
     // ------------------------------------------------------------------
     // Tests
     // ------------------------------------------------------------------
@@ -193,5 +241,45 @@ final class SystemRollbackLaunchTest extends TestCase
         // No JSON Accept header, so the detached branch is never considered.
         $this->assertSame([], $controller->launchCalls);
         $this->assertCount(1, $fake->rollbackCalls);
+    }
+
+    public function test_posix_launch_command_detaches_with_escaped_arguments(): void
+    {
+        $controller = new class extends SystemController
+        {
+            public function __construct() {}
+        };
+
+        $method = new ReflectionMethod($controller, 'posixLaunchCommand');
+        $method->setAccessible(true);
+
+        $log = storage_path('logs/rollback-bg.log');
+        $cmd = $method->invoke($controller, "--from=we'ird", $log);
+
+        $this->assertStringStartsWith('nohup ', $cmd);
+        $this->assertStringEndsWith(' &', $cmd);
+
+        // Paths are single-quoted, and a single quote inside a token is escaped
+        // as '\'' so it cannot break out of its argument.
+        $this->assertStringContainsString("'".base_path('artisan')."'", $cmd);
+        $this->assertStringContainsString("'".$log."'", $cmd);
+        $this->assertStringContainsString("'\''", $cmd);
+    }
+
+    public function test_rollback_launch_throw_falls_back_to_synchronous_without_500(): void
+    {
+        [, $fake] = $this->bindThrowingController();
+        $admin = $this->adminUser();
+
+        $response = $this->actingAs($admin)->postJson(route('admin.system.rollback'), ['from_hash' => 'aaaaaaa']);
+
+        // A throwing launch must be caught and fall through to the synchronous
+        // path, not surface as a 500.
+        $response->assertOk();
+        $response->assertJsonPath('status', 'success');
+        $response->assertJsonPath('message', 'canned');
+
+        $this->assertCount(1, $fake->rollbackCalls);
+        $this->assertSame('aaaaaaa', $fake->rollbackCalls[0]['from']);
     }
 }
