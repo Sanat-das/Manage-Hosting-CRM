@@ -917,6 +917,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
             var progressUrl = '{{ route('admin.system.update.progress') }}';
             var isDone = false;
+            var watchdog = setTimeout(function () { if (isDone) { return; } alert('Update is taking longer than expected. Refresh to check the update result.'); window.location.reload(); }, 600000);
             var pollTimer = null;
 
             function stopPoll() {
@@ -930,7 +931,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 }).then(function (r) { return r.json(); }).then(function (data) {
                     if (isDone || !data || data.step === 'waiting') return;
                     handleEvent(data);
-                    if (data.done) { isDone = true; stopPoll(); }
+                    if (data.done) { isDone = true; stopPoll(); clearTimeout(watchdog); }
                 }).catch(function () {});
             }
 
@@ -954,6 +955,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 // Synchronous fallback: treat the POST response as the final result.
                 stopPoll();
                 isDone = true;
+                clearTimeout(watchdog);
                 var success = (data.status === 'success' || data.status === 'up_to_date') && (data.exit === undefined || data.exit === 0);
                 if (success) {
                     STEPS.forEach(function (id) { if (stepEl(id) && stepEl(id).querySelector('.bi-circle')) setStep(id, 'done'); });
