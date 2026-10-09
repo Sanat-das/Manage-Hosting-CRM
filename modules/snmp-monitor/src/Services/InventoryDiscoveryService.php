@@ -172,8 +172,8 @@ final class InventoryDiscoveryService
 
     /**
      * Deterministic asset tag: SNMP-<sanitized sysName, else host>. Collisions
-     * (including soft-deleted rows, which still occupy the unique index) are
-     * resolved by phoning the suffix: -2, -3, ...
+     * among live rows are resolved by appending the suffix: -2, -3, ... A
+     * soft-deleted row does not reserve its tag, so it is reusable.
      */
     private function assetTagFor(?string $sysName, string $host, int $targetId): string
     {
@@ -191,7 +191,7 @@ final class InventoryDiscoveryService
         $candidate = $base;
         $suffix = 2;
 
-        while (InventoryAsset::withTrashed()->where('asset_tag', $candidate)->exists()) {
+        while (InventoryAsset::query()->where('asset_tag', $candidate)->exists()) {
             $candidate = $base.'-'.$suffix;
             $suffix++;
         }

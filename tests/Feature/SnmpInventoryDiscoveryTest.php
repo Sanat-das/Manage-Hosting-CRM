@@ -156,6 +156,34 @@ final class SnmpInventoryDiscoveryTest extends TestCase
     }
 
     // ------------------------------------------------------------------
+    // Reuse: a SOFT-DELETED row holding the base tag no longer reserves it,
+    // so a newly discovered device takes the base tag instead of a suffix.
+    // ------------------------------------------------------------------
+
+    public function test_a_soft_deleted_tag_does_not_force_a_suffix(): void
+    {
+        $manager = app(ModuleManager::class);
+        $module = $this->activateSnmpMonitorModule($manager);
+        $product = $this->makeMonitoredProduct($manager, $module);
+
+        $trashed = InventoryAsset::create(['asset_tag' => 'SNMP-DUP-HOST', 'asset_type' => 'server']);
+        $trashed->delete();
+
+        $target = $this->makeTarget($this->makeAccount($product), ['host' => '192.0.2.73']);
+
+        $fake = $this->fakeSnmpClient();
+        $fake->gets['1.3.6.1.2.1.1.5.0'] = Oid::fromString('1.3.6.1.2.1.1.5.0', 'dup host');
+        $this->bindCapturingCollector($fake);
+
+        (new PollHostBatch([$target->id]))->handle($manager);
+
+        $asset = InventoryAsset::query()->sole();
+        $this->assertSame('SNMP-DUP-HOST', $asset->asset_tag);
+        $this->assertSame(1, InventoryAsset::query()->count());
+        $this->assertSame(2, InventoryAsset::withTrashed()->count());
+    }
+
+    // ------------------------------------------------------------------
     // Human edits win: status / notes / a non-null manufacturer survive a
     // later poll untouched.
     // ------------------------------------------------------------------

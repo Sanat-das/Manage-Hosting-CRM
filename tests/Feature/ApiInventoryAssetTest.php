@@ -149,6 +149,37 @@ class ApiInventoryAssetTest extends TestCase
         ]);
     }
 
+    public function test_store_can_reuse_the_tag_of_a_deleted_asset(): void
+    {
+        $api = $this->actingAsApi($this->apiUser());
+
+        $created = $api->postJson('/api/inventory-assets', $this->validPayload(['asset_tag' => 'API-AST-REUSE']));
+        $created->assertStatus(201);
+
+        $api->deleteJson("/api/inventory-assets/{$created->json('data.id')}")->assertOk();
+
+        $again = $api->postJson('/api/inventory-assets', $this->validPayload(['asset_tag' => 'API-AST-REUSE']));
+
+        $again->assertStatus(201);
+        $again->assertJsonPath('data.asset_tag', 'API-AST-REUSE');
+        $this->assertSame(2, InventoryAsset::withTrashed()->where('asset_tag', 'API-AST-REUSE')->count());
+        $this->assertSame(1, InventoryAsset::where('asset_tag', 'API-AST-REUSE')->count());
+    }
+
+    public function test_store_rejects_a_duplicate_live_asset_tag(): void
+    {
+        $api = $this->actingAsApi($this->apiUser());
+
+        $api->postJson('/api/inventory-assets', $this->validPayload(['asset_tag' => 'API-AST-DUP']))
+            ->assertStatus(201);
+
+        $response = $api->postJson('/api/inventory-assets', $this->validPayload(['asset_tag' => 'API-AST-DUP']));
+
+        $response->assertStatus(422);
+        $response->assertJsonValidationErrors('asset_tag');
+        $this->assertSame(1, InventoryAsset::where('asset_tag', 'API-AST-DUP')->count());
+    }
+
     public function test_update_changes_asset_fields(): void
     {
         $asset = $this->makeAsset(['asset_tag' => 'API-AST-EDIT']);

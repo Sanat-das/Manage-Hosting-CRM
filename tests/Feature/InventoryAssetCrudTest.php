@@ -8,6 +8,7 @@ use App\Models\Permission;
 use App\Models\Rack;
 use App\Models\Role;
 use App\Models\User;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -287,6 +288,77 @@ class InventoryAssetCrudTest extends TestCase
 
         $response->assertRedirect(route('admin.inventory-assets.index'));
         $this->assertSoftDeleted('inventory_assets', ['id' => $asset->id]);
+    }
+
+    public function test_asset_tag_can_be_reused_after_a_soft_delete(): void
+    {
+        $admin = $this->actingAsAdmin();
+
+        $store = $admin->post('/admin/inventory-assets', $this->validPayload(['asset_tag' => 'AST-REUSE']));
+        $store->assertRedirect(route('admin.inventory-assets.index'));
+        $store->assertSessionHasNoErrors();
+
+        $asset = InventoryAsset::where('asset_tag', 'AST-REUSE')->sole();
+
+        $admin->delete("/admin/inventory-assets/{$asset->id}")
+            ->assertRedirect(route('admin.inventory-assets.index'));
+
+        $restore = $admin->post('/admin/inventory-assets', $this->validPayload(['asset_tag' => 'AST-REUSE']));
+        $restore->assertRedirect(route('admin.inventory-assets.index'));
+        $restore->assertSessionHasNoErrors();
+
+        $this->assertSame(2, InventoryAsset::withTrashed()->where('asset_tag', 'AST-REUSE')->count());
+        $this->assertSame(1, InventoryAsset::where('asset_tag', 'AST-REUSE')->count());
+    }
+
+    public function test_duplicate_asset_tag_on_a_live_asset_is_still_rejected(): void
+    {
+        $admin = $this->actingAsAdmin();
+
+        $admin->post('/admin/inventory-assets', $this->validPayload(['asset_tag' => 'AST-LIVE-DUP']))
+            ->assertSessionHasNoErrors();
+
+        $response = $admin->post('/admin/inventory-assets', $this->validPayload(['asset_tag' => 'AST-LIVE-DUP']));
+
+        $response->assertSessionHasErrors('asset_tag');
+        $this->assertSame(1, InventoryAsset::where('asset_tag', 'AST-LIVE-DUP')->count());
+    }
+
+    public function test_update_can_take_the_tag_of_a_soft_deleted_asset(): void
+    {
+        $admin = $this->actingAsAdmin();
+
+        $a = $this->makeAsset(['asset_tag' => 'AST-T1']);
+        $b = $this->makeAsset(['asset_tag' => 'AST-T2']);
+        $a->delete();
+
+        $response = $admin->put("/admin/inventory-assets/{$b->id}", ['asset_tag' => 'AST-T1']);
+
+        $response->assertRedirect(route('admin.inventory-assets.show', $b));
+        $response->assertSessionHasNoErrors();
+        $this->assertSame('AST-T1', $b->fresh()->asset_tag);
+    }
+
+    public function test_update_rejects_the_tag_of_another_live_asset(): void
+    {
+        $admin = $this->actingAsAdmin();
+
+        $this->makeAsset(['asset_tag' => 'AST-LIVE-1']);
+        $b = $this->makeAsset(['asset_tag' => 'AST-LIVE-2']);
+
+        $response = $admin->put("/admin/inventory-assets/{$b->id}", ['asset_tag' => 'AST-LIVE-1']);
+
+        $response->assertSessionHasErrors('asset_tag');
+        $this->assertSame('AST-LIVE-2', $b->fresh()->asset_tag);
+    }
+
+    public function test_database_rejects_two_live_assets_with_the_same_tag(): void
+    {
+        $this->makeAsset(['asset_tag' => 'AST-DB-UNIQUE']);
+
+        $this->expectException(QueryException::class);
+
+        $this->makeAsset(['asset_tag' => 'AST-DB-UNIQUE']);
     }
 
     public function test_moving_an_asset_onto_an_occupied_position_is_rejected(): void

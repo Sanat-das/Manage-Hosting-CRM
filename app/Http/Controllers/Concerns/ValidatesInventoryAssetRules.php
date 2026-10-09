@@ -26,7 +26,7 @@ trait ValidatesInventoryAssetRules
     protected function inventoryAssetStoreRules(Request $request): array
     {
         return [
-            'asset_tag' => ['required', 'string', 'max:255', Rule::unique('inventory_assets', 'asset_tag')],
+            'asset_tag' => ['required', 'string', 'max:255', Rule::unique('inventory_assets', 'asset_tag')->whereNull('deleted_at')],
             'asset_type' => ['required', 'string', Rule::in(InventoryAsset::ASSET_TYPES)],
             'serial_number' => ['nullable', 'string', 'max:255'],
             'model' => ['nullable', 'string', 'max:255'],
@@ -53,7 +53,7 @@ trait ValidatesInventoryAssetRules
     protected function inventoryAssetUpdateRules(Request $request, InventoryAsset $asset): array
     {
         return [
-            'asset_tag' => ['sometimes', 'string', 'max:255', Rule::unique('inventory_assets', 'asset_tag')->ignore($asset->id)],
+            'asset_tag' => ['sometimes', 'string', 'max:255', Rule::unique('inventory_assets', 'asset_tag')->ignore($asset->id)->whereNull('deleted_at')],
             'asset_type' => ['sometimes', 'string', Rule::in(InventoryAsset::ASSET_TYPES)],
             'model' => ['nullable', 'string', 'max:255'],
             'serial_number' => ['nullable', 'string', 'max:255'],
