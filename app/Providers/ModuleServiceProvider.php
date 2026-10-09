@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Providers;
 
 use App\Services\Modules\ModuleManager;
+use App\Support\Logging\AppLog;
 use App\Support\Modules\ModuleManifest;
 use App\Support\Modules\ModuleManifestException;
 use Illuminate\Support\ServiceProvider;
@@ -50,7 +51,14 @@ class ModuleServiceProvider extends ServiceProvider
                 $manager->registerModuleRoutes();
             });
         } catch (Throwable $e) {
-            error_log('[modules] bootstrap failed: '.$e->getMessage());
+            // IIS FastCGI merges error_log() into the response body (see
+            // docs/iis-deployment.md); prefer the file log, keep error_log as
+            // the deepest fallback so a logging failure cannot break boot.
+            try {
+                AppLog::app()->warning('[modules] bootstrap failed: '.$e->getMessage());
+            } catch (Throwable) {
+                error_log('[modules] bootstrap failed: '.$e->getMessage());
+            }
         }
     }
 
@@ -97,7 +105,11 @@ class ModuleServiceProvider extends ServiceProvider
                 }
             });
         } catch (Throwable $e) {
-            error_log('[modules] autoloader registration failed: '.$e->getMessage());
+            try {
+                AppLog::app()->warning('[modules] autoloader registration failed: '.$e->getMessage());
+            } catch (Throwable) {
+                error_log('[modules] autoloader registration failed: '.$e->getMessage());
+            }
         }
     }
 }

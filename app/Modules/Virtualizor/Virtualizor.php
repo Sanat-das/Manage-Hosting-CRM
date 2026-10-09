@@ -15,6 +15,7 @@ use App\Models\PanelAccount;
 use App\Models\Server;
 use App\Models\ServiceInstance;
 use App\Modules\Virtualizor\Services\VirtualizorClient;
+use App\Support\Logging\AppLog;
 
 /**
  * Virtualizor VPS provisioning module.
@@ -239,7 +240,9 @@ final class Virtualizor extends AbstractPanelModule implements TestableServerMod
     {
         try {
             return (new VirtualizorClient($server, verifyTls: true))->listOsTemplates();
-        } catch (\Throwable) {
+        } catch (\Throwable $e) {
+            AppLog::provisioning()->debug('Virtualizor OS template discovery failed — empty list returned', ['error' => $e->getMessage()]);
+
             return [];
         }
     }

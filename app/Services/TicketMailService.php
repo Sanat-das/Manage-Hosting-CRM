@@ -9,7 +9,7 @@ use App\Models\TicketDepartment;
 use App\Models\TicketReply;
 use App\Support\AppSettings;
 use App\Support\Branding;
-use Illuminate\Support\Facades\Log;
+use App\Support\Logging\AppLog;
 use Illuminate\Support\Str;
 
 /**
@@ -170,7 +170,7 @@ final class TicketMailService
         }
 
         if ($effectiveTos === []) {
-            Log::info('Ticket email skipped: no reachable customer or guest email.', ['ticket_id' => $ticket->id]);
+            AppLog::cron()->info('Ticket email skipped: no reachable customer or guest email.', ['ticket_id' => $ticket->id]);
 
             return false;
         }
@@ -222,7 +222,8 @@ final class TicketMailService
             $effectiveCc,
             $effectiveBcc,
             $reply?->is_staff ? $this->htmlBodyFor($ticket, $reply) : null,
-            $reply?->is_staff ? $this->attachmentsFor($reply) : []
+            $reply?->is_staff ? $this->attachmentsFor($reply) : [],
+            templateName: 'ticket_reply',
         );
 
         // Stored even though the send is queued: the id is ours, so it is

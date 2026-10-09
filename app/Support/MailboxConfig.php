@@ -4,7 +4,7 @@ namespace App\Support;
 
 use App\Models\TicketDepartment;
 use App\Settings\EmailSettings;
-use Illuminate\Support\Facades\Log;
+use App\Support\Logging\AppLog;
 
 /**
  * One inbox per support department that has its own IMAP mailbox.
@@ -60,7 +60,7 @@ final class MailboxConfig
                 return;
             }
             if (isset($seen[$mailbox->key()])) {
-                Log::warning('Mailbox duplicate suppressed — already polling same host:port:user:folder.', [
+                AppLog::cron()->warning('Mailbox duplicate suppressed — already polling same host:port:user:folder.', [
                     'suppressed' => $mailbox->label,
                     'key' => $mailbox->key(),
                     'username' => $mailbox->username,
@@ -89,7 +89,7 @@ final class MailboxConfig
                 try {
                     $add(self::fromDepartment($department));
                 } catch (\Throwable $e) {
-                    Log::error('Mailbox skipped — its configuration could not be read.', [
+                    AppLog::cron()->error('Mailbox skipped — its configuration could not be read.', [
                         'department' => $department->slug,
                         'error' => $e->getMessage(),
                     ]);

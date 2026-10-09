@@ -19,11 +19,11 @@ use App\Services\Provisioning\VmGuestCredentialStore;
 use App\Services\Provisioning\VmOperationConflictException;
 use App\Services\Provisioning\VmOperationDispatcher;
 use App\Services\Provisioning\VmStatusPresenter;
+use App\Support\Logging\AppLog;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
-use Illuminate\Support\Facades\Log;
 use Illuminate\View\View;
 
 /**
@@ -225,7 +225,7 @@ class HostingController extends Controller
 
             return back()->with('info', 'Your VM build has started — progress is shown on this page.');
         } catch (\Throwable $e) {
-            Log::error('Client queued VM create failed', [
+            AppLog::provisioning()->error('Client queued VM create failed', [
                 'hosting_account_id' => $account->id,
                 'module' => $slug,
                 'error' => $e->getMessage(),
@@ -256,7 +256,7 @@ class HostingController extends Controller
         try {
             return response()->json($this->vmStatusPresenter->build($account, $request->boolean('refresh')));
         } catch (\Throwable $e) {
-            Log::warning('client vmStatus failed', ['hosting_account_id' => $hostingAccount->id, 'error' => $e->getMessage()]);
+            AppLog::provisioning()->warning('client vmStatus failed', ['hosting_account_id' => $hostingAccount->id, 'error' => $e->getMessage()]);
 
             return response()->json([
                 'ok' => true,
@@ -345,7 +345,7 @@ class HostingController extends Controller
 
             return back()->with('error', $e->getMessage());
         } catch (\Throwable $e) {
-            Log::error('Client queued VM password reset failed', [
+            AppLog::provisioning()->error('Client queued VM password reset failed', [
                 'hosting_account_id' => $account->id,
                 'module' => $slug,
                 'error' => $e->getMessage(),
@@ -459,7 +459,7 @@ class HostingController extends Controller
 
             return back()->with('error', $e->getMessage());
         } catch (\Throwable $e) {
-            Log::error('Client queued VM power action failed', [
+            AppLog::provisioning()->error('Client queued VM power action failed', [
                 'hosting_account_id' => $account->id,
                 'module' => $slug,
                 'action' => $action,
@@ -531,7 +531,7 @@ class HostingController extends Controller
             ], $serviceId, $account->id);
             $this->provisioningEvents->fail($event, $msg);
         } catch (\Throwable $e) {
-            Log::error('client vmPower restart refusal event failed', ['error' => $e->getMessage()]);
+            AppLog::provisioning()->error('client vmPower restart refusal event failed', ['error' => $e->getMessage()]);
         }
 
         if ($this->wantsJson($request)) {

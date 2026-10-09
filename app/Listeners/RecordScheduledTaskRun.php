@@ -7,6 +7,7 @@ namespace App\Listeners;
 use App\Models\CronTaskRun;
 use App\Services\Cron\CronTaskRegistry;
 use App\Services\Cron\ScheduleInspector;
+use App\Support\Logging\AppLog;
 use Illuminate\Console\Events\CommandFinished;
 use Illuminate\Console\Events\ScheduledBackgroundTaskFinished;
 use Illuminate\Console\Events\ScheduledTaskFailed;
@@ -16,7 +17,6 @@ use Illuminate\Console\Events\ScheduledTaskStarting;
 use Illuminate\Console\Scheduling\Event as ScheduledEvent;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\Log;
 use Throwable;
 
 /**
@@ -187,7 +187,7 @@ class RecordScheduledTaskRun
                 ->delete();
             Cache::forever($lastPruneKey, Carbon::now()->toIso8601String());
         } catch (Throwable $e) {
-            Log::warning('Cron run history prune failed.', ['error' => $e->getMessage()]);
+            AppLog::cron()->warning('Cron run history prune failed.', ['error' => $e->getMessage()]);
         }
     }
 
@@ -241,7 +241,7 @@ class RecordScheduledTaskRun
                     Cache::forever(ScheduleInspector::TICKETS_HEALTH_FAILED_AT_KEY, $finishedAt->toIso8601String());
                 }
             } catch (Throwable $e) {
-                Log::warning('Tickets mail health could not be recorded.', ['error' => $e->getMessage()]);
+                AppLog::cron()->warning('Tickets mail health could not be recorded.', ['error' => $e->getMessage()]);
             }
         }
     }
@@ -287,7 +287,7 @@ class RecordScheduledTaskRun
         try {
             $callback();
         } catch (Throwable $e) {
-            Log::warning('Cron run history could not be recorded.', ['error' => $e->getMessage()]);
+            AppLog::cron()->warning('Cron run history could not be recorded.', ['error' => $e->getMessage()]);
         }
     }
 }

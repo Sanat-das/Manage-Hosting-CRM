@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Modules\RdpConsole\Services\Gateway;
 
-use Illuminate\Support\Facades\Log;
+use App\Support\Logging\AppLog;
 use Modules\RdpConsole\Exceptions\GatewayNotConfiguredException;
 use RuntimeException;
 
@@ -88,7 +88,7 @@ final class GuacamoleLiteDriver implements GatewayDriver
                 'pve' => $pve,
             ], $key);
 
-            Log::info('rdp.token.minted', [
+            AppLog::provisioning()->info('rdp.token.minted', [
                 'admin' => $context->adminUserId,
                 'account' => $context->accountId,
                 'mode' => $context->mode->value,
@@ -129,7 +129,7 @@ final class GuacamoleLiteDriver implements GatewayDriver
         // Audit trail without credential material — never ModuleLog. The mode
         // is a routing fact, not a secret; it is what makes a VMConnect mint
         // distinguishable from a guest-RDP mint after the fact.
-        Log::info('rdp.token.minted', [
+        AppLog::provisioning()->info('rdp.token.minted', [
             'admin' => $context->adminUserId,
             'account' => $context->accountId,
             'mode' => $context->mode->value,

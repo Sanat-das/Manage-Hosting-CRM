@@ -6,14 +6,18 @@ namespace App\Services\Provisioning;
 
 use App\Contracts\Integrations\Capabilities\ProvisioningModule as ProvisioningModuleContract;
 use App\Contracts\Integrations\ProvisioningResult;
+use App\Models\HostingAccount;
+use App\Models\Module;
 use App\Models\Order;
+use App\Models\PanelAccount;
 use App\Models\Product;
 use App\Models\ProvisioningEvent;
 use App\Models\ServiceInstance;
 use App\Services\HostingService;
 use App\Services\Integrations\IntegrationRegistry;
+use App\Services\IpAssignmentService;
 use App\Services\Modules\ModuleManager;
-use Illuminate\Support\Facades\Log;
+use App\Support\Logging\AppLog;
 use Throwable;
 
 /**
@@ -179,7 +183,7 @@ class ProvisioningDispatcher
             /** @var ProvisioningResult $result */
             $result = $driver->provision($service, $config);
         } catch (Throwable $e) {
-            Log::error('Provisioning module threw', [
+            AppLog::provisioning()->error('Provisioning module threw', [
                 'order_id' => $order->id,
                 'module' => $slug,
                 'error' => $e->getMessage(),
@@ -215,7 +219,7 @@ class ProvisioningDispatcher
         try {
             $this->recorder->resolveAwaiting($order, 'Provisioning completed');
         } catch (Throwable $e) {
-            Log::warning('Could not resolve awaiting provisioning events', [
+            AppLog::provisioning()->warning('Could not resolve awaiting provisioning events', [
                 'order_id' => $order->id,
                 'error' => $e->getMessage(),
             ]);
@@ -287,8 +291,8 @@ class ProvisioningDispatcher
             return true;
         }
 
-        return ! \App\Models\PanelAccount::where('service_instance_id', $service->id)
-            ->where('status', \App\Models\PanelAccount::STATUS_ACTIVE)
+        return ! PanelAccount::where('service_instance_id', $service->id)
+            ->where('status', PanelAccount::STATUS_ACTIVE)
             ->exists();
     }
 
@@ -346,13 +350,13 @@ class ProvisioningDispatcher
             // Release any leased IPs on the linked hosting account (best-effort).
             $hosting = $order->hostingAccount()->first();
             if ($hosting === null) {
-                $hosting = \App\Models\HostingAccount::where('order_id', $order->id)->first();
+                $hosting = HostingAccount::where('order_id', $order->id)->first();
             }
             if ($hosting !== null) {
                 try {
-                    app(\App\Services\IpAssignmentService::class)->release($hosting, $reason ?? 'Terminated (manual compute unprovisioned)');
-                } catch (\Throwable $e) {
-                    Log::warning('IP release on manual compute unprovisioned terminate failed', [
+                    app(IpAssignmentService::class)->release($hosting, $reason ?? 'Terminated (manual compute unprovisioned)');
+                } catch (Throwable $e) {
+                    AppLog::provisioning()->warning('IP release on manual compute unprovisioned terminate failed', [
                         'order_id' => $order->id,
                         'error' => $e->getMessage(),
                     ]);
@@ -422,7 +426,7 @@ class ProvisioningDispatcher
             /** @var ProvisioningResult $result */
             $result = $driver->{$verb}($service, $config);
         } catch (Throwable $e) {
-            Log::error('Provisioning module threw on '.$verb, [
+            AppLog::provisioning()->error('Provisioning module threw on '.$verb, [
                 'order_id' => $order->id,
                 'module' => $slug,
                 'error' => $e->getMessage(),
@@ -477,7 +481,7 @@ class ProvisioningDispatcher
      * In both cases the resolved slug must actually implement the
      * provisioning capability — resolveDriver() returns null otherwise.
      *
-     * @return string|null  builtin or plugin slug
+     * @return string|null builtin or plugin slug
      */
     public function moduleFor(?Product $product): ?string
     {
@@ -537,7 +541,7 @@ class ProvisioningDispatcher
         // Plugin fallback via ModuleManager
         $module = $this->modules->find($slug);
 
-        if ($module === null || $module->status !== \App\Models\Module::STATUS_ACTIVE) {
+        if ($module === null || $module->status !== Module::STATUS_ACTIVE) {
             return null;
         }
 
@@ -622,8 +626,8 @@ class ProvisioningDispatcher
             return false;
         }
 
-        return \App\Models\PanelAccount::where('service_instance_id', $service->id)
-            ->where('status', \App\Models\PanelAccount::STATUS_ACTIVE)
+        return PanelAccount::where('service_instance_id', $service->id)
+            ->where('status', PanelAccount::STATUS_ACTIVE)
             ->exists();
     }
 
@@ -818,7 +822,7 @@ class ProvisioningDispatcher
 
             $service->update(['provisioning_config' => $updated]);
         } catch (Throwable $e) {
-            Log::warning('Could not persist provisioning snapshot', [
+            AppLog::provisioning()->warning('Could not persist provisioning snapshot', [
                 'service_instance_id' => $service->id,
                 'error' => $e->getMessage(),
             ]);
@@ -964,7 +968,7 @@ class ProvisioningDispatcher
         try {
             return $this->recorder->fail($event, $message);
         } catch (Throwable $e) {
-            Log::warning('Could not record failed provisioning event', [
+            AppLog::provisioning()->warning('Could not record failed provisioning event', [
                 'event_id' => $event->id,
                 'error' => $e->getMessage(),
             ]);
@@ -983,7 +987,7 @@ class ProvisioningDispatcher
         try {
             return $this->recorder->complete($event, $message, $data);
         } catch (Throwable $e) {
-            Log::warning('Could not record completed provisioning event', [
+            AppLog::provisioning()->warning('Could not record completed provisioning event', [
                 'order_id' => $order->id,
                 'error' => $e->getMessage(),
             ]);

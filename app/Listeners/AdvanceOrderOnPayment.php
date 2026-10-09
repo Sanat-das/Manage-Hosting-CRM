@@ -5,7 +5,7 @@ namespace App\Listeners;
 use App\Events\InvoicePaid;
 use App\Models\Order;
 use App\Services\OrderService;
-use Illuminate\Support\Facades\Log;
+use App\Support\Logging\AppLog;
 use InvalidArgumentException;
 
 /**
@@ -44,7 +44,7 @@ class AdvanceOrderOnPayment
             $this->orders->markPaid($order, "Marked paid on invoice {$invoice->invoice_no}");
             $this->orders->advanceAfterPayment($order);
         } catch (InvalidArgumentException $e) {
-            Log::warning('Could not advance order on invoice payment', [
+            AppLog::billing()->warning('Could not advance order on invoice payment', [
                 'order_id' => $order->id,
                 'invoice_id' => $invoice->id,
                 'error' => $e->getMessage(),

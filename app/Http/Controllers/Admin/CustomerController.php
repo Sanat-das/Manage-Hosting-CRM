@@ -17,6 +17,8 @@ use App\Models\SubscriptionPeriod;
 use App\Models\UsageRecord;
 use App\Models\User;
 use App\Services\Exports\CsvStreamService;
+use App\Support\Audit\AuditEvent;
+use App\Support\Audit\AuditRecorder;
 use App\Support\GstStateCodes;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
@@ -458,7 +460,7 @@ class CustomerController extends Controller
             'is_important' => $request->boolean('is_important'),
         ]);
 
-        $this->logActivity($customer, 'note_added', 'Note added', [
+        $this->logActivity($customer, AuditEvent::NoteAdded, 'Note added', [
             'note_id' => $note->id,
             'by' => $request->user()->email,
         ]);
@@ -474,7 +476,7 @@ class CustomerController extends Controller
 
         $note->delete();
 
-        $this->logActivity($customer, 'note_deleted', 'Note deleted', [
+        $this->logActivity($customer, AuditEvent::NoteDeleted, 'Note deleted', [
             'note_id' => $note->id,
             'by' => $request->user()->email,
         ]);
@@ -498,7 +500,7 @@ class CustomerController extends Controller
             'is_important' => $request->boolean('is_important'),
         ]);
 
-        $this->logActivity($customer, 'note_updated', 'Note updated', [
+        $this->logActivity($customer, AuditEvent::NoteUpdated, 'Note updated', [
             'note_id' => $note->id,
             'by' => $request->user()->email,
         ]);
@@ -545,7 +547,7 @@ class CustomerController extends Controller
             ]);
         });
 
-        $this->logActivity($customer, 'contact_created', 'Contact created', [
+        $this->logActivity($customer, AuditEvent::ContactCreated, 'Contact created', [
             'contact_id' => $contact->id,
             'by' => $request->user()->email,
         ]);
@@ -603,7 +605,7 @@ class CustomerController extends Controller
             }
         });
 
-        $this->logActivity($customer, 'contact_updated', 'Contact updated', [
+        $this->logActivity($customer, AuditEvent::ContactUpdated, 'Contact updated', [
             'contact_id' => $contact->id,
             'by' => $request->user()->email,
         ]);
@@ -624,7 +626,7 @@ class CustomerController extends Controller
             $customer->contacts()->orderByDesc('id')->first()?->update(['is_primary' => true]);
         }
 
-        $this->logActivity($customer, 'contact_deleted', 'Contact deleted', [
+        $this->logActivity($customer, AuditEvent::ContactDeleted, 'Contact deleted', [
             'contact_id' => $contact->id,
             'by' => $request->user()->email,
         ]);
@@ -669,7 +671,7 @@ class CustomerController extends Controller
             }
         });
 
-        $this->logActivity($customer, 'wallet_adjusted', "Wallet {$validated['type']} of {$validated['amount']}", [
+        $this->logActivity($customer, AuditEvent::WalletAdjusted, "Wallet {$validated['type']} of {$validated['amount']}", [
             'amount' => $validated['amount'],
             'type' => $validated['type'],
             'by' => $request->user()->email,
@@ -683,15 +685,8 @@ class CustomerController extends Controller
     /**
      * Write an entry to the customer activity log.
      */
-    private function logActivity(Customer $customer, string $action, string $description, array $metadata = []): void
+    private function logActivity(Customer $customer, AuditEvent $action, string $description, array $metadata = []): void
     {
-        ActivityLog::create([
-            'customer_id' => $customer->id,
-            'user_id' => auth()->id(),
-            'action' => $action,
-            'description' => $description,
-            'metadata' => $metadata ?: null,
-            'ip_address' => request()->ip(),
-        ]);
+        app(AuditRecorder::class)->activity($action, $customer, $metadata, $description);
     }
 }

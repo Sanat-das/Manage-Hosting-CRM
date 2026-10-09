@@ -11,7 +11,7 @@
         icon="bi bi-clock-history"
         title="Activity Log"
         :search-value="$search"
-        search-placeholder="Search actions, description..."
+        search-placeholder="Search actions, events, description..."
         status-field="action"
         status-placeholder="All actions"
         :status-options="$actions"
@@ -29,7 +29,7 @@
         @forelse ($logs as $log)
             <tr>
                 <td class="text-muted small text-nowrap">{{ $log->created_at?->format('M j, H:i') }}</td>
-                <td><span class="badge text-bg-info">{{ $log->action }}</span></td>
+                <td><span class="badge text-bg-info">{{ $log->action ?? $log->event ?? '—' }}</span></td>
                 <td>{{ $log->user?->full_name ?? '—' }}</td>
                 <td>{{ $log->customer?->full_name ?? '—' }}</td>
                 <td>{{ Str::limit($log->description, 80) }}</td>

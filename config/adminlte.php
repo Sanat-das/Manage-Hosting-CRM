@@ -448,10 +448,20 @@ return [
             'can' => 'settings.view',
         ],
         [
-            'text' => 'Email Logs',
-            'route' => 'admin.email-logs.index',
-            'icon' => 'bi bi-envelope-open',
-            'can' => 'email.view',
+            'text' => 'Logs',
+            'icon' => 'bi bi-journal-text',
+            // Gate-only parent: every staff member sees the Logs group; each
+            // child gates on its own permission. Gating the parent on one
+            // child's permission would hide the rest from narrower roles.
+            'can' => 'admin.panel',
+            'submenu' => [
+                ['text' => 'Email Logs', 'route' => 'admin.email-logs.index', 'icon' => 'bi bi-circle', 'can' => 'email.view'],
+                ['text' => 'Activity Log', 'route' => 'admin.activity-log.index', 'icon' => 'bi bi-circle', 'can' => 'activity.view'],
+                ['text' => 'Audit Trail', 'route' => 'admin.audit-log.index', 'icon' => 'bi bi-circle', 'can' => 'audit.view'],
+                ['text' => 'Module Logs', 'route' => 'admin.module-logs.index', 'icon' => 'bi bi-circle', 'can' => 'module_logs.view'],
+                ['text' => 'Domain Logs', 'route' => 'admin.domain-logs.index', 'icon' => 'bi bi-circle', 'can' => 'domain_logs.view'],
+                ['text' => 'Consent Log', 'route' => 'admin.consent-log.index', 'icon' => 'bi bi-circle', 'can' => 'consent.view'],
+            ],
         ],
         [
             'text' => 'Settings',
@@ -476,12 +486,6 @@ return [
             'route' => 'admin.system.index',
             'icon' => 'bi bi-info-circle',
             'can' => 'system.view',
-        ],
-        [
-            'text' => 'Activity Log',
-            'route' => 'admin.activity-log.index',
-            'icon' => 'bi bi-clock-history',
-            'can' => 'settings.view',
         ],
 
         ['header' => 'CLIENT PORTAL', 'role' => 'client'],

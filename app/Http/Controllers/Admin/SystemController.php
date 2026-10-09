@@ -7,12 +7,12 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Services\System\AppInfoService;
 use App\Services\System\UpdateService;
+use App\Support\Logging\AppLog;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
 use Illuminate\View\View;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 use Symfony\Component\Process\Process;
@@ -38,7 +38,7 @@ class SystemController extends Controller
                 ->limit(20)
                 ->get();
         } catch (Throwable $e) {
-            Log::debug('SystemController: activity_log query failed (table may be missing).', ['error' => $e->getMessage()]);
+            AppLog::ops()->debug('SystemController: activity_log query failed (table may be missing).', ['error' => $e->getMessage()]);
         }
 
         $activeTab = $request->query('tab', 'about');
@@ -95,9 +95,9 @@ class SystemController extends Controller
                 }
 
                 // PowerShell unavailable or failed — fall through to synchronous paths below.
-                Log::warning('SystemController: background update launch failed, falling back to synchronous.');
+                AppLog::ops()->warning('SystemController: background update launch failed, falling back to synchronous.');
             } catch (Throwable $e) {
-                Log::warning('SystemController: background update launch failed, falling back to synchronous.', ['error' => $e->getMessage()]);
+                AppLog::ops()->warning('SystemController: background update launch failed, falling back to synchronous.', ['error' => $e->getMessage()]);
             }
         }
 
@@ -204,9 +204,9 @@ class SystemController extends Controller
                     return response()->json(['status' => 'started', 'message' => 'Rollback started in background.']);
                 }
 
-                Log::warning('SystemController: background rollback launch failed, falling back to synchronous.');
+                AppLog::ops()->warning('SystemController: background rollback launch failed, falling back to synchronous.');
             } catch (Throwable $e) {
-                Log::warning('SystemController: background rollback launch failed, falling back to synchronous.', ['error' => $e->getMessage()]);
+                AppLog::ops()->warning('SystemController: background rollback launch failed, falling back to synchronous.', ['error' => $e->getMessage()]);
             }
         }
 
@@ -294,7 +294,7 @@ class SystemController extends Controller
 
             // Logged unconditionally: on IIS this is the only proof the launch
             // branch was reached at all, and which php binary it picked.
-            Log::info('SystemController: background launch attempted.', [
+            AppLog::ops()->info('SystemController: background launch attempted.', [
                 'command' => $artisanCommand,
                 'php' => $phpBin,
                 'exit' => $bgProcess->getExitCode(),
@@ -311,7 +311,7 @@ class SystemController extends Controller
 
             $bgProcess->run();
 
-            Log::info('SystemController: background launch attempted.', [
+            AppLog::ops()->info('SystemController: background launch attempted.', [
                 'command' => $artisanCommand,
                 'php' => PHP_BINARY,
                 'platform' => 'posix',
@@ -328,7 +328,7 @@ class SystemController extends Controller
         }
 
         if ($verifyLog !== null && ! $this->detachedChildStarted($verifyLog, $beforeSize)) {
-            Log::warning('SystemController: detached launch produced no child output — falling back to synchronous.', ['command' => $artisanCommand, 'verify' => $verifyLog]);
+            AppLog::ops()->warning('SystemController: detached launch produced no child output — falling back to synchronous.', ['command' => $artisanCommand, 'verify' => $verifyLog]);
 
             return false;
         }

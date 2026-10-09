@@ -6,7 +6,7 @@ namespace App\Services\Provisioning;
 
 use App\Models\Order;
 use App\Models\ProvisioningEvent;
-use Illuminate\Support\Facades\Log;
+use App\Support\Logging\AppLog;
 use Throwable;
 
 /**
@@ -247,7 +247,7 @@ final class ProvisioningEventRecorder
             ]);
         } catch (Throwable $e) {
             // The audit row must never be the reason an operation fails.
-            Log::warning('Could not record provisioning event', [
+            AppLog::provisioning()->error('Could not record provisioning event', [
                 'event_type' => $eventType,
                 'status' => $status,
                 'error' => $e->getMessage(),
@@ -321,7 +321,7 @@ final class ProvisioningEventRecorder
             $event->payload = $payload;
             $event->save();
         } catch (Throwable $e) {
-            Log::warning('Could not record provisioning progress', [
+            AppLog::provisioning()->error('Could not record provisioning progress', [
                 'event_id' => $event->id,
                 'stage' => $stage,
                 'error' => $e->getMessage(),

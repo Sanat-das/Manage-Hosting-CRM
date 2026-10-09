@@ -6,8 +6,8 @@ use App\Jobs\SendEmail;
 use App\Models\EmailTemplate;
 use App\Models\Invoice;
 use App\Services\Concerns\BuildsEmailVariables;
+use App\Support\Logging\AppLog;
 use Barryvdh\DomPDF\Facade\Pdf;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 
 /**
@@ -45,7 +45,7 @@ final class InvoiceEmailService
         $email = $invoice->customer?->user?->email;
 
         if (! $email) {
-            Log::info('Invoice email skipped: customer has no linked user email.', ['invoice_id' => $invoice->id]);
+            AppLog::billing()->info('Invoice email skipped: customer has no linked user email.', ['invoice_id' => $invoice->id]);
 
             return false;
         }
@@ -56,7 +56,7 @@ final class InvoiceEmailService
             ->first();
 
         if ($template === null) {
-            Log::info('Invoice email skipped: template not found.', ['invoice_id' => $invoice->id, 'template' => $templateName]);
+            AppLog::billing()->info('Invoice email skipped: template not found.', ['invoice_id' => $invoice->id, 'template' => $templateName]);
 
             return false;
         }
@@ -100,13 +100,25 @@ final class InvoiceEmailService
                 'contentId' => null,
             ];
         } catch (\Throwable $e) {
-            Log::info('Invoice PDF attachment failed — email sent without it.', [
+            AppLog::billing()->info('Invoice PDF attachment failed — email sent without it.', [
                 'invoice_id' => $invoice->id,
                 'error' => $e->getMessage(),
             ]);
         }
 
-        SendEmail::dispatch($email, $subject, $plainBody, null, [], [], [], $htmlBody, $attachments);
+        SendEmail::dispatch(
+            $email,
+            $subject,
+            $plainBody,
+            null,
+            [],
+            [],
+            [],
+            $htmlBody,
+            $attachments,
+            templateName: $templateName,
+            customerId: $invoice->customer_id,
+        );
 
         return true;
     }

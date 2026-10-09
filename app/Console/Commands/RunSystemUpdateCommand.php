@@ -6,6 +6,7 @@ namespace App\Console\Commands;
 
 use App\Models\User;
 use App\Services\System\UpdateService;
+use App\Support\Logging\OpsFileWriter;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Cache;
 use Throwable;
@@ -28,12 +29,13 @@ class RunSystemUpdateCommand extends Command
         $actor = User::find($actorId);
 
         if (! $actor) {
-            $this->mark('aborted — actor not found: ' . $actorId);
-            $this->error('system:run-update — actor not found: ' . $actorId);
+            $this->mark('aborted — actor not found: '.$actorId);
+            $this->error('system:run-update — actor not found: '.$actorId);
+
             return 1;
         }
 
-        $cacheKey = 'system.update_progress.' . $actorId;
+        $cacheKey = 'system.update_progress.'.$actorId;
 
         $emit = function (string $step, string $message, int $progress, bool $done = false, array $extra = []) use ($cacheKey): void {
             // A run the update lock refused must not overwrite the progress of
@@ -57,8 +59,8 @@ class RunSystemUpdateCommand extends Command
         } catch (Throwable $e) {
             // Nothing is watching this process's exit code, so an uncaught
             // throwable would otherwise leave the UI polling forever.
-            $this->mark('fatal — ' . $e->getMessage());
-            $emit('error', 'Update failed unexpectedly: ' . $e->getMessage(), 0, true, ['status' => 'unknown']);
+            $this->mark('fatal — '.$e->getMessage());
+            $emit('error', 'Update failed unexpectedly: '.$e->getMessage(), 0, true, ['status' => 'unknown']);
 
             return 1;
         }
@@ -69,10 +71,9 @@ class RunSystemUpdateCommand extends Command
     private function mark(string $line): void
     {
         try {
-            @file_put_contents(
+            OpsFileWriter::append(
                 storage_path('logs/update.log'),
-                sprintf('[%s] system:run-update %s%s', now()->toDateTimeString(), $line, PHP_EOL),
-                FILE_APPEND
+                sprintf('[%s] system:run-update %s%s', now()->toDateTimeString(), $line, PHP_EOL)
             );
         } catch (Throwable) {
             // Logging must never break the update itself.

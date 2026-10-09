@@ -4,8 +4,8 @@ namespace App\Services\Inventory;
 
 use App\Models\DevicePort;
 use App\Models\InventoryAsset;
+use App\Support\Logging\AppLog;
 use Illuminate\Support\Carbon;
-use Illuminate\Support\Facades\Log;
 use Throwable;
 
 /**
@@ -60,7 +60,7 @@ final class PortDiscoveryService
                 // One malformed or conflicting row must never abort the sync.
                 $counts['skipped']++;
 
-                Log::warning('SNMP port import failed for one interface.', [
+                AppLog::provisioning()->warning('SNMP port import failed for one interface.', [
                     'asset_id' => $asset->id,
                     'if_index' => $index,
                     'error' => $e->getMessage(),

@@ -7,11 +7,11 @@ namespace App\Jobs;
 use App\Models\Order;
 use App\Services\OrderService;
 use App\Services\Provisioning\ProvisioningDispatcher;
+use App\Support\Logging\AppLog;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
-use Illuminate\Support\Facades\Log;
 use Throwable;
 
 /**
@@ -52,7 +52,7 @@ class RunOrderProvisioning implements ShouldQueue
     public function failed(?Throwable $exception): void
     {
         try {
-            Log::error('Queued order provisioning interrupted before it finished', [
+            AppLog::provisioning()->error('Queued order provisioning interrupted before it finished', [
                 'order_id' => $this->orderId,
                 'error' => $exception?->getMessage() ?? 'worker stopped',
             ]);
@@ -94,7 +94,7 @@ class RunOrderProvisioning implements ShouldQueue
             $attempt = $provisioning->run($order->refresh());
 
             if (! $attempt->succeeded()) {
-                Log::error('Provisioning module reported failure', [
+                AppLog::provisioning()->error('Provisioning module reported failure', [
                     'order_id' => $order->id,
                     'module' => $module,
                     'error' => $attempt->message,
@@ -111,7 +111,7 @@ class RunOrderProvisioning implements ShouldQueue
 
             $orders->transition($order->refresh(), Order::STATUS_ACTIVE, $attempt->activationNote());
         } catch (Throwable $e) {
-            Log::error('Auto-provisioning failed after invoice payment', [
+            AppLog::provisioning()->error('Auto-provisioning failed after invoice payment', [
                 'order_id' => $order->id,
                 'module' => $module,
                 'error' => $e->getMessage(),
@@ -122,7 +122,7 @@ class RunOrderProvisioning implements ShouldQueue
                 // status is stale — refresh before marking failed.
                 $orders->transition($order->refresh(), Order::STATUS_FAILED, 'Auto-provisioning failed: '.$e->getMessage());
             } catch (Throwable $e2) {
-                Log::warning('Order left in provisioning after failed auto-provisioning', [
+                AppLog::provisioning()->warning('Order left in provisioning after failed auto-provisioning', [
                     'order_id' => $order->id,
                     'error' => $e2->getMessage(),
                 ]);
@@ -155,13 +155,13 @@ class RunOrderProvisioning implements ShouldQueue
             $attempt = $provisioning->run($order);
 
             if (! $attempt->succeeded()) {
-                Log::error('Provisioning module reported failure on order activation', [
+                AppLog::provisioning()->error('Provisioning module reported failure on order activation', [
                     'order_id' => $order->id,
                     'error' => $attempt->message,
                 ]);
             }
         } catch (Throwable $e) {
-            Log::error('Auto-provisioning on order activation failed', [
+            AppLog::provisioning()->error('Auto-provisioning on order activation failed', [
                 'order_id' => $order->id,
                 'error' => $e->getMessage(),
             ]);

@@ -11,10 +11,10 @@ use App\Services\Billing\BillingService;
 use App\Services\DomainService;
 use App\Services\OrderActivityLogger;
 use App\Services\OrderNumberService;
+use App\Support\Logging\AppLog;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
 use Illuminate\View\View;
 
 /**
@@ -208,7 +208,7 @@ class DomainController extends Controller
                 return [$order, $invoice];
             });
         } catch (\Throwable $e) {
-            Log::error('Domain registration order failed', [
+            AppLog::billing()->error('Domain registration order failed', [
                 'exception' => $e,
                 'customer_id' => $customer->id,
                 'domain' => $name,

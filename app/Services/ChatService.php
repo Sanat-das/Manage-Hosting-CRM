@@ -9,7 +9,6 @@ use App\Events\Chat\ChatMessageEdited;
 use App\Events\Chat\CustomerChatWaiting;
 use App\Events\Chat\NewChatMessage;
 use App\Events\Chat\ReactionToggled;
-use App\Models\AuditLog;
 use App\Models\ChatConversation;
 use App\Models\ChatConversationMessage;
 use App\Models\ChatMessageAttachment;
@@ -22,12 +21,13 @@ use App\Models\User;
 use App\Notifications\ChatAssignmentNotification;
 use App\Notifications\ChatMentionNotification;
 use App\Notifications\ChatReplyNotification;
+use App\Support\Audit\AuditRecorder;
 use App\Support\ChatMentions;
+use App\Support\Logging\AppLog;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use InvalidArgumentException;
@@ -326,7 +326,7 @@ class ChatService
             try {
                 Storage::disk($attachment->disk)->delete($attachment->path);
             } catch (Throwable $e) {
-                Log::warning('Could not delete a chat attachment file during channel deletion.', [
+                AppLog::app()->warning('Could not delete a chat attachment file during channel deletion.', [
                     'attachment_id' => $attachment->id,
                     'disk' => $attachment->disk,
                     'path' => $attachment->path,
@@ -556,30 +556,7 @@ class ChatService
         array $details = [],
         ?User $actor = null,
     ): void {
-        try {
-            $request = app('request');
-
-            AuditLog::create([
-                'user_id' => $actor?->id ?? $request?->user()?->id ?? auth()->id(),
-                'action' => $action,
-                'entity_type' => $entityType,
-                'entity_id' => $entityId,
-                'details' => $details !== [] ? json_encode($details) : null,
-                'ip_address' => $request?->ip(),
-                'user_agent' => $request?->userAgent(),
-                'created_at' => now(),
-            ]);
-        } catch (Throwable $e) {
-            try {
-                Log::warning('ChatService: audit_log insert failed.', [
-                    'action' => $action,
-                    'entity_type' => $entityType,
-                    'entity_id' => $entityId,
-                    'error' => $e->getMessage(),
-                ]);
-            } catch (Throwable) {
-            }
-        }
+        app(AuditRecorder::class)->entityRef($action, $entityType, $entityId, $details, $actor?->id);
     }
 
     // --- customer inbox ---------------------------------------------------
@@ -773,7 +750,7 @@ class ChatService
             try {
                 $this->transcripts->send($conversation);
             } catch (Throwable $e) {
-                Log::warning('ChatService: transcript email failed.', [
+                AppLog::app()->warning('ChatService: transcript email failed.', [
                     'conversation_id' => $conversation->id,
                     'error' => $e->getMessage(),
                 ]);

@@ -5,13 +5,15 @@ declare(strict_types=1);
 namespace App\Services\System;
 
 use App\Models\User;
+use App\Support\Audit\AuditEvent;
+use App\Support\Audit\AuditRecorder;
+use App\Support\Logging\AppLog;
+use App\Support\Logging\OpsFileWriter;
 use App\Support\SecretRedactor;
 use Illuminate\Database\Migrations\Migrator;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use RuntimeException;
 use Symfony\Component\Process\PhpExecutableFinder;
@@ -351,7 +353,7 @@ class UpdateService
             // A cache store without lock support must not make the application
             // un-updatable. Log it and run unserialised, as it always did.
             try {
-                Log::warning('UpdateService: cache store does not support locks — running without one.', ['error' => $e->getMessage()]);
+                AppLog::ops()->warning('UpdateService: cache store does not support locks — running without one.', ['error' => $e->getMessage()]);
             } catch (Throwable) {
             }
 
@@ -615,7 +617,7 @@ class UpdateService
                     if ($isHomeError && $vendorExists) {
                         $appendOutput('composer install', 'composer HOME error — vendor/ ships with the update, continuing (migrate will run next).', 0);
                         try {
-                            Log::warning('UpdateService: composer HOME error ignored — vendor/ present, continuing update.');
+                            AppLog::ops()->warning('UpdateService: composer HOME error ignored — vendor/ present, continuing update.');
                         } catch (Throwable) {
                         }
                     } elseif ($isPhpVersionError) {
@@ -627,13 +629,13 @@ class UpdateService
                         $appendOutput('composer install --ignore-platform-reqs', $composerRetry['output'], $composerRetry['exit']);
                         if ($composerRetry['success']) {
                             try {
-                                Log::warning('UpdateService: composer retry with --ignore-platform-reqs succeeded (PHP mismatch ignored, vendor shipped).');
+                                AppLog::ops()->warning('UpdateService: composer retry with --ignore-platform-reqs succeeded (PHP mismatch ignored, vendor shipped).');
                             } catch (Throwable) {
                             }
                         } elseif ($vendorExists) {
                             $appendOutput('composer install', 'Composer still failed but vendor/autoload.php exists — continuing (vendor ships with update, PHP 8.5.10 will run it).', 0);
                             try {
-                                Log::warning('UpdateService: composer failed even with --ignore-platform-reqs but vendor exists — continuing.');
+                                AppLog::ops()->warning('UpdateService: composer failed even with --ignore-platform-reqs but vendor exists — continuing.');
                             } catch (Throwable) {
                             }
                         } else {
@@ -676,7 +678,7 @@ class UpdateService
             } else {
                 $appendOutput('composer install', 'composer not found in PATH — skipped (vendor/ ships with the update).', 0);
                 try {
-                    Log::warning('UpdateService: composer not found — skipping install step (vendor/ ships with update).');
+                    AppLog::ops()->warning('UpdateService: composer not found — skipping install step (vendor/ ships with update).');
                 } catch (Throwable) {
                 }
             }
@@ -770,7 +772,7 @@ class UpdateService
 
             return $result;
         } catch (Throwable $e) {
-            Log::error('UpdateService::run failed.', ['error' => $e->getMessage()]);
+            AppLog::ops()->error('UpdateService::run failed.', ['error' => $e->getMessage()]);
             $capturedOutput .= "\n[exception] ".$e->getMessage()."\n";
 
             $result = $this->buildRunResult(
@@ -800,13 +802,15 @@ class UpdateService
                     // Fallback via Artisan facade — covers custom maintenance driver edge cases
                     try {
                         Artisan::call('up');
-                    } catch (Throwable) {
+                    } catch (Throwable $e) {
+                        AppLog::ops()->debug('UpdateService: artisan up fallback failed', ['error' => $e->getMessage()]);
                     }
                 }
             } catch (Throwable) {
                 try {
                     Artisan::call('up');
-                } catch (Throwable) {
+                } catch (Throwable $e) {
+                    AppLog::ops()->debug('UpdateService: artisan up fallback failed', ['error' => $e->getMessage()]);
                 }
             }
 
@@ -828,12 +832,12 @@ class UpdateService
                     if (! is_dir($dir)) {
                         @mkdir($dir, 0755, true);
                     }
-                    @file_put_contents($logPath, $entry, FILE_APPEND | LOCK_EX);
+                    OpsFileWriter::append($logPath, $entry);
                 } catch (Throwable) {
                 }
 
                 try {
-                    Log::info('System update attempted.', [
+                    AppLog::ops()->info('System update attempted.', [
                         'actor' => $actor->id ?? null,
                         'from' => $fromHash,
                         'output_excerpt' => Str::limit($capturedOutput, 2000),
@@ -846,7 +850,7 @@ class UpdateService
             if ($didDown) {
                 try {
                     if (app()->isDownForMaintenance()) {
-                        Log::warning('UpdateService: app still in maintenance after run — attempted recovery.');
+                        AppLog::ops()->warning('UpdateService: app still in maintenance after run — attempted recovery.');
                     }
                 } catch (Throwable) {
                 }
@@ -907,7 +911,7 @@ class UpdateService
         // Checkpoint helper — writes a timestamped line immediately to update.log so every
         // step is traceable even if the process is killed before finally runs.
         $checkpoint = static function (string $entry) use ($logPath): void {
-            @file_put_contents($logPath, '['.date('Y-m-d H:i:s').'] '.$entry."\n", FILE_APPEND | LOCK_EX);
+            OpsFileWriter::append($logPath, '['.date('Y-m-d H:i:s').'] '.$entry."\n");
         };
 
         // Sentinel — always written first so we know runZip() was invoked.
@@ -1077,7 +1081,7 @@ class UpdateService
                         $checkpoint('step=composer status=skipped (HOME error but vendor/ present)');
                         $appendOutput('composer install', 'composer HOME error — vendor/ ships in ZIP, continuing.', 0);
                         try {
-                            Log::warning('UpdateService: composer HOME error ignored during ZIP update — vendor/ present.');
+                            AppLog::ops()->warning('UpdateService: composer HOME error ignored during ZIP update — vendor/ present.');
                         } catch (Throwable) {
                         }
                     } elseif ($isPhpVersionError) {
@@ -1088,14 +1092,14 @@ class UpdateService
                         $checkpoint('step=composer status='.($composerRetry['success'] ? 'done (retry)' : 'failed retry exit='.$composerRetry['exit']));
                         if ($composerRetry['success']) {
                             try {
-                                Log::warning('UpdateService: composer ZIP retry with --ignore-platform-reqs succeeded.');
+                                AppLog::ops()->warning('UpdateService: composer ZIP retry with --ignore-platform-reqs succeeded.');
                             } catch (Throwable) {
                             }
                         } elseif ($vendorExists) {
                             $checkpoint('step=composer status=skipped (retry failed but vendor/ present)');
                             $appendOutput('composer install', 'Composer retry failed but vendor/autoload.php exists — continuing (vendor ships in ZIP).', 0);
                             try {
-                                Log::warning('UpdateService: composer ZIP retry failed but vendor exists — continuing.');
+                                AppLog::ops()->warning('UpdateService: composer ZIP retry failed but vendor exists — continuing.');
                             } catch (Throwable) {
                             }
                         } else {
@@ -1117,7 +1121,7 @@ class UpdateService
                 $checkpoint('step=composer status=skipped (not in PATH)');
                 $appendOutput('composer install', 'composer not found in PATH — skipped (vendor/ ships in ZIP).', 0);
                 try {
-                    Log::warning('UpdateService: composer not found during ZIP update — vendor/ ships in archive.');
+                    AppLog::ops()->warning('UpdateService: composer not found during ZIP update — vendor/ ships in archive.');
                 } catch (Throwable) {
                 }
             }
@@ -1213,7 +1217,7 @@ class UpdateService
             return $result;
 
         } catch (Throwable $e) {
-            Log::error('UpdateService::runZip failed.', ['error' => $e->getMessage()]);
+            AppLog::ops()->error('UpdateService::runZip failed.', ['error' => $e->getMessage()]);
             $capturedOutput .= "\n[exception] ".$e->getMessage()."\n";
             $result = $this->buildRunResult('unknown', 'Update failed unexpectedly. Please contact support.', 0, $fromVersion, null, 'main', $remoteSanitized, 1, $startedAt, Str::limit($capturedOutput, self::OUTPUT_LIMIT));
             try {
@@ -1230,20 +1234,22 @@ class UpdateService
                 if (! $up['success']) {
                     try {
                         Artisan::call('up');
-                    } catch (Throwable) {
+                    } catch (Throwable $e) {
+                        AppLog::ops()->debug('UpdateService: artisan up fallback failed', ['error' => $e->getMessage()]);
                     }
                 }
             } catch (Throwable) {
                 try {
                     Artisan::call('up');
-                } catch (Throwable) {
+                } catch (Throwable $e) {
+                    AppLog::ops()->debug('UpdateService: artisan up fallback failed', ['error' => $e->getMessage()]);
                 }
             }
 
             // Log full captured output to update.log (always — records killed/timed-out runs)
             try {
                 $body = trim($capturedOutput) !== '' ? Str::limit($capturedOutput, self::OUTPUT_LIMIT) : '(no output — process may have been killed mid-step)';
-                @file_put_contents($logPath, sprintf("[%s] actor=%s method=zip from=%s\n%s\n---\n", now()->toDateTimeString(), (string) ($actor->id ?? 'unknown'), $fromVersion, $body), FILE_APPEND | LOCK_EX);
+                OpsFileWriter::append($logPath, sprintf("[%s] actor=%s method=zip from=%s\n%s\n---\n", now()->toDateTimeString(), (string) ($actor->id ?? 'unknown'), $fromVersion, $body));
             } catch (Throwable) {
             }
 
@@ -1373,7 +1379,7 @@ class UpdateService
         $restore = $this->runProcess(['git', 'checkout', 'HEAD', '--', 'vendor'], 180);
 
         try {
-            Log::warning('UpdateService: restored committed vendor/ files pruned by a previous --no-dev install.', [
+            AppLog::ops()->warning('UpdateService: restored committed vendor/ files pruned by a previous --no-dev install.', [
                 'files' => $pruned,
                 'restored' => $restore['success'],
             ]);
@@ -1460,7 +1466,7 @@ class UpdateService
                 if ($isHomeError && $vendorExists) {
                     $append('composer install', 'composer HOME error — vendor/ ships in archive, continuing.', 0);
                     try {
-                        Log::warning('UpdateService: composer HOME error ignored in finalize — vendor/ present.');
+                        AppLog::ops()->warning('UpdateService: composer HOME error ignored in finalize — vendor/ present.');
                     } catch (Throwable) {
                     }
                 } elseif ($isPhpVersionError) {
@@ -1469,13 +1475,13 @@ class UpdateService
                     $append('composer install --ignore-platform-reqs', $composerRetry['output'], $composerRetry['exit']);
                     if ($composerRetry['success']) {
                         try {
-                            Log::warning('UpdateService: composer finalize retry with --ignore-platform-reqs succeeded.');
+                            AppLog::ops()->warning('UpdateService: composer finalize retry with --ignore-platform-reqs succeeded.');
                         } catch (Throwable) {
                         }
                     } elseif ($vendorExists) {
                         $append('composer install', 'Composer retry failed but vendor exists — continuing (vendor ships).', 0);
                         try {
-                            Log::warning('UpdateService: composer finalize retry failed but vendor exists — continuing.');
+                            AppLog::ops()->warning('UpdateService: composer finalize retry failed but vendor exists — continuing.');
                         } catch (Throwable) {
                         }
                     } else {
@@ -1594,7 +1600,7 @@ class UpdateService
             return array_values(array_diff(array_keys($files), $ran));
         } catch (Throwable $e) {
             try {
-                Log::warning('UpdateService: could not determine pending migrations.', ['error' => $e->getMessage()]);
+                AppLog::ops()->warning('UpdateService: could not determine pending migrations.', ['error' => $e->getMessage()]);
             } catch (Throwable) {
             }
 
@@ -1864,7 +1870,7 @@ class UpdateService
 
         if ($this->isGitRepo()) {
             try {
-                Log::info('UpdateService: VERSION stamp skipped — a git checkout reports its version from the repository.');
+                AppLog::ops()->info('UpdateService: VERSION stamp skipped — a git checkout reports its version from the repository.');
             } catch (Throwable) {
             }
 
@@ -1956,13 +1962,13 @@ class UpdateService
                 $curlExit = $process->getExitCode();
                 $curlSize = is_file($destPath) ? filesize($destPath) : 0;
                 $curlError = substr($process->getErrorOutput(), 0, 300);
-                @file_put_contents(storage_path('logs/update.log'), sprintf("[%s] curl-done: exit=%d size=%d err=%s\n", now()->toDateTimeString(), $curlExit ?? -1, $curlSize, $curlError ?: 'none'), FILE_APPEND | LOCK_EX);
+                OpsFileWriter::append(storage_path('logs/update.log'), sprintf("[%s] curl-done: exit=%d size=%d err=%s\n", now()->toDateTimeString(), $curlExit ?? -1, $curlSize, $curlError ?: 'none'));
 
                 if ($process->isSuccessful() && $this->isZipArchive($destPath)) {
                     return true;
                 }
 
-                Log::warning('UpdateService: curl ZIP download failed.', [
+                AppLog::ops()->warning('UpdateService: curl ZIP download failed.', [
                     'exit' => $curlExit,
                     'size' => $curlSize,
                     'zip' => $this->isZipArchive($destPath),
@@ -1974,7 +1980,7 @@ class UpdateService
                     @unlink($destPath);
                 }
             } catch (Throwable $e) {
-                Log::warning('UpdateService: curl process exception.', ['error' => $e->getMessage()]);
+                AppLog::ops()->warning('UpdateService: curl process exception.', ['error' => $e->getMessage()]);
             }
         }
 
@@ -1991,7 +1997,7 @@ class UpdateService
                 return true;
             }
 
-            Log::warning('UpdateService: HTTP ZIP download did not yield an archive.', [
+            AppLog::ops()->warning('UpdateService: HTTP ZIP download did not yield an archive.', [
                 'status' => $response->status(),
                 'size' => is_file($destPath) ? filesize($destPath) : 0,
             ]);
@@ -2002,7 +2008,7 @@ class UpdateService
 
             return false;
         } catch (Throwable $e) {
-            Log::warning('UpdateService: ZIP download failed.', ['error' => $e->getMessage()]);
+            AppLog::ops()->warning('UpdateService: ZIP download failed.', ['error' => $e->getMessage()]);
 
             return false;
         }
@@ -2083,7 +2089,7 @@ class UpdateService
         //        produces no stderr, which means no files were skipped/corrupted.
         $tarCheck = $this->runProcess(['tar', '--version'], 3);
         if ($tarCheck['success']) {
-            Log::info('UpdateService: extracting via tar.', $logCtx);
+            AppLog::ops()->info('UpdateService: extracting via tar.', $logCtx);
             try {
                 $process = new Process(
                     ['tar', '-xf', $zipPath, '-C', $destDir],
@@ -2100,13 +2106,13 @@ class UpdateService
                 if ($process->isSuccessful() && $tarErr === '') {
                     $entries = glob($destDir.DIRECTORY_SEPARATOR.'*', GLOB_ONLYDIR);
                     if (! empty($entries)) {
-                        Log::info('UpdateService: tar extraction succeeded.', $logCtx);
+                        AppLog::ops()->info('UpdateService: tar extraction succeeded.', $logCtx);
 
                         return $entries[0];
                     }
                 }
 
-                Log::warning('UpdateService: tar extraction incomplete/failed — falling through to PowerShell.', array_merge($logCtx, [
+                AppLog::ops()->warning('UpdateService: tar extraction incomplete/failed — falling through to PowerShell.', array_merge($logCtx, [
                     'exit' => $process->getExitCode(),
                     'stderr' => substr($tarErr, 0, 500),
                 ]));
@@ -2117,16 +2123,16 @@ class UpdateService
                     @mkdir($destDir, 0755, true);
                 }
             } catch (Throwable $e) {
-                Log::warning('UpdateService: tar extract exception.', array_merge($logCtx, ['error' => $e->getMessage()]));
+                AppLog::ops()->warning('UpdateService: tar extract exception.', array_merge($logCtx, ['error' => $e->getMessage()]));
             }
         } else {
-            Log::info('UpdateService: tar not available, trying PowerShell.', $logCtx);
+            AppLog::ops()->info('UpdateService: tar not available, trying PowerShell.', $logCtx);
         }
 
         // ── 2. PowerShell Expand-Archive ─────────────────────────────────────
         $psCheck = $this->runProcess(['powershell', '-Command', 'echo ok'], 5);
         if ($psCheck['success']) {
-            Log::info('UpdateService: extracting via PowerShell Expand-Archive.', $logCtx);
+            AppLog::ops()->info('UpdateService: extracting via PowerShell Expand-Archive.', $logCtx);
             try {
                 $safeZip = str_replace("'", "''", $zipPath);
                 $safeDest = str_replace("'", "''", $destDir);
@@ -2145,31 +2151,31 @@ class UpdateService
                 if ($process->isSuccessful()) {
                     $entries = glob($destDir.DIRECTORY_SEPARATOR.'*', GLOB_ONLYDIR);
                     if (! empty($entries)) {
-                        Log::info('UpdateService: PowerShell extraction succeeded.', $logCtx);
+                        AppLog::ops()->info('UpdateService: PowerShell extraction succeeded.', $logCtx);
 
                         return $entries[0];
                     }
                 }
 
-                Log::warning('UpdateService: PowerShell Expand-Archive failed.', array_merge($logCtx, [
+                AppLog::ops()->warning('UpdateService: PowerShell Expand-Archive failed.', array_merge($logCtx, [
                     'exit' => $process->getExitCode(),
                     'error' => substr($process->getErrorOutput(), 0, 500),
                 ]));
             } catch (Throwable $e) {
-                Log::warning('UpdateService: PowerShell extract exception.', array_merge($logCtx, ['error' => $e->getMessage()]));
+                AppLog::ops()->warning('UpdateService: PowerShell extract exception.', array_merge($logCtx, ['error' => $e->getMessage()]));
             }
         }
 
         // ── 3. Last resort: blocking ZipArchive ──────────────────────────────
         if (! class_exists(\ZipArchive::class)) {
-            Log::warning('UpdateService: ZipArchive not available.', $logCtx);
+            AppLog::ops()->warning('UpdateService: ZipArchive not available.', $logCtx);
 
             return null;
         }
-        Log::info('UpdateService: extracting via ZipArchive (blocking).', $logCtx);
+        AppLog::ops()->info('UpdateService: extracting via ZipArchive (blocking).', $logCtx);
         $zip = new \ZipArchive;
         if ($zip->open($zipPath) !== true) {
-            Log::warning('UpdateService: ZipArchive::open failed.', $logCtx);
+            AppLog::ops()->warning('UpdateService: ZipArchive::open failed.', $logCtx);
 
             return null;
         }
@@ -2402,7 +2408,7 @@ class UpdateService
             return $written !== false;
         } catch (Throwable $e) {
             try {
-                Log::warning('UpdateService: could not write restore point manifest.', ['error' => $e->getMessage()]);
+                AppLog::ops()->warning('UpdateService: could not write restore point manifest.', ['error' => $e->getMessage()]);
             } catch (Throwable) {
             }
 
@@ -2421,7 +2427,7 @@ class UpdateService
             }
         } catch (Throwable $e) {
             try {
-                Log::warning('UpdateService: restore point pruning failed.', ['error' => $e->getMessage()]);
+                AppLog::ops()->warning('UpdateService: restore point pruning failed.', ['error' => $e->getMessage()]);
             } catch (Throwable) {
             }
         }
@@ -2640,7 +2646,7 @@ class UpdateService
     }
 
     /**
-     * Write activity_log row and best-effort Log::info.
+     * Write activity_log row and best-effort AppLog::ops()->info.
      *
      * @param  array<string, mixed>  $result
      */
@@ -2677,39 +2683,17 @@ class UpdateService
             'remote' => $result['remoteSanitized'] ?? null,
         ];
 
-        try {
-            $ip = null;
-            $userAgent = null;
-            try {
-                $ip = request()->ip();
-                $userAgent = request()->userAgent();
-            } catch (Throwable) {
-            }
-
-            DB::table('activity_log')->insert([
-                'user_id' => $actor->id ?? null,
-                'customer_id' => null,
-                'action' => 'system.updated',
-                'description' => $description,
-                'metadata' => json_encode($metadata),
-                'properties' => json_encode($metadata),
-                'event' => 'updated',
-                'subject_type' => 'system',
-                'subject_id' => null,
-                'ip_address' => $ip,
-                'user_agent' => $userAgent,
-                'created_at' => now(),
-            ]);
-        } catch (Throwable $e) {
-            // Audit must never break the update flow
-            try {
-                Log::warning('UpdateService: activity_log insert failed.', ['error' => $e->getMessage()]);
-            } catch (Throwable) {
-            }
-        }
+        app(AuditRecorder::class)->activity(
+            AuditEvent::SystemUpdated,
+            null,
+            $metadata,
+            $description,
+            null,
+            $actor->id ?? null,
+        );
 
         try {
-            Log::info('System update result.', [
+            AppLog::ops()->info('System update result.', [
                 'status' => $status,
                 'from' => $from,
                 'to' => $to,
@@ -2756,7 +2740,7 @@ class UpdateService
             $response = $client->get('https://api.github.com/repos/Sanat-das/Manage-Hosting-CRM/commits', ['per_page' => self::COMMIT_WINDOW, 'sha' => 'main']);
 
             if (! $response->successful()) {
-                Log::warning('UpdateService: GitHub API returned non-2xx.', [
+                AppLog::ops()->warning('UpdateService: GitHub API returned non-2xx.', [
                     'status' => $response->status(),
                     'body' => substr($response->body(), 0, 300),
                 ]);
@@ -2790,7 +2774,7 @@ class UpdateService
 
             return $slice($result);
         } catch (Throwable $e) {
-            Log::warning('UpdateService: GitHub API call failed.', [
+            AppLog::ops()->warning('UpdateService: GitHub API call failed.', [
                 'error' => $e->getMessage(),
                 'class' => get_class($e),
             ]);
@@ -3155,36 +3139,14 @@ class UpdateService
         $shortFrom = $from !== '' ? substr($from, 0, 7) : 'unknown';
         $shortTo = $to !== '' ? substr($to, 0, 7) : 'unknown';
 
-        try {
-            $ip = null;
-            $userAgent = null;
-
-            try {
-                $ip = request()->ip();
-                $userAgent = request()->userAgent();
-            } catch (Throwable) {
-            }
-
-            DB::table('activity_log')->insert([
-                'user_id' => $actor->id ?? null,
-                'customer_id' => null,
-                'action' => 'system.rolledback',
-                'description' => sprintf('System rolled back from %s to %s [%s]', $shortFrom, $shortTo, $status),
-                'metadata' => json_encode($metadata),
-                'properties' => json_encode($metadata),
-                'event' => 'rolledback',
-                'subject_type' => 'system',
-                'subject_id' => null,
-                'ip_address' => $ip,
-                'user_agent' => $userAgent,
-                'created_at' => now(),
-            ]);
-        } catch (Throwable $e) {
-            try {
-                Log::warning('UpdateService: rollback activity_log insert failed.', ['error' => $e->getMessage()]);
-            } catch (Throwable) {
-            }
-        }
+        app(AuditRecorder::class)->activity(
+            AuditEvent::SystemRolledback,
+            null,
+            $metadata,
+            sprintf('System rolled back from %s to %s [%s]', $shortFrom, $shortTo, $status),
+            null,
+            $actor->id ?? null,
+        );
     }
 
     /**

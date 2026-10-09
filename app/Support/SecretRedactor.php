@@ -16,6 +16,12 @@ namespace App\Support;
  *
  * Deliberately one class rather than a copy of the patterns in each service:
  * a security filter that exists twice drifts.
+ *
+ * Coverage is deliberately narrow: URL userinfo and GitHub token formats ONLY.
+ * Known NOT-covered classes — do not let these reach a log unguarded: Stripe
+ * sk_live_/pk_*, AWS AKIA*, JWTs and Bearer tokens, GitLab glpat-*, Slack
+ * xoxb-*, PEM private keys, and generic key=value credentials. The
+ * RedactingProcessor's protection is exactly this pattern list.
  */
 final class SecretRedactor
 {

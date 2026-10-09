@@ -4,10 +4,10 @@ declare(strict_types=1);
 
 namespace App\Services\Search;
 
+use App\Support\Logging\AppLog;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Route;
 
 /**
@@ -204,7 +204,7 @@ abstract class AbstractSearchProvider implements SearchProvider
         if (! isset(self::$loggedMissingRoutes[$route])) {
             self::$loggedMissingRoutes[$route] = true;
 
-            Log::warning('Global search provider skipped: its show route is not registered.', [
+            AppLog::app()->warning('Global search provider skipped: its show route is not registered.', [
                 'provider' => static::class,
                 'route' => $route,
             ]);

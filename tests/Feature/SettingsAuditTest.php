@@ -56,8 +56,8 @@ class SettingsAuditTest extends TestCase
         $this->assertNotNull($row, 'No settings.updated audit row written.');
         $this->assertSame($admin->id, $row->user_id, 'Audit causer must be the authenticated admin.');
 
-        $props = json_decode((string) $row->properties, true);
-        $this->assertIsArray($props, 'properties must hold JSON diff.');
+        $props = json_decode((string) $row->metadata, true);
+        $this->assertIsArray($props, 'metadata must hold JSON diff.');
         $this->assertSame('general', $props['section']);
         $this->assertContains('company_name', $props['changed_keys']);
         $this->assertSame('Audit Co', $props['changes']['company_name']['new']);
@@ -86,7 +86,7 @@ class SettingsAuditTest extends TestCase
         $raw = json_encode([$row->properties, $row->metadata, $row->description]);
         $this->assertStringNotContainsString('supersecret-token-123', (string) $raw, 'Plaintext secret leaked into audit row.');
 
-        $props = json_decode((string) $row->properties, true);
+        $props = json_decode((string) $row->metadata, true);
         $this->assertSame('***', $props['changes']['cpanel_api_token']['new'], 'New secret value must be masked.');
         $this->assertSame('integration', $props['section']);
     }
@@ -110,7 +110,7 @@ class SettingsAuditTest extends TestCase
         $raw = json_encode([$row->properties, $row->metadata, $row->description]);
         $this->assertStringNotContainsString('plain-smtp-pass-999', (string) $raw, 'smtp_password plaintext leaked into audit row.');
 
-        $props = json_decode((string) $row->properties, true);
+        $props = json_decode((string) $row->metadata, true);
         $this->assertSame('***', $props['changes']['smtp_password']['new']);
     }
 

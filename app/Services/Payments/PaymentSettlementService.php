@@ -7,8 +7,8 @@ namespace App\Services\Payments;
 use App\Models\Payment;
 use App\Models\PaymentGateway;
 use App\Services\Billing\BillingService;
+use App\Support\Logging\AppLog;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
 use Throwable;
 
 /**
@@ -57,7 +57,7 @@ final class PaymentSettlementService
                 ->driverFor($gateway)
                 ->verify(['reference' => (string) $payment->transaction_id, 'gateway' => $gateway]);
         } catch (Throwable $e) {
-            Log::warning('Payment verification call failed', [
+            AppLog::billing()->warning('Payment verification call failed', [
                 'payment_id' => $payment->id,
                 'gateway' => $gateway->code,
                 'error' => $e->getMessage(),
@@ -100,7 +100,7 @@ final class PaymentSettlementService
             $invoice = $locked->invoice;
 
             if ($invoice !== null && in_array($invoice->status, ['void', 'cancelled'], true)) {
-                Log::warning('Payment settled against a void/cancelled invoice — likely needs a refund', [
+                AppLog::billing()->warning('Payment settled against a void/cancelled invoice — likely needs a refund', [
                     'payment_id' => $locked->id,
                     'invoice_id' => $invoice->id,
                     'invoice_status' => $invoice->status,

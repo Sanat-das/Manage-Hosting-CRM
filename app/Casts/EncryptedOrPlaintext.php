@@ -2,10 +2,10 @@
 
 namespace App\Casts;
 
+use App\Support\Logging\AppLog;
 use Illuminate\Contracts\Database\Eloquent\CastsAttributes;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Crypt;
-use Illuminate\Support\Facades\Log;
 
 /**
  * `encrypted`, but a value that is not valid ciphertext is handed back as-is
@@ -35,7 +35,7 @@ class EncryptedOrPlaintext implements CastsAttributes
         try {
             return Crypt::decryptString((string) $value);
         } catch (\Throwable) {
-            Log::warning('Stored value is not encrypted; reading it as plaintext. Re-save the record to encrypt it.', [
+            AppLog::security()->warning('Stored value is not encrypted; reading it as plaintext. Re-save the record to encrypt it.', [
                 'model' => $model::class,
                 'id' => $model->getKey(),
                 'attribute' => $key,

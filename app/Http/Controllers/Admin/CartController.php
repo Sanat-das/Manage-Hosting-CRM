@@ -16,10 +16,10 @@ use App\Services\OrderActivityLogger;
 use App\Services\OrderConfigSnapshot;
 use App\Services\OrderNumberService;
 use App\Services\ProductBundlePricingService;
+use App\Support\Logging\AppLog;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 
@@ -270,7 +270,7 @@ class CartController extends Controller
                 return $created;
             });
         } catch (\Throwable $e) {
-            Log::error('Cart order placement failed', ['exception' => $e]);
+            AppLog::billing()->error('Cart order placement failed', ['exception' => $e]);
 
             return back()->withErrors(['error' => 'Could not place the order. Please try again or contact support.']);
         }

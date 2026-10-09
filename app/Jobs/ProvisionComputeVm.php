@@ -13,11 +13,11 @@ use App\Services\Provisioning\ComputeDriver;
 use App\Services\Provisioning\ManualProvisioner;
 use App\Services\Provisioning\ProvisioningEventRecorder;
 use App\Services\Provisioning\VmGuestCredentialStore;
+use App\Support\Logging\AppLog;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
-use Illuminate\Support\Facades\Log;
 use Throwable;
 
 /**
@@ -141,7 +141,7 @@ class ProvisionComputeVm implements ShouldQueue
                             }
                         } catch (Throwable $e) {
                             $startError = $e->getMessage();
-                            Log::warning('Queued provision: start after existing probe failed', [
+                            AppLog::provisioning()->warning('Queued provision: start after existing probe failed', [
                                 'hosting_account_id' => $account->id,
                                 'module' => $slug,
                                 'error' => $e->getMessage(),
@@ -165,7 +165,7 @@ class ProvisionComputeVm implements ShouldQueue
                 }
             }
         } catch (Throwable $e) {
-            Log::warning('Queued provision pre-check failed', [
+            AppLog::provisioning()->warning('Queued provision pre-check failed', [
                 'hosting_account_id' => $account->id,
                 'module' => $slug,
                 'error' => $e->getMessage(),

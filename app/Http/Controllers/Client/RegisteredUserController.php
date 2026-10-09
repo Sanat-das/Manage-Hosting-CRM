@@ -3,16 +3,17 @@
 namespace App\Http\Controllers\Client;
 
 use App\Http\Controllers\Controller;
+use App\Support\AppSettings;
+use App\Support\Logging\AppLog;
+use App\Support\MathCaptcha;
 use Illuminate\Auth\Events\Registered;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use App\Support\AppSettings;
-use App\Support\MathCaptcha;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Event;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Validation\Rules\Password;
+use Illuminate\Validation\ValidationException;
 use Laravel\Fortify\Contracts\CreatesNewUsers;
 
 /**
@@ -29,7 +30,7 @@ class RegisteredUserController extends Controller
         // Gated by security_honeypot_enabled toggle (default: enabled).
         if (AppSettings::bool('security_honeypot_enabled', true)) {
             if ($request->filled('website')) {
-                Log::warning('Bot registration blocked by honeypot', [
+                AppLog::security()->warning('Bot registration blocked by honeypot', [
                     'ip' => $request->ip(),
                     'user_agent' => $request->userAgent(),
                     'payload' => $request->except(['password', 'password_confirmation']),
@@ -52,19 +53,19 @@ class RegisteredUserController extends Controller
         }
 
         // IP-aware throttling support — defense-in-depth alongside throttle:register middleware.
-        $throttleKey = 'register:' . $request->ip();
+        $throttleKey = 'register:'.$request->ip();
 
         if (RateLimiter::tooManyAttempts($throttleKey, 5)) {
             $seconds = RateLimiter::availableIn($throttleKey);
 
-            Log::warning('Registration throttled', [
+            AppLog::security()->warning('Registration throttled', [
                 'ip' => $request->ip(),
                 'user_agent' => $request->userAgent(),
                 'retry_after' => $seconds,
             ]);
 
             return back()->withErrors([
-                'email' => 'Too many registration attempts. Please try again in ' . $seconds . ' seconds.',
+                'email' => 'Too many registration attempts. Please try again in '.$seconds.' seconds.',
             ])->withInput();
         }
 
@@ -74,7 +75,9 @@ class RegisteredUserController extends Controller
         if ($request->has('phone_code') || $request->has('phone_number')) {
             $code = trim((string) $request->input('phone_code', ''));
             $number = trim((string) $request->input('phone_number', ''));
-            if ($code === '' && $number !== '') $code = '+91';
+            if ($code === '' && $number !== '') {
+                $code = '+91';
+            }
             $request->merge(['phone' => $number !== '' ? trim($code.' '.$number) : $code]);
         }
 
@@ -121,7 +124,7 @@ class RegisteredUserController extends Controller
                 'country' => $validated['country'] ?? null,
                 'address' => $validated['address'] ?? null,
             ]);
-        } catch (\Illuminate\Validation\ValidationException $e) {
+        } catch (ValidationException $e) {
             // Validation failed inside CreatesNewUsers — keep throttle hit for brute-force accounting.
             throw $e;
         }
@@ -133,7 +136,7 @@ class RegisteredUserController extends Controller
 
         Event::dispatch(new Registered($user));
 
-        Log::info('User registered', [
+        AppLog::security()->info('User registered', [
             'email' => $user->email,
             'user_id' => $user->getAuthIdentifier(),
             'ip' => $request->ip(),

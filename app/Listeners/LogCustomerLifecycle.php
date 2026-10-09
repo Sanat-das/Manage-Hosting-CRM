@@ -5,8 +5,9 @@ namespace App\Listeners;
 use App\Events\CustomerCreated;
 use App\Events\CustomerDeleted;
 use App\Events\CustomerUpdated;
-use App\Models\ActivityLog;
 use App\Models\Customer;
+use App\Support\Audit\AuditEvent;
+use App\Support\Audit\AuditRecorder;
 
 /**
  * Writes customer lifecycle events to the activity log.
@@ -23,28 +24,21 @@ class LogCustomerLifecycle
 {
     public function handleCreated(CustomerCreated $event): void
     {
-        $this->log($event->customer, 'customer.created', 'Customer created');
+        $this->log($event->customer, AuditEvent::CustomerCreated, 'Customer created');
     }
 
     public function handleUpdated(CustomerUpdated $event): void
     {
-        $this->log($event->customer, 'customer.updated', 'Customer details updated');
+        $this->log($event->customer, AuditEvent::CustomerUpdated, 'Customer details updated');
     }
 
     public function handleDeleted(CustomerDeleted $event): void
     {
-        $this->log($event->customer, 'customer.deleted', 'Customer deleted');
+        $this->log($event->customer, AuditEvent::CustomerDeleted, 'Customer deleted');
     }
 
-    private function log(Customer $customer, string $action, string $description): void
+    private function log(Customer $customer, AuditEvent $action, string $description): void
     {
-        ActivityLog::create([
-            'customer_id' => $customer->id,
-            'user_id' => auth()->id(),
-            'action' => $action,
-            'description' => $description,
-            'metadata' => ['event_dispatched' => true],
-            'ip_address' => request()->ip(),
-        ]);
+        app(AuditRecorder::class)->activity($action, $customer, ['event_dispatched' => true], $description);
     }
 }

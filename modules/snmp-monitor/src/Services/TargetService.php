@@ -6,6 +6,7 @@ namespace Modules\SnmpMonitor\Services;
 
 use App\Models\HostingAccount;
 use App\Services\Modules\ModuleManager;
+use App\Support\Logging\AppLog;
 use Modules\SnmpMonitor\Models\SnmpTarget;
 
 /**
@@ -27,8 +28,11 @@ final class TargetService
 
     /** Per-product override for which subnet type to prefer. */
     public const IP_SOURCE_AUTO = 'auto';
+
     public const IP_SOURCE_PUBLIC = 'public';
+
     public const IP_SOURCE_PRIVATE = 'private';
+
     public const IP_SOURCE_ANY = 'any';
 
     /**
@@ -37,7 +41,7 @@ final class TargetService
      * account holds no usable IP lease — callers must treat that as "no
      * pollable address", never store credentials to compensate.
      *
-     * @param string|null $ipSource Per-product override from snmp_ip_source (auto|public|private|any)
+     * @param  string|null  $ipSource  Per-product override from snmp_ip_source (auto|public|private|any)
      * @return array{host: string, source: string}|null
      */
     public function resolveForAccount(HostingAccount $account, ?string $ipSource = null): ?array
@@ -51,7 +55,8 @@ final class TargetService
             $storedHost = SnmpTarget::query()
                 ->where('hosting_account_id', $account->id)
                 ->value('host');
-        } catch (\Throwable) {
+        } catch (\Throwable $e) {
+            AppLog::provisioning()->debug('SNMP stored host lookup failed — falling back to IPAM resolution', ['error' => $e->getMessage()]);
             $storedHost = null;
         }
 
@@ -105,6 +110,7 @@ final class TargetService
                 }
             }
             $ipAddress = trim((string) ($candidate?->ip_address ?? ''));
+
             return $ipAddress !== '' ? ['host' => $ipAddress, 'source' => $source] : null;
         }
 

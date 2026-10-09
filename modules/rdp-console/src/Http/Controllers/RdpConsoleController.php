@@ -6,11 +6,11 @@ namespace Modules\RdpConsole\Http\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Models\HostingAccount;
+use App\Support\Logging\AppLog;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Log;
 use Modules\RdpConsole\Exceptions\GatewayNotConfiguredException;
 use Modules\RdpConsole\Exceptions\PveVncUnavailableException;
 use Modules\RdpConsole\Exceptions\VmConnectUnavailableException;
@@ -386,7 +386,7 @@ final class RdpConsoleController extends Controller
      */
     private function gatewayNotConfiguredResponse(HostingAccount $hostingAccount, string $endpoint, GatewayNotConfiguredException $e): JsonResponse
     {
-        Log::error('rdp.console.gateway_not_configured', [
+        AppLog::provisioning()->error('rdp.console.gateway_not_configured', [
             'account' => $hostingAccount->id,
             'endpoint' => $endpoint,
             'reason' => $e->getMessage(),
@@ -402,7 +402,7 @@ final class RdpConsoleController extends Controller
      */
     private function tokenMintFailedResponse(HostingAccount $hostingAccount, string $endpoint, \Throwable $e): JsonResponse
     {
-        Log::error('rdp.console.token_mint_failed', [
+        AppLog::provisioning()->error('rdp.console.token_mint_failed', [
             'account' => $hostingAccount->id,
             'endpoint' => $endpoint,
             'exception' => $e::class,

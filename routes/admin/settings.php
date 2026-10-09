@@ -2,6 +2,10 @@
 
 use App\Http\Controllers\Admin\ActivityLogController;
 use App\Http\Controllers\Admin\AnalyticsController;
+use App\Http\Controllers\Admin\AuditLogController;
+use App\Http\Controllers\Admin\ConsentLogController;
+use App\Http\Controllers\Admin\DomainLogController;
+use App\Http\Controllers\Admin\ModuleLogController;
 use App\Http\Controllers\Admin\ReportsController;
 use App\Http\Controllers\Admin\SettingsController;
 use Illuminate\Support\Facades\Route;
@@ -73,4 +77,21 @@ Route::middleware(['web', 'auth', 'admin', 'throttle:admin'])->prefix('admin')->
     Route::get('activity-log', [ActivityLogController::class, 'index'])
         ->middleware('permission:activity.view')
         ->name('activity-log.index');
+
+    // Logs hub — read-only trail pages.
+    Route::get('audit-log', [AuditLogController::class, 'index'])
+        ->middleware('permission:audit.view')
+        ->name('audit-log.index');
+
+    Route::get('module-logs', [ModuleLogController::class, 'index'])
+        ->middleware('permission:module_logs.view')
+        ->name('module-logs.index');
+
+    Route::get('domain-logs', [DomainLogController::class, 'index'])
+        ->middleware('permission:domain_logs.view')
+        ->name('domain-logs.index');
+
+    Route::get('consent-log', [ConsentLogController::class, 'index'])
+        ->middleware('permission:consent.view')
+        ->name('consent-log.index');
 });

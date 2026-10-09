@@ -21,6 +21,7 @@
 })();
 
 use App\Http\Middleware\AdminMiddleware;
+use App\Http\Middleware\AssignRequestId;
 use App\Http\Middleware\ClientMiddleware;
 use App\Http\Middleware\EnsureAppInstalled;
 use App\Http\Middleware\EnsureCustomerRecord;
@@ -111,6 +112,10 @@ return Application::configure(basePath: dirname(__DIR__))
         ['middleware' => ['web', 'auth']],
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        // Correlation id (X-Request-Id) captured into every log record —
+        // see App\Support\Logging\RequestContextProcessor.
+        $middleware->prepend(AssignRequestId::class);
+
         $middleware->alias([
             'role' => RoleMiddleware::class,
             'permission' => PermissionMiddleware::class,

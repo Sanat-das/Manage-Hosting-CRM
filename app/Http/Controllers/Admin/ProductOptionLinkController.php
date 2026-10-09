@@ -4,11 +4,13 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\ProductOptionLinkRequest;
-use App\Models\ActivityLog;
 use App\Models\Product;
 use App\Models\ProductOptionGroup;
 use App\Models\ProductOptionGroupProduct;
 use App\Services\ProductOptionLinkService;
+use App\Services\Provisioning\ModuleRequiredOptions;
+use App\Support\Audit\AuditEvent;
+use App\Support\Audit\AuditRecorder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\DB;
 
@@ -23,9 +25,7 @@ use Illuminate\Support\Facades\DB;
  */
 class ProductOptionLinkController extends Controller
 {
-    public function __construct(private readonly ProductOptionLinkService $optionLinks)
-    {
-    }
+    public function __construct(private readonly ProductOptionLinkService $optionLinks) {}
 
     public function attach(ProductOptionLinkRequest $request, Product $product): RedirectResponse
     {
@@ -55,7 +55,7 @@ class ProductOptionLinkController extends Controller
             return back()->withInput()->withErrors(['error' => 'Could not attach option group: '.$e->getMessage()]);
         }
 
-        $this->logActivity('option_group_attached', "Option group attached to product {$product->name}", [
+        $this->logActivity(AuditEvent::OptionGroupAttached, "Option group attached to product {$product->name}", [
             'product_id' => $product->id,
             'option_group_id' => $optionGroupId,
             'link_id' => $link->id,
@@ -78,13 +78,13 @@ class ProductOptionLinkController extends Controller
 
         $key = strtolower(trim((string) ($link->group?->key ?? '')));
 
-        if ($key !== '' && in_array($key, \App\Services\Provisioning\ModuleRequiredOptions::requiredForProduct($product), true)) {
+        if ($key !== '' && in_array($key, ModuleRequiredOptions::requiredForProduct($product), true)) {
             return back()->withErrors(['error' => "Option group '".($link->group?->name ?? $key)."' is required by this product's provisioning module(s) and cannot be detached. Disable the module first."]);
         }
 
         $link->delete(); // FK cascade removes link values + pricing
 
-        $this->logActivity('option_group_detached', "Option group detached from product {$product->name}", [
+        $this->logActivity(AuditEvent::OptionGroupDetached, "Option group detached from product {$product->name}", [
             'product_id' => $product->id,
             'link_id' => $link->id,
         ]);
@@ -108,7 +108,7 @@ class ProductOptionLinkController extends Controller
 
         $this->optionLinks->syncValuesFromGroup($link);
 
-        $this->logActivity('option_group_synced', "Option group values synced from catalog on product {$product->name}", [
+        $this->logActivity(AuditEvent::OptionGroupSynced, "Option group values synced from catalog on product {$product->name}", [
             'product_id' => $product->id,
             'link_id' => $link->id,
         ]);
@@ -131,16 +131,16 @@ class ProductOptionLinkController extends Controller
             ->values()
             ->all();
 
-        if (class_exists(\App\Services\Provisioning\ModuleRequiredOptions::class)) {
-            if (method_exists(\App\Services\Provisioning\ModuleRequiredOptions::class, 'missingKeysFor')) {
-                return \App\Services\Provisioning\ModuleRequiredOptions::missingKeysFor(
+        if (class_exists(ModuleRequiredOptions::class)) {
+            if (method_exists(ModuleRequiredOptions::class, 'missingKeysFor')) {
+                return ModuleRequiredOptions::missingKeysFor(
                     (string) ($product->provisioning_module ?? ''),
                     $attachedKeys
                 );
             }
 
-            if (method_exists(\App\Services\Provisioning\ModuleRequiredOptions::class, 'missingKeys')) {
-                return \App\Services\Provisioning\ModuleRequiredOptions::missingKeys($product);
+            if (method_exists(ModuleRequiredOptions::class, 'missingKeys')) {
+                return ModuleRequiredOptions::missingKeys($product);
             }
         }
 
@@ -171,14 +171,8 @@ class ProductOptionLinkController extends Controller
      *
      * @param  array<string, mixed>  $metadata
      */
-    private function logActivity(string $action, string $description, array $metadata = []): void
+    private function logActivity(AuditEvent $action, string $description, array $metadata = []): void
     {
-        ActivityLog::create([
-            'user_id' => auth()->id(),
-            'action' => $action,
-            'description' => $description,
-            'metadata' => $metadata ?: null,
-            'ip_address' => request()->ip(),
-        ]);
+        app(AuditRecorder::class)->activity($action, null, $metadata, $description);
     }
 }

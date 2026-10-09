@@ -25,6 +25,10 @@ class AdminLteRbacSeeder extends Seeder
             'reports.view' => 'View Reports',
             'reports.export' => 'Export Reports',
             'activity.view' => 'View Activity Log',
+            'audit.view' => 'View Audit Trail',
+            'module_logs.view' => 'View Module Logs',
+            'domain_logs.view' => 'View Domain Logs',
+            'consent.view' => 'View Consent Log',
             'search' => 'Use Global Search',
 
             // customers

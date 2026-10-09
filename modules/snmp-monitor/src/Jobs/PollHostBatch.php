@@ -9,11 +9,11 @@ use App\Models\IpAddress;
 use App\Models\Module;
 use App\Services\Inventory\PortDiscoveryService;
 use App\Services\Modules\ModuleManager;
+use App\Support\Logging\AppLog;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
 use Modules\SnmpMonitor\Exceptions\SnmpException;
 use Modules\SnmpMonitor\Models\SnmpTarget;
 use Modules\SnmpMonitor\Services\InventoryDiscoveryService;
@@ -146,7 +146,7 @@ class PollHostBatch implements ShouldQueue
             try {
                 $this->pollTarget($target, $manager, $module);
             } catch (Throwable $e) {
-                Log::warning('SNMP poll failed.', [
+                AppLog::provisioning()->warning('SNMP poll failed.', [
                     'target_id' => $target->id,
                     'account_id' => $target->hosting_account_id,
                     'host' => $target->host,
@@ -207,7 +207,7 @@ class PollHostBatch implements ShouldQueue
                 ->where('ip_address', $host)
                 ->update(['last_seen_at' => Carbon::now()]);
         } catch (Throwable $e) {
-            Log::warning('SNMP IPAM liveness stamp failed.', [
+            AppLog::provisioning()->warning('SNMP IPAM liveness stamp failed.', [
                 'target_id' => $target->id,
                 'host' => $host,
                 'error' => $e->getMessage(),
@@ -222,7 +222,7 @@ class PollHostBatch implements ShouldQueue
         try {
             app(InventoryDiscoveryService::class)->discover($target, $payload, $config);
         } catch (Throwable $e) {
-            Log::warning('SNMP inventory discovery failed.', [
+            AppLog::provisioning()->warning('SNMP inventory discovery failed.', [
                 'target_id' => $target->id,
                 'host' => $host,
                 'error' => $e->getMessage(),
@@ -246,7 +246,7 @@ class PollHostBatch implements ShouldQueue
                     }
                 }
             } catch (Throwable $e) {
-                Log::warning('SNMP port sync failed.', [
+                AppLog::provisioning()->warning('SNMP port sync failed.', [
                     'target_id' => $target->id,
                     'host' => $host,
                     'error' => $e->getMessage(),

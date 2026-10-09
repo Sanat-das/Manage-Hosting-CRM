@@ -20,12 +20,12 @@ use App\Services\OrderConfigSnapshot;
 use App\Services\OrderEmailService;
 use App\Services\OrderNumberService;
 use App\Services\ProductBundlePricingService;
+use App\Support\Logging\AppLog;
 use App\Support\OptionSelectionRules;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 
@@ -362,7 +362,7 @@ class StoreController extends Controller
                 return $created;
             });
         } catch (\Throwable $e) {
-            Log::error('Order placement failed', ['exception' => $e, 'customer_id' => $customer->id]);
+            AppLog::billing()->error('Order placement failed', ['exception' => $e, 'customer_id' => $customer->id]);
 
             return back()->withErrors(['error' => 'Could not place your order. Please try again or contact support.']);
         }
@@ -401,13 +401,13 @@ class StoreController extends Controller
         try {
             OrderCreated::dispatch($order);
         } catch (\Throwable $e) {
-            Log::error('Order placed notification failed', ['exception' => $e, 'order_id' => $order->id]);
+            AppLog::billing()->error('Order placed notification failed', ['exception' => $e, 'order_id' => $order->id]);
         }
 
         try {
             $this->orderEmails->send($order);
         } catch (\Throwable $e) {
-            Log::error('Order confirmation email failed', ['exception' => $e, 'order_id' => $order->id]);
+            AppLog::billing()->error('Order confirmation email failed', ['exception' => $e, 'order_id' => $order->id]);
         }
 
         try {
@@ -419,7 +419,7 @@ class StoreController extends Controller
                 $invoice->update(['status' => Invoice::STATUS_SENT]);
             }
         } catch (\Throwable $e) {
-            Log::error('Order invoice email failed', ['exception' => $e, 'invoice_id' => $invoice->id]);
+            AppLog::billing()->error('Order invoice email failed', ['exception' => $e, 'invoice_id' => $invoice->id]);
         }
     }
 

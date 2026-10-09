@@ -11,8 +11,8 @@ use App\Models\ChatSetting;
 use App\Models\EmailTemplate;
 use App\Services\Concerns\BuildsEmailVariables;
 use App\Support\ChatMessagePayload;
+use App\Support\Logging\AppLog;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\Log;
 
 /**
  * Emails the customer a copy of their chat when it is closed.
@@ -63,7 +63,7 @@ class ChatTranscriptEmailService
         $email = $conversation->customer?->user?->email ?: $conversation->guest_email;
 
         if (! $email) {
-            Log::info('Chat transcript skipped: no recipient address.', ['conversation_id' => $conversation->id]);
+            AppLog::app()->info('Chat transcript skipped: no recipient address.', ['conversation_id' => $conversation->id]);
 
             return false;
         }
@@ -71,7 +71,7 @@ class ChatTranscriptEmailService
         $messages = $this->transcriptMessages($conversation);
 
         if ($messages->isEmpty()) {
-            Log::info('Chat transcript skipped: nothing to send.', ['conversation_id' => $conversation->id]);
+            AppLog::app()->info('Chat transcript skipped: nothing to send.', ['conversation_id' => $conversation->id]);
 
             return false;
         }
@@ -82,7 +82,7 @@ class ChatTranscriptEmailService
             ->first();
 
         if ($template === null) {
-            Log::info('Chat transcript skipped: template not found.', [
+            AppLog::app()->info('Chat transcript skipped: template not found.', [
                 'conversation_id' => $conversation->id,
                 'template' => $templateName,
             ]);
@@ -103,7 +103,18 @@ class ChatTranscriptEmailService
             $plainBody = $this->toPlainText($body);
         }
 
-        SendEmail::dispatch($email, $subject, $plainBody, null, [], [], [], $htmlBody);
+        SendEmail::dispatch(
+            $email,
+            $subject,
+            $plainBody,
+            null,
+            [],
+            [],
+            [],
+            $htmlBody,
+            templateName: 'chat_transcript',
+            customerId: $conversation->customer_id,
+        );
 
         return true;
     }

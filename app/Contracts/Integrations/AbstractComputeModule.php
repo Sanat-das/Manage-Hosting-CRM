@@ -8,7 +8,7 @@ use App\Contracts\Integrations\Capabilities\ProvisioningModule;
 use App\Models\PanelAccount;
 use App\Models\Server;
 use App\Models\ServiceInstance;
-use Illuminate\Support\Facades\Log;
+use App\Support\Logging\AppLog;
 use Illuminate\Support\Str;
 use Throwable;
 
@@ -205,7 +205,7 @@ abstract class AbstractComputeModule implements ProvisioningModule, TestableServ
                     'provision_status' => 'provisioned',
                 ]);
             } catch (Throwable $e) {
-                Log::warning('Could not advance service status after provisioning', [
+                AppLog::provisioning()->warning('Could not advance service status after provisioning', [
                     'service_instance_id' => $service->id,
                     'error' => $e->getMessage(),
                 ]);

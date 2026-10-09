@@ -10,9 +10,9 @@ use App\Models\Payment;
 use App\Models\PaymentGateway;
 use App\Services\Payments\PaymentGatewayManager;
 use App\Services\Payments\PaymentSettlementService;
+use App\Support\Logging\AppLog;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Log;
 use Throwable;
 
 /**
@@ -55,7 +55,7 @@ class PaymentWebhookController extends Controller
         try {
             $driver = app(PaymentGatewayManager::class)->driverFor($model);
         } catch (Throwable $e) {
-            Log::error('Payment webhook could not resolve a driver', [
+            AppLog::billing()->error('Payment webhook could not resolve a driver', [
                 'gateway' => $gateway,
                 'error' => $e->getMessage(),
             ]);
@@ -77,7 +77,7 @@ class PaymentWebhookController extends Controller
         ]);
 
         if (! ($parsed['valid'] ?? false)) {
-            Log::warning('Rejected payment webhook', [
+            AppLog::billing()->warning('Rejected payment webhook', [
                 'gateway' => $gateway,
                 'reason' => $parsed['message'] ?? null,
                 'ip' => $request->ip(),
@@ -101,7 +101,7 @@ class PaymentWebhookController extends Controller
             ->first();
 
         if ($payment === null) {
-            Log::info('Payment webhook referenced an unknown payment', [
+            AppLog::billing()->info('Payment webhook referenced an unknown payment', [
                 'gateway' => $gateway,
                 'reference' => $reference,
             ]);

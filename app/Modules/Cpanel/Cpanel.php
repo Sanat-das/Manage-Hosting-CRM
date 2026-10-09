@@ -13,6 +13,7 @@ use App\Contracts\Integrations\TestableServerModule;
 use App\Models\PanelAccount;
 use App\Models\Server;
 use App\Modules\Cpanel\Services\WhmClient;
+use App\Support\Logging\AppLog;
 
 /**
  * cPanel/WHM provisioning module.
@@ -70,15 +71,15 @@ final class Cpanel extends AbstractPanelModule implements TestableServerModule
             return ServerConnectionResult::ok(
                 message: 'Connected to WHM',
                 latencyMs: $latency,
-                meta: static::capMeta(array_merge(
+                meta: self::capMeta(array_merge(
                     ['version' => $version],
-                    static::successProvenance('version', $version),
+                    self::successProvenance('version', $version),
                 )),
             );
         } catch (PanelException $e) {
             $latency = (int) (microtime(true) * 1000) - $start;
 
-            return ServerConnectionResult::fail($e->getMessage(), $latency, static::errorMeta($e->getMessage()));
+            return ServerConnectionResult::fail($e->getMessage(), $latency, self::errorMeta($e->getMessage()));
         }
     }
 
@@ -99,8 +100,9 @@ final class Cpanel extends AbstractPanelModule implements TestableServerModule
                 if (is_array($accts)) {
                     $totalAccounts = is_array($accts) && array_is_list($accts) ? count($accts) : 0;
                 }
-            } catch (PanelException) {
+            } catch (PanelException $e) {
                 // Non-fatal: version succeeded, account count optional
+                AppLog::provisioning()->debug('cPanel account count probe failed in getServerInfo', ['error' => $e->getMessage()]);
             }
 
             $latency = (int) (microtime(true) * 1000) - $start;
@@ -115,7 +117,7 @@ final class Cpanel extends AbstractPanelModule implements TestableServerModule
                 ipAddress: (string) $server->ip_address,
                 totalAccounts: $totalAccounts,
                 latencyMs: $latency,
-                meta: static::successProvenance(
+                meta: self::successProvenance(
                     'version+listaccts',
                     $version !== '' ? $version : null,
                     $origin !== '' ? $origin : null,
@@ -130,7 +132,7 @@ final class Cpanel extends AbstractPanelModule implements TestableServerModule
                 ipAddress: (string) $server->ip_address,
                 totalAccounts: 0,
                 latencyMs: $latency,
-                meta: static::errorMeta($e->getMessage()),
+                meta: self::errorMeta($e->getMessage()),
             );
         }
     }

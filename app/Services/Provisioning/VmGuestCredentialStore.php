@@ -6,7 +6,8 @@ namespace App\Services\Provisioning;
 
 use App\Models\HostingAccount;
 use App\Models\PanelAccount;
-use Illuminate\Support\Facades\Log;
+use App\Support\Logging\AppLog;
+use Modules\RdpConsole\Models\RdpConsoleConfig;
 
 final class VmGuestCredentialStore
 {
@@ -56,12 +57,12 @@ final class VmGuestCredentialStore
      */
     public function syncRdpConsole(HostingAccount $account, ?string $username, ?string $password): void
     {
-        if (! class_exists(\Modules\RdpConsole\Models\RdpConsoleConfig::class)) {
+        if (! class_exists(RdpConsoleConfig::class)) {
             return;
         }
 
         try {
-            $configClass = \Modules\RdpConsole\Models\RdpConsoleConfig::class;
+            $configClass = RdpConsoleConfig::class;
             $existing = $configClass::where('hosting_account_id', $account->id)->first();
 
             if ($existing === null) {
@@ -81,7 +82,7 @@ final class VmGuestCredentialStore
                 $existing->update($update);
             }
         } catch (\Throwable $e) {
-            Log::warning('RDP console sync skipped', [
+            AppLog::provisioning()->warning('RDP console sync skipped', [
                 'hosting_account_id' => $account->id,
                 'error' => $e->getMessage(),
             ]);

@@ -4,11 +4,12 @@ declare(strict_types=1);
 
 namespace Modules\SshConsole;
 
-use App\Contracts\Module\AbstractModule;
 use App\Contracts\Integrations\Capabilities\HostingAccountToolsProvider;
+use App\Contracts\Module\AbstractModule;
 use App\Contracts\Module\ModuleContext;
 use App\Models\HostingAccount;
 use App\Models\IpAddress;
+use App\Support\Logging\AppLog;
 use Illuminate\Console\Application as ConsoleApplication;
 use Illuminate\Routing\Router;
 use Illuminate\Support\Collection;
@@ -99,7 +100,8 @@ final class SshConsole extends AbstractModule implements HostingAccountToolsProv
             $sshConfig = SshConsoleConfig::query()
                 ->where('hosting_account_id', $account->id)
                 ->first();
-        } catch (\Throwable) {
+        } catch (\Throwable $e) {
+            AppLog::provisioning()->debug('SSH console config lookup failed — degrading to not configured', ['error' => $e->getMessage()]);
             $sshConfig = null;
         }
 

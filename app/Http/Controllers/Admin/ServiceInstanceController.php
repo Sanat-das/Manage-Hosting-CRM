@@ -3,7 +3,6 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
-use App\Models\AuditLog;
 use App\Models\Module;
 use App\Models\Order;
 use App\Models\PanelAccount;
@@ -15,9 +14,11 @@ use App\Services\Modules\ModuleManager;
 use App\Services\Provisioning\ProvisioningDispatcher;
 use App\Services\Provisioning\VmOperationConflictException;
 use App\Services\Provisioning\VmOperationDispatcher;
+use App\Support\Audit\AuditEvent;
+use App\Support\Audit\AuditRecorder;
+use App\Support\Logging\AppLog;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 
@@ -151,14 +152,11 @@ class ServiceInstanceController extends Controller
 
         $serviceInstance->update(['server_id' => $target->id]);
 
-        // `created_at` is not fillable on AuditLog, so it is set explicitly —
-        // passing it to create() would silently store NULL.
-        $audit = new AuditLog([
-            'user_id' => $request->user()?->id,
-            'action' => 'service.moved',
-            'entity_type' => 'service_instance',
-            'entity_id' => $serviceInstance->id,
-            'details' => json_encode([
+        app(AuditRecorder::class)->entityRef(
+            AuditEvent::ServiceMoved->value,
+            'service_instance',
+            $serviceInstance->id,
+            [
                 'service' => $tag,
                 'from' => $from,
                 'from_server_id' => $fromServerId,
@@ -166,12 +164,9 @@ class ServiceInstanceController extends Controller
                 'to_server_id' => $target->id,
                 'machine_state' => $machine === null ? 'unknown' : ($machine ? 'present' : 'absent'),
                 'machine_acknowledged' => $machine === true && $confirmed,
-            ]),
-            'ip_address' => $request->ip(),
-            'user_agent' => $request->userAgent(),
-        ]);
-        $audit->created_at = now();
-        $audit->save();
+            ],
+            $request->user()?->id,
+        );
 
         $note = match ($machine) {
             true => ' Its existing machine must be migrated separately.',
@@ -264,7 +259,7 @@ class ServiceInstanceController extends Controller
 
             return is_bool($probe['exists'] ?? null) ? $probe['exists'] : null;
         } catch (\Throwable $e) {
-            Log::warning('Could not probe service machine state', [
+            AppLog::provisioning()->warning('Could not probe service machine state', [
                 'service_instance_id' => $serviceInstance->id,
                 'error' => $e->getMessage(),
             ]);
@@ -397,7 +392,7 @@ class ServiceInstanceController extends Controller
                 } catch (VmOperationConflictException $e) {
                     return $e->getMessage();
                 } catch (\Throwable $e) {
-                    Log::error('Service instance queued module action failed', [
+                    AppLog::provisioning()->error('Service instance queued module action failed', [
                         'service_instance_id' => $serviceInstance->id,
                         'action' => $verb,
                         'error' => $e->getMessage(),
@@ -434,7 +429,7 @@ class ServiceInstanceController extends Controller
 
             return $result->message ?? ucfirst($verb).' failed.';
         } catch (\Throwable $e) {
-            Log::error('Service instance module action failed', [
+            AppLog::provisioning()->error('Service instance module action failed', [
                 'service_instance_id' => $serviceInstance->id,
                 'action' => $verb,
                 'error' => $e->getMessage(),

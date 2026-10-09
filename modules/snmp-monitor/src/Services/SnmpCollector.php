@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Modules\SnmpMonitor\Services;
 
+use App\Support\Logging\AppLog;
 use FreeDSx\Snmp\Oid;
 use FreeDSx\Snmp\SnmpClient;
 use FreeDSx\Snmp\Value\AbstractValue;
@@ -760,8 +761,9 @@ final class SnmpCollector
     {
         try {
             $client->close();
-        } catch (\Throwable) {
+        } catch (\Throwable $e) {
             // Cleanup must never throw.
+            AppLog::provisioning()->debug('SNMP client close failed during cleanup', ['error' => $e->getMessage()]);
         }
     }
 }

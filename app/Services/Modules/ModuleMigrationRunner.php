@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace App\Services\Modules;
 
 use App\Models\Module;
-use App\Models\ModuleLog;
+use App\Support\Audit\AuditRecorder;
 use Illuminate\Support\Facades\DB;
 use Throwable;
 
@@ -120,12 +120,7 @@ class ModuleMigrationRunner
     private function log(Module $module, string $event, string $status, ?string $error = null): void
     {
         try {
-            ModuleLog::create([
-                'module_id' => $module->id,
-                'event' => $event,
-                'status' => $status,
-                'error' => $error,
-            ]);
+            app(AuditRecorder::class)->module($module->id, $event, null, $status, $error);
         } catch (Throwable) {
             // Logging must never break the migration runner.
         }

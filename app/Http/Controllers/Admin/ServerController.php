@@ -19,6 +19,7 @@ use App\Modules\Virtualizor\Services\VirtualizorClient;
 use App\Services\Integrations\IntegrationRegistry;
 use App\Services\Modules\ModuleManager;
 use App\Services\Provisioning\ProvisioningEventRecorder;
+use App\Support\Logging\AppLog;
 use App\ViewModels\Admin\ServerDetailViewModel;
 use App\ViewModels\Admin\ServerVmInventoryPresenter;
 use Carbon\Carbon;
@@ -27,7 +28,6 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
@@ -1247,7 +1247,7 @@ class ServerController extends Controller
                 $server->delete();
             });
         } catch (\Throwable $e) {
-            Log::warning('Server delete failed', [
+            AppLog::provisioning()->warning('Server delete failed', [
                 'server_id' => $server->id,
                 'error' => $e->getMessage(),
             ]);
@@ -1734,7 +1734,7 @@ class ServerController extends Controller
 
             $recorder->handOff($event);
         } catch (\Throwable $e) {
-            Log::warning('Admin unrecorded Proxmox VE VM destroy could not be queued', [
+            AppLog::provisioning()->warning('Admin unrecorded Proxmox VE VM destroy could not be queued', [
                 'server_id' => $server->id,
                 'node' => $node,
                 'vmid' => $vmidInt,
@@ -1744,7 +1744,7 @@ class ServerController extends Controller
             return back()->with('error', 'Could not queue the destroy for VMID '.$vmidInt.': '.$e->getMessage());
         }
 
-        Log::info('Admin queued an unrecorded Proxmox VE VM destroy', [
+        AppLog::provisioning()->info('Admin queued an unrecorded Proxmox VE VM destroy', [
             'server_id' => $server->id,
             'node' => $node,
             'vmid' => $vmidInt,

@@ -10,7 +10,7 @@ use App\Models\Order;
 use App\Models\ServiceInstance;
 use App\Support\AppSettings;
 use App\Support\Branding;
-use Illuminate\Support\Facades\Log;
+use App\Support\Logging\AppLog;
 use Throwable;
 
 /**
@@ -55,7 +55,7 @@ class WelcomeMailer
         } catch (Throwable $e) {
             // A welcome email must never turn a successful provision into a
             // failed order — the service exists either way.
-            Log::error('Welcome email failed', [
+            AppLog::provisioning()->error('Welcome email failed', [
                 'order_id' => $order->id,
                 'error' => $e->getMessage(),
             ]);
@@ -76,7 +76,7 @@ class WelcomeMailer
         $email = $order->customer?->user?->email;
 
         if (! $email) {
-            Log::info('Welcome email skipped: customer has no linked user email.', ['order_id' => $order->id]);
+            AppLog::provisioning()->info('Welcome email skipped: customer has no linked user email.', ['order_id' => $order->id]);
 
             return false;
         }
@@ -84,7 +84,7 @@ class WelcomeMailer
         $template = $this->template($order);
 
         if ($template === null) {
-            Log::info('Welcome email skipped: no active template.', ['order_id' => $order->id]);
+            AppLog::provisioning()->info('Welcome email skipped: no active template.', ['order_id' => $order->id]);
 
             return false;
         }
@@ -121,6 +121,7 @@ class WelcomeMailer
             $isHtml ? $body : null,
             [],
             $isHtml ? $this->toPlainText($logBody) : $logBody,
+            templateName: $template->name,
         );
 
         return true;

@@ -7,6 +7,7 @@
 @stop
 
 @section('content')
+    <x-adminlte.partials.flash-alert />
     <x-adminlte.partials.datatable
         icon="bi bi-envelope-check"
         title="Sent Emails"
@@ -25,7 +26,7 @@
         @forelse ($logs as $log)
             <tr>
                 <td class="text-muted small text-nowrap">{{ $log->created_at?->format('M j, H:i') }}</td>
-                <td>{{ $log->to_email ?? '—' }}</td>
+                <td><a href="{{ route('admin.email-logs.show', $log) }}" class="text-decoration-none">{{ $log->to_email ?? '—' }}</a></td>
                 <td>{{ Str::limit($log->subject, 60) }}</td>
                 <td><x-adminlte.partials.status-badge :status="$log->status" /></td>
             </tr>

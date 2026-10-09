@@ -18,7 +18,7 @@ use App\Modules\Proxmox\Services\ProxmoxClient;
 use App\Services\Provisioning\ProvisioningEventRecorder;
 use App\Services\Provisioning\ProxmoxTemplateCatalog;
 use App\Services\Provisioning\VmGuestCredentialStore;
-use Illuminate\Support\Facades\Log;
+use App\Support\Logging\AppLog;
 
 /**
  * Proxmox VE provisioning module.
@@ -179,7 +179,7 @@ final class Proxmox extends AbstractComputeModule
                 // rest — but leave a trace, otherwise an auth failure looks
                 // exactly like "this node has no templates".
                 $failed[] = $node;
-                Log::warning('Proxmox template discovery skipped a node', [
+                AppLog::provisioning()->warning('Proxmox template discovery skipped a node', [
                     'server_id' => $server->id,
                     'node' => $node,
                     'error' => $e->getMessage(),
@@ -224,7 +224,7 @@ final class Proxmox extends AbstractComputeModule
         try {
             return $client->listTemplates($node ?? $client->defaultNode());
         } catch (\Throwable $e) {
-            Log::warning('Proxmox template listing failed', [
+            AppLog::provisioning()->warning('Proxmox template listing failed', [
                 'server_id' => $server->id,
                 'node' => $node,
                 'error' => $e->getMessage(),
@@ -261,7 +261,7 @@ final class Proxmox extends AbstractComputeModule
                 try {
                     $existing->update(['status' => PanelAccount::STATUS_TERMINATED]);
                 } catch (\Throwable $e) {
-                    Log::warning('Proxmox stale record flip failed', [
+                    AppLog::provisioning()->warning('Proxmox stale record flip failed', [
                         'panel_account_id' => $existing->id,
                         'error' => $e->getMessage(),
                     ]);
@@ -438,7 +438,7 @@ final class Proxmox extends AbstractComputeModule
             $account->meta = $meta;
             $account->save();
         } catch (\Throwable $e) {
-            Log::warning('Proxmox VE VM name sync failed', [
+            AppLog::provisioning()->warning('Proxmox VE VM name sync failed', [
                 'panel_account_id' => $account->id,
                 'vm_name' => $name,
                 'error' => $e->getMessage(),
@@ -548,7 +548,7 @@ final class Proxmox extends AbstractComputeModule
                         );
                     }
                 } catch (\Throwable $e) {
-                    Log::warning('Proxmox cloud-init password fallback failed', [
+                    AppLog::provisioning()->warning('Proxmox cloud-init password fallback failed', [
                         'panel_account_id' => $account->id,
                         'error' => $e->getMessage(),
                     ]);
@@ -579,7 +579,7 @@ final class Proxmox extends AbstractComputeModule
         try {
             app(VmGuestCredentialStore::class)->store($account, $username, $newPassword);
         } catch (\Throwable $e) {
-            Log::warning('Proxmox guest credential store failed after password reset', [
+            AppLog::provisioning()->error('Proxmox guest credential store failed after password reset', [
                 'panel_account_id' => $account->id,
                 'error' => $e->getMessage(),
             ]);
@@ -841,7 +841,7 @@ final class Proxmox extends AbstractComputeModule
             // Fall through to the manual-cleanup note below.
         }
 
-        Log::warning('Proxmox could not clean up a partially built VM', [
+        AppLog::provisioning()->warning('Proxmox could not clean up a partially built VM', [
             'node' => $node,
             'vmid' => $vmid,
         ]);

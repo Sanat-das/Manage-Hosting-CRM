@@ -7,15 +7,18 @@ namespace App\Services\Provisioning;
 use App\Contracts\Integrations\Capabilities\ProvisioningModule as ProvisioningModuleContract;
 use App\Contracts\Integrations\ProvisioningResult;
 use App\Models\HostingAccount;
+use App\Models\Module;
+use App\Models\Order;
 use App\Models\PanelAccount;
 use App\Models\ProvisioningEvent;
+use App\Models\Server;
 use App\Models\ServiceInstance;
 use App\Services\HostingService;
 use App\Services\Integrations\IntegrationRegistry;
 use App\Services\Modules\ModuleManager;
+use App\Support\Logging\AppLog;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
 use Throwable;
 
 class ManualProvisioner
@@ -89,7 +92,7 @@ class ManualProvisioner
                     if (($probe['exists'] ?? null) === false) {
                         // Stale record — allow rebuild even though hosting status may be active.
                         $rebuildingStale = true;
-                        Log::warning('Stale PanelAccount detected — rebuilding VM on host', [
+                        AppLog::provisioning()->warning('Stale PanelAccount detected — rebuilding VM on host', [
                             'hosting_account_id' => $account->id,
                             'service_instance_id' => $existingService->id,
                         ]);
@@ -99,6 +102,7 @@ class ManualProvisioner
                         if ($event !== null) {
                             $this->failEventQuietly($event, $msg);
                         }
+
                         return ProvisioningResult::fail($msg);
                     }
                 } else {
@@ -132,7 +136,7 @@ class ManualProvisioner
         // 4. If account has order, order must be active
         if ($account->order_id !== null) {
             $order = $account->order;
-            if ($order !== null && $order->status !== \App\Models\Order::STATUS_ACTIVE) {
+            if ($order !== null && $order->status !== Order::STATUS_ACTIVE) {
                 return ProvisioningResult::fail("Order #{$order->order_number} is not active (status: {$order->status}).");
             }
         }
@@ -142,7 +146,7 @@ class ManualProvisioner
         if ($server === null) {
             // Try to reload server if not eager loaded but id exists
             if ($account->server_id !== null) {
-                $server = \App\Models\Server::find($account->server_id);
+                $server = Server::find($account->server_id);
             }
         }
         if ($server === null) {
@@ -352,17 +356,19 @@ class ManualProvisioner
                 /** @var ProvisioningResult $result */
                 $result = $driver->provision($service, $config);
             } catch (Throwable $e) {
-                Log::error('Manual provision threw', [
+                AppLog::provisioning()->error('Manual provision threw', [
                     'hosting_account_id' => $account->id,
                     'module' => $moduleSlug,
                     'error' => $e->getMessage(),
                 ]);
                 $this->failEventQuietly($event, $e->getMessage());
+
                 return ProvisioningResult::fail($e->getMessage());
             }
 
             if (! $result->success) {
                 $this->failEventQuietly($event, $result->message ?? 'Provisioning failed');
+
                 return ProvisioningResult::fail($result->message ?? 'Provisioning failed');
             }
 
@@ -402,7 +408,7 @@ class ManualProvisioner
             } catch (Throwable $e) {
                 // The VM is already built — a failed audit write must never
                 // mask provisioning success.
-                Log::warning('Could not persist manual provisioning snapshot', [
+                AppLog::provisioning()->warning('Could not persist manual provisioning snapshot', [
                     'hosting_account_id' => $account->id,
                     'error' => $e->getMessage(),
                 ]);
@@ -449,7 +455,7 @@ class ManualProvisioner
                 try {
                     $this->recorder->complete($event, $result->message ?? 'Provisioned', $result->data);
                 } catch (Throwable $e) {
-                    Log::warning('Could not record completed provisioning event', [
+                    AppLog::provisioning()->warning('Could not record completed provisioning event', [
                         'hosting_account_id' => $account->id,
                         'error' => $e->getMessage(),
                     ]);
@@ -461,7 +467,7 @@ class ManualProvisioner
                         try {
                             $this->welcome->send($order, $service->refresh(), $result->data);
                         } catch (Throwable $e) {
-                            Log::warning('Welcome mail failed in manual provision', [
+                            AppLog::provisioning()->warning('Welcome mail failed in manual provision', [
                                 'hosting_account_id' => $account->id,
                                 'error' => $e->getMessage(),
                             ]);
@@ -479,7 +485,7 @@ class ManualProvisioner
                         $this->recorder->resolveAwaiting($order, 'Manual VM build completed');
                     }
                 } catch (Throwable $e) {
-                    Log::warning('Could not resolve awaiting provisioning events', [
+                    AppLog::provisioning()->warning('Could not resolve awaiting provisioning events', [
                         'hosting_account_id' => $account->id,
                         'error' => $e->getMessage(),
                     ]);
@@ -531,6 +537,7 @@ class ManualProvisioner
                 return $existing;
             }
         }
+
         // Fallback to HOST- mirror
         return ServiceInstance::where('service_tag', 'HOST-'.$account->id)->first();
     }
@@ -544,7 +551,7 @@ class ManualProvisioner
         try {
             $this->recorder->fail($event, $message);
         } catch (Throwable $e) {
-            Log::warning('Could not record failed provisioning event', [
+            AppLog::provisioning()->warning('Could not record failed provisioning event', [
                 'event_id' => $event->id,
                 'error' => $e->getMessage(),
             ]);
@@ -564,10 +571,11 @@ class ManualProvisioner
             }
         }
         $module = $this->modules->find($slug);
-        if ($module === null || $module->status !== \App\Models\Module::STATUS_ACTIVE) {
+        if ($module === null || $module->status !== Module::STATUS_ACTIVE) {
             return null;
         }
         $instance = $this->modules->capabilityInstance($module, 'provisioning');
+
         return $instance instanceof ProvisioningModuleContract ? $instance : null;
     }
 }

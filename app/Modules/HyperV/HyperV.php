@@ -10,11 +10,16 @@ use App\Contracts\Integrations\PanelProvisionRequest;
 use App\Contracts\Integrations\ProvisioningResult;
 use App\Contracts\Integrations\ServerConnectionResult;
 use App\Contracts\Integrations\ServerInfoDTO;
+use App\Models\HostingAccount;
 use App\Models\PanelAccount;
+use App\Models\ProvisioningEvent;
 use App\Models\Server;
 use App\Models\ServiceInstance;
 use App\Modules\HyperV\Services\HyperVClient;
-use Illuminate\Support\Facades\Log;
+use App\Services\Provisioning\HypervTemplateCatalog;
+use App\Services\Provisioning\ProvisioningEventRecorder;
+use App\Services\Provisioning\VmGuestCredentialStore;
+use App\Support\Logging\AppLog;
 use Illuminate\Support\Str;
 
 final class HyperV extends AbstractComputeModule
@@ -120,7 +125,7 @@ final class HyperV extends AbstractComputeModule
                 try {
                     $existing->update(['status' => PanelAccount::STATUS_TERMINATED]);
                 } catch (\Throwable $e) {
-                    Log::warning('Hyper-V stale record flip failed', [
+                    AppLog::provisioning()->warning('Hyper-V stale record flip failed', [
                         'panel_account_id' => $existing->id,
                         'error' => $e->getMessage(),
                     ]);
@@ -169,8 +174,8 @@ final class HyperV extends AbstractComputeModule
         $default = $server?->hypervDefaultTemplate();
 
         $allowedRaw = $request->config['allowed_templates'] ?? null;
-        $allowed = is_array($allowedRaw) ? \App\Services\Provisioning\HypervTemplateCatalog::sanitizeAllowed($allowedRaw) : [];
-        $effective = $server !== null ? \App\Services\Provisioning\HypervTemplateCatalog::effectiveNames($server, $allowed) : $curated;
+        $allowed = is_array($allowedRaw) ? HypervTemplateCatalog::sanitizeAllowed($allowedRaw) : [];
+        $effective = $server !== null ? HypervTemplateCatalog::effectiveNames($server, $allowed) : $curated;
         // When effective is computed but server is null, fallback to curated logic already.
 
         // Normalize default: if it is not in effective, treat as no default
@@ -365,7 +370,7 @@ final class HyperV extends AbstractComputeModule
             ));
         }
 
-        $store = app(\App\Services\Provisioning\VmGuestCredentialStore::class);
+        $store = app(VmGuestCredentialStore::class);
         $stored = $store->read($account);
 
         $resolvedUsername = $username !== null && trim($username) !== '' ? trim($username) : ($stored['username'] ?? null);
@@ -393,7 +398,7 @@ final class HyperV extends AbstractComputeModule
         try {
             $store->store($account, $resolvedUsername, $newPassword);
         } catch (\Throwable $e) {
-            Log::warning('Hyper-V guest credential store failed after password reset', [
+            AppLog::provisioning()->error('Hyper-V guest credential store failed after password reset', [
                 'panel_account_id' => $account->id,
                 'error' => $e->getMessage(),
             ]);
@@ -407,7 +412,7 @@ final class HyperV extends AbstractComputeModule
                 $store->syncRdpConsole($hostingAccount, $resolvedUsername, $newPassword);
             }
         } catch (\Throwable $e) {
-            Log::warning('Hyper-V RDP console sync failed after password reset', [
+            AppLog::provisioning()->error('Hyper-V RDP console sync failed after password reset', [
                 'panel_account_id' => $account->id,
                 'error' => $e->getMessage(),
             ]);
@@ -424,17 +429,17 @@ final class HyperV extends AbstractComputeModule
      * Hosting account behind a service (order link first, then the HOST-{id}
      * mirror tag used by the manual provisioning flow).
      */
-    private function hostingAccountForService(ServiceInstance $service): ?\App\Models\HostingAccount
+    private function hostingAccountForService(ServiceInstance $service): ?HostingAccount
     {
         if ($service->order_id !== null) {
-            $account = \App\Models\HostingAccount::where('order_id', $service->order_id)->first();
+            $account = HostingAccount::where('order_id', $service->order_id)->first();
             if ($account !== null) {
                 return $account;
             }
         }
 
         if (is_string($service->service_tag) && preg_match('/^HOST-(\d+)$/', $service->service_tag, $m) === 1) {
-            return \App\Models\HostingAccount::find((int) $m[1]);
+            return HostingAccount::find((int) $m[1]);
         }
 
         return null;
@@ -443,12 +448,12 @@ final class HyperV extends AbstractComputeModule
     private function reportStage(ServiceInstance $service, string $stage): void
     {
         try {
-            $event = \App\Models\ProvisioningEvent::where('service_instance_id', $service->id)
+            $event = ProvisioningEvent::where('service_instance_id', $service->id)
                 ->where('status', 'running')
                 ->orderByDesc('id')
                 ->first();
             if ($event !== null) {
-                app(\App\Services\Provisioning\ProvisioningEventRecorder::class)->progress($event, $stage);
+                app(ProvisioningEventRecorder::class)->progress($event, $stage);
             }
         } catch (\Throwable) {
             // Progress reporting must never break provisioning.
@@ -674,7 +679,7 @@ final class HyperV extends AbstractComputeModule
             $account->meta = $meta;
             $account->save();
         } catch (\Throwable $e) {
-            Log::warning('Hyper-V VM name sync failed', [
+            AppLog::provisioning()->warning('Hyper-V VM name sync failed', [
                 'panel_account_id' => $account->id,
                 'vm_name' => $name,
                 'error' => $e->getMessage(),
@@ -718,7 +723,7 @@ final class HyperV extends AbstractComputeModule
     {
         try {
             if ($service->order_id !== null) {
-                $name = \App\Models\HostingAccount::where('order_id', $service->order_id)->value('host_name');
+                $name = HostingAccount::where('order_id', $service->order_id)->value('host_name');
 
                 if (is_string($name) && trim($name) !== '') {
                     return trim($name);
@@ -726,7 +731,7 @@ final class HyperV extends AbstractComputeModule
             }
 
             if (is_string($service->service_tag) && preg_match('/^HOST-(\d+)$/', $service->service_tag, $m) === 1) {
-                $account = \App\Models\HostingAccount::find((int) $m[1]);
+                $account = HostingAccount::find((int) $m[1]);
 
                 if ($account !== null && trim((string) $account->host_name) !== '') {
                     return trim((string) $account->host_name);

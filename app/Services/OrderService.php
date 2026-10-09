@@ -12,8 +12,8 @@ use App\Models\OrderStatusHistory;
 use App\Models\Product;
 use App\Services\Integrations\IntegrationRegistry;
 use App\Services\Provisioning\ProvisioningDispatcher;
+use App\Support\Logging\AppLog;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
 use InvalidArgumentException;
 
 /**
@@ -245,7 +245,7 @@ class OrderService
                 $this->hosting->terminate($account, $notes);
             }
         } catch (\Throwable $e) {
-            Log::warning('Hosting account could not follow the order status', [
+            AppLog::provisioning()->warning('Hosting account could not follow the order status', [
                 'order_id' => $order->id,
                 'account_id' => $account->id,
                 'from' => $from,
@@ -296,7 +296,7 @@ class OrderService
 
         foreach ($invoices as $invoice) {
             if ((float) ($invoice->paid_amount ?? 0) > 0 || $invoice->payments()->exists()) {
-                Log::info('Invoice left open on an ending order because money has moved against it', [
+                AppLog::billing()->info('Invoice left open on an ending order because money has moved against it', [
                     'order_id' => $order->id,
                     'invoice_id' => $invoice->id,
                     'paid_amount' => $invoice->paid_amount,
@@ -358,7 +358,7 @@ class OrderService
             // can retry from the hosting page.
             RunOrderProvisioning::dispatch($order->id);
         } catch (\Throwable $e) {
-            Log::error('Auto-provisioning on order activation failed', [
+            AppLog::provisioning()->error('Auto-provisioning on order activation failed', [
                 'order_id' => $order->id,
                 'error' => $e->getMessage(),
             ]);
@@ -388,7 +388,7 @@ class OrderService
         } catch (\Throwable $e) {
             // The dispatcher already isolates module failures; this is the
             // belt-and-braces guard so a status change can never 500.
-            Log::error('Order lifecycle provisioning call failed', [
+            AppLog::provisioning()->error('Order lifecycle provisioning call failed', [
                 'order_id' => $order->id,
                 'from' => $from,
                 'to' => $to,
@@ -494,7 +494,7 @@ class OrderService
 
                 return $order->refresh();
             } catch (\Throwable $e) {
-                Log::error('Auto-provisioning failed after invoice payment', [
+                AppLog::provisioning()->error('Auto-provisioning failed after invoice payment', [
                     'order_id' => $order->id,
                     'module' => $module,
                     'error' => $e->getMessage(),
@@ -505,7 +505,7 @@ class OrderService
                     // status is stale — refresh before marking failed.
                     return $this->transition($order->refresh(), Order::STATUS_FAILED, 'Auto-provisioning failed: '.$e->getMessage());
                 } catch (\Throwable $e2) {
-                    Log::warning('Order left in provisioning after failed auto-provisioning', [
+                    AppLog::billing()->warning('Order left in provisioning after failed auto-provisioning', [
                         'order_id' => $order->id,
                         'error' => $e2->getMessage(),
                     ]);

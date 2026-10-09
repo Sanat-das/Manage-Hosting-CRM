@@ -9,6 +9,7 @@ use App\Contracts\Integrations\PanelException;
 use App\Contracts\Integrations\ServerConnectionResult;
 use App\Contracts\Integrations\ServerInfoDTO;
 use App\Models\Server;
+use App\Support\Logging\AppLog;
 use App\Support\SecretRedactor;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\Response;
@@ -153,7 +154,8 @@ final class ProxmoxClient
 
         try {
             $password = trim((string) ($server->api_password_encrypted ?? ''));
-        } catch (Throwable) {
+        } catch (Throwable $e) {
+            AppLog::provisioning()->debug('Proxmox API secret read failed — treating as no secret', ['error' => $e->getMessage()]);
             $password = '';
         }
 
@@ -514,7 +516,8 @@ final class ProxmoxClient
 
         try {
             $body = $response->json();
-        } catch (Throwable) {
+        } catch (Throwable $e) {
+            AppLog::provisioning()->debug('Proxmox response body JSON decode failed', ['error' => $e->getMessage()]);
             $body = null;
         }
 
@@ -1004,7 +1007,9 @@ final class ProxmoxClient
                 if ($this->vmExists($node, $vmid)['exists'] === true) {
                     return $node;
                 }
-            } catch (PanelException) {
+            } catch (PanelException $e) {
+                AppLog::provisioning()->debug('Proxmox node probe for VM failed — trying next node', ['error' => $e->getMessage()]);
+
                 continue;
             }
         }
@@ -1531,7 +1536,9 @@ final class ProxmoxClient
     {
         try {
             $nodes = $this->expired($deadline) ? [] : $this->cachedNodes();
-        } catch (Throwable) {
+        } catch (Throwable $e) {
+            AppLog::provisioning()->debug('Proxmox node listing failed in essential telemetry — degrading to transport telemetry', ['error' => $e->getMessage()]);
+
             return $this->transportTelemetry();
         }
 
@@ -1575,8 +1582,9 @@ final class ProxmoxClient
                         }
                     }
                 }
-            } catch (Throwable) {
+            } catch (Throwable $e) {
                 // Cluster status is cosmetic next to the aggregates; degrade.
+                AppLog::provisioning()->debug('Proxmox cluster status probe failed — node health omitted', ['error' => $e->getMessage()]);
             }
         }
 
@@ -1618,8 +1626,9 @@ final class ProxmoxClient
                         }
                     }
                 }
-            } catch (Throwable) {
+            } catch (Throwable $e) {
                 // A blind credential sees nothing — omit counts, never zero them.
+                AppLog::provisioning()->debug('Proxmox cluster resources VM count probe failed — counts omitted', ['error' => $e->getMessage()]);
             }
         }
 
@@ -1660,7 +1669,8 @@ final class ProxmoxClient
 
             try {
                 $st = $this->call('GET', sprintf('/nodes/%s/status', rawurlencode($node)));
-            } catch (Throwable) {
+            } catch (Throwable $e) {
+                AppLog::provisioning()->debug('Proxmox node status probe failed — using cached node row', ['error' => $e->getMessage()]);
                 $nodeRows[] = $row;
 
                 continue;
@@ -1751,7 +1761,9 @@ final class ProxmoxClient
 
             try {
                 $rows = $this->call('GET', sprintf('/nodes/%s/storage', rawurlencode($node)));
-            } catch (Throwable) {
+            } catch (Throwable $e) {
+                AppLog::provisioning()->debug('Proxmox storage listing failed for node — pool skipped', ['error' => $e->getMessage()]);
+
                 continue;
             }
             if (! is_array($rows)) {
@@ -1828,7 +1840,8 @@ final class ProxmoxClient
             } else {
                 try {
                     $node = $this->defaultNode();
-                } catch (PanelException) {
+                } catch (PanelException $e) {
+                    AppLog::provisioning()->debug('Proxmox default node probe failed — falling back to first listed node', ['error' => $e->getMessage()]);
                     $node = $nodes[0] ?? '';
                 }
             }
@@ -1868,8 +1881,9 @@ final class ProxmoxClient
                 try {
                     $storage = $this->call('GET', sprintf('/nodes/%s/storage', rawurlencode($node)));
                     $datastores = is_array($storage) ? count($storage) : 0;
-                } catch (PanelException) {
+                } catch (PanelException $e) {
                     // Storage visibility is reported, not fatal — see below.
+                    AppLog::provisioning()->debug('Proxmox storage visibility probe failed', ['error' => $e->getMessage()]);
                 }
             }
 

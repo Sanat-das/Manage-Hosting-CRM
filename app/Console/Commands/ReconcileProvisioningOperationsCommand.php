@@ -9,8 +9,8 @@ use App\Models\Order;
 use App\Models\ProvisioningEvent;
 use App\Services\OrderService;
 use App\Services\Provisioning\ProvisioningEventRecorder;
+use App\Support\Logging\AppLog;
 use Illuminate\Console\Command;
-use Illuminate\Support\Facades\Log;
 use Throwable;
 
 /**
@@ -70,7 +70,7 @@ final class ReconcileProvisioningOperationsCommand extends Command
                 ->orderBy('id')
                 ->get(['id', 'event_type', 'created_at']);
         } catch (Throwable $e) {
-            Log::warning('provisioning:reconcile could not query stale events', ['error' => $e->getMessage()]);
+            AppLog::provisioning()->warning('provisioning:reconcile could not query stale events', ['error' => $e->getMessage()]);
             $this->error('Could not query provisioning events: '.$e->getMessage());
 
             return self::FAILURE;
@@ -86,7 +86,7 @@ final class ReconcileProvisioningOperationsCommand extends Command
                 ->orderBy('id')
                 ->get(['id', 'updated_at']);
         } catch (Throwable $e) {
-            Log::warning('provisioning:reconcile could not query stranded orders', ['error' => $e->getMessage()]);
+            AppLog::provisioning()->warning('provisioning:reconcile could not query stranded orders', ['error' => $e->getMessage()]);
             $this->error('Could not query provisioning orders: '.$e->getMessage());
 
             return self::FAILURE;
@@ -138,7 +138,7 @@ final class ReconcileProvisioningOperationsCommand extends Command
                 // Never throws and only flips rows still `running`.
                 ProvisioningEventRecorder::markInterrupted((int) $event->id);
             } catch (Throwable $e) {
-                Log::warning('provisioning:reconcile could not fail stale event', [
+                AppLog::provisioning()->warning('provisioning:reconcile could not fail stale event', [
                     'event_id' => $event->id,
                     'error' => $e->getMessage(),
                 ]);
@@ -152,7 +152,7 @@ final class ReconcileProvisioningOperationsCommand extends Command
                 ->where('status', 'failed')
                 ->count();
         } catch (Throwable $e) {
-            Log::warning('provisioning:reconcile could not count reconciled events', ['error' => $e->getMessage()]);
+            AppLog::provisioning()->warning('provisioning:reconcile could not count reconciled events', ['error' => $e->getMessage()]);
             $this->error('Reconciled events but could not verify the result: '.$e->getMessage());
 
             return self::FAILURE;
@@ -183,7 +183,7 @@ final class ReconcileProvisioningOperationsCommand extends Command
                 );
                 $failedOrders++;
             } catch (Throwable $e) {
-                Log::warning('provisioning:reconcile could not fail stranded order', [
+                AppLog::provisioning()->warning('provisioning:reconcile could not fail stranded order', [
                     'order_id' => $order->id,
                     'error' => $e->getMessage(),
                 ]);

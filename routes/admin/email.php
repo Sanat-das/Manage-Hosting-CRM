@@ -61,4 +61,8 @@ Route::middleware(['web', 'auth', 'admin', 'throttle:admin'])->prefix('admin')->
     Route::get('email-logs/{emailLog}', [EmailLogController::class, 'show'])
         ->middleware('permission:email.view')
         ->name('email-logs.show');
+
+    Route::post('email-logs/{emailLog}/resend', [EmailLogController::class, 'resend'])
+        ->middleware('permission:email.manage')
+        ->name('email-logs.resend');
 });

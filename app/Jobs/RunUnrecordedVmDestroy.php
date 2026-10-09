@@ -9,11 +9,11 @@ use App\Models\ProvisioningEvent;
 use App\Models\Server;
 use App\Modules\Proxmox\Services\ProxmoxClient;
 use App\Services\Provisioning\ProvisioningEventRecorder;
+use App\Support\Logging\AppLog;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
-use Illuminate\Support\Facades\Log;
 use Throwable;
 
 /**
@@ -122,7 +122,7 @@ class RunUnrecordedVmDestroy implements ShouldQueue
                 return;
             }
 
-            Log::error('Queued unrecorded VM destroy failed', [
+            AppLog::provisioning()->error('Queued unrecorded VM destroy failed', [
                 'server_id' => $server->id,
                 'node' => $this->node,
                 'vmid' => $this->vmid,
@@ -132,7 +132,7 @@ class RunUnrecordedVmDestroy implements ShouldQueue
 
             return;
         } catch (Throwable $e) {
-            Log::error('Queued unrecorded VM destroy threw', [
+            AppLog::provisioning()->error('Queued unrecorded VM destroy threw', [
                 'server_id' => $server->id,
                 'node' => $this->node,
                 'vmid' => $this->vmid,
@@ -143,7 +143,7 @@ class RunUnrecordedVmDestroy implements ShouldQueue
             return;
         }
 
-        Log::info('Admin destroyed an unrecorded Proxmox VE VM', [
+        AppLog::provisioning()->info('Admin destroyed an unrecorded Proxmox VE VM', [
             'server_id' => $server->id,
             'node' => $this->node,
             'vmid' => $this->vmid,
@@ -161,7 +161,7 @@ class RunUnrecordedVmDestroy implements ShouldQueue
         try {
             $recorder->fail($event, $message);
         } catch (Throwable $e) {
-            Log::warning('Could not record failed unrecorded VM destroy', [
+            AppLog::provisioning()->warning('Could not record failed unrecorded VM destroy', [
                 'event_id' => $event->id,
                 'error' => $e->getMessage(),
             ]);
@@ -173,7 +173,7 @@ class RunUnrecordedVmDestroy implements ShouldQueue
         try {
             $recorder->complete($event, $message);
         } catch (Throwable $e) {
-            Log::warning('Could not record completed unrecorded VM destroy', [
+            AppLog::provisioning()->warning('Could not record completed unrecorded VM destroy', [
                 'event_id' => $event->id,
                 'error' => $e->getMessage(),
             ]);

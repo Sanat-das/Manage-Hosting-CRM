@@ -5,7 +5,7 @@ namespace App\Listeners;
 use App\Events\InvoicePaid;
 use App\Models\UpgradeRequest;
 use App\Services\Billing\UpgradeRequestService;
-use Illuminate\Support\Facades\Log;
+use App\Support\Logging\AppLog;
 
 /**
  * Materialize an approved upgrade once its invoice is paid.
@@ -39,7 +39,7 @@ class ApplyUpgradeOnInvoicePaid
         try {
             app(UpgradeRequestService::class)->apply($request);
         } catch (\Throwable $e) {
-            Log::error('Upgrade apply-on-payment failed', [
+            AppLog::billing()->error('Upgrade apply-on-payment failed', [
                 'upgrade_request_id' => $request->id,
                 'invoice_id' => $invoice->id,
                 'error' => $e->getMessage(),

@@ -15,6 +15,7 @@ use App\Settings\HostingSettings;
 use App\Settings\IntegrationSettings;
 use App\Settings\InventorySettings;
 use App\Settings\IpamSettings;
+use App\Settings\LogRetentionSettings;
 use App\Settings\ProductSettings;
 use App\Settings\RoleSettings;
 use App\Settings\SupportSettings;
@@ -224,6 +225,15 @@ class AppSettings
         'branding_sidebar_theme' => BrandingSettings::class,
         'branding_footer_text' => BrandingSettings::class,
         'branding_accent_color' => BrandingSettings::class,
+        // log retention (T4.2)
+        'activity_retention_days' => LogRetentionSettings::class,
+        'audit_retention_days' => LogRetentionSettings::class,
+        'email_retention_days' => LogRetentionSettings::class,
+        'module_retention_days' => LogRetentionSettings::class,
+        'domain_sync_retention_days' => LogRetentionSettings::class,
+        'domain_search_retention_days' => LogRetentionSettings::class,
+        'invoice_pdf_retention_days' => LogRetentionSettings::class,
+        'consent_retention_days' => LogRetentionSettings::class,
     ];
 
     /**
@@ -268,6 +278,7 @@ class AppSettings
             ['id' => 'automation',   'label' => 'Automation',    'icon' => 'bi bi-robot',         'group' => 'Automation'],
             ['id' => 'cron',         'label' => 'Cron',          'icon' => 'bi bi-clock-history', 'group' => 'Automation'],
             ['id' => 'integration',  'label' => 'Integration',   'icon' => 'bi bi-plug',          'group' => 'Automation'],
+            ['id' => 'log_retention', 'label' => 'Log Retention', 'icon' => 'bi bi-archive',       'group' => 'Automation'],
         ];
     }
 

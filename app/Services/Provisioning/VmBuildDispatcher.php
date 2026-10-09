@@ -7,7 +7,7 @@ namespace App\Services\Provisioning;
 use App\Jobs\ProvisionComputeVm;
 use App\Models\HostingAccount;
 use App\Models\ProvisioningEvent;
-use Illuminate\Support\Facades\Log;
+use App\Support\Logging\AppLog;
 use Throwable;
 
 /**
@@ -111,7 +111,7 @@ class VmBuildDispatcher
                 try {
                     $this->recorder->fail($event, 'The build was interrupted before it finished (worker stopped) — retry the create.');
                 } catch (Throwable $e) {
-                    Log::warning('VmBuildDispatcher: failed to reconcile stale build', [
+                    AppLog::provisioning()->warning('VmBuildDispatcher: failed to reconcile stale build', [
                         'event_id' => $event->id,
                         'hosting_account_id' => $account->id,
                         'error' => $e->getMessage(),
@@ -119,7 +119,7 @@ class VmBuildDispatcher
                 }
             }
         } catch (Throwable $e) {
-            Log::warning('VmBuildDispatcher: reconcileStaleBuilds failed', [
+            AppLog::provisioning()->warning('VmBuildDispatcher: reconcileStaleBuilds failed', [
                 'hosting_account_id' => $account->id,
                 'error' => $e->getMessage(),
             ]);

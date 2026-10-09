@@ -6,6 +6,7 @@ namespace App\Console\Commands;
 
 use App\Models\User;
 use App\Services\System\UpdateService;
+use App\Support\Logging\OpsFileWriter;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Cache;
 use Throwable;
@@ -73,10 +74,9 @@ class RunSystemRollbackCommand extends Command
     private function mark(string $line): void
     {
         try {
-            @file_put_contents(
+            OpsFileWriter::append(
                 storage_path('logs/rollback.log'),
-                sprintf('[%s] system:run-rollback %s%s', now()->toDateTimeString(), $line, PHP_EOL),
-                FILE_APPEND
+                sprintf('[%s] system:run-rollback %s%s', now()->toDateTimeString(), $line, PHP_EOL)
             );
         } catch (Throwable) {
             // Logging must never break the rollback itself.

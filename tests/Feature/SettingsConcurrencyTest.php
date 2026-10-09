@@ -71,10 +71,10 @@ class SettingsConcurrencyTest extends TestCase
         // Audit trail records each admin as causer of their own section write.
         $sections = DB::table('activity_log')
             ->where('action', 'settings.updated')
-            ->get(['user_id', 'properties']);
+            ->get(['user_id', 'metadata']);
         $bySection = [];
         foreach ($sections as $row) {
-            $props = json_decode((string) $row->properties, true);
+            $props = json_decode((string) $row->metadata, true);
             $bySection[$props['section']] = (int) $row->user_id;
         }
         $this->assertSame($adminA->id, $bySection['general'], 'Audit must attribute general write to Admin A.');

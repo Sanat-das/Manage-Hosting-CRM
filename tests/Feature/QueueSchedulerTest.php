@@ -380,7 +380,7 @@ class QueueSchedulerTest extends TestCase
             ->expectsOutputToContain('billing:recurring')
             ->expectsOutputToContain('domains:expiry-check')
             ->expectsOutputToContain('hosting:usage-sync')
-            ->expectsOutputToContain('app:cleanup')
+            ->expectsOutputToContain('logs:prune')
             ->expectsOutputToContain('ssl:check-expiry')
             ->expectsOutputToContain('reports:send-scheduled')
             ->assertExitCode(0);

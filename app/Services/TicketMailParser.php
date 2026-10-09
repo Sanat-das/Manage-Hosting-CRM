@@ -11,9 +11,9 @@ use App\Models\TicketReply;
 use App\Models\User;
 use App\Support\AppSettings;
 use App\Support\InboundEmail;
+use App\Support\Logging\AppLog;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
@@ -310,7 +310,7 @@ final class TicketMailParser
         $fallback = TicketDepartment::query()->enabled()->ordered()->first();
 
         if ($fallback !== null) {
-            Log::warning('TicketMailParser department fallback used — no default department; picked first enabled.', [
+            AppLog::cron()->warning('TicketMailParser department fallback used — no default department; picked first enabled.', [
                 'fallback_department' => $fallback->slug,
                 'fallback_name' => $fallback->name,
                 'requested_mailbox_department' => $mailboxDepartment,
@@ -663,7 +663,7 @@ final class TicketMailParser
             return null;
         }
 
-        Log::warning('Ticket mail flood guard tripped — sender is opening tickets faster than the cap allows.', [
+        AppLog::cron()->warning('Ticket mail flood guard tripped — sender is opening tickets faster than the cap allows.', [
             'from' => $email->fromEmail,
             'opened_last_hour' => $recent,
             'cap' => $cap,

@@ -9,9 +9,9 @@ use App\Models\HostingAccount;
 use App\Models\ProvisioningEvent;
 use App\Models\ServiceInstance;
 use App\Services\Integrations\IntegrationRegistry;
+use App\Support\Logging\AppLog;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
 use RuntimeException;
 use Throwable;
 
@@ -435,7 +435,7 @@ class VmOperationDispatcher
                 ->contains(fn ($event): bool => ! (method_exists($event, 'isStaleRunning') && $event->isStaleRunning())
                     && ($slug === null || ($m = self::payloadModule($event)) === '' || $m === $slug));
         } catch (Throwable $e) {
-            Log::warning('VmOperationDispatcher: running-operation guard failed', [
+            AppLog::provisioning()->warning('VmOperationDispatcher: running-operation guard failed', [
                 $column => $id,
                 'error' => $e->getMessage(),
             ]);
@@ -468,7 +468,7 @@ class VmOperationDispatcher
                 try {
                     $this->recorder->fail($event, 'The action was interrupted before it finished (worker stopped) — retry the action.');
                 } catch (Throwable $e) {
-                    Log::warning('VmOperationDispatcher: failed to reconcile stale operation', [
+                    AppLog::provisioning()->warning('VmOperationDispatcher: failed to reconcile stale operation', [
                         'event_id' => $event->id,
                         $column => $id,
                         'error' => $e->getMessage(),
@@ -476,7 +476,7 @@ class VmOperationDispatcher
                 }
             }
         } catch (Throwable $e) {
-            Log::warning('VmOperationDispatcher: reconcileStaleOperations failed', [
+            AppLog::provisioning()->warning('VmOperationDispatcher: reconcileStaleOperations failed', [
                 $column => $id,
                 'error' => $e->getMessage(),
             ]);

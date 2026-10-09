@@ -30,6 +30,7 @@ use App\Services\OrderEmailService;
 use App\Services\OrderNumberService;
 use App\Services\OrderService;
 use App\Support\AppSettings;
+use App\Support\Logging\AppLog;
 use App\Support\OptionSelectionRules;
 use DomainException;
 use Illuminate\Database\Eloquent\Builder;
@@ -37,7 +38,6 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -319,7 +319,7 @@ class OrderController extends Controller
                 return [$order, $invoice];
             });
         } catch (\Throwable $e) {
-            Log::error('Order creation failed', ['exception' => $e]);
+            AppLog::billing()->error('Order creation failed', ['exception' => $e]);
 
             return back()->withInput()->withErrors(['error' => 'Could not create the order. Please try again or contact support.']);
         }
@@ -402,7 +402,7 @@ class OrderController extends Controller
 
             OrderActivityLogger::changed($order, $from, $target, $request->user()?->email);
         } catch (\Throwable $e) {
-            Log::error('Order status update failed', ['exception' => $e, 'order_id' => $order->id]);
+            AppLog::billing()->error('Order status update failed', ['exception' => $e, 'order_id' => $order->id]);
 
             return back()->withErrors(['error' => 'Could not update the order status. Please try again or contact support.']);
         }
@@ -455,7 +455,7 @@ class OrderController extends Controller
         try {
             $invoice = $this->billing->createInvoiceForOrder($order);
         } catch (\Throwable $e) {
-            Log::error('Invoice generation failed', ['exception' => $e, 'order_id' => $order->id]);
+            AppLog::billing()->error('Invoice generation failed', ['exception' => $e, 'order_id' => $order->id]);
 
             return back()->withErrors(['error' => 'Could not generate the invoice. Please try again or contact support.']);
         }

@@ -66,7 +66,7 @@ class ScheduledReportsCommand extends Command
         $dispatched = 0;
         foreach ($recipients->unique() as $email) {
             if (filter_var($email, FILTER_VALIDATE_EMAIL)) {
-                SendEmail::dispatch($email, $subject, $body);
+                SendEmail::dispatch($email, $subject, $body, templateName: 'scheduled_report');
                 $dispatched++;
             }
         }

@@ -5,21 +5,21 @@ declare(strict_types=1);
 namespace App\Services\Modules;
 
 use App\Contracts\Integrations\Capabilities\ProvisioningModule;
-use App\Contracts\Module\ModuleContract;
-use App\Contracts\Module\ModuleContext;
 use App\Contracts\Integrations\TestableServerModule;
+use App\Contracts\Module\ModuleContext;
+use App\Contracts\Module\ModuleContract;
 use App\Jobs\RunModuleCapability;
 use App\Models\Module;
-use App\Models\ModuleLog;
 use App\Models\Server;
 use App\Models\ServiceInstance;
+use App\Support\Audit\AuditRecorder;
+use App\Support\Logging\AppLog;
 use App\Support\Modules\ModuleManifest;
 use App\Support\Modules\ModuleManifestException;
 use Illuminate\Database\QueryException;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Crypt;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Session;
 use PDOException;
@@ -47,7 +47,7 @@ class ModuleManager
     /**
      * Scan the modules directory for valid manifests.
      *
-     * @return array<string, ModuleManifest>  keyed by manifest slug
+     * @return array<string, ModuleManifest> keyed by manifest slug
      */
     public function discovered(): array
     {
@@ -100,7 +100,7 @@ class ModuleManager
                     $module->save();
                 }
             }
-        } catch (QueryException | PDOException) {
+        } catch (QueryException|PDOException) {
             // Modules table not migrated yet — nothing to reconcile.
         }
     }
@@ -196,7 +196,7 @@ class ModuleManager
                 }
             }
         } catch (Throwable $e) {
-            Log::warning('[modules] boot failed: '.$e->getMessage());
+            AppLog::app()->warning('[modules] boot failed: '.$e->getMessage());
         }
     }
 
@@ -289,7 +289,7 @@ class ModuleManager
                 // Lookup refresh must never break route registration.
             }
         } catch (Throwable $e) {
-            Log::warning('[modules] route registration failed: '.$e->getMessage());
+            AppLog::app()->warning('[modules] route registration failed: '.$e->getMessage());
         }
     }
 
@@ -302,7 +302,7 @@ class ModuleManager
      * modules directory, registers the row, and runs its migrations.
      *
      * @throws ModuleManifestException|Throwable on any failure (partial
-     *                                            target is cleaned up).
+     *                                           target is cleaned up).
      */
     public function installFromZip(string $path): Module
     {
@@ -331,7 +331,7 @@ class ModuleManager
 
             mkdir($tempDir, 0755, true);
 
-            $zip = new ZipArchive();
+            $zip = new ZipArchive;
 
             if ($zip->open($path) !== true) {
                 throw new \RuntimeException('Unable to open the ZIP archive.');
@@ -369,7 +369,7 @@ class ModuleManager
                 throw new \RuntimeException("A module with slug [{$manifest->slug()}] is already installed.");
             }
 
-            $fs = new Filesystem();
+            $fs = new Filesystem;
             $fs->makeDirectory(dirname($target), 0755, true, true);
             $fs->copyDirectory($root, $target);
 
@@ -398,7 +398,7 @@ class ModuleManager
         } catch (Throwable $e) {
             if ($target !== null && is_dir($target)) {
                 try {
-                    (new Filesystem())->deleteDirectory($target);
+                    (new Filesystem)->deleteDirectory($target);
                 } catch (Throwable) {
                     // Best-effort cleanup of the partial target.
                 }
@@ -408,7 +408,7 @@ class ModuleManager
         } finally {
             if (is_dir($tempDir)) {
                 try {
-                    (new Filesystem())->deleteDirectory($tempDir);
+                    (new Filesystem)->deleteDirectory($tempDir);
                 } catch (Throwable) {
                     // Best-effort cleanup of the temp dir.
                 }
@@ -492,7 +492,7 @@ class ModuleManager
 
         if (is_dir($dir)) {
             try {
-                (new Filesystem())->deleteDirectory($dir);
+                (new Filesystem)->deleteDirectory($dir);
             } catch (Throwable) {
                 // Best-effort folder removal.
             }
@@ -790,13 +790,9 @@ class ModuleManager
     private function log(?Module $module, string $event, string $status, ?string $error = null, ?int $serviceInstanceId = null): void
     {
         try {
-            ModuleLog::create([
-                'module_id' => $module?->id,
-                'event' => $event,
-                'status' => $status,
-                'error' => $error,
-                'service_instance_id' => $serviceInstanceId,
-            ]);
+            // A discovery failure has no module row to point at: module_id
+            // stays null, the recorder still stamps created_at/redacts.
+            app(AuditRecorder::class)->module($module?->id, $event, $serviceInstanceId, $status, $error);
         } catch (Throwable) {
             // Logging must never break module management.
         }

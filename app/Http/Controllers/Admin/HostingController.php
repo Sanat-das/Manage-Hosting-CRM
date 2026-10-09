@@ -43,6 +43,7 @@ use App\Services\Provisioning\VmGuestCredentialStore;
 use App\Services\Provisioning\VmOperationConflictException;
 use App\Services\Provisioning\VmOperationDispatcher;
 use App\Services\Provisioning\VmStatusPresenter;
+use App\Support\Logging\AppLog;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -50,7 +51,6 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 use RuntimeException;
@@ -754,7 +754,7 @@ class HostingController extends Controller
             try {
                 $event = $this->provisioningEvents->begin('update', $payload, $service->id, $hostingAccount->id);
             } catch (\Throwable $e) {
-                Log::error('Module rename event could not be opened', [
+                AppLog::provisioning()->error('Module rename event could not be opened', [
                     'hosting_account_id' => $hostingAccount->id,
                     'module' => $slug,
                     'error' => $e->getMessage(),
@@ -768,7 +768,7 @@ class HostingController extends Controller
             try {
                 $result = $driver->rename($service, $new);
             } catch (\Throwable $e) {
-                Log::error('Module rename threw', [
+                AppLog::provisioning()->error('Module rename threw', [
                     'hosting_account_id' => $hostingAccount->id,
                     'module' => $slug,
                     'old_name' => $old,
@@ -848,7 +848,7 @@ class HostingController extends Controller
 
             return $driver !== null && method_exists($driver, 'rename') ? $driver : null;
         } catch (\Throwable $e) {
-            Log::error('Module rename driver resolution failed', ['module' => $slug, 'error' => $e->getMessage()]);
+            AppLog::provisioning()->error('Module rename driver resolution failed', ['module' => $slug, 'error' => $e->getMessage()]);
 
             return null;
         }
@@ -917,7 +917,7 @@ class HostingController extends Controller
                 try {
                     $this->vmOperationDispatcher->dispatch($hostingAccount, $verb, $options, $actorId, $slug);
                 } catch (\Throwable $e) {
-                    Log::warning('Hosting lifecycle module sync could not be queued', [
+                    AppLog::provisioning()->warning('Hosting lifecycle module sync could not be queued', [
                         'hosting_account_id' => $hostingAccount->id,
                         'module' => $slug,
                         'action' => $verb,
@@ -937,7 +937,7 @@ class HostingController extends Controller
 
             return null;
         } catch (\Throwable $e) {
-            Log::error('Hosting lifecycle module sync failed', [
+            AppLog::provisioning()->error('Hosting lifecycle module sync failed', [
                 'hosting_account_id' => $hostingAccount->id,
                 'action' => $verb,
                 'error' => $e->getMessage(),
@@ -1083,7 +1083,7 @@ class HostingController extends Controller
 
                 return back()->with('info', 'VM build started.');
             } catch (\Throwable $e) {
-                Log::error('Queued VM create failed', [
+                AppLog::provisioning()->error('Queued VM create failed', [
                     'hosting_account_id' => $hostingAccount->id,
                     'module' => $slug,
                     'error' => $e->getMessage(),
@@ -1224,7 +1224,7 @@ class HostingController extends Controller
             /** @var ProvisioningResult $result */
             $result = $driver->{$verb}($service, $config);
         } catch (\Throwable $e) {
-            Log::error('Hosting module action threw', [
+            AppLog::provisioning()->error('Hosting module action threw', [
                 'hosting_account_id' => $hostingAccount->id,
                 'module' => $slug,
                 'action' => $verb,
@@ -1401,7 +1401,7 @@ class HostingController extends Controller
 
             return back()->with('error', $e->getMessage());
         } catch (\Throwable $e) {
-            Log::error('Queued VM operation failed', [
+            AppLog::provisioning()->error('Queued VM operation failed', [
                 'hosting_account_id' => $hostingAccount->id,
                 'module' => $slug,
                 'action' => $verb,
@@ -1510,7 +1510,7 @@ class HostingController extends Controller
 
             return response()->json($data);
         } catch (\Throwable $e) {
-            Log::warning('vmStatus failed', ['hosting_account_id' => $hostingAccount->id, 'error' => $e->getMessage()]);
+            AppLog::provisioning()->warning('vmStatus failed', ['hosting_account_id' => $hostingAccount->id, 'error' => $e->getMessage()]);
 
             return response()->json(['ok' => true, 'action' => null, 'vm' => ['exists' => false, 'state' => null, 'name' => null, 'vmId' => null, 'probe_error' => null], 'account' => ['status' => $hostingAccount->status], 'credentials' => ['stored' => false, 'username' => 'Administrator'], 'can' => ['create' => true, 'start' => false, 'stop' => false, 'restart' => false, 'delete' => false, 'reset_password' => false], 'reasons' => []]);
         }
@@ -1583,7 +1583,7 @@ class HostingController extends Controller
                 'password' => $stored['password'],
             ]);
         } catch (\Throwable $e) {
-            Log::warning('vmCredentials failed', ['hosting_account_id' => $hostingAccount->id, 'error' => $e->getMessage()]);
+            AppLog::provisioning()->warning('vmCredentials failed', ['hosting_account_id' => $hostingAccount->id, 'error' => $e->getMessage()]);
 
             return $notStored();
         }
@@ -1659,7 +1659,7 @@ class HostingController extends Controller
                 'order_id' => $hostingAccount->order_id,
             ], $service->id, $hostingAccount->id);
         } catch (\Throwable $e) {
-            Log::error('resetVmPassword event begin failed', ['error' => $e->getMessage()]);
+            AppLog::provisioning()->error('resetVmPassword event begin failed', ['error' => $e->getMessage()]);
             $event = null;
         }
 

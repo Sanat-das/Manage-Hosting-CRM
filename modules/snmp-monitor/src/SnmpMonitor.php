@@ -9,6 +9,7 @@ use App\Contracts\Module\AbstractModule;
 use App\Contracts\Module\ModuleContext;
 use App\Models\HostingAccount;
 use App\Services\Modules\ModuleManager;
+use App\Support\Logging\AppLog;
 use Illuminate\Console\Application as ConsoleApplication;
 use Illuminate\Routing\Router;
 use Illuminate\Support\Facades\View;
@@ -278,7 +279,9 @@ final class SnmpMonitor extends AbstractModule implements HostingAccountInfoProv
         try {
             $target = app(TargetService::class)
                 ->ensureForAccount($account, TargetService::osFor($account, $config));
-        } catch (\Throwable) {
+        } catch (\Throwable $e) {
+            AppLog::provisioning()->debug('SNMP monitor target resolution failed — panel not shown', ['error' => $e->getMessage()]);
+
             return null;
         }
 

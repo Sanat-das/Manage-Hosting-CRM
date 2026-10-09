@@ -7,6 +7,7 @@ namespace Modules\SnmpMonitor\Services;
 use App\Models\HostingAccount;
 use App\Models\Module;
 use App\Services\Modules\ModuleManager;
+use App\Support\Logging\AppLog;
 use Illuminate\Database\Connection;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Carbon;
@@ -536,7 +537,9 @@ final class SnmpMetricRepository
                 : 'SELECT UNIX_TIMESTAMP(?) AS u';
 
             return (int) $conn->selectOne($expr, [$wall])->u - $appEpoch;
-        } catch (\Throwable) {
+        } catch (\Throwable $e) {
+            AppLog::provisioning()->debug('SNMP session timezone offset probe failed — assuming no correction', ['error' => $e->getMessage()]);
+
             return 0;
         }
     }

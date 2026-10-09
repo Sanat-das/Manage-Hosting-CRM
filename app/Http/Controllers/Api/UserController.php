@@ -4,9 +4,10 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\StaffUserRequest;
-use App\Models\ActivityLog;
 use App\Models\Role;
 use App\Models\User;
+use App\Support\Audit\AuditEvent;
+use App\Support\Audit\AuditRecorder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -87,7 +88,7 @@ class UserController extends Controller
             return $user;
         });
 
-        $this->logActivity($user, 'user_created', "Staff account created via API ({$user->full_name})", [
+        $this->logActivity($user, AuditEvent::UserCreated, "Staff account created via API ({$user->full_name})", [
             'user_id' => $user->id,
             'role' => $user->role,
         ]);
@@ -141,7 +142,7 @@ class UserController extends Controller
             }
         });
 
-        $this->logActivity($user, 'user_updated', "Staff account updated via API ({$user->full_name})", [
+        $this->logActivity($user, AuditEvent::UserUpdated, "Staff account updated via API ({$user->full_name})", [
             'user_id' => $user->id,
         ]);
 
@@ -160,7 +161,7 @@ class UserController extends Controller
             abort(403, 'Administrator accounts cannot be deleted.');
         }
 
-        $this->logActivity($user, 'user_deleted', "Staff account deleted via API ({$user->full_name})", [
+        $this->logActivity($user, AuditEvent::UserDeleted, "Staff account deleted via API ({$user->full_name})", [
             'user_id' => $user->id,
         ]);
 
@@ -196,7 +197,7 @@ class UserController extends Controller
 
         $user->update(['status' => $target]);
 
-        $this->logActivity($user, 'status_changed', "Status changed to {$target} via API ({$validated['action']})", [
+        $this->logActivity($user, AuditEvent::StatusChanged, "Status changed to {$target} via API ({$validated['action']})", [
             'user_id' => $user->id,
             'action' => $validated['action'],
         ]);
@@ -242,15 +243,8 @@ class UserController extends Controller
         return $data;
     }
 
-    private function logActivity(User $user, string $action, string $description, array $metadata = []): void
+    private function logActivity(User $user, AuditEvent $action, string $description, array $metadata = []): void
     {
-        $log = new ActivityLog;
-        $log->user_id = auth()->id();
-        $log->action = $action;
-        $log->description = $description;
-        $log->metadata = $metadata !== [] ? $metadata : null;
-        $log->ip_address = request()->ip();
-        $log->created_at = now();
-        $log->save();
+        app(AuditRecorder::class)->activity($action, null, $metadata, $description);
     }
 }

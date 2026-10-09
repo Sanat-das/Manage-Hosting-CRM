@@ -1,6 +1,10 @@
 <?php
 
+use App\Support\Logging\RedactingProcessor;
+use App\Support\Logging\RequestContextProcessor;
 use Monolog\Handler\NullHandler;
+use Monolog\Handler\RotatingFileHandler;
+use Monolog\Handler\SlackWebhookHandler;
 use Monolog\Handler\StreamHandler;
 use Monolog\Handler\SyslogUdpHandler;
 use Monolog\Processor\PsrLogMessageProcessor;
@@ -54,8 +58,140 @@ return [
 
         'stack' => [
             'driver' => 'stack',
-            'channels' => explode(',', (string) env('LOG_STACK', 'single')),
+            'channels' => explode(',', (string) env('LOG_STACK', 'app')),
             'ignore_exceptions' => false,
+        ],
+
+        /*
+        |----------------------------------------------------------------------
+        | Application domain channels (centralized logging)
+        |----------------------------------------------------------------------
+        |
+        | One channel per business domain — see App\Support\Logging\LogChannel
+        | for the routing and severity policy. The default `stack` routes to
+        | `app` (LOG_STACK); call sites select a domain via AppLog instead of
+        | naming a channel. Every channel rotates daily (Monolog
+        | RotatingFileHandler), keeps LOG_RETENTION_DAYS days, and carries the
+        | PsrLogMessageProcessor (placeholders), RequestContextProcessor
+        | (request_id / actor / route / IP) and RedactingProcessor.
+        |
+        */
+
+        'app' => [
+            'driver' => 'monolog',
+            'handler' => RotatingFileHandler::class,
+            'handler_with' => [
+                'filename' => storage_path('logs/app.log'),
+                'maxFiles' => (int) env('LOG_RETENTION_DAYS', 30),
+            ],
+            'level' => env('LOG_LEVEL', 'debug'),
+            'processors' => [
+                PsrLogMessageProcessor::class,
+                RequestContextProcessor::class,
+                RedactingProcessor::class,
+            ],
+        ],
+
+        'security' => [
+            'driver' => 'monolog',
+            'handler' => RotatingFileHandler::class,
+            'handler_with' => [
+                'filename' => storage_path('logs/security.log'),
+                'maxFiles' => (int) env('LOG_RETENTION_DAYS', 30),
+            ],
+            'level' => env('LOG_LEVEL', 'debug'),
+            'processors' => [
+                PsrLogMessageProcessor::class,
+                RequestContextProcessor::class,
+                RedactingProcessor::class,
+            ],
+        ],
+
+        'billing' => [
+            'driver' => 'monolog',
+            'handler' => RotatingFileHandler::class,
+            'handler_with' => [
+                'filename' => storage_path('logs/billing.log'),
+                'maxFiles' => (int) env('LOG_RETENTION_DAYS', 30),
+            ],
+            'level' => env('LOG_LEVEL', 'debug'),
+            'processors' => [
+                PsrLogMessageProcessor::class,
+                RequestContextProcessor::class,
+                RedactingProcessor::class,
+            ],
+        ],
+
+        'provisioning' => [
+            'driver' => 'monolog',
+            'handler' => RotatingFileHandler::class,
+            'handler_with' => [
+                'filename' => storage_path('logs/provisioning.log'),
+                'maxFiles' => (int) env('LOG_RETENTION_DAYS', 30),
+            ],
+            'level' => env('LOG_LEVEL', 'debug'),
+            'processors' => [
+                PsrLogMessageProcessor::class,
+                RequestContextProcessor::class,
+                RedactingProcessor::class,
+            ],
+        ],
+
+        'cron' => [
+            'driver' => 'monolog',
+            'handler' => RotatingFileHandler::class,
+            'handler_with' => [
+                'filename' => storage_path('logs/cron.log'),
+                'maxFiles' => (int) env('LOG_RETENTION_DAYS', 30),
+            ],
+            'level' => env('LOG_LEVEL', 'debug'),
+            'processors' => [
+                PsrLogMessageProcessor::class,
+                RequestContextProcessor::class,
+                RedactingProcessor::class,
+            ],
+        ],
+
+        'ops' => [
+            'driver' => 'monolog',
+            'handler' => RotatingFileHandler::class,
+            'handler_with' => [
+                'filename' => storage_path('logs/ops.log'),
+                'maxFiles' => (int) env('LOG_RETENTION_DAYS', 30),
+            ],
+            'level' => env('LOG_LEVEL', 'debug'),
+            'processors' => [
+                PsrLogMessageProcessor::class,
+                RequestContextProcessor::class,
+                RedactingProcessor::class,
+            ],
+        ],
+
+        /*
+        | Alert seam: silent alerts.log by default; set LOG_ALERT_WEBHOOK and
+        | the same records go to Slack instead. Deliberately dependency-free —
+        | external error tracking plugs in here later without code churn.
+        */
+        'alert' => [
+            'driver' => 'monolog',
+            'handler' => env('LOG_ALERT_WEBHOOK') ? SlackWebhookHandler::class : RotatingFileHandler::class,
+            'handler_with' => env('LOG_ALERT_WEBHOOK')
+                ? [
+                    'webhookUrl' => env('LOG_ALERT_WEBHOOK'),
+                    'username' => env('LOG_SLACK_USERNAME', env('APP_NAME', 'Laravel')),
+                    'iconEmoji' => env('LOG_ALERT_EMOJI', ':rotating_light:'),
+                    'includeContextAndExtra' => true,
+                ]
+                : [
+                    'filename' => storage_path('logs/alerts.log'),
+                    'maxFiles' => (int) env('LOG_RETENTION_DAYS', 30),
+                ],
+            'level' => env('LOG_ALERT_LEVEL', 'error'),
+            'processors' => [
+                PsrLogMessageProcessor::class,
+                RequestContextProcessor::class,
+                RedactingProcessor::class,
+            ],
         ],
 
         'single' => [

@@ -3,14 +3,17 @@
 namespace App\Services;
 
 use App\Exceptions\NoAvailableIpException;
-use App\Models\ActivityLog;
-use App\Models\AuditLog;
+use App\Models\Customer;
 use App\Models\HostingAccount;
 use App\Models\Order;
+use App\Models\Product;
+use App\Services\Provisioning\ComputeTemplateCatalog;
+use App\Services\Provisioning\ProvisioningDispatcher;
 use App\Services\Provisioning\ServerAllocator;
+use App\Support\Audit\AuditRecorder;
+use App\Support\Logging\AppLog;
 use Closure;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
 use RuntimeException;
 
 /**
@@ -231,7 +234,7 @@ class HostingService
         try {
             app(IpAssignmentService::class)->release($account, $reason ?? 'Terminated');
         } catch (\Throwable $e) {
-            Log::warning('IP release on termination failed', [
+            AppLog::provisioning()->warning('IP release on termination failed', [
                 'hosting_account_id' => $account->id,
                 'error' => $e->getMessage(),
             ]);
@@ -247,27 +250,17 @@ class HostingService
         $request = app('request');
         $userId = $request?->user()?->id ?? auth()->id();
 
-        AuditLog::create([
-            'user_id' => $userId,
-            'action' => $action,
-            'entity_type' => 'hosting_account',
-            'entity_id' => $account->id,
-            'details' => $details !== [] ? json_encode($details) : null,
-            'ip_address' => $request?->ip(),
-            'user_agent' => $request?->userAgent(),
-            'created_at' => now(),
-        ]);
+        $recorder = app(AuditRecorder::class);
+        $recorder->entityRef($action, 'hosting_account', $account->id, $details, $userId);
 
         if ($account->customer_id !== null) {
-            ActivityLog::create([
-                'customer_id' => $account->customer_id,
-                'user_id' => $userId,
-                'action' => $action,
-                'description' => $description,
-                'metadata' => $details !== [] ? $details : null,
-                'ip_address' => $request?->ip(),
-                'created_at' => now(),
-            ]);
+            // A deleted customer can orphan the account: the relation resolves
+            // null while the id column still carries the forensic link, so fall
+            // back to a detached stub instead of dropping the id.
+            $customer = $account->customer
+                ?? (new Customer)->newFromBuilder(['id' => $account->customer_id]);
+
+            $recorder->activity($action, $customer, $details, $description, null, $userId);
         }
     }
 
@@ -307,12 +300,12 @@ class HostingService
      *
      * Delegates to the single home in ProvisioningDispatcher.
      */
-    private function isManualComputeProduct(?\App\Models\Product $product): bool
+    private function isManualComputeProduct(?Product $product): bool
     {
         try {
-            return app(\App\Services\Provisioning\ProvisioningDispatcher::class)->isManualComputeProduct($product);
+            return app(ProvisioningDispatcher::class)->isManualComputeProduct($product);
         } catch (\Throwable) {
-            return \App\Services\Provisioning\ComputeTemplateCatalog::supports(
+            return ComputeTemplateCatalog::supports(
                 trim((string) ($product?->provisioning_module ?? '')),
             );
         }
@@ -351,7 +344,7 @@ class HostingService
             try {
                 $assignment->assignNextAvailable($account, networkType: 'public');
             } catch (NoAvailableIpException $e) {
-                Log::warning('Public IP pool exhausted during activation — IP assigned later from the hosting page.', [
+                AppLog::provisioning()->warning('Public IP pool exhausted during activation — IP assigned later from the hosting page.', [
                     'hosting_account_id' => $account->id,
                     'product' => $product->name,
                 ]);
@@ -362,7 +355,7 @@ class HostingService
             try {
                 $assignment->assignNextAvailable($account, networkType: 'private');
             } catch (NoAvailableIpException $e) {
-                Log::warning('Private IP pool exhausted during activation — IP assigned later from the hosting page.', [
+                AppLog::provisioning()->warning('Private IP pool exhausted during activation — IP assigned later from the hosting page.', [
                     'hosting_account_id' => $account->id,
                     'product' => $product->name,
                 ]);

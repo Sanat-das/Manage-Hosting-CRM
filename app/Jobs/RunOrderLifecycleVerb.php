@@ -6,11 +6,11 @@ namespace App\Jobs;
 
 use App\Models\Order;
 use App\Services\Provisioning\ProvisioningDispatcher;
+use App\Support\Logging\AppLog;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
-use Illuminate\Support\Facades\Log;
 use Throwable;
 
 /**
@@ -54,7 +54,7 @@ class RunOrderLifecycleVerb implements ShouldQueue
     public function failed(?Throwable $exception): void
     {
         try {
-            Log::error('Queued order lifecycle call interrupted before it finished', [
+            AppLog::provisioning()->error('Queued order lifecycle call interrupted before it finished', [
                 'order_id' => $this->orderId,
                 'verb' => $this->verb,
                 'error' => $exception?->getMessage() ?? 'worker stopped',
@@ -67,7 +67,7 @@ class RunOrderLifecycleVerb implements ShouldQueue
     {
         try {
             if (! in_array($this->verb, self::VERBS, true)) {
-                Log::warning('Unknown order lifecycle verb queued', [
+                AppLog::provisioning()->warning('Unknown order lifecycle verb queued', [
                     'order_id' => $this->orderId,
                     'verb' => $this->verb,
                 ]);
@@ -84,7 +84,7 @@ class RunOrderLifecycleVerb implements ShouldQueue
             $attempt = $provisioning->{$this->verb}($order, $this->reason);
 
             if (! $attempt->succeeded()) {
-                Log::error('Provisioning module reported failure on order status change', [
+                AppLog::provisioning()->error('Provisioning module reported failure on order status change', [
                     'order_id' => $order->id,
                     'verb' => $this->verb,
                     'error' => $attempt->message,
@@ -93,7 +93,7 @@ class RunOrderLifecycleVerb implements ShouldQueue
         } catch (Throwable $e) {
             // The dispatcher already isolates module failures; this is the
             // belt-and-braces guard so a status change can never 500.
-            Log::error('Order lifecycle provisioning call failed', [
+            AppLog::provisioning()->error('Order lifecycle provisioning call failed', [
                 'order_id' => $this->orderId,
                 'verb' => $this->verb,
                 'error' => $e->getMessage(),

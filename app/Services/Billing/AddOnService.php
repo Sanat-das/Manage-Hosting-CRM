@@ -4,12 +4,13 @@ declare(strict_types=1);
 
 namespace App\Services\Billing;
 
-use App\Models\ActivityLog;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Product;
 use App\Models\ProductAddon;
 use App\Models\User;
+use App\Support\Audit\AuditEvent;
+use App\Support\Audit\AuditRecorder;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -287,17 +288,11 @@ final class AddOnService
             // invoice agree with the lines instead of double-billing the add-on.
             $order->update(['total' => round((float) $order->items()->sum('total'), 2)]);
 
-            ActivityLog::create([
-                'customer_id' => $order->customer_id,
-                'user_id' => $actor?->id,
-                'action' => 'addon.attached',
-                'description' => $notes,
-                'metadata' => [
-                    'order_id' => $order->id,
-                    'order_item_id' => $recurring->id,
-                    'product_addon_id' => $addon->id,
-                ],
-            ]);
+            app(AuditRecorder::class)->activity(AuditEvent::AddonAttached, $order->customer, [
+                'order_id' => $order->id,
+                'order_item_id' => $recurring->id,
+                'product_addon_id' => $addon->id,
+            ], $notes, null, $actor?->id);
 
             return $recurring;
         });
@@ -330,18 +325,12 @@ final class AddOnService
                 $description .= " — Reason: {$reason}";
             }
 
-            ActivityLog::create([
-                'customer_id' => $order->customer_id,
-                'user_id' => $actor?->id,
-                'action' => 'addon.cancelled',
-                'description' => $description,
-                'metadata' => [
-                    'order_id' => $order->id,
-                    'order_item_id' => $addonItem->id,
-                    'product_addon_id' => $addonItem->product_addon_id,
-                    'reason' => $reason,
-                ],
-            ]);
+            app(AuditRecorder::class)->activity(AuditEvent::AddonCancelled, $order->customer, [
+                'order_id' => $order->id,
+                'order_item_id' => $addonItem->id,
+                'product_addon_id' => $addonItem->product_addon_id,
+                'reason' => $reason,
+            ], $description, null, $actor?->id);
 
             $this->billing->syncOrderSummary($order);
         });

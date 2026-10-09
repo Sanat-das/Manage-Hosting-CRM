@@ -9,6 +9,7 @@ use App\Models\HostingAccount;
 use App\Models\PanelAccount;
 use App\Models\ServiceInstance;
 use App\Modules\Proxmox\Services\ProxmoxClient;
+use App\Support\Logging\AppLog;
 use Modules\RdpConsole\Exceptions\PveVncUnavailableException;
 use Throwable;
 
@@ -115,8 +116,10 @@ final class PveVncTargetResolver
             return $service !== null
                 ? PanelAccount::where('service_instance_id', $service->id)->where('panel', 'proxmox')->first()
                 : null;
-        } catch (Throwable) {
+        } catch (Throwable $e) {
             // Un-migrated tables degrade to "no VM recorded", never a 500.
+            AppLog::provisioning()->debug('PVE VNC panel account lookup failed — no VM resolved', ['error' => $e->getMessage()]);
+
             return null;
         }
     }

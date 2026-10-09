@@ -12,6 +12,8 @@ use App\Services\DomainService;
 use App\Services\Integrations\IntegrationRegistry;
 use App\Settings\IntegrationSettings;
 use App\Support\AppSettings;
+use App\Support\Audit\AuditEvent;
+use App\Support\Audit\AuditRecorder;
 use App\Support\MailSettings;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -506,10 +508,6 @@ class SettingsController extends Controller
         if ($changes !== []) {
             try {
                 $keyToSectionMap = AppSettings::keyToSection();
-                $now = now();
-                $userId = auth()->id();
-                $ip = $request->ip();
-                $ua = $request->userAgent();
 
                 // Group changed keys by their owning section so each tab's "Last updated"
                 // shows only its own keys, even when Save All is used.
@@ -519,27 +517,20 @@ class SettingsController extends Controller
                     $bySection[$sec][$k] = $diff;
                 }
 
+                $recorder = app(AuditRecorder::class);
                 foreach ($bySection as $sec => $secChanges) {
                     $secKeys = array_keys($secChanges);
-                    $properties = [
-                        'section' => $sec,
-                        'changed_keys' => $secKeys,
-                        'changes' => $secChanges,
-                    ];
-                    \DB::table('activity_log')->insert([
-                        'user_id' => $userId,
-                        'customer_id' => null,
-                        'action' => 'settings.updated',
-                        'description' => 'Settings updated ('.$sec.'): changed '.implode(', ', $secKeys),
-                        'metadata' => json_encode($properties),
-                        'properties' => json_encode($properties),
-                        'event' => 'updated',
-                        'subject_type' => 'setting',
-                        'subject_id' => null,
-                        'ip_address' => $ip,
-                        'user_agent' => $ua,
-                        'created_at' => $now,
-                    ]);
+
+                    $recorder->activity(
+                        AuditEvent::SettingsUpdated,
+                        null,
+                        [
+                            'section' => $sec,
+                            'changed_keys' => $secKeys,
+                            'changes' => $secChanges,
+                        ],
+                        'Settings updated ('.$sec.'): changed '.implode(', ', $secKeys),
+                    );
                 }
             } catch (\Throwable $e) {
                 // Audit must never break settings save.

@@ -27,6 +27,8 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Mockery;
+use Psr\Log\LoggerInterface;
 use Tests\Concerns\CreatesChatUsers;
 use Tests\TestCase;
 
@@ -144,15 +146,18 @@ class GlobalSearchServiceTest extends TestCase
     public function test_a_provider_with_a_missing_route_is_skipped_and_logs_once(): void
     {
         Log::spy();
+        Log::shouldReceive('channel')
+            ->with('app')
+            ->andReturn($logger = Mockery::mock(LoggerInterface::class));
+        $logger->shouldReceive('withContext')->andReturnSelf();
+        $logger->shouldReceive('warning')
+            ->once()
+            ->withArgs(fn (string $message) => str_contains($message, 'route'));
 
         $provider = new StubMissingRouteSearchProvider;
 
         $this->assertTrue($provider->query('acme', 5)->isEmpty());
         $this->assertTrue($provider->query('acme', 5)->isEmpty());
-
-        Log::shouldHaveReceived('warning')
-            ->once()
-            ->withArgs(fn (string $message) => str_contains($message, 'route'));
     }
 
     public function test_groups_fetch_one_extra_row_to_report_a_capped_count_without_a_count_query(): void

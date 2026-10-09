@@ -6,10 +6,11 @@ namespace App\Services\System;
 
 use App\Services\Cron\ScheduleInspector;
 use App\Services\Installer\InstallerService;
+use App\Support\Logging\AppLog;
 use App\Support\SecretRedactor;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\File;
-use Illuminate\Support\Facades\Log;
 use Symfony\Component\Process\Process;
 use Throwable;
 
@@ -77,7 +78,7 @@ final class AppInfoService
                     return $fileVersion;
                 }
             } catch (Throwable $e) {
-                Log::debug('AppInfoService: failed to read VERSION file.', ['error' => $e->getMessage()]);
+                AppLog::ops()->debug('AppInfoService: failed to read VERSION file.', ['error' => $e->getMessage()]);
             }
         }
 
@@ -200,15 +201,15 @@ final class AppInfoService
     /**
      * Server + scheduler health.
      *
-     * @return array{preflight: array<int, array{name: string, passed: bool, detail: string}>, scheduler: array{lastTickAt: \Illuminate\Support\Carbon|null, schedulerIsHealthy: bool, staleAfter: int, paused: bool}}
+     * @return array{preflight: array<int, array{name: string, passed: bool, detail: string}>, scheduler: array{lastTickAt: Carbon|null, schedulerIsHealthy: bool, staleAfter: int, paused: bool}}
      */
     public function health(): array
     {
         $preflight = [];
         try {
-            $preflight = (new InstallerService())->preflightChecks();
+            $preflight = (new InstallerService)->preflightChecks();
         } catch (Throwable $e) {
-            Log::warning('AppInfoService: preflightChecks failed.', ['error' => $e->getMessage()]);
+            AppLog::ops()->warning('AppInfoService: preflightChecks failed.', ['error' => $e->getMessage()]);
         }
 
         $schedulerHealth = $this->schedulerHealth();
@@ -238,7 +239,7 @@ final class AppInfoService
             try {
                 $composerHash = md5((string) file_get_contents($lockPath));
             } catch (Throwable $e) {
-                Log::debug('AppInfoService: failed to hash composer.lock.', ['error' => $e->getMessage()]);
+                AppLog::ops()->debug('AppInfoService: failed to hash composer.lock.', ['error' => $e->getMessage()]);
             }
         }
 
@@ -266,7 +267,7 @@ final class AppInfoService
         try {
             $content = File::get($path);
         } catch (Throwable $e) {
-            Log::debug('AppInfoService: failed to read CHANGELOG.md.', ['error' => $e->getMessage()]);
+            AppLog::ops()->debug('AppInfoService: failed to read CHANGELOG.md.', ['error' => $e->getMessage()]);
 
             return '';
         }
@@ -373,7 +374,7 @@ final class AppInfoService
     }
 
     /**
-     * @return array{lastTickAt: \Illuminate\Support\Carbon|null, schedulerIsHealthy: bool, staleAfter: int, paused: bool}
+     * @return array{lastTickAt: Carbon|null, schedulerIsHealthy: bool, staleAfter: int, paused: bool}
      */
     private function schedulerHealth(): array
     {
@@ -389,13 +390,13 @@ final class AppInfoService
             $healthy = $inspector->schedulerIsHealthy();
             $staleAfter = ScheduleInspector::STALE_AFTER_SECONDS;
         } catch (Throwable $e) {
-            Log::debug('AppInfoService: ScheduleInspector unavailable.', ['error' => $e->getMessage()]);
+            AppLog::ops()->debug('AppInfoService: ScheduleInspector unavailable.', ['error' => $e->getMessage()]);
             // Fallback to cache heartbeat directly
             try {
                 $stamp = Cache::get(ScheduleInspector::HEARTBEAT_KEY);
-                $lastTickAt = $stamp !== null ? \Illuminate\Support\Carbon::parse($stamp) : null;
+                $lastTickAt = $stamp !== null ? Carbon::parse($stamp) : null;
                 $healthy = $lastTickAt !== null
-                    && $lastTickAt->diffInSeconds(\Illuminate\Support\Carbon::now(), true) <= $staleAfter;
+                    && $lastTickAt->diffInSeconds(Carbon::now(), true) <= $staleAfter;
             } catch (Throwable) {
             }
         }
@@ -501,7 +502,7 @@ final class AppInfoService
         } catch (Throwable $e) {
             $message = SecretRedactor::redact($e->getMessage());
 
-            Log::debug('AppInfoService: process failed.', ['cmd' => $cmd, 'error' => $message]);
+            AppLog::ops()->debug('AppInfoService: process failed.', ['cmd' => $cmd, 'error' => $message]);
 
             return [
                 'output' => $message,

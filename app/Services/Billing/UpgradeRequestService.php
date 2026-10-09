@@ -2,7 +2,6 @@
 
 namespace App\Services\Billing;
 
-use App\Models\ActivityLog;
 use App\Models\CustomerWallet;
 use App\Models\Invoice;
 use App\Models\Order;
@@ -16,6 +15,8 @@ use App\Services\OrderConfigSnapshot;
 use App\Services\OrderNumberService;
 use App\Services\UpgradeEmailService;
 use App\Support\AppSettings;
+use App\Support\Audit\AuditEvent;
+use App\Support\Audit\AuditRecorder;
 use Carbon\CarbonImmutable;
 use DateTimeInterface;
 use DomainException;
@@ -350,18 +351,12 @@ class UpgradeRequestService
                 'applied_at' => now(),
             ]);
 
-            ActivityLog::create([
-                'customer_id' => $order->customer_id,
-                'user_id' => auth()->id(),
-                'action' => 'upgrade.applied',
-                'description' => "Upgrade {$request->upgrade_no} applied on order {$order->order_number}: {$request->fromProduct?->name} → {$request->toProduct?->name}",
-                'metadata' => [
-                    'order_id' => $order->id,
-                    'upgrade_request_id' => $request->id,
-                    'order_item_id' => $item->id,
-                    'to_product_id' => $request->to_product_id,
-                ],
-            ]);
+            app(AuditRecorder::class)->activity(AuditEvent::UpgradeApplied, $order->customer, [
+                'order_id' => $order->id,
+                'upgrade_request_id' => $request->id,
+                'order_item_id' => $item->id,
+                'to_product_id' => $request->to_product_id,
+            ], "Upgrade {$request->upgrade_no} applied on order {$order->order_number}: {$request->fromProduct?->name} → {$request->toProduct?->name}");
 
             return $request;
         };

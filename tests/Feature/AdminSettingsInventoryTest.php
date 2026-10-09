@@ -63,6 +63,7 @@ class AdminSettingsInventoryTest extends TestCase
      *     interval). See migration 2026_10_05_170000_remove_dead_ipam_scan_setting.
      */
     public const BASELINE_KEYS = [
+        'activity_retention_days',
         'analytics_anonymize_ip',
         'analytics_daily_report',
         'analytics_dashboard_widgets',
@@ -75,6 +76,7 @@ class AdminSettingsInventoryTest extends TestCase
         'analytics_track_admin',
         'analytics_tracking_code',
         'analytics_weekly_report',
+        'audit_retention_days',
         'auto_generate_invoice',
         'automation_auto_close_ticket_days',
         'automation_auto_close_tickets',
@@ -118,6 +120,7 @@ class AdminSettingsInventoryTest extends TestCase
         'company_phone_number',
         'company_postcode',
         'company_state',
+        'consent_retention_days',
         'cpanel_api_token',
         'cpanel_enabled',
         'cpanel_host',
@@ -146,11 +149,14 @@ class AdminSettingsInventoryTest extends TestCase
         'domain_nameserver3',
         'domain_nameserver4',
         'domain_pricing_tier',
+        'domain_search_retention_days',
+        'domain_sync_retention_days',
         'domain_transfer_enabled',
         'domain_transfer_lock',
         'domain_transfer_lock_days',
         'domain_whois_privacy',
         'due_days',
+        'email_retention_days',
         'hosting_allow_account_creation',
         'hosting_auto_provision',
         'hosting_backup_enabled',
@@ -173,6 +179,7 @@ class AdminSettingsInventoryTest extends TestCase
         'inventory_stock_unit',
         'inventory_track_stock',
         'invoice_next_number',
+        'invoice_pdf_retention_days',
         'invoice_prefix',
         'ipam_allow_public_ipv6',
         'ipam_audit_retention_days',
@@ -190,6 +197,7 @@ class AdminSettingsInventoryTest extends TestCase
         'lockout_duration',
         'mail_from_address',
         'mail_from_name',
+        'module_retention_days',
         'notify_domain_expiry',
         'notify_new_tickets',
         'notify_overdue_invoices',
@@ -275,7 +283,7 @@ class AdminSettingsInventoryTest extends TestCase
         $expected = self::BASELINE_KEYS;
         sort($expected);
 
-        $this->assertCount(182, $keys, 'Baseline field count changed - expected 182 name="settings[*]" keys. Got: '.implode(', ', $keys));
+        $this->assertCount(190, $keys, 'Baseline field count changed - expected 190 name="settings[*]" keys. Got: '.implode(', ', $keys));
         $this->assertSame($expected, $keys, 'Baseline field set changed - keys were dropped, renamed, or added.');
     }
 
@@ -337,9 +345,9 @@ class AdminSettingsInventoryTest extends TestCase
         $this->assertStringNotContainsString('<details', $html, 'A collapsible group is back on the settings page.');
         $this->assertStringNotContainsString('<summary', $html);
         $this->assertSame(
-            13,
+            16,
             substr_count($html, 'class="mt-3 settings-group"'),
-            'Expected the 13 former Advanced groups to render as always-visible sections.'
+            'Expected the 16 always-visible settings groups (13 former Advanced + 3 Log Retention sections) to render as sections.'
         );
         $this->assertSame(
             substr_count($html, '<div'),
@@ -351,9 +359,9 @@ class AdminSettingsInventoryTest extends TestCase
     public function test_get_query_count_is_bounded_and_has_no_n_plus_one(): void
     {
         // 1 legacy settings pluck in middleware (security hardening toggles) + 1 legacy pluck in
-        // SettingsController::loadAll() + 17 typed group loads (distinct classes in AppSettings::TYPED_KEYS, now includes branding)
-        // + 1 gst_settings row for the Billing tab's GST & Tax card = 20, plus 1 registrar_settings
-        // read backing the Default Registrar dropdown (SettingsController::fieldOptions) = 21.
+        // SettingsController::loadAll() + 18 typed group loads (distinct classes in AppSettings::TYPED_KEYS, now includes branding + log_retention)
+        // + 1 gst_settings row for the Billing tab's GST & Tax card = 21, plus 1 registrar_settings
+        // read backing the Default Registrar dropdown (SettingsController::fieldOptions) = 22.
         // The other option sources (adminlte_roles, modules, server_groups) do not match the
         // filter below; registrar_settings does, because its name contains "settings".
         // Guard against N+1 per-key queries (would be ~160+ queries if each TYPED_KEYS entry hit DB).
@@ -380,9 +388,9 @@ class AdminSettingsInventoryTest extends TestCase
         $settingCount = count($settingQueries);
 
         $this->assertLessThanOrEqual(
-            21,
+            22,
             $settingCount,
-            "GET admin.settings.index issued {$settingCount} setting queries (expected <=21 = 2 plucks + 17 typed groups + 1 gst_settings + 1 registrar_settings). "
+            "GET admin.settings.index issued {$settingCount} setting queries (expected <=22 = 2 plucks + 18 typed groups + 1 gst_settings + 1 registrar_settings). "
             ."Total queries: {$totalCount}. Possible N+1. Queries: ".json_encode(array_column($settingQueries, 'query'))
         );
 
@@ -390,7 +398,7 @@ class AdminSettingsInventoryTest extends TestCase
         $this->assertLessThan(
             50,
             $settingCount,
-            "N+1 detected: {$settingCount} setting queries far exceeds 17 group loads for 160 TYPED_KEYS."
+            "N+1 detected: {$settingCount} setting queries far exceeds 18 group loads for 168 TYPED_KEYS."
         );
     }
 

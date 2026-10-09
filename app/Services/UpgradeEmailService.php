@@ -6,7 +6,7 @@ use App\Jobs\SendEmail;
 use App\Models\EmailTemplate;
 use App\Models\UpgradeRequest;
 use App\Services\Concerns\BuildsEmailVariables;
-use Illuminate\Support\Facades\Log;
+use App\Support\Logging\AppLog;
 
 /**
  * Sends the upgrade lifecycle emails — 'upgrade_requested' on place,
@@ -27,7 +27,7 @@ final class UpgradeEmailService
         $email = $request->customer?->user?->email;
 
         if (! $email) {
-            Log::info('Upgrade email skipped: customer has no linked user email.', [
+            AppLog::billing()->info('Upgrade email skipped: customer has no linked user email.', [
                 'upgrade_request_id' => $request->id,
                 'event' => $event,
             ]);
@@ -41,7 +41,7 @@ final class UpgradeEmailService
             ->first();
 
         if ($template === null) {
-            Log::info('Upgrade email skipped: template not found.', [
+            AppLog::billing()->info('Upgrade email skipped: template not found.', [
                 'upgrade_request_id' => $request->id,
                 'template' => $event,
             ]);
@@ -62,7 +62,18 @@ final class UpgradeEmailService
             $plainBody = $this->toPlainText($body);
         }
 
-        SendEmail::dispatch($email, $subject, $plainBody, null, [], [], [], $htmlBody);
+        SendEmail::dispatch(
+            $email,
+            $subject,
+            $plainBody,
+            null,
+            [],
+            [],
+            [],
+            $htmlBody,
+            templateName: 'upgrade_request',
+            customerId: $request->customer_id,
+        );
 
         return true;
     }

@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use App\Models\EmailLog;
+use App\Support\SecretRedactor;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -10,6 +11,7 @@ use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 
 /**
  * Send an email asynchronously and log the result.
@@ -31,9 +33,9 @@ class SendEmail implements ShouldQueue
      *                             plain text — `$body` is still stored on the EmailLog row and
      *                             sent as the plain-text alternative part.
      * @param  list<array{disk: string, path: string, filename: string, mimeType: ?string, isInline: bool, contentId: ?string}>  $attachments
-     *                             file paths on disk, not raw bytes — keeps queued job payloads small.
-     *                             `isInline`+`contentId` embed the file for a `cid:` reference in `$htmlBody`
-     *                             instead of listing it as a downloadable attachment.
+     *                                                                                                                                         file paths on disk, not raw bytes — keeps queued job payloads small.
+     *                                                                                                                                         `isInline`+`contentId` embed the file for a `cid:` reference in `$htmlBody`
+     *                                                                                                                                         instead of listing it as a downloadable attachment.
      * @param  ?string  $logBody  what to store on the EmailLog row INSTEAD of `$body`. The sent
      *                            message is unaffected. Used by mail that legitimately carries a
      *                            secret the recipient needs but the `emails` table must not keep
@@ -41,7 +43,15 @@ class SendEmail implements ShouldQueue
      *                            keeps the previous behaviour of logging the body verbatim.
      */
     /**
-     * @param string|list<string> $toEmail
+     * Stable idempotency key for this dispatch, minted once when the job is
+     * constructed. It travels in the serialized payload, so every queue retry
+     * of the SAME dispatch resolves to the one EmailLog row it created instead
+     * of logging a fresh duplicate.
+     */
+    public string $logKey;
+
+    /**
+     * @param  string|list<string>  $toEmail
      */
     public function __construct(
         public string|array $toEmail,
@@ -54,7 +64,10 @@ class SendEmail implements ShouldQueue
         public ?string $htmlBody = null,
         public array $attachments = [],
         public ?string $logBody = null,
+        public ?string $templateName = null,
+        public ?int $customerId = null,
     ) {
+        $this->logKey = (string) Str::uuid();
         $this->onQueue('emails');
     }
 
@@ -64,7 +77,10 @@ class SendEmail implements ShouldQueue
      */
     private function loggedBody(): string
     {
-        return $this->logBody ?? $this->body;
+        // A caller-supplied logBody still wins the body choice, but either way
+        // the stored value is scrubbed by the shared secret filter. WelcomeMailer
+        // relies on this pass leaving its literal `[redacted]` marker untouched.
+        return SecretRedactor::redact($this->logBody ?? $this->body);
     }
 
     public function handle(): void
@@ -103,19 +119,30 @@ class SendEmail implements ShouldQueue
             $log->update(['status' => 'sent']);
         } catch (\Throwable $e) {
             $attempts = method_exists($this, 'attempts') ? $this->attempts() : 1;
-            $errorWithAttempt = $attempts > 1 ? "[attempt {$attempts}] {$e->getMessage()}" : $e->getMessage();
-            $log->update(['status' => 'failed', 'error' => $errorWithAttempt]);
+            // Append rather than overwrite: a retried job that failed before
+            // keeps the earlier reason, with this attempt's message below it.
+            $log->update([
+                'status' => 'failed',
+                'error' => trim(($log->error ? $log->error."\n" : '').($attempts > 1 ? "[attempt {$attempts}] " : '').$e->getMessage()),
+            ]);
             throw $e;
         }
     }
 
     /**
-     * Avoid creating a duplicate EmailLog row on retries. Laravel re-executes
-     * handle() up to `tries` times with the SAME job instance / payload, so a
-     * naive create() would leave 3 rows for one logical send. On attempt >1 we
-     * reuse the most recent matching row (same recipient + subject + body) that
-     * is still in a non-sent state; only the first attempt (or when no match is
-     * found) creates a new row.
+     * Resolve the EmailLog row this dispatch belongs to.
+     *
+     * The primary lookup is by `log_key`: a queue retry re-runs handle() with
+     * the SAME serialized payload, so the key it carries points straight at the
+     * row the first attempt created — no guessing by content, and no duplicate
+     * rows for one logical send. A retry bumps `attempts` and puts the row back
+     * to queued, keeping any error the previous attempt recorded.
+     *
+     * Only when no key matches AND we are past the first attempt do we fall
+     * back to the old content lookup (same recipient + subject + body in a
+     * non-sent state) — that path exists for jobs queued before this key
+     * existed. A match there is stamped with the key so subsequent retries use
+     * the fast path. With no match, a brand new row is created.
      */
     private function resolveLog(): EmailLog
     {
@@ -123,9 +150,22 @@ class SendEmail implements ShouldQueue
         $ccEmails = $this->cc !== [] ? implode(', ', $this->cc) : null;
         $bccEmails = $this->bcc !== [] ? implode(', ', $this->bcc) : null;
 
+        // Retry of this exact dispatch: found by its own key.
+        $retry = EmailLog::query()->where('log_key', $this->logKey)->first();
+        if ($retry !== null) {
+            $retry->forceFill([
+                'attempts' => ((int) $retry->attempts) + 1,
+                'status' => 'queued',
+            ])->save();
+
+            return $retry;
+        }
+
         try {
             $attempts = method_exists($this, 'attempts') ? $this->attempts() : 1;
             if ($attempts > 1) {
+                // Legacy row from a job queued before log_key existed — no key
+                // to match on, so fall back to content and stamp the key on.
                 // `where('cc_emails', null)` compiles to `= NULL`, which matches
                 // nothing — the null case has to go through whereNull or every
                 // retry of a plain message would create a fresh row.
@@ -139,8 +179,11 @@ class SendEmail implements ShouldQueue
                     ->latest('id')
                     ->first();
                 if ($existing !== null) {
-                    // Mark retry so the row reflects the latest attempt without duplication.
-                    $existing->update(['status' => 'queued', 'error' => null]);
+                    $existing->forceFill([
+                        'status' => 'queued',
+                        'error' => null,
+                        'log_key' => $this->logKey,
+                    ])->save();
 
                     return $existing;
                 }
@@ -149,14 +192,43 @@ class SendEmail implements ShouldQueue
             // Fall through to create.
         }
 
-        return EmailLog::create([
+        // The payload records what was asked for so a failed row can be resent.
+        // htmlBody is deliberately NOT captured — only the redacted/logBody text
+        // is kept, matching what is stored in `body`.
+        $payload = [
+            'to' => $this->toEmail,
+            'cc' => $this->cc,
+            'bcc' => $this->bcc,
+            'subject' => $this->subject,
+            'body' => $this->loggedBody(),
+            'from_email' => $this->fromEmail,
+            'attachments' => $this->attachments,
+            'headers' => $this->headers,
+            'template_name' => $this->templateName,
+            'customer_id' => $this->customerId,
+        ];
+
+        // forceFill so the always-written audit columns cannot be silently
+        // dropped if the model's fillable list changes; `payload` is passed
+        // as an array and cast to JSON by the model.
+        $log = new EmailLog;
+        $log->forceFill([
             'to_email' => $toEmail,
             'cc_emails' => $ccEmails,
             'bcc_emails' => $bccEmails,
             'subject' => $this->subject,
             'body' => $this->loggedBody(),
             'status' => 'queued',
+            'log_key' => $this->logKey,
+            'from_email' => $this->fromEmail,
+            'template_name' => $this->templateName,
+            'customer_id' => $this->customerId,
+            'attempts' => 1,
+            'payload' => $payload,
         ]);
+        $log->save();
+
+        return $log;
     }
 
     /**

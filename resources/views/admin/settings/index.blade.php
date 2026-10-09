@@ -2233,6 +2233,77 @@
                 <small class="text-muted d-block mb-2 last-updated" data-section="cron">@if($lu)Last updated: {{ \Illuminate\Support\Carbon::parse($lu->created_at)->format('Y-m-d H:i:s') }} — <span title="{{ $lu->description }}">{{ \Illuminate\Support\Str::limit($lu->description, 120) }}</span>@else Last updated: never @endif</small>
             </div>
 
+            {{-- Log Retention --}}
+            <div class="tab-pane fade @if ($activeTab === 'log_retention') show active @endif" id="pane-log_retention" role="tabpanel" aria-labelledby="tab-log_retention">
+                <x-adminlte-card icon="bi bi-archive" title="Log Retention">
+                    <div class="mt-3 settings-group">
+                        <h4 class="settings-group-title">Audit &amp; activity</h4>
+                        <div class="row mt-2">
+                            <div class="col-md-4">
+                                <x-adminlte-input name="settings[activity_retention_days]" label="Activity Log (days)" type="number" min="1" max="3650"
+                                    value="{{ old('settings.activity_retention_days', $settings['activity_retention_days'] ?? '180') }}">
+                                    <small class="form-text text-muted">Days kept (1&ndash;3650). Blank keeps the current value.</small>
+                                </x-adminlte-input>
+                            </div>
+                            <div class="col-md-4">
+                                <x-adminlte-input name="settings[audit_retention_days]" label="Audit Log (days)" type="number" min="1" max="3650"
+                                    value="{{ old('settings.audit_retention_days', $settings['audit_retention_days'] ?? '365') }}">
+                                    <small class="form-text text-muted">Days kept (1&ndash;3650). Blank keeps the current value.</small>
+                                </x-adminlte-input>
+                            </div>
+                            <div class="col-md-4">
+                                <x-adminlte-input name="settings[email_retention_days]" label="Email Log (days)" type="number" min="1" max="3650"
+                                    value="{{ old('settings.email_retention_days', $settings['email_retention_days'] ?? '90') }}">
+                                    <small class="form-text text-muted">Days kept (1&ndash;3650). Blank keeps the current value.</small>
+                                </x-adminlte-input>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mt-3 settings-group">
+                        <h4 class="settings-group-title">Domain &amp; module logs</h4>
+                        <div class="row mt-2">
+                            <div class="col-md-4">
+                                <x-adminlte-input name="settings[module_retention_days]" label="Module Log (days)" type="number" min="1" max="3650"
+                                    value="{{ old('settings.module_retention_days', $settings['module_retention_days'] ?? '90') }}">
+                                    <small class="form-text text-muted">Days kept (1&ndash;3650). Blank keeps the current value.</small>
+                                </x-adminlte-input>
+                            </div>
+                            <div class="col-md-4">
+                                <x-adminlte-input name="settings[domain_sync_retention_days]" label="Domain Sync Log (days)" type="number" min="1" max="3650"
+                                    value="{{ old('settings.domain_sync_retention_days', $settings['domain_sync_retention_days'] ?? '90') }}">
+                                    <small class="form-text text-muted">Days kept (1&ndash;3650). Blank keeps the current value.</small>
+                                </x-adminlte-input>
+                            </div>
+                            <div class="col-md-4">
+                                <x-adminlte-input name="settings[domain_search_retention_days]" label="Domain Search Log (days)" type="number" min="1" max="3650"
+                                    value="{{ old('settings.domain_search_retention_days', $settings['domain_search_retention_days'] ?? '30') }}">
+                                    <small class="form-text text-muted">Days kept (1&ndash;3650). Blank keeps the current value.</small>
+                                </x-adminlte-input>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mt-3 settings-group">
+                        <h4 class="settings-group-title">Documents &amp; consent</h4>
+                        <div class="row mt-2">
+                            <div class="col-md-4">
+                                <x-adminlte-input name="settings[invoice_pdf_retention_days]" label="Invoice PDF Log (days)" type="number" min="1" max="3650"
+                                    value="{{ old('settings.invoice_pdf_retention_days', $settings['invoice_pdf_retention_days'] ?? '365') }}">
+                                    <small class="form-text text-muted">Days kept (1&ndash;3650). Blank keeps the current value.</small>
+                                </x-adminlte-input>
+                            </div>
+                            <div class="col-md-4">
+                                <x-adminlte-input name="settings[consent_retention_days]" label="Marketing Consent (days)" type="number" min="0" max="3650"
+                                    value="{{ old('settings.consent_retention_days', $settings['consent_retention_days'] ?? '0') }}">
+                                    <small class="form-text text-muted">0 = keep forever; blank keeps the current value.</small>
+                                </x-adminlte-input>
+                            </div>
+                        </div>
+                    </div>
+                </x-adminlte-card>
+                @php $lu = $lastUpdated['log_retention'] ?? $lastUpdated['all'] ?? null; @endphp
+                <small class="text-muted d-block mb-2 last-updated" data-section="log_retention">@if($lu)Last updated: {{ \Illuminate\Support\Carbon::parse($lu->created_at)->format('Y-m-d H:i:s') }} — <span title="{{ $lu->description }}">{{ \Illuminate\Support\Str::limit($lu->description, 120) }}</span>@else Last updated: never @endif</small>
+            </div>
+
             {{-- Role --}}
             <div class="tab-pane fade @if ($activeTab === 'role') show active @endif" id="pane-role" role="tabpanel" aria-labelledby="tab-role">
                 <x-adminlte-card icon="bi bi-person-badge" title="Role Settings">

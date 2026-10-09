@@ -7,6 +7,7 @@ namespace App\Modules\HyperV\Services;
 use App\Contracts\Integrations\ServerConnectionResult;
 use App\Contracts\Integrations\ServerInfoDTO;
 use App\Models\Server;
+use App\Support\Logging\AppLog;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Throwable;
@@ -125,6 +126,7 @@ final class HyperVClient
                 $meta,
             );
         } catch (Throwable $e) {
+            AppLog::provisioning()->debug('Hyper-V connection test failed', ['error' => $e->getMessage()]);
             $msg = $this->sanitizeMessage($e->getMessage(), $host, $port, $useSsl);
 
             return ServerConnectionResult::fail($msg, $this->elapsedMs($start));
@@ -176,6 +178,7 @@ final class HyperVClient
                 meta: $dto->meta,
             );
         } catch (Throwable $e) {
+            AppLog::provisioning()->debug('Hyper-V server info probe failed', ['error' => $e->getMessage()]);
             $msg = $this->sanitizeMessage($e->getMessage(), $host, $port, $useSsl);
 
             return new ServerInfoDTO(
@@ -196,7 +199,7 @@ final class HyperVClient
      */
     public static function psQuote(string $value): string
     {
-        return "'" . str_replace("'", "''", $value) . "'";
+        return "'".str_replace("'", "''", $value)."'";
     }
 
     /**
@@ -261,7 +264,7 @@ final class HyperVClient
                     return ['error' => $this->protocolFaultMessage($body, $conn['host'], $conn['port'])];
                 }
 
-                return ['error' => $this->httpErrorMessage($response->status(), $conn['host'], $conn['port'], $conn['useSsl']) . ' ' . $this->flattenError($body)];
+                return ['error' => $this->httpErrorMessage($response->status(), $conn['host'], $conn['port'], $conn['useSsl']).' '.$this->flattenError($body)];
             }
 
             $decoded = $this->extractJson($body);
@@ -276,6 +279,8 @@ final class HyperVClient
 
             return ['error' => $this->flattenError($body) ?: 'Host returned no data.'];
         } catch (Throwable $e) {
+            AppLog::provisioning()->debug('Hyper-V WinRM script run failed', ['error' => $e->getMessage()]);
+
             return ['error' => $this->sanitizeMessage($e->getMessage(), $conn['host'], $conn['port'], $conn['useSsl'])];
         }
     }
@@ -442,6 +447,8 @@ PS;
 
             return ['error' => 'PowerShell remoting returned no data.'];
         } catch (Throwable $e) {
+            AppLog::provisioning()->debug('Hyper-V PowerShell remoting run failed', ['error' => $e->getMessage()]);
+
             return ['error' => $this->sanitizeMessage($e->getMessage(), $conn['host'], $conn['port'], $conn['useSsl'])];
         } finally {
             // $tmp was renamed onto $psFile; only delete what still exists so
@@ -502,7 +509,8 @@ PS;
                     }
                 }
                 proc_close($process);
-                $combined = trim($stdout . "\n" . $stderr);
+                $combined = trim($stdout."\n".$stderr);
+
                 return ['output' => $combined];
             }
 
@@ -569,6 +577,7 @@ PS;
             if ($timeoutSeconds <= 0) {
                 return ['error' => 'PowerShell remoting returned no data.'];
             }
+
             return $this->runPowerShellFileWithTimeout($psFile, $timeoutSeconds);
         } finally {
             @unlink($psFile);
@@ -1414,6 +1423,8 @@ PS;
             // never marks a phantom VM active.
             return ['error' => $this->flattenError($body) ?: $emptyErrorMessage];
         } catch (Throwable $e) {
+            AppLog::provisioning()->debug('Hyper-V VM creation command failed', ['error' => $e->getMessage()]);
+
             return ['error' => $this->sanitizeMessage($e->getMessage(), $conn['host'], $conn['port'], $conn['useSsl'])];
         }
     }
@@ -1898,7 +1909,7 @@ PS;
     }
 
     /**
-     * @param array<string, mixed> $data
+     * @param  array<string, mixed>  $data
      */
     private function dtoFromDecoded(array $data, string $host): ServerInfoDTO
     {
@@ -2136,7 +2147,7 @@ PS;
 
     private function testWsManEnvelope(string $host): string
     {
-        return <<<XML
+        return <<<'XML'
 <?xml version="1.0" encoding="utf-8"?>
 <Envelope xmlns="http://www.w3.org/2003/05/soap-envelope">
   <Header><Action xmlns="http://schemas.dmtf.org/wbem/wsman/1/wsman.xsd">http://schemas.dmtf.org/wbem/wsman/1/wsman/Identify</Action></Header>
@@ -2225,7 +2236,7 @@ XML;
         if ($text === '') {
             $text = 'no reason given';
         } elseif (strlen($text) > 500) {
-            $text = substr($text, 0, 500) . '…';
+            $text = substr($text, 0, 500).'…';
         }
 
         return sprintf(
@@ -2241,11 +2252,11 @@ XML;
         $base = sprintf('Hyper-V host %s:%d returned HTTP %d.', $host, $port, $status);
 
         if ($status === 401 || $status === 403) {
-            return $base . ' Check username (use DOMAIN\\user for domain-joined hosts) and password. ' . $this->trustedHostsHint($host);
+            return $base.' Check username (use DOMAIN\\user for domain-joined hosts) and password. '.$this->trustedHostsHint($host);
         }
 
         if ($status === 0 || $status >= 500) {
-            return $base . ' ' . $this->trustedHostsHint($host);
+            return $base.' '.$this->trustedHostsHint($host);
         }
 
         return $base;
@@ -2295,7 +2306,7 @@ XML;
         }
 
         if (str_contains($lower, 'ssl') || str_contains($lower, 'certificate') || str_contains($lower, 'certificate verify failed')) {
-            return 'TLS verification failed for Hyper-V host ' . $host . '. If using a self-signed certificate, disable verify_tls or install the CA. ' . $this->trustedHostsHint($host);
+            return 'TLS verification failed for Hyper-V host '.$host.'. If using a self-signed certificate, disable verify_tls or install the CA. '.$this->trustedHostsHint($host);
         }
 
         if (str_contains($lower, '401') || str_contains($lower, 'unauthorized') || str_contains($lower, 'access is denied') || str_contains($lower, 'logon failure')) {
@@ -2303,13 +2314,13 @@ XML;
         }
 
         if (str_contains($lower, 'trustedhosts') || str_contains($lower, 'winrm') || str_contains($lower, 'credssp') || str_contains($lower, 'negotiate')) {
-            return $message . ' ' . $this->trustedHostsHint($host);
+            return $message.' '.$this->trustedHostsHint($host);
         }
 
         // Fallback: flatten + append hint
         $flat = $this->flattenError($message);
 
-        return $flat . ' ' . $this->trustedHostsHint($host);
+        return $flat.' '.$this->trustedHostsHint($host);
     }
 
     private function elapsedMs(float $start): int

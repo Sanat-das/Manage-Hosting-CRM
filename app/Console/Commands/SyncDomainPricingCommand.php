@@ -7,8 +7,8 @@ namespace App\Console\Commands;
 use App\Contracts\RegistrarDriver;
 use App\Exceptions\RegistrarException;
 use App\Models\DomainPricing;
-use App\Models\DomainSyncLog;
 use App\Services\Registrars\RegistrarManager;
+use App\Support\Audit\AuditRecorder;
 use Illuminate\Console\Command;
 use Throwable;
 
@@ -41,12 +41,12 @@ class SyncDomainPricingCommand extends Command
         if ($enabled === []) {
             $this->info('No configured registrar — skipping domain pricing sync.');
 
-            DomainSyncLog::create([
-                'provider' => 'none',
-                'operation' => 'sync-pricing',
-                'status' => 'skipped',
-                'payload' => ['reason' => 'no configured registrar'],
-            ]);
+            app(AuditRecorder::class)->domainSync(
+                'none',
+                'sync-pricing',
+                'skipped',
+                ['reason' => 'no configured registrar'],
+            );
 
             return self::SUCCESS;
         }
@@ -68,12 +68,12 @@ class SyncDomainPricingCommand extends Command
         if ($driver === null) {
             $this->info("Registrar [{$code}] resolved no driver — skipping.");
 
-            DomainSyncLog::create([
-                'provider' => $code,
-                'operation' => 'sync-pricing',
-                'status' => 'skipped',
-                'payload' => ['reason' => 'no driver resolved'],
-            ]);
+            app(AuditRecorder::class)->domainSync(
+                $code,
+                'sync-pricing',
+                'skipped',
+                ['reason' => 'no driver resolved'],
+            );
 
             return;
         }
@@ -83,32 +83,32 @@ class SyncDomainPricingCommand extends Command
 
             $this->info(sprintf('Synced %d TLD(s) from registrar [%s].', count($synced), $code));
 
-            DomainSyncLog::create([
-                'provider' => $code,
-                'operation' => 'sync-pricing',
-                'status' => count($synced) > 0 ? 'success' : 'skipped',
-                'payload' => count($synced) > 0 ? ['synced' => $synced] : ['reason' => 'all pricing null'],
-            ]);
+            app(AuditRecorder::class)->domainSync(
+                $code,
+                'sync-pricing',
+                count($synced) > 0 ? 'success' : 'skipped',
+                count($synced) > 0 ? ['synced' => $synced] : ['reason' => 'all pricing null'],
+            );
         } catch (RegistrarException $e) {
             $this->error("Registrar error for [{$code}]: ".$e->getMessage());
 
-            DomainSyncLog::create([
-                'provider' => $code,
-                'operation' => 'sync-pricing',
-                'status' => 'error',
-                'payload' => ['synced' => []],
-                'error' => $e->getMessage(),
-            ]);
+            app(AuditRecorder::class)->domainSync(
+                $code,
+                'sync-pricing',
+                'error',
+                ['synced' => []],
+                $e->getMessage(),
+            );
         } catch (Throwable $e) {
             $this->error("Unexpected error for [{$code}]: ".$e->getMessage());
 
-            DomainSyncLog::create([
-                'provider' => $code,
-                'operation' => 'sync-pricing',
-                'status' => 'error',
-                'payload' => ['synced' => []],
-                'error' => $e->getMessage(),
-            ]);
+            app(AuditRecorder::class)->domainSync(
+                $code,
+                'sync-pricing',
+                'error',
+                ['synced' => []],
+                $e->getMessage(),
+            );
         }
     }
 

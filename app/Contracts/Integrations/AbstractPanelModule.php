@@ -8,7 +8,8 @@ use App\Contracts\Integrations\Capabilities\ProvisioningModule;
 use App\Models\PanelAccount;
 use App\Models\Server;
 use App\Models\ServiceInstance;
-use Illuminate\Support\Facades\Log;
+use App\Support\Logging\AppLog;
+use App\Support\SecretRedactor;
 use Illuminate\Support\Str;
 use Throwable;
 
@@ -200,6 +201,7 @@ abstract class AbstractPanelModule implements ProvisioningModule
         foreach ($data as $k => $v) {
             if (is_string($k) && in_array(strtolower($k), static::META_SECRET_KEYS, true)) {
                 $out[$k] = '***';
+
                 continue;
             }
 
@@ -223,7 +225,7 @@ abstract class AbstractPanelModule implements ProvisioningModule
             $text = is_string($json) ? $json : gettype($raw);
         }
 
-        $text = \App\Support\SecretRedactor::redact($text);
+        $text = SecretRedactor::redact($text);
 
         if (function_exists('mb_strcut')) {
             return mb_strcut($text, 0, static::META_RAW_EXCERPT_MAX_BYTES, 'UTF-8');
@@ -362,7 +364,7 @@ abstract class AbstractPanelModule implements ProvisioningModule
                     'provision_status' => 'provisioned',
                 ]);
             } catch (Throwable $e) {
-                Log::warning('Could not advance service status after provisioning', [
+                AppLog::provisioning()->warning('Could not advance service status after provisioning', [
                     'service_instance_id' => $service->id,
                     'error' => $e->getMessage(),
                 ]);

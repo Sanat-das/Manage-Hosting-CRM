@@ -5,9 +5,9 @@ declare(strict_types=1);
 namespace App\Jobs;
 
 use App\Models\Module;
-use App\Models\ModuleLog;
 use App\Models\ServiceInstance;
 use App\Services\Modules\ModuleManager;
+use App\Support\Audit\AuditRecorder;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Throwable;
@@ -28,8 +28,7 @@ class RunModuleCapability implements ShouldQueue
         public readonly string $method,
         public readonly int $serviceInstanceId,
         public readonly array $config,
-    ) {
-    }
+    ) {}
 
     public function handle(ModuleManager $manager): void
     {
@@ -73,13 +72,13 @@ class RunModuleCapability implements ShouldQueue
     private function log(Module $module, string $event, string $status, ?string $error = null, ?int $serviceInstanceId = null): void
     {
         try {
-            ModuleLog::create([
-                'module_id' => $module->id,
-                'event' => $event,
-                'status' => $status,
-                'error' => $error,
-                'service_instance_id' => $serviceInstanceId,
-            ]);
+            app(AuditRecorder::class)->module(
+                $module->id,
+                $event,
+                $serviceInstanceId,
+                $status,
+                $error,
+            );
         } catch (Throwable) {
             // Logging must never break job isolation.
         }

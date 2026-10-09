@@ -5,9 +5,9 @@ namespace App\Console\Commands;
 use App\Services\TicketMailParser;
 use App\Support\InboundAttachment;
 use App\Support\InboundEmail;
+use App\Support\Logging\AppLog;
 use App\Support\MailboxConfig;
 use Illuminate\Console\Command;
-use Illuminate\Support\Facades\Log;
 use Webklex\PHPIMAP\ClientManager;
 use Webklex\PHPIMAP\Message;
 
@@ -102,7 +102,7 @@ class FetchTicketMailCommand extends Command
                 'status' => $failed > 0 ? 'degraded' : 'ok',
             ]);
 
-            Log::info('tickets:fetch-mail completed.', [
+            AppLog::cron()->info('tickets:fetch-mail completed.', [
                 'mailboxes' => count($mailboxes),
                 'mailboxes_failed' => $failed,
                 'processed' => $total,
@@ -186,7 +186,7 @@ class FetchTicketMailCommand extends Command
             $client->connect();
         } catch (\Throwable $e) {
             $this->error('  IMAP connection failed: '.$e->getMessage());
-            Log::error('Ticket mail fetch could not connect.', [
+            AppLog::cron()->error('Ticket mail fetch could not connect.', [
                 'mailbox' => $mailbox->label,
                 'host' => $mailbox->host,
                 'error' => $e->getMessage(),
@@ -216,7 +216,7 @@ class FetchTicketMailCommand extends Command
                 ->get();
         } catch (\Throwable $e) {
             $this->error('  IMAP fetch failed: '.$e->getMessage());
-            Log::error('Ticket mail fetch failed.', [
+            AppLog::cron()->error('Ticket mail fetch failed.', [
                 'mailbox' => $mailbox->label,
                 'folder' => $mailbox->folder,
                 'error' => $e->getMessage(),
@@ -243,7 +243,7 @@ class FetchTicketMailCommand extends Command
             $this->line(sprintf('  [%s] %s', $result['status'], $result['reason']));
 
             if (in_array($result['status'], self::NEEDS_A_HUMAN, true)) {
-                Log::warning('Ticket mail needs a human.', [
+                AppLog::cron()->warning('Ticket mail needs a human.', [
                     'status' => $result['status'],
                     'reason' => $result['reason'],
                     'mailbox' => $mailbox->label,

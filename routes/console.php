@@ -5,11 +5,11 @@ use App\Models\CronTask;
 // them, and the two class names differ — alias so the gate loop below reads
 // the registry rather than the facade.
 use App\Services\Cron\CronTaskRegistry;
+use App\Support\Logging\AppLog;
 use Illuminate\Console\Scheduling\Schedule as ScheduleRegistry;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schedule;
 use Modules\SnmpMonitor\Jobs\PollHostBatch;
 use Modules\SnmpMonitor\Jobs\RollupHourlyAggregates;
@@ -33,7 +33,7 @@ Schedule::command('hosting:usage-sync')
     ->withoutOverlapping()
     ->runInBackground();
 
-Schedule::command('app:cleanup --days=90')
+Schedule::command('logs:prune')
     ->weekly()
     ->withoutOverlapping()
     ->runInBackground();
@@ -202,14 +202,14 @@ Schedule::command('queue:work --queue=emails,default --sleep=3 --tries=3 --stop-
         try {
             $remaining = DB::table('jobs')->where('queue', 'emails')->count();
             $failed = DB::table('failed_jobs')->count();
-            Log::info('queue-emails-cron drained', ['remaining' => $remaining, 'failed' => $failed]);
+            AppLog::cron()->info('queue-emails-cron drained', ['remaining' => $remaining, 'failed' => $failed]);
             __cron_atomic_write_health(['last_run' => now()->toIso8601String(), 'remaining' => $remaining, 'failed' => $failed, 'status' => 'ok']);
         } catch (Throwable $e) {
         }
     })
     ->onFailure(function () {
         try {
-            Log::warning('queue-emails-cron failed');
+            AppLog::cron()->warning('queue-emails-cron failed');
             __cron_atomic_write_health(['last_run' => now()->toIso8601String(), 'status' => 'failed']);
         } catch (Throwable $e) {
         }
@@ -220,7 +220,7 @@ Schedule::call(function () {
         $jobs = DB::table('jobs')->where('queue', 'emails')->count();
         $failed = DB::table('failed_jobs')->count();
         $queueOk = $jobs < 20 && $failed === 0;
-        Log::info('emails-queue-heartbeat', ['jobs' => $jobs, 'failed' => $failed, 'ok' => $queueOk]);
+        AppLog::cron()->info('emails-queue-heartbeat', ['jobs' => $jobs, 'failed' => $failed, 'ok' => $queueOk]);
         __cron_atomic_write_health([
             'heartbeat_at' => now()->toIso8601String(),
             'heartbeat_jobs' => $jobs,
@@ -228,7 +228,7 @@ Schedule::call(function () {
             'heartbeat_ok' => $queueOk,
         ]);
     } catch (Throwable $e) {
-        Log::warning('emails-queue-heartbeat failed', ['error' => $e->getMessage()]);
+        AppLog::cron()->warning('emails-queue-heartbeat failed', ['error' => $e->getMessage()]);
     }
 })->everyFiveMinutes()->name('emails-queue-heartbeat')->withoutOverlapping(10);
 

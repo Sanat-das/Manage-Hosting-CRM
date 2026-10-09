@@ -14,12 +14,12 @@ use App\Services\Provisioning\ComputeDriver;
 use App\Services\Provisioning\ManualProvisioner;
 use App\Services\Provisioning\ProvisioningEventRecorder;
 use App\Services\Provisioning\VmStatusPresenter;
+use App\Support\Logging\AppLog;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Support\Facades\Crypt;
-use Illuminate\Support\Facades\Log;
 use InvalidArgumentException;
 use RuntimeException;
 use Throwable;
@@ -141,7 +141,8 @@ class RunVmOperation implements ShouldQueue
                 $event,
                 'VM operation interrupted before it finished: '.($exception?->getMessage() ?? 'worker stopped')
             );
-        } catch (Throwable) {
+        } catch (Throwable $e) {
+            AppLog::provisioning()->error('Queued VM operation failure handler threw', ['error' => $e->getMessage()]);
         }
     }
 
@@ -275,7 +276,7 @@ class RunVmOperation implements ShouldQueue
         try {
             $result = $this->callDriver($driver, $service, $config, $options);
         } catch (Throwable $e) {
-            Log::error('Queued VM operation threw', [
+            AppLog::provisioning()->error('Queued VM operation threw', [
                 'hosting_account_id' => $account?->id,
                 'service_instance_id' => $service->id,
                 'module' => $slug,
@@ -329,7 +330,7 @@ class RunVmOperation implements ShouldQueue
                 } catch (Throwable) {
                 }
             } catch (Throwable $e) {
-                Log::warning('Queued VM operation local status sync failed', [
+                AppLog::provisioning()->error('Queued VM operation local status sync failed', [
                     'hosting_account_id' => $account->id,
                     'module' => $slug,
                     'action' => $driverVerb,
@@ -356,7 +357,7 @@ class RunVmOperation implements ShouldQueue
                 // restart / reset_password: host-side only, local status untouched.
             }
         } catch (Throwable $e) {
-            Log::warning('Queued VM operation service status sync failed', [
+            AppLog::provisioning()->error('Queued VM operation service status sync failed', [
                 'service_instance_id' => $service->id,
                 'module' => $slug,
                 'action' => $driverVerb,
@@ -367,7 +368,7 @@ class RunVmOperation implements ShouldQueue
         try {
             $recorder->complete($event, $result->message ?? 'ok', is_array($result->data ?? null) ? $result->data : []);
         } catch (Throwable $e) {
-            Log::warning('Queued VM operation completion write failed', [
+            AppLog::provisioning()->error('Queued VM operation completion write failed', [
                 'event_id' => $event->id,
                 'error' => $e->getMessage(),
             ]);
@@ -475,7 +476,7 @@ class RunVmOperation implements ShouldQueue
         try {
             $recorder->fail($event, $message);
         } catch (Throwable $e) {
-            Log::warning('Could not record failed VM operation event', [
+            AppLog::provisioning()->warning('Could not record failed VM operation event', [
                 'event_id' => $event->id,
                 'error' => $e->getMessage(),
             ]);

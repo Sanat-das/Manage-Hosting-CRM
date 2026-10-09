@@ -7,6 +7,8 @@ use App\Http\Requests\StaffUserRequest;
 use App\Models\ActivityLog;
 use App\Models\Role;
 use App\Models\User;
+use App\Support\Audit\AuditEvent;
+use App\Support\Audit\AuditRecorder;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -111,7 +113,7 @@ class UserController extends Controller
             return back()->withInput()->withErrors(['error' => 'Could not create user: '.$e->getMessage()]);
         }
 
-        $this->logActivity($user, 'user_created', "Staff account created ({$user->full_name})", [
+        $this->logActivity($user, AuditEvent::UserCreated, "Staff account created ({$user->full_name})", [
             'user_id' => $user->id,
             'role' => $user->role,
             'by' => auth()->user()?->email,
@@ -129,7 +131,7 @@ class UserController extends Controller
         $user->load('roles.permissions');
 
         $activity = ActivityLog::query()
-            ->where('metadata->user_id', $user->id)
+            ->where(fn ($q) => $q->where('user_id', $user->id)->orWhere('metadata->user_id', $user->id))
             ->with('user')
             ->orderByDesc('id')
             ->limit(50)
@@ -173,7 +175,7 @@ class UserController extends Controller
                 }
 
                 // compile legacy address when structured fields are present
-                if (array_intersect_key($validated, array_flip(['address_line1','address_line2','city','state','postcode','country'])) !== []) {
+                if (array_intersect_key($validated, array_flip(['address_line1', 'address_line2', 'city', 'state', 'postcode', 'country'])) !== []) {
                     $legacy = collect([$validated['address_line1'] ?? $user->address_line1, $validated['address_line2'] ?? $user->address_line2, $validated['city'] ?? $user->city, $validated['state'] ?? $user->state, $validated['postcode'] ?? $user->postcode, $validated['country'] ?? $user->country])->filter()->implode(', ');
                     if ($legacy !== '') {
                         $data['address'] = $legacy;
@@ -196,7 +198,7 @@ class UserController extends Controller
             return back()->withInput()->withErrors(['error' => 'Could not update user: '.$e->getMessage()]);
         }
 
-        $this->logActivity($user, 'user_updated', "Staff account updated ({$user->full_name})", [
+        $this->logActivity($user, AuditEvent::UserUpdated, "Staff account updated ({$user->full_name})", [
             'user_id' => $user->id,
             'by' => auth()->user()?->email,
         ]);
@@ -219,7 +221,7 @@ class UserController extends Controller
             return back()->withErrors(['error' => 'Administrator accounts cannot be deleted.']);
         }
 
-        $this->logActivity($user, 'user_deleted', "Staff account deleted ({$user->full_name})", [
+        $this->logActivity($user, AuditEvent::UserDeleted, "Staff account deleted ({$user->full_name})", [
             'user_id' => $user->id,
             'by' => auth()->user()?->email,
         ]);
@@ -264,7 +266,7 @@ class UserController extends Controller
 
         $user->update(['status' => $target]);
 
-        $this->logActivity($user, 'status_changed', "Status changed to {$target} ({$validated['action']})", [
+        $this->logActivity($user, AuditEvent::StatusChanged, "Status changed to {$target} ({$validated['action']})", [
             'user_id' => $user->id,
             'action' => $validated['action'],
             'by' => auth()->user()?->email,
@@ -286,7 +288,7 @@ class UserController extends Controller
             return back()->withErrors(['error' => __($status)]);
         }
 
-        $this->logActivity($user, 'password_reset_email', "Password reset email sent to {$user->email}", [
+        $this->logActivity($user, AuditEvent::PasswordResetEmail, "Password reset email sent to {$user->email}", [
             'user_id' => $user->id,
             'by' => auth()->user()?->email,
         ]);
@@ -307,7 +309,7 @@ class UserController extends Controller
 
         $user->update(['password_hash' => Hash::make($validated['new_password'])]);
 
-        $this->logActivity($user, 'password_set', "Password directly set for {$user->full_name}", [
+        $this->logActivity($user, AuditEvent::PasswordSet, "Password directly set for {$user->full_name}", [
             'user_id' => $user->id,
             'by' => auth()->user()?->email,
         ]);
@@ -338,15 +340,8 @@ class UserController extends Controller
         return ($value === null || $value === '') ? null : $value;
     }
 
-    private function logActivity(User $user, string $action, string $description, array $metadata = []): void
+    private function logActivity(User $user, AuditEvent $action, string $description, array $metadata = []): void
     {
-        $log = new ActivityLog;
-        $log->user_id = auth()->id();
-        $log->action = $action;
-        $log->description = $description;
-        $log->metadata = $metadata !== [] ? $metadata : null;
-        $log->ip_address = request()->ip();
-        $log->created_at = now();
-        $log->save();
+        app(AuditRecorder::class)->activity($action, null, $metadata, $description);
     }
 }

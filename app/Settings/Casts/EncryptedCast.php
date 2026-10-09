@@ -2,8 +2,8 @@
 
 namespace App\Settings\Casts;
 
+use App\Support\Logging\AppLog;
 use Illuminate\Support\Facades\Crypt;
-use Illuminate\Support\Facades\Log;
 use Spatie\LaravelSettings\SettingsCasts\SettingsCast;
 
 /**
@@ -37,7 +37,7 @@ class EncryptedCast implements SettingsCast
         try {
             return Crypt::decryptString($payload);
         } catch (\Throwable) {
-            Log::warning('A settings value is not encrypted; reading it as plaintext. Re-save the settings tab to encrypt it.');
+            AppLog::security()->warning('A settings value is not encrypted; reading it as plaintext. Re-save the settings tab to encrypt it.');
 
             return (string) $payload;
         }

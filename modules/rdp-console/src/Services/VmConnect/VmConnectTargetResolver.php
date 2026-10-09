@@ -8,6 +8,7 @@ use App\Models\HostingAccount;
 use App\Models\PanelAccount;
 use App\Models\ServiceInstance;
 use App\Services\Provisioning\HypervDriver;
+use App\Support\Logging\AppLog;
 use Illuminate\Support\Facades\Cache;
 use Modules\RdpConsole\Exceptions\VmConnectUnavailableException;
 use Throwable;
@@ -101,8 +102,10 @@ final class VmConnectTargetResolver
             return $service !== null
                 ? PanelAccount::where('service_instance_id', $service->id)->where('panel', 'hyperv')->first()
                 : null;
-        } catch (Throwable) {
+        } catch (Throwable $e) {
             // Un-migrated tables degrade to "no VM recorded", never a 500.
+            AppLog::provisioning()->debug('VMConnect panel account lookup failed — no VM resolved', ['error' => $e->getMessage()]);
+
             return null;
         }
     }

@@ -6,9 +6,9 @@ namespace App\Services\Search;
 
 use App\Models\Permission;
 use App\Models\User;
+use App\Support\Logging\AppLog;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Route;
 
 /**
@@ -32,8 +32,8 @@ class GlobalSearchService
 
     /**
      * @param  list<class-string<SearchProvider>>|null  $providerClasses
-     *         Explicit list for tests and narrow surfaces; null reads
-     *         config/search.php.
+     *                                                                    Explicit list for tests and narrow surfaces; null reads
+     *                                                                    config/search.php.
      */
     public function __construct(private readonly ?array $providerClasses = null) {}
 
@@ -201,7 +201,7 @@ class GlobalSearchService
 
         self::$loggedMissingProviders[$class] = true;
 
-        Log::warning('Global search provider skipped: class is not available.', [
+        AppLog::app()->warning('Global search provider skipped: class is not available.', [
             'provider' => $class,
         ]);
     }

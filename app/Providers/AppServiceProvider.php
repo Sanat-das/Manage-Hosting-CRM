@@ -8,6 +8,7 @@ use App\Support\AppSettings;
 use App\Support\Branding;
 use App\Support\GridFilters;
 use App\Support\GridSort;
+use App\Support\Logging\RequestContext;
 use App\Support\Theme;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
@@ -42,6 +43,10 @@ class AppServiceProvider extends ServiceProvider
         if ($this->shouldRegisterDusk() && class_exists(DuskServiceProvider::class)) {
             $this->app->register(DuskServiceProvider::class);
         }
+
+        // Per-request log correlation state shared with the logging
+        // processors (see App\Support\Logging\RequestContext).
+        $this->app->singleton(RequestContext::class);
     }
 
     /**

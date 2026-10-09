@@ -13,6 +13,7 @@ use App\Settings\HostingSettings;
 use App\Settings\IntegrationSettings;
 use App\Settings\InventorySettings;
 use App\Settings\IpamSettings;
+use App\Settings\LogRetentionSettings;
 use App\Settings\ProductSettings;
 use App\Settings\RoleSettings;
 use App\Settings\SupportSettings;
@@ -48,6 +49,7 @@ return [
         RoleSettings::class,
         UserSettings::class,
         BrandingSettings::class,
+        LogRetentionSettings::class,
     ],
 
     /*

@@ -3,8 +3,9 @@
 namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
-use App\Models\ActivityLog;
 use App\Models\User;
+use App\Support\Audit\AuditEvent;
+use App\Support\Audit\AuditRecorder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -35,15 +36,17 @@ class ImpersonationController extends Controller
 
         Auth::login($user);
 
-        ActivityLog::create([
-            'action' => 'impersonation_started',
-            'description' => "Admin {$impersonator->full_name} ({$impersonator->email}) started impersonating {$user->full_name} ({$user->email})",
-            'ip_address' => $request->ip(),
-            'metadata' => [
+        // user_id now records the active auth identity (the impersonated user
+        // here); the impersonator/impersonated ids live in metadata, as before.
+        app(AuditRecorder::class)->activity(
+            AuditEvent::ImpersonationStarted,
+            null,
+            [
                 'impersonator_id' => $impersonator->id,
                 'impersonated_id' => $user->id,
             ],
-        ]);
+            "Admin {$impersonator->full_name} ({$impersonator->email}) started impersonating {$user->full_name} ({$user->email})",
+        );
 
         // Land in the client portal: impersonation targets are always clients
         // (the Login As button lives on customer pages), and the admin
@@ -68,15 +71,17 @@ class ImpersonationController extends Controller
 
                 Auth::login($impersonator);
 
-                ActivityLog::create([
-                    'action' => 'impersonation_stopped',
-                    'description' => "Admin {$impersonator->full_name} ({$impersonator->email}) stopped impersonating, returned to their own session",
-                    'ip_address' => $request->ip(),
-                    'metadata' => [
+                // As above: user_id is the active auth id (the impersonator
+                // restored here); the two ids are carried in metadata.
+                app(AuditRecorder::class)->activity(
+                    AuditEvent::ImpersonationStopped,
+                    null,
+                    [
                         'impersonator_id' => $impersonator->id,
                         'impersonated_id' => $impersonatedUser?->id,
                     ],
-                ]);
+                    "Admin {$impersonator->full_name} ({$impersonator->email}) stopped impersonating, returned to their own session",
+                );
 
                 // Customers module (admin.customers.index) lands in Session 2.4;
                 // fall back to the dashboard until then.

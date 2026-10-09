@@ -6,7 +6,7 @@ use App\Jobs\SendEmail;
 use App\Models\EmailTemplate;
 use App\Models\Order;
 use App\Services\Concerns\BuildsEmailVariables;
-use Illuminate\Support\Facades\Log;
+use App\Support\Logging\AppLog;
 
 /**
  * Sends the order confirmation email from the admin-managed
@@ -33,7 +33,7 @@ final class OrderEmailService
         $email = $order->customer?->user?->email;
 
         if (! $email) {
-            Log::info('Order confirmation email skipped: customer has no linked user email.', ['order_id' => $order->id]);
+            AppLog::billing()->info('Order confirmation email skipped: customer has no linked user email.', ['order_id' => $order->id]);
 
             return false;
         }
@@ -44,7 +44,7 @@ final class OrderEmailService
             ->first();
 
         if ($template === null) {
-            Log::info('Order confirmation email skipped: template not found.', [
+            AppLog::billing()->info('Order confirmation email skipped: template not found.', [
                 'order_id' => $order->id,
                 'template' => $templateName,
             ]);
@@ -65,7 +65,18 @@ final class OrderEmailService
             $plainBody = $this->toPlainText($body);
         }
 
-        SendEmail::dispatch($email, $subject, $plainBody, null, [], [], [], $htmlBody);
+        SendEmail::dispatch(
+            $email,
+            $subject,
+            $plainBody,
+            null,
+            [],
+            [],
+            [],
+            $htmlBody,
+            templateName: 'order_confirmation',
+            customerId: $order->customer_id,
+        );
 
         return true;
     }
