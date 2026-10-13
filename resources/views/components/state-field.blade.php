@@ -74,6 +74,7 @@
             data-state-select
             autocomplete="{{ $autocomplete }}"
             aria-label="{{ $label ?? 'State / Province' }}"
+            @if($invalid) aria-invalid="true" aria-describedby="{{ $fieldId }}-error" @endif
             @unless ($useSelect) hidden disabled @endunless>
         <option value="">&mdash; select a state &mdash;</option>
         @if ($unlisted)
@@ -91,11 +92,12 @@
            placeholder="{{ $placeholder }}"
            autocomplete="{{ $autocomplete }}"
            aria-label="{{ $label ?? 'State / Province' }}"
+           @if($invalid) aria-invalid="true" aria-describedby="{{ $fieldId }}-error" @endif
            data-state-text
            @if ($useSelect) hidden disabled @endif>
 
     @error($errorKey)
-        <div class="invalid-feedback d-block">{{ $message }}</div>
+        <div class="invalid-feedback d-block" id="{{ $fieldId }}-error">{{ $message }}</div>
     @enderror
 </div>
 

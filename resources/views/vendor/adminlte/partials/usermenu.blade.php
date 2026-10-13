@@ -9,8 +9,8 @@
      shown to a logged-out visitor into a 500, anywhere in the application. --}}
 @if ($user)
 <li class="nav-item dropdown user-menu">
-    <a href="#" class="nav-link dropdown-toggle" data-bs-toggle="dropdown">
-        <i class="bi bi-person-circle user-image rounded-circle shadow" style="font-size:1.5rem;"></i>
+    <a href="#" class="nav-link dropdown-toggle d-flex align-items-center" data-bs-toggle="dropdown">
+        <i class="bi bi-person-circle rounded-circle shadow me-2 mt-0" style="font-size:1.5rem;line-height:1;width:1.5rem;height:1.5rem;display:inline-flex;align-items:center;justify-content:center;"></i>
         <span class="d-none d-md-inline">{{ $name }}</span>
     </a>
     <ul class="dropdown-menu dropdown-menu-lg dropdown-menu-end">

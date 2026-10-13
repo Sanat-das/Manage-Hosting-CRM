@@ -40,7 +40,7 @@
         @include('adminlte::partials.navbar')
         @include('adminlte::partials.sidebar')
 
-        <main class="app-main">
+        <main class="app-main" id="main" tabindex="-1">
             {{-- Full-bleed opt-out: @section('content_header_full') bypasses container & header chrome.
                  Useful for dashboards, reports, or canvas-style pages that need edge-to-edge layout.
                  Existing @section('content_header') keeps working unchanged. --}}

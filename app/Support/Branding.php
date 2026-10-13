@@ -23,17 +23,61 @@ use Illuminate\Support\Facades\Storage;
 final class Branding
 {
     public const DEFAULT_APP_NAME = 'HostVexa';
+
     public const DEFAULT_TAGLINE = 'Hosting Management Platform';
+
     public const DEFAULT_PRIMARY = '#0EA5E9';
+
     public const DEFAULT_ACCENT = '#6366F1';
+
     public const DEFAULT_FOOTER = '© {year} HostVexa. All rights reserved.';
+
     public const DEFAULT_LOGO = 'img/hostvexa-logo.png';
+
     public const DEFAULT_LOGO_WEBP = 'img/hostvexa-logo.webp';
+
     public const DEFAULT_MARK = 'img/hostvexa-mark.png';
+
     public const DEFAULT_MARK_WEBP = 'img/hostvexa-mark.webp';
+
     public const DEFAULT_FAVICON = 'img/hostvexa-favicon.png';
+
     public const DEFAULT_FAVICON_WEBP = 'img/hostvexa-favicon.webp';
+
     public const DEFAULT_OG = 'img/hostvexa-og.svg';
+
+    /** Near-black app surface — tokens.css --color-neutral-950. */
+    private const DARK_SURFACE = '#020617';
+
+    /** WCAG 2.1 AA minimum contrast ratio. */
+    private const MIN_CONTRAST = 4.5;
+
+    /** Label on a light-mode (dark) fill — Bootstrap's own default. */
+    private const LABEL_ON_DARK_FILL = '#FFFFFF';
+
+    /** Label on a dark-mode (light) fill — the shipped navy. */
+    private const LABEL_ON_LIGHT_FILL = '#0F172A';
+
+    /** HSL lightness multipliers reproducing the shipped #0369a1 ramp. */
+    private const LIGHT_HOVER_FACTOR = 0.85;
+
+    private const LIGHT_ACTIVE_FACTOR = 0.74;
+
+    private const DARK_HOVER_FACTOR = 1.25;
+
+    private const DARK_ACTIVE_FACTOR = 0.80;
+
+    private const ACCENT_HOVER_FACTOR = 0.85;
+
+    /** Bounds for the HSL lightness search, so no step hits pure black/white. */
+    private const MIN_LIGHTNESS = 0.06;
+
+    private const MAX_LIGHTNESS = 0.96;
+
+    /** Bounded lightening pass used to make a stored hue legible in dark mode. */
+    private const DERIVATION_STEP = 0.05;
+
+    private const DERIVATION_STEP_LIMIT = 20;
 
     /**
      * @return array<string, mixed>
@@ -206,11 +250,12 @@ final class Branding
             try {
                 $diskPath = preg_replace('#^storage/#', '', $path);
                 $diskPath = ltrim($diskPath, '/');
-                if (\Illuminate\Support\Facades\Storage::disk('public')->exists($diskPath)) {
-                    $file = \Illuminate\Support\Facades\Storage::disk('public')->path($diskPath);
+                if (Storage::disk('public')->exists($diskPath)) {
+                    $file = Storage::disk('public')->path($diskPath);
                     $mime = mime_content_type($file) ?: 'image/png';
                 }
-            } catch (\Throwable) {}
+            } catch (\Throwable) {
+            }
         }
 
         if ($file === null) {
@@ -413,6 +458,18 @@ final class Branding
     /**
      * Inline <style> that overrides :root brand variables when DB colours
      * differ from the shipped defaults. Empty string when no override needed.
+     *
+     * The returned string is the body of the `:root{ … }` head.blade.php
+     * wraps around it, so it may close that block and open further rules.
+     * That is what makes the override theme-aware: a bare `:root` emitted
+     * last would beat branding.css' [data-bs-theme="dark"] re-point (equal
+     * specificity, later source) and leave a custom light-mode primary
+     * sitting unreadable on the near-black dark surface.
+     *
+     * --bs-btn-color is emitted per theme, and once more element-level on
+     * .btn-primary, because branding.css' [data-bs-theme="dark"] .btn-primary
+     * rule sets it on the element and would otherwise keep its navy label
+     * whatever this method computes.
      */
     public static function inlineStyle(): string
     {
@@ -425,12 +482,293 @@ final class Branding
             return '';
         }
 
-        $primaryRgb = self::hexToRgb($primary);
-        $accentRgb = self::hexToRgb($accent);
+        $family = self::primaryFamily($primary);
+        $accentFamily = self::accentFamily($accent);
 
-        // Keep hover/active derivations simple (darken by ~10%/20%) — the
-        // full palette lives in branding.css; this just re-points the roots.
-        return ':root{--hostvexa-primary:'.$primary.';--hostvexa-primary-rgb:'.$primaryRgb.';--hostvexa-accent:'.$accent.';--hostvexa-accent-rgb:'.$accentRgb.';--bs-primary:'.$primary.';--bs-primary-rgb:'.$primaryRgb.';--color-primary:'.$primary.';}';
+        $light = [
+            '--hostvexa-primary:'.$family['light'],
+            '--hostvexa-primary-rgb:'.self::hexToRgb($family['light']),
+            '--hostvexa-primary-hover:'.$family['hover'],
+            '--hostvexa-primary-active:'.$family['active'],
+            '--hostvexa-accent:'.$accentFamily['base'],
+            '--hostvexa-accent-rgb:'.self::hexToRgb($accentFamily['base']),
+            '--hostvexa-accent-hover:'.$accentFamily['hover'],
+            '--bs-primary:'.$family['light'],
+            '--bs-primary-rgb:'.self::hexToRgb($family['light']),
+            '--color-primary:'.$family['light'],
+            '--color-primary-hover:'.$family['hover'],
+            '--color-primary-active:'.$family['active'],
+            '--bs-btn-color:'.$family['label'],
+        ];
+
+        $dark = [
+            '--bs-primary:'.$family['dark'],
+            '--bs-primary-rgb:'.self::hexToRgb($family['dark']),
+            '--bs-link-color:'.$family['dark'],
+            '--bs-link-color-rgb:'.self::hexToRgb($family['dark']),
+            '--bs-link-hover-color:'.$family['darkHover'],
+            '--bs-link-hover-color-rgb:'.self::hexToRgb($family['darkHover']),
+            '--color-primary:'.$family['dark'],
+            '--color-primary-hover:'.$family['darkHover'],
+            '--color-primary-active:'.$family['darkActive'],
+            '--hostvexa-primary:'.$family['dark'],
+            '--hostvexa-primary-hover:'.$family['darkHover'],
+            '--hostvexa-primary-active:'.$family['darkActive'],
+            '--bs-btn-color:'.$family['darkLabel'],
+        ];
+
+        return implode(';', $light)
+            .'}[data-bs-theme="dark"]{'.implode(';', $dark)
+            .'}[data-bs-theme="dark"] .btn-primary{--bs-btn-color:'.$family['darkLabel'].';';
+    }
+
+    /**
+     * Derive every colour a stored primary needs, per theme.
+     *
+     * Light mode keeps the stored hue and steps it down for hover/active on
+     * the shipped #0369a1 → #075985 → #0c4a6e relationship. Dark mode lifts
+     * the same hue until its darkest step is legible on DARK_SURFACE and
+     * readable under LABEL_ON_LIGHT_FILL: a primary dark enough for a white
+     * label is unreadable on a near-black surface, so both requirements are
+     * solved by the same search rather than in sequence.
+     *
+     * @return array{light: string, hover: string, active: string, dark: string, darkHover: string, darkActive: string, label: string, darkLabel: string}
+     */
+    public static function primaryFamily(string $hex): array
+    {
+        $hex = self::normaliseHex($hex);
+
+        $lightHover = self::scaleLightness($hex, self::LIGHT_HOVER_FACTOR);
+        $lightActive = self::scaleLightness($hex, self::LIGHT_ACTIVE_FACTOR);
+
+        $darkBase = self::legibleOnDarkSurface($hex);
+        $darkHover = self::scaleLightness($darkBase, self::DARK_HOVER_FACTOR);
+        $darkActive = self::scaleLightness($darkBase, self::DARK_ACTIVE_FACTOR);
+
+        return [
+            'light' => $hex,
+            'hover' => $lightHover,
+            'active' => $lightActive,
+            'dark' => $darkBase,
+            'darkHover' => $darkHover,
+            'darkActive' => $darkActive,
+            'label' => self::labelFor([$hex, $lightHover, $lightActive]),
+            'darkLabel' => self::labelFor([$darkBase, $darkHover, $darkActive]),
+        ];
+    }
+
+    /**
+     * Derive the accent family for a stored accent colour. branding.css
+     * re-points the accent in :root only — its dark block leaves it alone —
+     * so nothing theme-specific is derived here.
+     *
+     * @return array{base: string, hover: string}
+     */
+    public static function accentFamily(string $hex): array
+    {
+        $hex = self::normaliseHex($hex);
+
+        return [
+            'base' => $hex,
+            'hover' => self::scaleLightness($hex, self::ACCENT_HOVER_FACTOR),
+        ];
+    }
+
+    /**
+     * Scale a colour's HSL lightness by a factor, holding hue and saturation.
+     * Below 1 darkens, above 1 lightens; the result is clamped to
+     * [MIN_LIGHTNESS, MAX_LIGHTNESS] so no derived step collapses to pure
+     * black or pure white.
+     */
+    public static function scaleLightness(string $hex, float $factor): string
+    {
+        [$hue, $saturation, $lightness] = self::hslTriple($hex);
+
+        $scaled = min(self::MAX_LIGHTNESS, max(self::MIN_LIGHTNESS, $lightness * $factor));
+
+        return self::hslToHex($hue, $saturation, $scaled);
+    }
+
+    /**
+     * WCAG 2.1 relative luminance of a #RRGGBB colour, from 0.0 (black) to
+     * 1.0 (white).
+     */
+    public static function relativeLuminance(string $hex): float
+    {
+        [$red, $green, $blue] = self::rgbTriple($hex);
+
+        return 0.2126 * self::linearChannel($red)
+            + 0.7152 * self::linearChannel($green)
+            + 0.0722 * self::linearChannel($blue);
+    }
+
+    /**
+     * WCAG 2.1 contrast ratio between two #RRGGBB colours, 1.0–21.0.
+     */
+    public static function contrastRatio(string $hexA, string $hexB): float
+    {
+        $luminanceA = self::relativeLuminance($hexA);
+        $luminanceB = self::relativeLuminance($hexB);
+
+        return (max($luminanceA, $luminanceB) + 0.05) / (min($luminanceA, $luminanceB) + 0.05);
+    }
+
+    /**
+     * Lift a hue until its darkest dark-mode step clears both DARK_SURFACE
+     * and LABEL_ON_LIGHT_FILL at MIN_CONTRAST. A hue that already clears
+     * both is returned untouched; the search is bounded so an extreme value
+     * yields the lightest reachable step instead of looping forever.
+     */
+    private static function legibleOnDarkSurface(string $hex): string
+    {
+        [$hue, $saturation, $lightness] = self::hslTriple($hex);
+
+        for ($step = 1; $step <= self::DERIVATION_STEP_LIMIT; $step++) {
+            if (self::isDarkLegible($hex)) {
+                break;
+            }
+
+            $lightness += self::DERIVATION_STEP;
+            $hex = self::hslToHex($hue, $saturation, min(self::MAX_LIGHTNESS, $lightness));
+        }
+
+        return $hex;
+    }
+
+    /** True when every dark-mode step of a hue clears the two contrast bars. */
+    private static function isDarkLegible(string $hex): bool
+    {
+        $fills = [self::scaleLightness($hex, self::DARK_ACTIVE_FACTOR), $hex, self::scaleLightness($hex, self::DARK_HOVER_FACTOR)];
+
+        foreach ($fills as $fill) {
+            if (self::contrastRatio($fill, self::DARK_SURFACE) < self::MIN_CONTRAST) {
+                return false;
+            }
+
+            if (self::contrastRatio($fill, self::LABEL_ON_LIGHT_FILL) < self::MIN_CONTRAST) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * Pick the label whose worst contrast across every fill it sits on is
+     * highest, so a dark fill keeps Bootstrap's white label and a light fill
+     * switches to navy. Ties resolve to white, Bootstrap's default.
+     */
+    private static function labelFor(array $fills): string
+    {
+        $white = PHP_INT_MAX;
+        $navy = PHP_INT_MAX;
+
+        foreach ($fills as $fill) {
+            $white = min($white, self::contrastRatio(self::LABEL_ON_DARK_FILL, $fill));
+            $navy = min($navy, self::contrastRatio(self::LABEL_ON_LIGHT_FILL, $fill));
+        }
+
+        return $navy > $white ? self::LABEL_ON_LIGHT_FILL : self::LABEL_ON_DARK_FILL;
+    }
+
+    private static function linearChannel(int $channel): float
+    {
+        $value = $channel / 255;
+
+        return $value <= 0.03928 ? $value / 12.92 : (($value + 0.055) / 1.055) ** 2.4;
+    }
+
+    /**
+     * Parse a hex colour into its byte triple, falling back to the shipped
+     * sky default hexToRgb() uses for malformed input.
+     *
+     * @return array{int, int, int}
+     */
+    private static function rgbTriple(string $hex): array
+    {
+        $hex = substr(self::normaliseHex($hex), 1);
+
+        if (strlen($hex) !== 6 || ! ctype_xdigit($hex)) {
+            return [14, 165, 233];
+        }
+
+        return [
+            (int) hexdec(substr($hex, 0, 2)),
+            (int) hexdec(substr($hex, 2, 2)),
+            (int) hexdec(substr($hex, 4, 2)),
+        ];
+    }
+
+    /**
+     * Convert a hex colour to HSL.
+     *
+     * @return array{float, float, float} hue in degrees, then saturation and lightness both 0.0–1.0
+     */
+    private static function hslTriple(string $hex): array
+    {
+        [$red, $green, $blue] = self::rgbTriple($hex);
+
+        $red /= 255.0;
+        $green /= 255.0;
+        $blue /= 255.0;
+
+        $max = max($red, $green, $blue);
+        $min = min($red, $green, $blue);
+        $delta = $max - $min;
+        $lightness = ($max + $min) / 2;
+
+        if ($delta === 0.0) {
+            return [0.0, 0.0, $lightness];
+        }
+
+        $saturation = $delta / (1 - abs(2 * $lightness - 1));
+
+        if ($max === $red) {
+            $hue = 60 * fmod((($green - $blue) / $delta), 6);
+        } elseif ($max === $green) {
+            $hue = 60 * (($blue - $red) / $delta + 2);
+        } else {
+            $hue = 60 * (($red - $green) / $delta + 4);
+        }
+
+        if ($hue < 0) {
+            $hue += 360;
+        }
+
+        return [$hue, $saturation, $lightness];
+    }
+
+    private static function hslToHex(float $hue, float $saturation, float $lightness): string
+    {
+        $chroma = (1 - abs(2 * $lightness - 1)) * $saturation;
+        $secondary = $chroma * (1 - abs(fmod($hue / 60, 2) - 1));
+        $match = $lightness - $chroma / 2;
+
+        [$red, $green, $blue] = match ((int) floor($hue / 60) % 6) {
+            0 => [$chroma, $secondary, 0.0],
+            1 => [$secondary, $chroma, 0.0],
+            2 => [0.0, $chroma, $secondary],
+            3 => [0.0, $secondary, $chroma],
+            4 => [$secondary, 0.0, $chroma],
+            default => [$chroma, 0.0, $secondary],
+        };
+
+        return sprintf(
+            '#%02X%02X%02X',
+            self::channelToByte($red + $match),
+            self::channelToByte($green + $match),
+            self::channelToByte($blue + $match),
+        );
+    }
+
+    private static function channelToByte(float $channel): int
+    {
+        return max(0, min(255, (int) round($channel * 255)));
+    }
+
+    private static function normaliseHex(string $hex): string
+    {
+        return '#'.ltrim(strtoupper(trim($hex)), '#');
     }
 
     /**
@@ -472,11 +810,12 @@ final class Branding
                 $url = Storage::url($diskPath);
                 // If Storage::url returned a .local URL but we have a public request host, fix it.
                 $base = self::baseUrl();
-                if (str_contains($url, '.local') && !str_contains($base, '.local') && $base !== '') {
+                if (str_contains($url, '.local') && ! str_contains($base, '.local') && $base !== '') {
                     $url = str_replace(parse_url($url, PHP_URL_HOST) ?? 'managehosting.local', parse_url($base, PHP_URL_HOST) ?? '', $url);
                     // Simpler: replace the base part
-                    $url = $base . '/storage/' . $diskPath;
+                    $url = $base.'/storage/'.$diskPath;
                 }
+
                 return $url;
             } catch (\Throwable) {
                 return self::asset($fallbackAsset);
@@ -529,16 +868,17 @@ final class Branding
                 if (function_exists('request') && ($req = request()) && method_exists($req, 'getSchemeAndHttpHost')) {
                     $requestUrl = rtrim($req->getSchemeAndHttpHost(), '/');
                     // Only use request host if it's not itself local
-                    if ($requestUrl !== '' && !str_contains($requestUrl, '.local') && !str_contains($requestUrl, 'localhost') && !str_contains($requestUrl, '127.0.0.1')) {
+                    if ($requestUrl !== '' && ! str_contains($requestUrl, '.local') && ! str_contains($requestUrl, 'localhost') && ! str_contains($requestUrl, '127.0.0.1')) {
                         return $requestUrl;
                     }
                 }
                 // Fallback to url('/') which also respects the current request
                 $urlHelper = rtrim((string) url('/'), '/');
-                if ($urlHelper !== '' && !str_contains($urlHelper, '.local') && !str_contains($urlHelper, 'localhost') && !str_contains($urlHelper, '127.0.0.1')) {
+                if ($urlHelper !== '' && ! str_contains($urlHelper, '.local') && ! str_contains($urlHelper, 'localhost') && ! str_contains($urlHelper, '127.0.0.1')) {
                     return $urlHelper;
                 }
-            } catch (\Throwable) {}
+            } catch (\Throwable) {
+            }
         }
 
         // Public config or no better guess — return config (may still be .local, but caller will then embed as data URI)

@@ -4,7 +4,6 @@ use App\Http\Controllers\Admin\CustomerController;
 use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Admin\ProfileController;
 use App\Http\Controllers\AdminLte\RoleController;
-use App\Http\Controllers\AdminLte\UserController;
 use App\Http\Controllers\Auth\ImpersonationController;
 use App\Http\Controllers\Client\RegisteredUserController;
 use Illuminate\Support\Facades\Route;
@@ -33,14 +32,6 @@ Route::middleware(['web', 'auth'])->prefix('admin')->name('adminlte.')->group(fu
     Route::get('roles/{role}/edit', [RoleController::class, 'edit'])->name('roles.edit');
     Route::put('roles/{role}', [RoleController::class, 'update'])->name('roles.update');
     Route::delete('roles/{role}', [RoleController::class, 'destroy'])->name('roles.destroy');
-
-    // [adminlte:users]
-    Route::get('users', [UserController::class, 'index'])->name('users.index');
-    Route::get('users/create', [UserController::class, 'create'])->name('users.create');
-    Route::post('users', [UserController::class, 'store'])->name('users.store');
-    Route::get('users/{user}/edit', [UserController::class, 'edit'])->name('users.edit');
-    Route::put('users/{user}', [UserController::class, 'update'])->name('users.update');
-    Route::delete('users/{user}', [UserController::class, 'destroy'])->name('users.destroy');
 });
 
 // Admin panel routes
@@ -121,5 +112,3 @@ Route::middleware(['web', 'auth'])->prefix('admin')->name('admin.')->group(funct
     Route::get('impersonate/stop', [ImpersonationController::class, 'stop'])
         ->name('impersonate.stop');
 });
-
-

@@ -10,6 +10,12 @@ use App\Models\HostingAccount;
 use App\Models\Invoice;
 use App\Models\Order;
 use App\Models\Ticket;
+use App\ViewModels\Admin\CapacityPressureViewModel;
+use App\ViewModels\Admin\OutstandingReceivablesViewModel;
+use App\ViewModels\Admin\SupportQueueRiskViewModel;
+use App\ViewModels\Admin\SystemHealthViewModel;
+use App\ViewModels\Admin\UpcomingRenewalsViewModel;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\View\View;
 use Throwable;
@@ -31,6 +37,11 @@ class DashboardController extends Controller
         $recentActivity = $this->recentActivity();
         $pendingOrders = $this->pendingOrders();
         $expiringDomains = $this->expiringDomains();
+        $receivables = new OutstandingReceivablesViewModel;
+        $renewals = new UpcomingRenewalsViewModel;
+        $support = new SupportQueueRiskViewModel;
+        $health = new SystemHealthViewModel;
+        $capacity = new CapacityPressureViewModel;
 
         return view('admin.dashboard', compact(
             'metrics',
@@ -39,6 +50,11 @@ class DashboardController extends Controller
             'recentActivity',
             'pendingOrders',
             'expiringDomains',
+            'receivables',
+            'renewals',
+            'support',
+            'health',
+            'capacity',
         ));
     }
 
@@ -100,6 +116,7 @@ class DashboardController extends Controller
             if (! Schema::hasTable((new Ticket)->getTable())) {
                 return [];
             }
+
             return Ticket::whereNotIn('status', ['closed', 'resolved'])
                 ->selectRaw('status, COUNT(*) as c')
                 ->groupBy('status')
@@ -110,12 +127,13 @@ class DashboardController extends Controller
         }
     }
 
-    private function recentActivity(): \Illuminate\Support\Collection
+    private function recentActivity(): Collection
     {
         try {
             if (! Schema::hasTable((new ActivityLog)->getTable())) {
                 return collect();
             }
+
             return ActivityLog::with(['user', 'customer'])
                 ->orderByDesc('created_at')
                 ->limit(8)
@@ -125,12 +143,13 @@ class DashboardController extends Controller
         }
     }
 
-    private function pendingOrders(): \Illuminate\Support\Collection
+    private function pendingOrders(): Collection
     {
         try {
             if (! Schema::hasTable((new Order)->getTable())) {
                 return collect();
             }
+
             return Order::with('customer')
                 ->whereIn('status', ['pending', 'provisioning', 'paid'])
                 ->latest()
@@ -141,12 +160,13 @@ class DashboardController extends Controller
         }
     }
 
-    private function expiringDomains(): \Illuminate\Support\Collection
+    private function expiringDomains(): Collection
     {
         try {
             if (! Schema::hasTable((new Domain)->getTable())) {
                 return collect();
             }
+
             return Domain::with('customer')
                 ->where('status', 'active')
                 ->whereNotNull('expiry_date')
@@ -166,6 +186,7 @@ class DashboardController extends Controller
             if (! Schema::hasTable((new $model)->getTable())) {
                 return 0;
             }
+
             return $model::count();
         } catch (Throwable) {
             return 0;
@@ -185,6 +206,7 @@ class DashboardController extends Controller
             if ($scope) {
                 $scope($q);
             }
+
             return (int) $q->count();
         } catch (Throwable) {
             return 0;
@@ -199,6 +221,7 @@ class DashboardController extends Controller
             }
             $q = $model::query();
             $scope($q);
+
             return (float) $q->sum($column);
         } catch (Throwable) {
             return 0.0;

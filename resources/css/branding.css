@@ -10,10 +10,10 @@
 /* ── 1 · Canonical HostVexa tokens ─────────────────────────────────────── */
 :root {
   /* brand */
-  --hostvexa-primary: #0ea5e9;
-  --hostvexa-primary-rgb: 14, 165, 233;
-  --hostvexa-primary-hover: #0284c7;
-  --hostvexa-primary-active: #0369a1;
+  --hostvexa-primary: #0369a1;
+  --hostvexa-primary-rgb: 3, 105, 161;
+  --hostvexa-primary-hover: #075985;
+  --hostvexa-primary-active: #0c4a6e;
   --hostvexa-primary-subtle: #f0f9ff;
   --hostvexa-accent: #6366f1;
   --hostvexa-accent-rgb: 99, 102, 241;
@@ -43,7 +43,7 @@
   --bs-link-color: var(--hostvexa-primary);
   --bs-link-color-rgb: var(--hostvexa-primary-rgb);
   --bs-link-hover-color: var(--hostvexa-primary-hover);
-  --bs-link-hover-color-rgb: 2, 132, 199;
+  --bs-link-hover-color-rgb: 7, 89, 133;
   --bs-focus-ring-color: rgba(var(--bs-primary-rgb), 0.22);
   /* Existing token bridge — adminlte.css / app.css read these */
   --color-primary: var(--hostvexa-primary);
@@ -64,6 +64,9 @@
   --bs-link-hover-color-rgb: 125, 211, 252;
   --color-primary: #38bdf8;
   --color-primary-hover: #7dd3fc;
+  --hostvexa-primary: #38bdf8;
+  --hostvexa-primary-hover: #7dd3fc;
+  --hostvexa-primary-active: #0ea5e9;
 }
 
 /* ── 3 · Component overrides — minimal, visible, no !important spam ────── */
@@ -78,6 +81,28 @@
   --bs-btn-active-border-color: var(--hostvexa-primary-active);
   --bs-btn-disabled-bg: var(--hostvexa-primary);
   --bs-btn-disabled-border-color: var(--hostvexa-primary);
+}
+/* Label colour must sit on the button, not on :root — a custom property
+   declared on the element beats the inherited dark value. Bootstrap's own
+   .btn-primary already emits white for the light fill (5.93:1 on #0369a1). */
+[data-bs-theme="dark"] .btn-primary {
+  --bs-btn-color: #0f172a;
+}
+/* Same defect family as .btn-primary: Bootstrap's .btn-outline-* labels and
+   borders are static Sass values (#0d6efd), so they ignore --bs-primary.
+   78 call sites. Hover/active mirrors .btn-primary; the label on the filled
+   hover/active state inverts via --color-on-primary. */
+.btn-outline-primary {
+  --bs-btn-color: var(--bs-primary);
+  --bs-btn-border-color: var(--bs-primary);
+  --bs-btn-hover-color: var(--color-on-primary);
+  --bs-btn-hover-bg: var(--hostvexa-primary-hover);
+  --bs-btn-hover-border-color: var(--hostvexa-primary-hover);
+  --bs-btn-active-color: var(--color-on-primary);
+  --bs-btn-active-bg: var(--hostvexa-primary-active);
+  --bs-btn-active-border-color: var(--hostvexa-primary-active);
+  --bs-btn-disabled-color: var(--bs-primary);
+  --bs-btn-disabled-border-color: var(--bs-primary);
 }
 
 /* Link & focus ring — single source, no per-component overrides needed */

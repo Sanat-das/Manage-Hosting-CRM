@@ -1,4 +1,4 @@
-﻿@extends('adminlte::page')
+@extends('adminlte::page')
 
 @section('title', 'Settings')
 
@@ -486,20 +486,65 @@
                                     }
                                 });
                             }
+                            // Both branding removals ask through the shared
+                            // confirm-modal component instead of a native
+                            // confirm dialog: one modal per target, each opened
+                            // its own hidden data-api trigger (the bundle
+                            // exposes no window.bootstrap object) and answered
+                            // by that modal's form submit, which never
+                            // navigates. Both instances render outside
+                            // #settings-form because HTML forbids nested forms.
+                            var brandingModalId = function(which){
+                                return which === 'favicon' ? 'confirm-remove-favicon' : 'confirm-remove-logo';
+                            };
                             function confirmRemove(which){
-                                return confirm('Remove current ' + which + '? This deletes the stored file and reverts to the default on Save. This cannot be undone.');
+                                var modalId = brandingModalId(which);
+                                var modal = document.getElementById(modalId);
+                                var trigger = document.getElementById(modalId + '-trigger');
+                                // Modal missing at runtime: fail closed rather
+                                // than falling back to a native dialog, so a
+                                // destructive confirm is never silently skipped
+                                // and never degrades into a browser default.
+                                if(!modal || !trigger){
+                                    return Promise.resolve(false);
+                                }
+                                return new Promise(function(resolve){
+                                    var settled = false;
+                                    var form = modal.querySelector('form');
+                                    var dismiss = modal.querySelector('.modal-footer [data-bs-dismiss="modal"]') || modal.querySelector('[data-bs-dismiss="modal"]');
+                                    var settle = function(answer){
+                                        if(settled) return;
+                                        settled = true;
+                                        modal.removeEventListener('hidden.bs.modal', onHidden);
+                                        if(form) form.removeEventListener('submit', onSubmit);
+                                        resolve(answer);
+                                    };
+                                    var onHidden = function(){
+                                        settle(false);
+                                    };
+                                    var onSubmit = function(ev){
+                                        ev.preventDefault();
+                                        if(dismiss) dismiss.click();
+                                        settle(true);
+                                    };
+                                    modal.addEventListener('hidden.bs.modal', onHidden);
+                                    if(form) form.addEventListener('submit', onSubmit);
+                                    trigger.click();
+                                });
                             }
                             if(removeLogo && logoFile){
                                 removeLogo.addEventListener('change', function(){
                                     if(removeLogo.checked){
-                                        if(!confirmRemove('logo')){
-                                            removeLogo.checked = false;
-                                            return;
-                                        }
-                                        logoFile.value = '';
-                                        logoFile.disabled = true;
-                                        logoFile.classList.add('opacity-50');
-                                        if(logoPreview) logoPreview.src = defaultLogo;
+                                        confirmRemove('logo').then(function(ok){
+                                            if(!ok){
+                                                removeLogo.checked = false;
+                                                return;
+                                            }
+                                            logoFile.value = '';
+                                            logoFile.disabled = true;
+                                            logoFile.classList.add('opacity-50');
+                                            if(logoPreview) logoPreview.src = defaultLogo;
+                                        });
                                     } else {
                                         logoFile.disabled = false;
                                         logoFile.classList.remove('opacity-50');
@@ -510,13 +555,15 @@
                             if(removeFavicon && faviconFile){
                                 removeFavicon.addEventListener('change', function(){
                                     if(removeFavicon.checked){
-                                        if(!confirmRemove('favicon')){
-                                            removeFavicon.checked = false;
-                                            return;
-                                        }
-                                        faviconFile.value = '';
-                                        faviconFile.disabled = true;
-                                        faviconFile.classList.add('opacity-50');
+                                        confirmRemove('favicon').then(function(ok){
+                                            if(!ok){
+                                                removeFavicon.checked = false;
+                                                return;
+                                            }
+                                            faviconFile.value = '';
+                                            faviconFile.disabled = true;
+                                            faviconFile.classList.add('opacity-50');
+                                        });
                                     } else {
                                         faviconFile.disabled = false;
                                         faviconFile.classList.remove('opacity-50');
@@ -1284,7 +1331,7 @@
                             <x-adminlte-select name="settings[domain_default_registrar]" label="Default Registrar">
                                 {!! $selectOptions($fieldOptions['registrars'] ?? [], $registrarValue, $blankIfUnset($registrarValue)) !!}
                             </x-adminlte-select>
-                            <small class="form-text text-muted">Configure credentials under Domains &rsaquo; Registrar Settings.</small>
+                            <small class="form-text text-muted">Configure credentials under Domains &rsaquo; <a href="{{ route('admin.registrar-settings.index') }}">Registrar Settings</a>.</small>
                         </div>
                         <div class="col-md-4">
                             @php $pricingTierValue = old('settings.domain_pricing_tier', $settings['domain_pricing_tier'] ?? 'standard'); @endphp
@@ -2427,6 +2474,35 @@
         @csrf
         @method('PUT')
     </form>
+
+    {{-- Confirmation dialogs for the Branding tab's "Remove current" controls.
+         Kept outside #settings-form because HTML forbids nested forms (each
+         modal carries its own no-op form) and opened from JS through the
+         hidden data-api triggers below — the Vite bundle exposes no
+         window.bootstrap object, so .show() is not reachable. --}}
+    <button type="button" id="confirm-remove-logo-trigger" class="d-none"
+            data-bs-toggle="modal" data-bs-target="#confirm-remove-logo"></button>
+    <x-adminlte.partials.confirm-modal
+        id="confirm-remove-logo"
+        title="Remove current logo?"
+        message="This deletes the stored logo file and reverts the site to the default logo on Save. This cannot be undone."
+        method="POST"
+        :action="'#'"
+        confirm-label="Remove logo"
+        confirm-theme="danger"
+    />
+
+    <button type="button" id="confirm-remove-favicon-trigger" class="d-none"
+            data-bs-toggle="modal" data-bs-target="#confirm-remove-favicon"></button>
+    <x-adminlte.partials.confirm-modal
+        id="confirm-remove-favicon"
+        title="Remove current favicon?"
+        message="This deletes the stored favicon file and reverts the site to the default favicon on Save. This cannot be undone."
+        method="POST"
+        :action="'#'"
+        confirm-label="Remove favicon"
+        confirm-theme="danger"
+    />
 
     @push('css')
         <style>

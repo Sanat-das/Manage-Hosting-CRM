@@ -5,14 +5,8 @@
     <div class="{{ config('adminlte.classes_topnav_container', 'container-fluid') }}">
         {{-- Left side --}}
         <ul class="navbar-nav">
-            <li class="nav-item d-lg-none">
-                <button class="nav-link navbar-toggler" type="button" data-lte-toggle="sidebar" aria-label="{{ __('Toggle navigation') }}">
-                    <i class="bi bi-list" aria-hidden="true"></i>
-                </button>
-            </li>
-
             <li class="nav-item">
-                <a class="nav-link" data-lte-toggle="sidebar" href="#" role="button" aria-label="{{ __('Toggle sidebar') }}">
+                <a class="nav-link" data-lte-toggle="sidebar" href="#" role="button" aria-expanded="false" aria-controls="app-sidebar" aria-label="{{ __('Toggle sidebar') }}">
                     <i class="bi bi-list" aria-hidden="true"></i>
                 </a>
             </li>
@@ -22,11 +16,13 @@
                     <i class="bi bi-grid-1x2 me-1" aria-hidden="true"></i> {{ __('adminlte.home') }}
                 </a>
             </li>
-            <li class="nav-item d-none d-md-block">
-                <a href="{{ config('adminlte.sidebar_docs_url', '#') }}" class="nav-link" target="_blank" rel="noopener">
-                    <i class="bi bi-book me-1" aria-hidden="true"></i> {{ __('adminlte.documentation') }}
-                </a>
-            </li>
+            @if (config('adminlte.sidebar_docs_url') && config('adminlte.docs') !== false)
+                <li class="nav-item d-none d-md-block">
+                    <a href="{{ config('adminlte.sidebar_docs_url', '#') }}" class="nav-link" target="_blank" rel="noopener">
+                        <i class="bi bi-book me-1" aria-hidden="true"></i> {{ __('adminlte.documentation') }}
+                    </a>
+                </li>
+            @endif
 
             @foreach ($navLeft as $item)
                 <li class="nav-item d-none d-md-block">

@@ -42,6 +42,11 @@
     --bs-border-color: var(--color-border);
     --bs-secondary-bg: var(--color-bg-subtle);
     --bs-tertiary-bg: var(--color-bg-muted);
+    /* Bootstrap's own :root declares these, so the mapping has to live here,
+       deeper in the cascade, to reach the theme's shadow tokens. */
+    --bs-box-shadow-sm: var(--shadow-sm-fb);
+    --bs-box-shadow: var(--shadow-md-fb);
+    --bs-box-shadow-lg: var(--shadow-lg-fb);
 }
 
 [data-bs-theme="dark"] {
@@ -430,7 +435,7 @@ body.grid-is-resizing {
 .grid-pagination .pagination .page-item.active .page-link {
     background: var(--color-primary);
     border-color: var(--color-primary);
-    color: var(--color-neutral-0);
+    color: var(--color-on-primary);
     box-shadow: 0 1px 2px color-mix(in srgb, var(--color-primary) 22%, transparent);
 }
 .grid-pagination .pagination .page-item.disabled .page-link {
@@ -984,6 +989,90 @@ textarea.form-control { min-height: 76px; resize: vertical; line-height: var(--l
 .mh-dashboard-table tbody tr:hover { background: color-mix(in srgb, var(--color-primary) 4%, var(--bs-body-bg)); }
 [data-bs-theme="dark"] .mh-dashboard-table tbody tr:hover { background: color-mix(in srgb, var(--color-primary) 7%, var(--bs-body-bg)); }
 
+/* ── Widget grid — resizable, equal-height, switchable cards ────────── */
+.dashboard-widget-grid {
+    display: grid;
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    gap: var(--space-6);
+    align-items: stretch;
+}
+.dashboard-widget { position: relative; min-width: 0; }
+.dashboard-widget > .card { height: 100%; margin-bottom: 0; }
+/* A span-2 card is ~90px narrower than a table's min-content; without this the
+   card overflows its own track and drags a horizontal scrollbar onto the page. */
+.dashboard-widget > .card,
+.dashboard-widget > .card > .card-body { min-width: 0; }
+.dashboard-widget.is-hidden { display: none; }
+
+/* Every other dashboard row equalises its columns too — the column stretches,
+   so the card has to fill it or rows end up ragged. */
+.dashboard-equal .card { height: 100%; margin-bottom: 0; }
+
+/* Below lg the grid is a single stack: frees the stored spans from fighting
+   the responsive layout (they are restored above lg, not deleted). */
+@media (max-width: 991.98px) {
+    .dashboard-widget { grid-column: span 12 !important; }
+    .widget-resize-handle { display: none; }
+}
+
+/* A span-2 card is narrower than the receivables KPI strip's min-content; let
+   the strip shrink so it wraps instead of bleeding into the gutter. */
+.dashboard-widget .card-body > .d-flex { min-width: 0; }
+.dashboard-widget .card-body > .d-flex > .d-flex { min-width: 0; flex-wrap: wrap; }
+
+/* Bar shown while widgets are switched off — chips bring each one back and
+   "Reset layout" clears the stored spans. Bootstrap's [hidden]{display:none
+   !important} owns visibility, so nothing here sets display. */
+.dashboard-widget-restore {
+    width: fit-content;
+    padding: var(--space-2) var(--space-3);
+    border: 1px dashed var(--color-border);
+    border-radius: var(--radius-md);
+    background: var(--color-bg-subtle);
+}
+[data-bs-theme="dark"] .dashboard-widget-restore { border-color: var(--color-border-strong); }
+
+/* Resize handle — lives in the 24px gutter beside the card, never over card
+   content (at right:0 it swallowed the last 2px of the gated "View all" link).
+   Hidden below lg, where the span is forced to 12 and dragging is meaningless
+   (it also stops the handle announcing a span the media query overrides). */
+.widget-resize-handle {
+    position: absolute;
+    top: 0;
+    right: -12px;
+    z-index: 3;
+    width: 12px;
+    height: 100%;
+    cursor: col-resize;
+    user-select: none;
+    touch-action: none;
+}
+.widget-resize-handle::after {
+    content: "";
+    position: absolute;
+    top: 22%;
+    bottom: 22%;
+    right: 4px;
+    width: 2px;
+    border-radius: 1px;
+    background: var(--color-primary);
+    opacity: 0;
+    transition: opacity 0.12s ease-in-out;
+}
+.dashboard-widget:hover > .card > .widget-resize-handle::after { opacity: 0.4; }
+.widget-resize-handle:hover::after,
+.widget-resize-handle:focus-visible::after { opacity: 1; }
+.widget-resize-handle.is-dragging::after { opacity: 1; }
+.widget-resize-handle:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: -2px;
+    border-radius: var(--radius-sm);
+}
+body.widget-is-resizing { cursor: col-resize; user-select: none; }
+@media (prefers-reduced-motion: reduce) {
+    .widget-resize-handle::after { transition: none; }
+}
+
 /* ── Settings hardening grid — equal-height labels + help text ─────────
    Root cause: 4× col-md-3 with variable label length (e.g. long Strong
    Password label) and missing help text on 2 cols caused uneven column
@@ -1139,7 +1228,7 @@ textarea.form-control { min-height: 76px; resize: vertical; line-height: var(--l
 }
 .theme-switch__btn.active {
     background: var(--color-primary);
-    color: var(--color-neutral-0);
+    color: var(--color-on-primary);
 }
 .theme-switch__btn:focus-visible {
     outline: 2px solid var(--color-focus-ring);
@@ -1186,19 +1275,45 @@ textarea.form-control { min-height: 76px; resize: vertical; line-height: var(--l
 /* Fully-collapsed (non-mini) sidebars hide off-canvas, so hide the CTA outright. */
 .sidebar-collapse:not(.sidebar-mini) .sidebar-docs-cta { display: none; }
 
-/* Sidebar nav — 8px rhythm, token transition, subtle active polish */
-.app-sidebar .nav-sidebar .nav-link {
-    gap: var(--space-2);
-    border-radius: var(--radius-sm);
-    transition: background-color var(--duration-base) var(--ease-default), color var(--duration-base) var(--ease-default);
-}
-.app-sidebar .nav-sidebar .nav-link.active {
+/* Sidebar nav — "you are here" and "this group is open" are different
+   states, so they get different treatments. classes_sidebar_nav is empty,
+   so the <ul> only carries `nav sidebar-menu flex-column` — selectors are
+   written against the DOM the partial actually renders, and counted to
+   out-specify AdminLTE's own .sidebar-wrapper rules. The leaf of the current
+   page is the loud one (primary tint + accent rail via inset box-shadow, no
+   pseudo-element, so it survives the collapsed icon rail); the parent that
+   merely contains it stays neutral. */
+.app-sidebar .sidebar-wrapper .sidebar-menu > .nav-item:not(.menu-open) > .nav-link.active,
+.app-sidebar .sidebar-wrapper .sidebar-menu .nav-treeview > .nav-item > .nav-link.active {
     background-color: color-mix(in srgb, var(--color-primary) 14%, transparent);
     color: var(--color-primary);
+    box-shadow: inset 3px 0 0 0 var(--color-primary);
 }
-[data-bs-theme="dark"] .app-sidebar .nav-sidebar .nav-link.active {
-    background-color: color-mix(in srgb, var(--color-primary-400) 18%, transparent);
-    color: var(--color-primary-300);
+.app-sidebar .sidebar-wrapper .sidebar-menu > .nav-item.menu-open > .nav-link.active {
+    background-color: color-mix(in srgb, var(--color-text) 6%, transparent);
+}
+/* The <aside> carries its own data-bs-theme when sidebar_theme is dark, so the
+   dark treatment hangs off the aside's attribute — never the document's.
+   Derived from --color-primary (which the runtime branding override sets)
+   rather than the fixed -300/-400 scale, so a branded primary still reaches
+   the current-page marker; the white mix is the dark-sidebar contrast tune. */
+.app-sidebar[data-bs-theme="dark"] .sidebar-wrapper .sidebar-menu > .nav-item:not(.menu-open) > .nav-link.active,
+.app-sidebar[data-bs-theme="dark"] .sidebar-wrapper .sidebar-menu .nav-treeview > .nav-item > .nav-link.active {
+    background-color: color-mix(in srgb, var(--color-primary) 22%, transparent);
+    color: color-mix(in srgb, var(--color-primary) 70%, white);
+    box-shadow: inset 3px 0 0 0 color-mix(in srgb, var(--color-primary) 70%, white);
+}
+/* Section headers — uppercase, small, dimmer than the links they head, so the
+   group label reads as a label instead of competing with its own items. */
+.app-sidebar .sidebar-wrapper .sidebar-menu > .nav-header {
+    padding: var(--space-3) var(--space-2) var(--space-1);
+    color: var(--color-text-muted);
+    font-size: var(--text-xs);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
+.app-sidebar .sidebar-wrapper .sidebar-menu > .nav-header:not(:first-of-type) {
+    margin-top: var(--space-2);
 }
 
 /* Keyboard focus — matches the global branding.css focus-ring pattern */

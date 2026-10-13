@@ -89,8 +89,8 @@
                 </option>
             @endforeach
         </select>
-        <input type="tel" inputmode="numeric" autocomplete="tel" id="{{ $id }}_number" name="{{ $name }}_number" class="form-control @if($error) is-invalid @endif" value="{{ $numberPart }}" placeholder="{{ $placeholder }}" style="border-top-left-radius: 0; border-bottom-left-radius: 0; margin-left: -1px;" @if($required) required @endif>
-        @if($error)<div class="invalid-feedback d-block">{{ $error }}</div>@endif
+        <input type="tel" inputmode="numeric" autocomplete="tel" id="{{ $id }}_number" name="{{ $name }}_number" class="form-control @if($error) is-invalid @endif" value="{{ $numberPart }}" placeholder="{{ $placeholder }}" style="border-top-left-radius: 0; border-bottom-left-radius: 0; margin-left: -1px;" @if($required) required @endif @if($error) aria-invalid="true" aria-describedby="{{ $id }}-error" @endif>
+        @if($error)<div class="invalid-feedback d-block" id="{{ $id }}-error">{{ $error }}</div>@endif
     </div>
     {{-- hidden combined value submitted as {{ $name }} for backend compatibility --}}
     <input type="hidden" name="{{ $name }}" id="{{ $id }}_hidden" value="{{ trim($selectedDial.' '.$numberPart) }}">

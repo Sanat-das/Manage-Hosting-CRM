@@ -36,7 +36,7 @@
             <button class="btn btn-outline-secondary btn-sm dropdown-toggle" data-bs-toggle="dropdown"><i class="bi bi-collection me-1"></i> Load starter</button>
             <ul class="dropdown-menu dropdown-menu-end" style="max-height:320px; overflow:auto;">
                 @foreach($defaults as $key => $def)
-                    <li><button type="button" class="dropdown-item small starter-item w-100 text-start" data-name="{{ $key }}" data-subject="{{ $def['subject'] }}">{{ $key }} <span class="text-muted">— {{ Str::limit($def['subject'], 36) }}</span></button></li>
+                    <li><button type="button" class="dropdown-item small starter-item w-100 text-start" data-name="{{ $key }}" data-subject="{{ $def['subject'] }}" data-bs-toggle="modal" data-bs-target="#loadStarterModal">{{ $key }} <span class="text-muted">— {{ Str::limit($def['subject'], 36) }}</span></button></li>
                 @endforeach
             </ul>
         </div>
@@ -149,6 +149,21 @@
             </tbody></table>
         @endforeach
     </div></div></div></div>
+
+    {{-- Starter confirmation. Rendered outside the dropdown that triggers
+         it, per the confirm-modal component contract. --}}
+    <x-adminlte.partials.confirm-modal
+        id="loadStarterModal"
+        title="Load starter"
+        :message="'Load the starter into the editor? Unsaved subject and body changes will be overwritten.'"
+        :action="'#'"
+        confirm-label="Load starter"
+        confirm-theme="warning">
+        <x-slot name="fields">
+            <input type="hidden" name="starter" id="starterName">
+        </x-slot>
+        <span class="d-block">Starter: <strong id="starterLabel"></strong></span>
+    </x-adminlte.partials.confirm-modal>
 @stop
 
 @push('js')
@@ -260,21 +275,45 @@ document.getElementById('varSearch')?.addEventListener('input', e=>{
   });
 });
 
-// Starter loader
+// Starter loader — the dropdown item only opens the confirm modal, the
+// write happens on the confirm path. See show.bs.modal below.
+const DEFAULTS = @json($defaults);
 document.querySelectorAll('.starter-item').forEach(a=>{
   a.addEventListener('click', e=>{
     e.preventDefault();
-    const name = a.dataset.name;
-    if(!confirm(`Load starter "${name}" into editor? Unsaved changes will be overwritten.`)) return;
-    const defaults = @json($defaults);
-    const def = defaults[name];
-    if(def){
-      subjectInput.value = def.subject;
-      bodyTextarea.value = def.body;
-      document.querySelector('input[name="name"]').value = name;
-      syncToQuill();
-    }
+    // Bootstrap's dropdown data-api does not close the menu for a
+    // data-bs-toggle="modal" item — and there is no window.bootstrap to
+    // reach the Dropdown instance with, so the toggle is clicked instead:
+    // the data-api constructs the instance on demand and hides the menu.
+    const menu = a.closest('.dropdown-menu');
+    const toggle = menu ? menu.previousElementSibling : null;
+    if(toggle && toggle.classList.contains('dropdown-toggle')) toggle.click();
   });
+});
+
+const starterModal = document.getElementById('loadStarterModal');
+if(starterModal){
+  starterModal.addEventListener('show.bs.modal', (ev)=>{
+    const name = (ev.relatedTarget && ev.relatedTarget.dataset.name) || '';
+    const def  = DEFAULTS[name];
+    document.getElementById('starterName').value = def ? name : '';
+    document.getElementById('starterLabel').textContent = def ? name : '';
+  });
+}
+document.getElementById('loadStarterModal-form')?.addEventListener('submit', (ev)=>{
+  ev.preventDefault();
+  const name = document.getElementById('starterName').value;
+  const def  = DEFAULTS[name];
+  if(def){
+    subjectInput.value = def.subject;
+    bodyTextarea.value = def.body;
+    document.querySelector('input[name="name"]').value = name;
+    syncToQuill();
+  }
+  // No window.bootstrap here: clicking the footer's dismiss button goes
+  // through the data-api, which builds the Modal instance and hides it.
+  const dismiss = document.getElementById('loadStarterModal')?.querySelector('.modal-footer [data-bs-dismiss="modal"]');
+  if(dismiss) dismiss.click();
 });
 
 bodyTextarea.addEventListener('input', ()=>{ charCount.textContent = bodyTextarea.value.length+' chars'; });

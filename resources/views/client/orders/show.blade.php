@@ -32,7 +32,8 @@
     <div class="row">
         <div class="col-lg-8">
             <x-adminlte-card icon="bi bi-bag-check" title="Order Details">
-                <table class="table table-sm table-borderless">
+                <div class="table-responsive">
+                    <table class="table table-sm table-borderless">
                     <tr><th class="w-25 text-muted">Order #</th><td><strong>{{ $order->order_no }}</strong></td></tr>
                     <tr><th class="text-muted">Status</th>
                         <td>
@@ -51,10 +52,12 @@
                         <tr><th class="text-muted">Next renewal</th><td>{{ $order->next_billing_date->format('M j, Y') }}</td></tr>
                     @endif
                 </table>
+                </div>
 
                 {{-- What was ordered, line by line, each with the configuration
                      captured at order time (RAM / storage / support). --}}
-                <table class="table table-sm mt-3">
+                <div class="table-responsive">
+                    <table class="table table-sm mt-3">
                     <thead>
                         <tr>
                             <th>Item</th>
@@ -93,6 +96,7 @@
                         </tr>
                     </tfoot>
                 </table>
+                </div>
             </x-adminlte-card>
 
             @if ($timeline !== [])

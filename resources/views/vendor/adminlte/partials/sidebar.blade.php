@@ -23,7 +23,7 @@
     $items = $filteredItems;
     unset($filteredItems, $pendingHeader, $_item);
 @endphp
-<aside class="app-sidebar {{ $sidebarClasses }}" @if ($sidebarTheme === 'dark') data-bs-theme="dark" @endif aria-label="{{ __('Main sidebar') }}">
+<aside id="app-sidebar" class="app-sidebar {{ $sidebarClasses }}" @if ($sidebarTheme === 'dark') data-bs-theme="dark" @endif aria-label="{{ __('Main sidebar') }}">
     {{-- Brand --}}
     <div class="sidebar-brand {{ config('adminlte.classes_brand') }}">
         <a href="{{ url('/') }}" class="brand-link" aria-label="{{ config('app.name') }} home">

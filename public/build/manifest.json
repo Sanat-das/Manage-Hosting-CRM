@@ -47,7 +47,7 @@
     "src": "node_modules/bootstrap-icons/font/fonts/bootstrap-icons.woff2"
   },
   "resources/css/adminlte.css": {
-    "file": "assets/adminlte-Dt8xF4J3.css",
+    "file": "assets/adminlte-Bew70Bum.css",
     "name": "adminlte",
     "names": [
       "adminlte.css"
@@ -60,7 +60,7 @@
     ]
   },
   "resources/css/app.css": {
-    "file": "assets/app-BwzQIkC7.css",
+    "file": "assets/app-DTQjyMT2.css",
     "name": "app",
     "names": [
       "app.css"
@@ -69,7 +69,7 @@
     "isEntry": true
   },
   "resources/css/branding.css": {
-    "file": "assets/branding-C8sWYpGg.css",
+    "file": "assets/branding-B9OHQJGe.css",
     "name": "branding",
     "names": [
       "branding.css"
@@ -87,7 +87,7 @@
     "isEntry": true
   },
   "resources/css/client-chat.css": {
-    "file": "assets/client-chat-qhZM9w3-.css",
+    "file": "assets/client-chat-DLhSRKbe.css",
     "name": "client-chat",
     "names": [
       "client-chat.css"
@@ -96,7 +96,7 @@
     "isEntry": true
   },
   "resources/js/adminlte.js": {
-    "file": "assets/adminlte-5DgrwBsV.js",
+    "file": "assets/adminlte-DdI5aPxL.js",
     "name": "adminlte",
     "src": "resources/js/adminlte.js",
     "isEntry": true,
@@ -105,7 +105,7 @@
     ]
   },
   "resources/js/chat.js": {
-    "file": "assets/chat-CUbaGjXc.js",
+    "file": "assets/chat-DX4EiJ_f.js",
     "name": "chat",
     "src": "resources/js/chat.js",
     "isEntry": true,

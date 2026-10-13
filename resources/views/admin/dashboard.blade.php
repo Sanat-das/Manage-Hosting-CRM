@@ -120,7 +120,7 @@
     </div>
 
     {{-- Charts row --}}
-    <div class="row g-4 mb-4">
+    <div class="row g-4 mb-4 dashboard-equal">
         <div class="col-lg-8">
             <x-adminlte-card icon="bi bi-graph-up" title="Revenue — Last 6 months">
                 <x-slot:tools>
@@ -161,7 +161,7 @@
     </div>
 
     {{-- Activity + Quick actions --}}
-    <div class="row g-4 mb-4">
+    <div class="row g-4 mb-4 dashboard-equal">
         <div class="col-lg-8">
             <x-adminlte-card icon="bi bi-clock-history" title="Recent Activity">
                 <x-slot:tools>
@@ -231,7 +231,7 @@
     </div>
 
     {{-- Pending orders + Expiring domains preview --}}
-    <div class="row g-4">
+    <div class="row g-4 dashboard-equal">
         <div class="col-lg-6">
             <x-adminlte-card icon="bi bi-cart" title="Pending Orders">
                 <x-slot:tools>
@@ -315,6 +315,55 @@
             </x-adminlte-card>
         </div>
     </div>
+
+    {{-- Widget grid — money owed, renewals due, queue risk, system health, capacity.
+         Each card is independently resizable (grid-column span 2-12, remembered in
+         localStorage) and can be switched off with the eye toggle in its card tools. --}}
+    <div class="dashboard-widget-grid" data-dashboard-widget-grid>
+        <div class="dashboard-widget" data-widget="receivables" style="grid-column: span 4">
+            @include('admin.dashboard.partials.outstanding-receivables', ['receivables' => $receivables])
+        </div>
+        <div class="dashboard-widget" data-widget="renewals" style="grid-column: span 4">
+            @include('admin.dashboard.partials.upcoming-renewals', ['renewals' => $renewals])
+        </div>
+        <div class="dashboard-widget" data-widget="support" style="grid-column: span 4">
+            @include('admin.dashboard.partials.support-queue-risk', ['support' => $support])
+        </div>
+        <div class="dashboard-widget" data-widget="health" style="grid-column: span 6">
+            @include('admin.dashboard.partials.system-health', ['health' => $health])
+        </div>
+        <div class="dashboard-widget" data-widget="capacity" style="grid-column: span 6">
+            @include('admin.dashboard.partials.capacity-pressure', ['capacity' => $capacity])
+        </div>
+    </div>
+
+    <script>
+        // Pre-paint pass for saved widget state, so nothing flashes before the
+        // dashboard-widgets module (deferred by Vite) takes over. Same keys,
+        // same guards; the module re-applies what is already applied here.
+        (function () {
+            try {
+                var grid = document.querySelector('[data-dashboard-widget-grid]');
+                if (!grid) { return; }
+                var spans = {};
+                var hidden = [];
+                try {
+                    var stored = JSON.parse(localStorage.getItem('adminlte.dashboardWidgetSpans.v1') || '{}');
+                    if (stored && typeof stored === 'object') { spans = stored; }
+                } catch (e) {}
+                try {
+                    var storedHidden = JSON.parse(localStorage.getItem('adminlte.dashboardWidgetHidden.v1') || '[]');
+                    if (Array.isArray(storedHidden)) { hidden = storedHidden; }
+                } catch (e) {}
+                grid.querySelectorAll('[data-widget]').forEach(function (widget) {
+                    var id = widget.getAttribute('data-widget');
+                    var span = parseInt(spans[id], 10);
+                    if (span >= 2 && span <= 12) { widget.style.gridColumn = 'span ' + span; }
+                    if (hidden.indexOf(id) !== -1) { widget.classList.add('is-hidden'); }
+                });
+            } catch (e) {}
+        })();
+    </script>
 
     <div class="mt-4 pt-3 border-top d-flex align-items-center justify-content-between flex-wrap gap-2 small text-muted" style="font-size: var(--text-xs); border-color: var(--bs-border-color) !important;">
         <span>Welcome back, <strong style="color: var(--color-text);">{{ auth()->user()->full_name }}</strong> — dashboard refreshed {{ now()->format('M j, H:i') }}.</span>

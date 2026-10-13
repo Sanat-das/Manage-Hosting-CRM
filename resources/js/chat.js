@@ -714,7 +714,10 @@ function initChat(root) {
         const name = window.prompt('Channel name');
         if (!name) return;
 
-        const isPrivate = window.confirm('Make this channel private? OK for private, Cancel for public.');
+        const confirmed = await confirmAction('Make this channel private?', 'OK for private, Cancel for public.');
+        if (!confirmed) return;
+
+        const isPrivate = true;
 
         try {
             const result = await api('/admin/chat/channels', {

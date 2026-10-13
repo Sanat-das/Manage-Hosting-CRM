@@ -11,6 +11,18 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 trait HasRoles
 {
     /**
+     * Role and permission names resolved for this instance and memoized.
+     *
+     * The sidebar's gate asks for one ability per menu item, so a single
+     * render walks ~100 `can` keys against one User instance -- each one an
+     * ability check, an implied-ability check, or a role lookup -- and every
+     * one of them used to hit the role pivot on its own.
+     *
+     * @var array{roles: list<string>, permissions: array<string, true>}|null
+     */
+    protected ?array $resolvedAccess = null;
+
+    /**
      * Roles assigned to the user.
      */
     public function roles(): BelongsToMany
@@ -35,7 +47,7 @@ trait HasRoles
             return true;
         }
 
-        return $this->roles()->whereIn('name', $roles)->exists();
+        return array_intersect($this->resolvedAccess()['roles'], $roles) !== [];
     }
 
     /**
@@ -55,21 +67,7 @@ trait HasRoles
      */
     public function hasPermission(string $permission): bool
     {
-        if ($this->roles()
-            ->whereHas('permissions', fn ($query) => $query->where('name', $permission))
-            ->exists()) {
-            return true;
-        }
-
-        if (! empty($this->role)) {
-            $roleModel = Role::where('name', $this->role)->first();
-
-            if ($roleModel !== null && $roleModel->hasPermission($permission)) {
-                return true;
-            }
-        }
-
-        return false;
+        return isset($this->resolvedAccess()['permissions'][$permission]);
     }
 
     /**
@@ -82,19 +80,54 @@ trait HasRoles
      */
     public function hasAnyPermission(): bool
     {
-        if ($this->roles()->whereHas('permissions')->exists()) {
-            return true;
+        return $this->resolvedAccess()['permissions'] !== [];
+    }
+
+    /**
+     * The role names and permission names this user holds, resolved once.
+     *
+     * The sources are exactly the ones the trait has always resolved: the
+     * pivot-assigned roles and their permissions, plus the permissions of
+     * the Role named by the legacy `users.role` column when such a role
+     * exists. An instance whose `roles` relation has been (re)loaded is read
+     * from that relation instead, so a reload can never answer from a memo
+     * built before it; assignRole() drops the memo as well, since it mutates
+     * the pivot directly.
+     *
+     * @return array{roles: list<string>, permissions: array<string, true>}
+     */
+    protected function resolvedAccess(): array
+    {
+        if ($this->resolvedAccess !== null && ! $this->relationLoaded('roles')) {
+            return $this->resolvedAccess;
+        }
+
+        $roles = $this->relationLoaded('roles')
+            ? $this->roles
+            : $this->roles()->with('permissions')->get();
+
+        $roleNames = [];
+        $permissions = [];
+
+        foreach ($roles as $role) {
+            $roleNames[] = $role->name;
+
+            foreach ($role->permissions as $permission) {
+                $permissions[$permission->name] = true;
+            }
         }
 
         if (! empty($this->role)) {
             $roleModel = Role::where('name', $this->role)->first();
 
-            if ($roleModel !== null && $roleModel->permissions()->exists()) {
-                return true;
+            if ($roleModel !== null) {
+                foreach ($roleModel->permissions()->pluck('name') as $name) {
+                    $permissions[$name] = true;
+                }
             }
         }
 
-        return false;
+        return $this->resolvedAccess = ['roles' => $roleNames, 'permissions' => $permissions];
     }
 
     /**
@@ -106,6 +139,8 @@ trait HasRoles
 
         if ($model !== null) {
             $this->roles()->syncWithoutDetaching($model);
+
+            $this->resolvedAccess = null;
         }
     }
 

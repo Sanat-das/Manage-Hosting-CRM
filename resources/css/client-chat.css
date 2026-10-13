@@ -31,7 +31,7 @@
     border: 0;
     border-radius: 2rem;
     background-color: var(--bs-primary);
-    color: #fff;
+    color: var(--color-on-primary);
     box-shadow: 0 0.5rem 1rem rgb(0 0 0 / 20%);
     cursor: pointer;
 }
@@ -64,7 +64,7 @@
     gap: 0.5rem;
     padding: 0.75rem 1rem;
     background-color: var(--bs-primary);
-    color: #fff;
+    color: var(--color-on-primary);
 }
 
 .client-chat__status {
@@ -141,7 +141,7 @@
 
 .client-chat__message--mine .client-chat__bubble {
     background-color: var(--bs-primary);
-    color: #fff;
+    color: var(--color-on-primary);
 }
 
 .client-chat__attachment {

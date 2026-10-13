@@ -1,6 +1,7 @@
 <?php
 
 use App\Support\AdminLte\ActiveRouteFilter;
+use App\Support\AdminLte\CanFilter;
 use App\Support\AdminLte\NotificationBadgeFilter;
 use App\Support\AdminLte\RoleFilter;
 use App\Support\AdminLte\RouteExistsFilter;
@@ -235,21 +236,24 @@ return [
             'icon' => 'bi bi-people',
             'can' => 'customers.view',
             'submenu' => [
-                ['text' => 'All Customers', 'route' => 'admin.customers.index', 'icon' => 'bi bi-circle', 'can' => 'customers.view'],
-                ['text' => 'Add Customer', 'route' => 'admin.customers.create', 'icon' => 'bi bi-circle', 'can' => 'customers.create'],
-                ['text' => 'Customer Groups', 'route' => 'admin.customer-groups.index', 'icon' => 'bi bi-circle', 'can' => 'customers.view'],
+                ['text' => 'All Customers', 'route' => 'admin.customers.index', 'icon' => 'bi bi-dot', 'can' => 'customers.view'],
+                ['text' => 'Add Customer', 'route' => 'admin.customers.create', 'icon' => 'bi bi-dot', 'can' => 'customers.create'],
+                ['text' => 'Customer Groups', 'route' => 'admin.customer-groups.index', 'icon' => 'bi bi-dot', 'can' => 'customers.view'],
             ],
         ],
         [
-            'text' => 'Manage Products',
+            'text' => 'Product Catalog',
             'icon' => 'bi bi-box',
             'can' => 'products.view',
             'submenu' => [
-                ['text' => 'All Products', 'route' => 'admin.products.index', 'icon' => 'bi bi-circle', 'can' => 'products.view'],
-                ['text' => 'Add Product', 'route' => 'admin.products.create', 'icon' => 'bi bi-circle', 'can' => 'products.create'],
-                ['text' => 'Product Groups', 'route' => 'admin.product-groups.index', 'icon' => 'bi bi-circle', 'can' => 'products.groups'],
-                ['text' => 'Configurable Options', 'route' => 'admin.product-options.index', 'icon' => 'bi bi-circle', 'can' => 'products.options'],
-                ['text' => 'Addons', 'route' => 'admin.addons.index', 'icon' => 'bi bi-circle', 'can' => 'products.addons'],
+                ['text' => 'All Products', 'route' => 'admin.products.index', 'icon' => 'bi bi-dot', 'can' => 'products.view'],
+                ['text' => 'Add Product', 'route' => 'admin.products.create', 'icon' => 'bi bi-dot', 'can' => 'products.create'],
+                ['text' => 'Product Groups', 'route' => 'admin.product-groups.index', 'icon' => 'bi bi-dot', 'can' => 'products.groups'],
+                ['text' => 'Configurable Options', 'route' => 'admin.product-options.index', 'icon' => 'bi bi-dot', 'can' => 'products.options'],
+                ['text' => 'Addons', 'route' => 'admin.addons.index', 'icon' => 'bi bi-dot', 'can' => 'products.addons'],
+                ['text' => 'Product Bundles', 'route' => 'admin.product-bundles.index', 'icon' => 'bi bi-box-seam', 'can' => 'product-bundles.view'],
+                ['text' => 'Product Upgrade Paths', 'route' => 'admin.product-upgrades.index', 'icon' => 'bi bi-arrow-up-circle', 'can' => 'product-upgrades.view'],
+                ['text' => 'Upgrade Requests', 'route' => 'admin.upgrade-requests.index', 'icon' => 'bi bi-clipboard-check', 'can' => 'product-upgrades.view'],
             ],
         ],
         [
@@ -257,8 +261,8 @@ return [
             'icon' => 'bi bi-cart',
             'can' => 'orders.view',
             'submenu' => [
-                ['text' => 'All Orders', 'route' => 'admin.orders.index', 'icon' => 'bi bi-circle', 'can' => 'orders.view'],
-                ['text' => 'New Order', 'route' => 'admin.orders.create', 'icon' => 'bi bi-circle', 'can' => 'orders.create'],
+                ['text' => 'All Orders', 'route' => 'admin.orders.index', 'icon' => 'bi bi-dot', 'can' => 'orders.view'],
+                ['text' => 'New Order', 'route' => 'admin.orders.create', 'icon' => 'bi bi-dot', 'can' => 'orders.create'],
             ],
         ],
         [
@@ -266,9 +270,12 @@ return [
             'icon' => 'bi bi-hdd-rack',
             'can' => 'hosting.view',
             'submenu' => [
-                ['text' => 'All Products/Services', 'route' => 'admin.hosting.index', 'icon' => 'bi bi-circle', 'can' => 'hosting.view'],
-                ['text' => 'Servers', 'route' => 'admin.servers.index', 'icon' => 'bi bi-circle', 'can' => 'hosting.manage'],
-                ['text' => 'Server Groups', 'route' => 'admin.server-groups.index', 'icon' => 'bi bi-circle', 'can' => 'hosting.server_groups'],
+                ['text' => 'All Products/Services', 'route' => 'admin.hosting.index', 'icon' => 'bi bi-dot', 'can' => 'hosting.view'],
+                ['text' => 'Servers', 'route' => 'admin.servers.index', 'icon' => 'bi bi-dot', 'can' => 'hosting.manage'],
+                ['text' => 'Server Groups', 'route' => 'admin.server-groups.index', 'icon' => 'bi bi-dot', 'can' => 'hosting.server_groups'],
+                ['text' => 'Subscriptions', 'route' => 'admin.subscriptions.index', 'icon' => 'bi bi-arrow-repeat', 'can' => 'subscriptions.view'],
+                ['text' => 'Usage Records', 'route' => 'admin.usage-records.index', 'icon' => 'bi bi-activity', 'can' => 'usage-records.view'],
+                ['text' => 'Provisioning Events', 'route' => 'admin.provisioning-events.index', 'icon' => 'bi bi-clock-history', 'can' => 'provisioning-events.view'],
             ],
         ],
         [
@@ -276,11 +283,11 @@ return [
             'icon' => 'bi bi-globe',
             'can' => 'domains.view',
             'submenu' => [
-                ['text' => 'All Domains', 'route' => 'admin.domains.index', 'icon' => 'bi bi-circle', 'can' => 'domains.view'],
-                ['text' => 'Register Domain', 'route' => 'admin.domains.create', 'icon' => 'bi bi-circle', 'can' => 'domains.manage'],
-                ['text' => 'Domain Search', 'route' => 'admin.domains.search', 'icon' => 'bi bi-circle', 'can' => 'domains.manage'],
-                ['text' => 'Domain Pricing', 'route' => 'admin.domain-pricing.index', 'icon' => 'bi bi-circle', 'can' => 'domains.view'],
-                ['text' => 'Registrar Settings', 'route' => 'admin.registrar-settings.index', 'icon' => 'bi bi-circle', 'can' => 'settings.edit'],
+                ['text' => 'All Domains', 'route' => 'admin.domains.index', 'icon' => 'bi bi-dot', 'can' => 'domains.view'],
+                ['text' => 'Register Domain', 'route' => 'admin.domains.create', 'icon' => 'bi bi-dot', 'can' => 'domains.manage'],
+                ['text' => 'Domain Search', 'route' => 'admin.domains.search', 'icon' => 'bi bi-dot', 'can' => 'domains.manage'],
+                ['text' => 'Domain Pricing', 'route' => 'admin.domain-pricing.index', 'icon' => 'bi bi-dot', 'can' => 'domains.view'],
+                ['text' => 'SSL Certificates', 'route' => 'admin.ssl.index', 'icon' => 'bi bi-shield-lock', 'can' => 'hosting.view'],
             ],
         ],
 
@@ -290,8 +297,8 @@ return [
             'icon' => 'bi bi-receipt',
             'can' => 'invoices.view',
             'submenu' => [
-                ['text' => 'All Invoices', 'route' => 'admin.invoices.index', 'icon' => 'bi bi-circle', 'can' => 'invoices.view'],
-                ['text' => 'Create Invoice', 'route' => 'admin.invoices.create', 'icon' => 'bi bi-circle', 'can' => 'invoices.create'],
+                ['text' => 'All Invoices', 'route' => 'admin.invoices.index', 'icon' => 'bi bi-dot', 'can' => 'invoices.view'],
+                ['text' => 'Create Invoice', 'route' => 'admin.invoices.create', 'icon' => 'bi bi-dot', 'can' => 'invoices.create'],
             ],
         ],
         [
@@ -299,9 +306,8 @@ return [
             'icon' => 'bi bi-credit-card',
             'can' => 'payments.view',
             'submenu' => [
-                ['text' => 'All Payments', 'route' => 'admin.payments.index', 'icon' => 'bi bi-circle', 'can' => 'payments.view'],
-                ['text' => 'Record Payment', 'route' => 'admin.payments.create', 'icon' => 'bi bi-circle', 'can' => 'payments.create'],
-                ['text' => 'Gateway Settings', 'route' => 'admin.gateway-settings.index', 'icon' => 'bi bi-circle', 'can' => 'settings.edit'],
+                ['text' => 'All Payments', 'route' => 'admin.payments.index', 'icon' => 'bi bi-dot', 'can' => 'payments.view'],
+                ['text' => 'Record Payment', 'route' => 'admin.payments.create', 'icon' => 'bi bi-dot', 'can' => 'payments.create'],
             ],
         ],
         [
@@ -319,7 +325,7 @@ return [
         [
             'text' => 'Tax Rates',
             'route' => 'admin.tax-rates.index',
-            'icon' => 'bi bi-receipt',
+            'icon' => 'bi bi-percent',
             'can' => 'tax-rates.view',
         ],
 
@@ -329,9 +335,8 @@ return [
             'icon' => 'bi bi-ticket',
             'can' => 'tickets.view',
             'submenu' => [
-                ['text' => 'All Tickets', 'route' => 'admin.tickets.index', 'icon' => 'bi bi-circle', 'can' => 'tickets.view'],
-                ['text' => 'Create Ticket', 'route' => 'admin.tickets.create', 'icon' => 'bi bi-circle', 'can' => 'tickets.create'],
-                ['text' => 'Departments', 'route' => 'admin.ticket-departments.index', 'icon' => 'bi bi-circle', 'can' => 'settings.view'],
+                ['text' => 'All Tickets', 'route' => 'admin.tickets.index', 'icon' => 'bi bi-dot', 'can' => 'tickets.view'],
+                ['text' => 'Create Ticket', 'route' => 'admin.tickets.create', 'icon' => 'bi bi-dot', 'can' => 'tickets.create'],
             ],
         ],
         [
@@ -339,8 +344,8 @@ return [
             'icon' => 'bi bi-book',
             'can' => 'kb.view',
             'submenu' => [
-                ['text' => 'All Articles', 'route' => 'admin.kb.index', 'icon' => 'bi bi-circle', 'can' => 'kb.view'],
-                ['text' => 'Add Article', 'route' => 'admin.kb.create', 'icon' => 'bi bi-circle', 'can' => 'kb.create'],
+                ['text' => 'All Articles', 'route' => 'admin.kb.index', 'icon' => 'bi bi-dot', 'can' => 'kb.view'],
+                ['text' => 'Add Article', 'route' => 'admin.kb.create', 'icon' => 'bi bi-dot', 'can' => 'kb.create'],
             ],
         ],
         [
@@ -348,10 +353,10 @@ return [
             'icon' => 'bi bi-chat-dots',
             'can' => 'chat.view',
             'submenu' => [
-                ['text' => 'Conversations', 'route' => 'admin.chat.index', 'icon' => 'bi bi-circle', 'can' => 'chat.view'],
-                ['text' => 'Saved Replies', 'route' => 'admin.chat.canned-replies.index', 'icon' => 'bi bi-circle', 'can' => 'chat.view'],
-                ['text' => 'Satisfaction', 'route' => 'admin.chat.satisfaction', 'icon' => 'bi bi-circle', 'can' => 'chat.manage'],
-                ['text' => 'Chat Settings', 'route' => 'admin.chat.settings.edit', 'icon' => 'bi bi-circle', 'can' => 'chat.manage'],
+                ['text' => 'Conversations', 'route' => 'admin.chat.index', 'icon' => 'bi bi-dot', 'can' => 'chat.view'],
+                ['text' => 'Saved Replies', 'route' => 'admin.chat.canned-replies.index', 'icon' => 'bi bi-dot', 'can' => 'chat.view'],
+                ['text' => 'Satisfaction', 'route' => 'admin.chat.satisfaction', 'icon' => 'bi bi-dot', 'can' => 'chat.manage'],
+                ['text' => 'Chat Settings', 'route' => 'admin.chat.settings.edit', 'icon' => 'bi bi-dot', 'can' => 'chat.manage'],
             ],
         ],
 
@@ -361,9 +366,9 @@ return [
             'icon' => 'bi bi-bar-chart',
             'can' => 'reports.view',
             'submenu' => [
-                ['text' => 'Sales Report', 'route' => 'admin.reports.sales', 'icon' => 'bi bi-circle', 'can' => 'reports.view'],
-                ['text' => 'Revenue Report', 'route' => 'admin.reports.revenue', 'icon' => 'bi bi-circle', 'can' => 'reports.view'],
-                ['text' => 'Export', 'route' => 'admin.reports.export', 'icon' => 'bi bi-circle', 'can' => 'reports.export'],
+                ['text' => 'Sales Report', 'route' => 'admin.reports.sales', 'icon' => 'bi bi-dot', 'can' => 'reports.view'],
+                ['text' => 'Revenue Report', 'route' => 'admin.reports.revenue', 'icon' => 'bi bi-dot', 'can' => 'reports.view'],
+                ['text' => 'Export', 'route' => 'admin.reports.export', 'icon' => 'bi bi-dot', 'can' => 'reports.export'],
             ],
         ],
         [
@@ -375,57 +380,44 @@ return [
 
         ['header' => 'INFRASTRUCTURE', 'can' => 'admin.panel'],
         [
-            'text' => 'Datacenters',
-            'route' => 'admin.datacenters.index',
+            'text' => 'Facilities',
             'icon' => 'bi bi-building',
-            'can' => 'datacenters.view',
-        ],
-        [
-            'text' => 'Racks',
-            'route' => 'admin.racks.index',
-            'icon' => 'bi bi-hdd-stack',
-            'can' => 'racks.view',
-        ],
-        [
-            'text' => 'IP Manager',
-            'icon' => 'bi bi-diagram-3',
-            'can' => 'ip-subnets.view',
+            'can' => 'admin.panel',
             'submenu' => [
-                ['text' => 'Subnets', 'route' => 'admin.ip-subnets.index', 'icon' => 'bi bi-circle', 'can' => 'ip-subnets.view'],
-                ['text' => 'IP Addresses', 'route' => 'admin.ip-addresses.index', 'icon' => 'bi bi-circle', 'can' => 'ip-addresses.view'],
-                ['text' => 'VLANs', 'route' => 'admin.vlans.index', 'icon' => 'bi bi-circle', 'can' => 'vlans.view'],
-                ['text' => 'DNS Zones', 'route' => 'admin.dns-zones.index', 'icon' => 'bi bi-circle', 'can' => 'dns-zones.view'],
+                ['text' => 'Datacenters', 'route' => 'admin.datacenters.index', 'icon' => 'bi bi-building', 'can' => 'datacenters.view'],
+                ['text' => 'Racks', 'route' => 'admin.racks.index', 'icon' => 'bi bi-hdd-stack', 'can' => 'racks.view'],
             ],
         ],
         [
-            'text' => 'Inventory',
-            'route' => 'admin.inventory-assets.index',
+            'text' => 'Network',
+            'icon' => 'bi bi-diagram-3',
+            'can' => 'admin.panel',
+            'submenu' => [
+                ['text' => 'Subnets', 'route' => 'admin.ip-subnets.index', 'icon' => 'bi bi-dot', 'can' => 'ip-subnets.view'],
+                ['text' => 'IP Addresses', 'route' => 'admin.ip-addresses.index', 'icon' => 'bi bi-dot', 'can' => 'ip-addresses.view'],
+                ['text' => 'VLANs', 'route' => 'admin.vlans.index', 'icon' => 'bi bi-dot', 'can' => 'vlans.view'],
+                ['text' => 'DNS Zones', 'route' => 'admin.dns-zones.index', 'icon' => 'bi bi-dot', 'can' => 'dns-zones.view'],
+            ],
+        ],
+        [
+            'text' => 'Assets',
             'icon' => 'bi bi-boxes',
-            'can' => 'inventory.view',
+            'can' => 'admin.panel',
+            'submenu' => [
+                ['text' => 'Inventory', 'route' => 'admin.inventory-assets.index', 'icon' => 'bi bi-box-seam', 'can' => 'inventory.view'],
+                ['text' => 'Connections', 'route' => 'admin.port-connections.index', 'icon' => 'bi bi-plug', 'can' => 'ports.view'],
+                ['text' => 'Asset Relationships', 'route' => 'admin.asset-relationships.index', 'icon' => 'bi bi-link-45deg', 'can' => 'asset-relationships.view'],
+            ],
         ],
         [
-            'text' => 'Connections',
-            'route' => 'admin.port-connections.index',
-            'icon' => 'bi bi-plug',
-            'can' => 'ports.view',
-        ],
-        [
-            'text' => 'Licenses',
-            'route' => 'admin.licenses.index',
-            'icon' => 'bi bi-key',
-            'can' => 'licenses.view',
-        ],
-        [
-            'text' => 'Resource Pools',
-            'route' => 'admin.resource-pools.index',
-            'icon' => 'bi bi-collection',
-            'can' => 'resource-pools.view',
-        ],
-        [
-            'text' => 'Resource Types',
-            'route' => 'admin.resource-types.index',
-            'icon' => 'bi bi-cpu',
-            'can' => 'resource-types.view',
+            'text' => 'Licensing & Capacity',
+            'icon' => 'bi bi-layers',
+            'can' => 'admin.panel',
+            'submenu' => [
+                ['text' => 'Licenses', 'route' => 'admin.licenses.index', 'icon' => 'bi bi-key', 'can' => 'licenses.view'],
+                ['text' => 'Resource Pools', 'route' => 'admin.resource-pools.index', 'icon' => 'bi bi-collection', 'can' => 'resource-pools.view'],
+                ['text' => 'Resource Types', 'route' => 'admin.resource-types.index', 'icon' => 'bi bi-cpu', 'can' => 'resource-types.view'],
+            ],
         ],
 
         ['header' => 'SYSTEM', 'can' => 'admin.panel'],
@@ -448,6 +440,24 @@ return [
             'can' => 'settings.view',
         ],
         [
+            'text' => 'Ticket Departments',
+            'route' => 'admin.ticket-departments.index',
+            'icon' => 'bi bi-diagram-2',
+            'can' => 'settings.view',
+        ],
+        [
+            'text' => 'Gateway Settings',
+            'route' => 'admin.gateway-settings.index',
+            'icon' => 'bi bi-credit-card-2-front',
+            'can' => 'settings.view',
+        ],
+        [
+            'text' => 'Registrar Settings',
+            'route' => 'admin.registrar-settings.index',
+            'icon' => 'bi bi-globe2',
+            'can' => 'settings.view',
+        ],
+        [
             'text' => 'Logs',
             'icon' => 'bi bi-journal-text',
             // Gate-only parent: every staff member sees the Logs group; each
@@ -455,12 +465,12 @@ return [
             // child's permission would hide the rest from narrower roles.
             'can' => 'admin.panel',
             'submenu' => [
-                ['text' => 'Email Logs', 'route' => 'admin.email-logs.index', 'icon' => 'bi bi-circle', 'can' => 'email.view'],
-                ['text' => 'Activity Log', 'route' => 'admin.activity-log.index', 'icon' => 'bi bi-circle', 'can' => 'activity.view'],
-                ['text' => 'Audit Trail', 'route' => 'admin.audit-log.index', 'icon' => 'bi bi-circle', 'can' => 'audit.view'],
-                ['text' => 'Module Logs', 'route' => 'admin.module-logs.index', 'icon' => 'bi bi-circle', 'can' => 'module_logs.view'],
-                ['text' => 'Domain Logs', 'route' => 'admin.domain-logs.index', 'icon' => 'bi bi-circle', 'can' => 'domain_logs.view'],
-                ['text' => 'Consent Log', 'route' => 'admin.consent-log.index', 'icon' => 'bi bi-circle', 'can' => 'consent.view'],
+                ['text' => 'Email Logs', 'route' => 'admin.email-logs.index', 'icon' => 'bi bi-dot', 'can' => 'email.view'],
+                ['text' => 'Activity Log', 'route' => 'admin.activity-log.index', 'icon' => 'bi bi-dot', 'can' => 'activity.view'],
+                ['text' => 'Audit Trail', 'route' => 'admin.audit-log.index', 'icon' => 'bi bi-dot', 'can' => 'audit.view'],
+                ['text' => 'Module Logs', 'route' => 'admin.module-logs.index', 'icon' => 'bi bi-dot', 'can' => 'module_logs.view'],
+                ['text' => 'Domain Logs', 'route' => 'admin.domain-logs.index', 'icon' => 'bi bi-dot', 'can' => 'domain_logs.view'],
+                ['text' => 'Consent Log', 'route' => 'admin.consent-log.index', 'icon' => 'bi bi-dot', 'can' => 'consent.view'],
             ],
         ],
         [
@@ -575,6 +585,7 @@ return [
     'filters' => [
         RoleFilter::class,
         GateFilter::class,
+        CanFilter::class,
         RouteExistsFilter::class,
         HrefFilter::class,
         NotificationBadgeFilter::class,

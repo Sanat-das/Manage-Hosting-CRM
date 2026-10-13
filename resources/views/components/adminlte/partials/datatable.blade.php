@@ -173,7 +173,7 @@
             <thead>
                 <tr>
                     @if ($showCheckboxes)
-                        <th style="width: 40px; min-width: 40px; max-width: 40px;" data-col-index="__check" class="text-center">
+                        <th style="width: 40px; min-width: 40px; max-width: 40px;" data-col-index="__check" class="text-center" scope="col">
                             <input type="checkbox" class="form-check-input" data-grid-select-all aria-label="Select all">
                         </th>
                     @endif
@@ -192,7 +192,7 @@
                             }
                             $colClass = $column['class'] ?? '';
                         @endphp
-                        <th @if($colClass !== '') class="{{ $colClass }}" @endif data-col-index="{{ $idx }}" @if($isSorted) aria-sort="{{ $currentDirection === 'asc' ? 'ascending' : 'descending' }}" @endif>
+                        <th @if($colClass !== '') class="{{ $colClass }}" @endif data-col-index="{{ $idx }}" scope="col" @if($isSorted) aria-sort="{{ $currentDirection === 'asc' ? 'ascending' : 'descending' }}" @endif>
                             @if ($sortUrl)
                                 <a href="{{ $sortUrl }}" class="grid-sort @if($isSorted) is-active @endif">
                                     <span>{{ $column['label'] }}</span>

@@ -15,6 +15,10 @@ import { OverlayScrollbars } from 'overlayscrollbars'
 // Layout, accessibility). The data-lte-* API is wired on DOMContentLoaded.
 import 'admin-lte'
 
+// Dashboard widgets — resizable / switchable cards. Self-guarding: no-ops on
+// any page without a [data-dashboard-widget-grid].
+import './dashboard-widgets'
+
 /**
  * Initialise an optional plugin only when its global is present.
  * Plugin libraries (ApexCharts, jsVectorMap, FullCalendar, Sortable) are
@@ -501,6 +505,21 @@ function initTreeviewA11y() {
   })
 }
 
+// --- Sidebar toggle a11y -----------------------------------------------------
+// PushMenu only mutates the `sidebar-collapse` class on <body>, so that class
+// is the only honest source of truth for whether the sidebar is expanded.
+function initSidebarToggleA11y() {
+  const toggle = document.querySelector('[data-lte-toggle="sidebar"]')
+  if (!toggle || typeof MutationObserver === 'undefined') return
+  const sync = () => {
+    const collapsed = document.body.classList.contains('sidebar-collapse')
+    toggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true')
+  }
+  const observer = new MutationObserver(sync)
+  observer.observe(document.body, { attributes: true, attributeFilter: ['class'] })
+  sync()
+}
+
 // ---------------------------------------------------------------------------
 // Sidebar: keep the active menu item centered in the viewport
 // ---------------------------------------------------------------------------
@@ -623,6 +642,7 @@ whenReady(() => {
   initCalendars()
   initSortables()
   initTreeviewA11y()
+  initSidebarToggleA11y()
   initResizableGrids()
   initGridResetControls()
   initGridScrollableHint()

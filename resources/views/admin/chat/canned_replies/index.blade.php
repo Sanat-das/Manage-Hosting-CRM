@@ -68,13 +68,11 @@
                                class="btn btn-sm btn-outline-secondary btn-icon" title="Edit" aria-label="Edit">
                                 <i class="bi bi-pencil"></i>
                             </a>
-                            <form method="POST" action="{{ route('admin.chat.canned-replies.destroy', $reply) }}"
-                                  class="d-inline" onsubmit="return confirm('Delete this saved reply?');">
-                                @csrf
-                                @method('DELETE')
-                                <button type="submit" class="btn btn-sm btn-outline-danger btn-icon"
-                                        title="Delete" aria-label="Delete"><i class="bi bi-trash"></i></button>
-                            </form>
+                            <button type="button" class="btn btn-sm btn-outline-danger btn-icon"
+                                    title="Delete" aria-label="Delete"
+                                    data-bs-toggle="modal" data-bs-target="#delete-reply-{{ $reply->id }}">
+                                <i class="bi bi-trash"></i>
+                            </button>
                         @else
                             <span class="text-muted small">Shared</span>
                         @endif
@@ -87,4 +85,17 @@
 
         <x-slot name="pagination">{{ $replies->links() }}</x-slot>
     </x-adminlte.partials.datatable>
+
+    @foreach ($replies as $reply)
+        @if ($reply->isShared() ? $canManage : true)
+            <x-adminlte.partials.confirm-modal
+                :id="'delete-reply-' . $reply->id"
+                title="Delete saved reply"
+                :message="'Delete ' . $reply->title . '? This permanently removes the saved reply. Operators will no longer be able to insert it into a chat.'"
+                :action="route('admin.chat.canned-replies.destroy', $reply)"
+                method="DELETE"
+                confirm-label="Delete reply"
+            />
+        @endif
+    @endforeach
 @stop

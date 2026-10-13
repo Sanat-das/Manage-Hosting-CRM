@@ -506,6 +506,24 @@
         />
     @endforeach
 
+    {{-- One discard-changes guard for the three in-page actions that reload
+         the page (option attach, module toggle / config save, template
+         restriction save). The JS opens it from a hidden data-api trigger —
+         the bundled build exposes no window.bootstrap object — and the
+         modal's form submit is the confirm path; the action itself stays the
+         flow's own fetch. --}}
+    <button type="button" id="discard-changes-trigger" class="d-none"
+            data-bs-toggle="modal" data-bs-target="#discard-changes-modal"></button>
+    <x-adminlte.partials.confirm-modal
+        id="discard-changes-modal"
+        title="Discard unsaved changes?"
+        message="You have unsaved changes to this product. Continuing with this action will discard them."
+        method="POST"
+        :action="'#'"
+        confirm-label="Discard changes and continue"
+        confirm-theme="warning"
+    />
+
     @push('js')
         <script>
             document.addEventListener('DOMContentLoaded', function () {
@@ -566,16 +584,48 @@
                     e.returnValue = '';
                 });
 
-                // Asked before an action that reloads the page: confirming
-                // clears the flag so beforeunload does not prompt twice.
-                var confirmDiscard = function () {
-                    if (!dirty) return true;
-                    if (!window.confirm('You have unsaved changes to this product. Continuing will discard them. Continue?')) {
-                        return false;
-                    }
-                    dirty = false;
+                // Asked before an action that reloads the page. The answer is
+                // async now — the shared confirm modal opens instead of the
+                // native prompt — and confirming clears the dirty flag so the
+                // beforeunload guard below does not prompt a second time.
+                var discardModal = document.getElementById('discard-changes-modal');
+                var discardTrigger = document.getElementById('discard-changes-trigger');
+                var discardForm = discardModal ? discardModal.querySelector('form') : null;
+                var discardConfirmBtn = discardModal ? discardModal.querySelector('button[type="submit"]') : null;
+                var discardCancelBtn = discardModal ? discardModal.querySelector('.modal-footer [data-bs-dismiss="modal"]') : null;
+                var discardResolve = null;
+                var discardLabel = '';
 
-                    return true;
+                if (discardModal) {
+                    // Opened from JS, so there is no relatedTarget: the flow
+                    // about to run names the action on the confirm button.
+                    discardModal.addEventListener('show.bs.modal', function () {
+                        if (discardConfirmBtn && discardLabel) discardConfirmBtn.textContent = discardLabel;
+                    });
+
+                    // The form never navigates (action="#"): submitting it is
+                    // the confirm path, which releases the pending flow.
+                    if (discardForm) {
+                        discardForm.addEventListener('submit', function (ev) {
+                            ev.preventDefault();
+                            dirty = false;
+
+                            var resolve = discardResolve;
+                            discardResolve = null;
+                            if (discardCancelBtn) discardCancelBtn.click();
+                            if (resolve) resolve(true);
+                        });
+                    }
+                }
+
+                var confirmDiscard = function (actionLabel) {
+                    if (!dirty) return Promise.resolve(true);
+
+                    return new Promise(function (resolve) {
+                        discardResolve = resolve;
+                        discardLabel = actionLabel || '';
+                        discardTrigger.click();
+                    });
                 };
 
                 var attachBtn = document.getElementById('option-attach-btn');
@@ -584,18 +634,21 @@
                 if (attachBtn && select) {
                     attachBtn.addEventListener('click', function () {
                         if (!select.value) return;
-                        if (!confirmDiscard()) return;
 
-                        var data = new FormData();
-                        data.append('_token', document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') ?? '');
-                        data.append('option_group_id', select.value);
-                        var editable = document.getElementById('new-link-customer-editable');
-                        data.append('customer_editable', editable && editable.checked ? '1' : '0');
+                        confirmDiscard('Discard changes and attach').then(function (proceed) {
+                            if (!proceed) return;
 
-                        fetch('{{ route('admin.products.options.attach', $product) }}', { method: 'POST', body: data })
-                            .finally(function () {
-                                window.location.href = '{{ route('admin.products.edit', $product) }}';
-                            });
+                            var data = new FormData();
+                            data.append('_token', document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') ?? '');
+                            data.append('option_group_id', select.value);
+                            var editable = document.getElementById('new-link-customer-editable');
+                            data.append('customer_editable', editable && editable.checked ? '1' : '0');
+
+                            fetch('{{ route('admin.products.options.attach', $product) }}', { method: 'POST', body: data })
+                                .finally(function () {
+                                    window.location.href = '{{ route('admin.products.edit', $product) }}';
+                                });
+                        });
                     });
                 }
 
@@ -606,13 +659,15 @@
                 // they render after we navigate back to the edit page.
                 var csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') ?? '';
                 var moduleAction = function (url, method, data) {
-                    if (!confirmDiscard()) return;
+                    confirmDiscard('Discard changes and continue').then(function (proceed) {
+                        if (!proceed) return;
 
-                    data.append('_token', csrf);
-                    fetch(url, { method: method, body: data, redirect: 'manual' })
-                        .finally(function () {
-                            window.location.href = '{{ route('admin.products.edit', $product) }}';
-                        });
+                        data.append('_token', csrf);
+                        fetch(url, { method: method, body: data, redirect: 'manual' })
+                            .finally(function () {
+                                window.location.href = '{{ route('admin.products.edit', $product) }}';
+                            });
+                    });
                 };
 
                 document.querySelectorAll('[data-module-toggle]').forEach(function (btn) {
@@ -645,26 +700,29 @@
                     if (!saveBtn) return;
 
                     saveBtn.addEventListener('click', function () {
-                        if (!confirmDiscard()) return;
-                        var modeAll = document.getElementById(prefix + '-mode-all');
-                        var isAll = modeAll && modeAll.checked;
-                        var errorEl = document.getElementById(prefix + '-templates-error');
-                        if (errorEl) { errorEl.style.display = 'none'; errorEl.textContent = ''; }
-                        if (!isAll) {
-                            var checked = card.querySelectorAll('.' + prefix + '-template-checkbox:checked');
-                            if (checked.length === 0) {
-                                if (errorEl) { errorEl.textContent = 'Select at least one template or choose "All curated templates".'; errorEl.style.display = 'block'; }
-                                return;
+                        confirmDiscard('Discard changes and save').then(function (proceed) {
+                            if (!proceed) return;
+
+                            var modeAll = document.getElementById(prefix + '-mode-all');
+                            var isAll = modeAll && modeAll.checked;
+                            var errorEl = document.getElementById(prefix + '-templates-error');
+                            if (errorEl) { errorEl.style.display = 'none'; errorEl.textContent = ''; }
+                            if (!isAll) {
+                                var checked = card.querySelectorAll('.' + prefix + '-template-checkbox:checked');
+                                if (checked.length === 0) {
+                                    if (errorEl) { errorEl.textContent = 'Select at least one template or choose "All curated templates".'; errorEl.style.display = 'block'; }
+                                    return;
+                                }
                             }
-                        }
-                        var data = new FormData();
-                        data.append('_token', csrf);
-                        data.append('_method', 'PUT');
-                        if (!isAll) {
-                            card.querySelectorAll('.' + prefix + '-template-checkbox:checked').forEach(function (cb) { data.append('allowed_templates[]', cb.value); });
-                        }
-                        fetch(saveBtn.dataset.url, { method: 'POST', body: data, redirect: 'manual' })
-                            .finally(function () { window.location.href = '{{ route('admin.products.edit', $product) }}'; });
+                            var data = new FormData();
+                            data.append('_token', csrf);
+                            data.append('_method', 'PUT');
+                            if (!isAll) {
+                                card.querySelectorAll('.' + prefix + '-template-checkbox:checked').forEach(function (cb) { data.append('allowed_templates[]', cb.value); });
+                            }
+                            fetch(saveBtn.dataset.url, { method: 'POST', body: data, redirect: 'manual' })
+                                .finally(function () { window.location.href = '{{ route('admin.products.edit', $product) }}'; });
+                        });
                     });
                 });
 
