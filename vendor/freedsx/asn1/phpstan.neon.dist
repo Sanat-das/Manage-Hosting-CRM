@@ -1,6 +1,0 @@
-parameters:
-    level: 4
-    paths:
-        - %currentWorkingDirectory%/src
-    ignoreErrors:
-        - '#Unsafe usage of new static#'

@@ -1,1 +1,0 @@
-    Route::view('faq', 'adminlte.faq.index')->name('faq.index');

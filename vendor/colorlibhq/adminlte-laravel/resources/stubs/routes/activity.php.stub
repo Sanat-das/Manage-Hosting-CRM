@@ -1,1 +1,0 @@
-    Route::get('activity', [\App\Http\Controllers\AdminLte\ActivityController::class, 'index'])->name('activity.index');

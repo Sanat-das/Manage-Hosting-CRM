@@ -1,2 +1,0 @@
-    Route::get('settings', [\App\Http\Controllers\AdminLte\SettingsController::class, 'edit'])->name('settings.edit');
-    Route::put('settings', [\App\Http\Controllers\AdminLte\SettingsController::class, 'update'])->name('settings.update');
