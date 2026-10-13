@@ -22,6 +22,8 @@
 /.omo/
 /.openchamber/
 /.playwright-mcp/
+/.opencode/reports/
+/.claude/skills/
 
 # Local debug scripts
 _debug_fk.php

@@ -1,4 +1,0 @@
-﻿No syntax errors detected in app/Services/InvoiceEmailService.php
-
-No syntax errors detected in tests/Feature/InvoiceEmailAttachmentTest.php
-
