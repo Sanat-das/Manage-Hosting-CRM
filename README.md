@@ -14,7 +14,7 @@ Prerequisites: PHP ^8.3, Composer, Node/npm.
 
 ```bash
 1. git clone https://github.com/Sanat-das/Manage-Hosting-CRM.git
-2. cd Manage-Hosting-CRM/app   # Laravel app lives in app/
+2. cd Manage-Hosting-CRM      # the clone root is the Laravel app root
 3. composer install
 4. npm ci && npm run build
 5. Copy-Item .env.example .env  # Windows
@@ -23,6 +23,8 @@ Prerequisites: PHP ^8.3, Composer, Node/npm.
 7. php artisan migrate
 8. php artisan serve
 ```
+
+Alternatively `composer run setup` from the clone root performs steps 3-7 in one go.
 
 SQLite gotcha: `.env.example` defaults to sqlite with
 `DB_DATABASE=:memory:`, which cannot be shared across processes. For local
