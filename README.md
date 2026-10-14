@@ -24,7 +24,8 @@ Prerequisites: PHP ^8.3, Composer, Node/npm.
 8. php artisan serve
 ```
 
-Alternatively `composer run setup` from the clone root performs steps 3-7 in one go.
+Alternatively `composer run setup` from the clone root installs dependencies, seeds
+`.env`, generates the app key, migrates, builds the front-end and links storage.
 
 SQLite gotcha: `.env.example` defaults to sqlite with
 `DB_DATABASE=:memory:`, which cannot be shared across processes. For local

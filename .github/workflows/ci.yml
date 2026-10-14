@@ -7,6 +7,9 @@ on:
 jobs:
   tests:
     runs-on: ubuntu-latest
+    # process-timeout 0 removed composer's 300s kill, so bound the job here
+    # instead - a hung child must fail in minutes, not at the 360-min limit.
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - uses: shivammathur/setup-php@v2
