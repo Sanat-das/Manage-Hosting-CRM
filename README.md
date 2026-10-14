@@ -7,6 +7,30 @@
 <a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
 </p>
 
+## Setup — fresh clone
+
+`vendor/` and `public/build/` are git-ignored and regenerated per machine.
+Prerequisites: PHP ^8.3, Composer, Node/npm.
+
+```bash
+1. git clone https://github.com/Sanat-das/Manage-Hosting-CRM.git
+2. cd Manage-Hosting-CRM/app   # Laravel app lives in app/
+3. composer install
+4. npm ci && npm run build
+5. Copy-Item .env.example .env  # Windows
+   # cp .env.example .env       # macOS / Linux
+6. php artisan key:generate
+7. php artisan migrate
+8. php artisan serve
+```
+
+SQLite gotcha: `.env.example` defaults to sqlite with
+`DB_DATABASE=:memory:`, which cannot be shared across processes. For local
+dev set `DB_DATABASE` to a file path (e.g. `database/database.sqlite`,
+create the empty file first if needed) or configure MySQL.
+
+Note: on a fresh DB `/` redirects to the `/install` wizard.
+
 ## Billing & Recurring
 
 Orders are **one-time transactions** (WHMCS model); renewals are maintained by
