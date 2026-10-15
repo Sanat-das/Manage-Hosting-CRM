@@ -152,20 +152,48 @@ if grep -q 'Composer dependencies are not installed' "$CLONE/public/index.php" 2
 else
   fail "cloned public/index.php has no missing-vendor guard"
 fi
-# 5) GUARD PROOF: before any install, the clone must answer with instructions.
-# This is the exact state a clueless `git clone` produces.
+# 5) GUARD PROOF: before any install, the clone must never leave a clueless
+# cloner at a dead end. This is the exact state a `git clone` produces.
+# Two acceptable answers, both proving it: either the machine cannot
+# self-install and the front controller answers HTTP 500 with the printed
+# instructions, or it can and answers a 302 to public/setup.php, which then
+# offers the same instructions whether it installs or not.
 if serve; then
   CODE=$(fetch "http://127.0.0.1:$PORT/")
-  if [ "$CODE" = "500" ]; then
-    pass "pre-install GET / answers HTTP 500 (guard, not a raw PHP fatal)"
-  else
-    fail "pre-install GET / returned HTTP $CODE, expected 500"
-  fi
+  case "$CODE" in
+    500)
+      pass "pre-install GET / answers HTTP 500 with instructions (guard, not a raw PHP fatal)"
+      ;;
+    302)
+      pass "pre-install GET / answers HTTP 302 to the browser installer (guard, not a raw PHP fatal)"
+      CODE=$(fetch "http://127.0.0.1:$PORT/setup.php")
+      if [ "$CODE" = "200" ]; then
+        pass "the installer page answers HTTP 200"
+      else
+        fail "the installer page returned HTTP $CODE, expected 200"
+      fi
+      ;;
+    *)
+      fail "pre-install GET / returned HTTP $CODE, expected 500 or 302"
+      ;;
+  esac
   if body_has 'composer install'; then
-    pass "the pre-install 500 body tells the user to run composer install"
+    pass "the pre-install answer tells the user to run composer install"
   else
-    fail "the pre-install 500 body does not mention composer install"
+    fail "the pre-install answer does not mention composer install"
   fi
+  # Neither shape may let PHP post a raw fatal at the browser.
+  case "$BODY" in
+    *"Failed opening required"*)
+      fail "the pre-install answer shows a PHP fatal (Failed opening required)"
+      ;;
+    *"Fatal error"*)
+      fail "the pre-install answer shows a PHP fatal (Fatal error)"
+      ;;
+    *)
+      pass "the pre-install answer shows no PHP fatal"
+      ;;
+  esac
 else
   fail "could not serve the pre-install clone on a free localhost port"
 fi

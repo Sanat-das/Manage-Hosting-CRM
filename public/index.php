@@ -13,6 +13,26 @@ if (file_exists($maintenance = __DIR__.'/../storage/framework/maintenance.php'))
 // Register the Composer autoloader...
 if (! is_file(__DIR__.'/../vendor/autoload.php')) {
     // vendor/ is gitignored, so a fresh clone hits this instead of a raw PHP fatal.
+    //
+    // A machine that can start external processes is handed to public/setup.php,
+    // which installs the vendor/ dependencies itself and redirects back here
+    // once they exist. Its probes are the same cheap ones below (no tool
+    // resolution, so this redirect stays a single extra request at most), and
+    // setup.php is where the concurrency lock lives.
+    //
+    // A machine that cannot self-install keeps the printed instructions below:
+    // they are the fallback contract for a clone on a host with no shell.
+    $disabledFunctions = array_filter(array_map('trim', explode(',', (string) ini_get('disable_functions'))));
+
+    if (is_file(__DIR__.'/setup.php')
+        && function_exists('proc_open')
+        && ! in_array('proc_open', $disabledFunctions, true)
+        && is_writable(dirname(__DIR__))
+    ) {
+        header('Location: ./setup.php');
+        exit;
+    }
+
     http_response_code(500);
     header('Content-Type: text/plain; charset=utf-8');
 
