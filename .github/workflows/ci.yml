@@ -35,3 +35,37 @@ jobs:
         # Fails when .opencode/agentic-workflows.json references agents, skills,
         # servers, or workflow command files that no longer exist.
         run: node .opencode/scripts/validate-workflows.mjs
+
+  fresh-clone:
+    runs-on: ubuntu-latest
+    # Clones from origin, installs and boots from scratch, so it needs longer
+    # than the test job: composer install + npm install + vite build, on a cold
+    # runner, on every push.
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: sqlite, pdo_sqlite, mbstring, bcmath, gd, zip, curl, dom, fileinfo, xml, xmlwriter, iconv
+          coverage: none
+          ini-values: memory_limit=512M
+      # A clone has no vendor/ and no .env by design: this job proves the
+      # documented path from "git clone" to a booting installer, so nothing
+      # that breaks a fresh clone can merge.
+      - name: Fresh clone smoke (the ref that triggered this run)
+        # Smoke the ref that triggered the run - the pull_request merge ref, or
+        # the ref just pushed. Without SMOKE_REF the script would clone the
+        # remote's default branch and certify main on every run, green while the
+        # broken branch sits untested in this checkout.
+        run: bash scripts/fresh-clone-smoke.sh
+        env:
+          SMOKE_REPO_URL: ${{ github.server_url }}/${{ github.repository }}
+          SMOKE_REF: ${{ github.event_name == 'pull_request' && format('refs/pull/{0}/merge', github.event.number) || github.ref }}
+          # A scratch clone starts with no credentials, and GitHub serves the
+          # hidden refs/pull/N/merge refs only when authenticated. Inject auth
+          # through the git environment instead of the URL, because the script
+          # echoes $SMOKE_REPO_URL into the log on every run.
+          GIT_CONFIG_COUNT: 1
+          GIT_CONFIG_KEY_0: http.https://github.com/.extraheader
+          GIT_CONFIG_VALUE_0: "AUTHORIZATION: bearer ${{ github.token }}"
