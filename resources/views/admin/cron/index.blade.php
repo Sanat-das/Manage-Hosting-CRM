@@ -132,7 +132,7 @@
                 </p>
             @endif
             <p class="mb-1" style="font-size: var(--text-sm);">Every minute, a cron entry (or Windows Task Scheduler task) must run:</p>
-            <pre class="mb-0 p-2 rounded border" style="background: var(--color-bg-muted); color: var(--color-text); border-color: var(--color-border); font-size: var(--text-sm); overflow-wrap: anywhere;"><code>php artisan schedule:run</code></pre>
+            <pre class="mb-0 p-2 rounded border" style="background: var(--color-bg-muted); color: var(--color-text); border-color: var(--color-border); font-size: var(--text-sm); overflow-wrap: anywhere;"><code>{{ $phpBinary }} artisan schedule:run</code></pre>
         </div>
     @else
         <div class="alert alert-success d-flex align-items-center gap-2" role="alert" style="border-radius: var(--radius-md); border-left: 3px solid var(--color-success); box-shadow: var(--shadow-sm);">

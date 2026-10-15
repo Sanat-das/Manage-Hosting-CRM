@@ -3,9 +3,12 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\CronTask;
 use App\Models\CronTaskRun;
 use App\Services\Cron\CronTaskRegistry;
 use App\Services\Cron\ScheduleInspector;
+use App\Services\System\UpdateService;
+use Cron\CronExpression;
 use Illuminate\Console\Scheduling\CallbackEvent;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Http\RedirectResponse;
@@ -55,6 +58,7 @@ class CronJobController extends Controller
             'schedulerHealthy' => $this->inspector->schedulerIsHealthy(),
             'staleAfter' => ScheduleInspector::STALE_AFTER_SECONDS,
             'paused' => (bool) Cache::get('illuminate:schedule:paused', false),
+            'phpBinary' => UpdateService::phpBinary(),
         ]);
     }
 
@@ -137,7 +141,7 @@ class CronJobController extends Controller
             $attributes['enabled'] = (bool) $validated['enabled'];
         }
 
-        \App\Models\CronTask::query()->updateOrCreate(
+        CronTask::query()->updateOrCreate(
             ['key' => $key],
             $attributes,
         );
@@ -148,8 +152,8 @@ class CronJobController extends Controller
     private function isValidCronExpression(string $expression): bool
     {
         // Prefer the same parser Laravel uses; fall back to a minimal shape check.
-        if (class_exists(\Cron\CronExpression::class)) {
-            return \Cron\CronExpression::isValidExpression($expression);
+        if (class_exists(CronExpression::class)) {
+            return CronExpression::isValidExpression($expression);
         }
 
         return preg_match('/^(\S+\s+){4}\S+$/', $expression) === 1;

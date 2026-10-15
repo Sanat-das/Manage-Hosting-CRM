@@ -60,7 +60,7 @@ final class AppInfoCachingTest extends TestCase
     private function adminUser(): User
     {
         $admin = User::factory()->create(['role' => 'admin']);
-        $role  = Role::firstOrCreate(['name' => 'admin'], ['label' => 'Administrator']);
+        $role = Role::firstOrCreate(['name' => 'admin'], ['label' => 'Administrator']);
         $admin->roles()->syncWithoutDetaching($role);
 
         $perm = Permission::firstOrCreate(['name' => 'system.view'], ['label' => 'View System & About']);
@@ -112,6 +112,7 @@ final class AppInfoCachingTest extends TestCase
         $this->assertArrayHasKey('scheduler', $info['health']);
         $this->assertArrayHasKey('preflight', $info['health']);
         $this->assertArrayHasKey('php', $info['framework']);
+        $this->assertArrayHasKey('phpPath', $info['framework']);
         $this->assertArrayHasKey('app', $info);
     }
 
@@ -189,7 +190,7 @@ final class AppInfoCachingTest extends TestCase
         // run(), runZip() and rollback() all funnel through withUpdateLock(),
         // so covering it covers every mutating entry point at once.
         $service = new UpdateService;
-        $method  = new ReflectionMethod($service, 'withUpdateLock');
+        $method = new ReflectionMethod($service, 'withUpdateLock');
         $method->setAccessible(true);
         $method->invokeArgs($service, [
             static fn (): string => 'done',
@@ -207,12 +208,14 @@ final class AppInfoCachingTest extends TestCase
         Cache::put(AppInfoService::GIT_CACHE_KEY, $this->fakeSnapshot(), 60);
 
         $service = new UpdateService;
-        $method  = new ReflectionMethod($service, 'withUpdateLock');
+        $method = new ReflectionMethod($service, 'withUpdateLock');
         $method->setAccessible(true);
 
         try {
             $method->invokeArgs($service, [
-                static function (): string { throw new \RuntimeException('boom'); },
+                static function (): string {
+                    throw new \RuntimeException('boom');
+                },
                 static fn (): string => 'busy',
             ]);
             $this->fail('Expected the callback to throw.');

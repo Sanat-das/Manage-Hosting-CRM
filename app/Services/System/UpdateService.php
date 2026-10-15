@@ -1699,7 +1699,7 @@ class UpdateService
      * Under FastCGI, PHP_BINARY is php-cgi.exe — which does not behave as a CLI
      * runner — so the php.exe sitting beside it is preferred.
      */
-    private function phpBinary(): string
+    public static function phpBinary(): string
     {
         static $resolved = null;
 

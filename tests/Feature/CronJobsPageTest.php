@@ -12,6 +12,7 @@ use App\Models\Role;
 use App\Models\User;
 use App\Services\Cron\CronTaskRegistry;
 use App\Services\Cron\ScheduleInspector;
+use App\Services\System\UpdateService;
 use Illuminate\Console\Application as ConsoleApplication;
 use Illuminate\Console\Events\ScheduledTaskFailed;
 use Illuminate\Console\Events\ScheduledTaskFinished;
@@ -122,7 +123,9 @@ final class CronJobsPageTest extends TestCase
 
         $response->assertOk();
         $response->assertSee('The scheduler is not running');
-        $response->assertSee('has never completed on this installation', false);
+        $response->assertSee('has never completed on this installation', false)
+            ->assertSee('artisan schedule:run')
+            ->assertSee(UpdateService::phpBinary());
     }
 
     public function test_index_reports_a_healthy_scheduler_after_a_recent_tick(): void

@@ -223,7 +223,7 @@ final class AppInfoService
     /**
      * Framework & dependency snapshot.
      *
-     * @return array{laravel: string, php: string, composerHash: string|null, packages: array<string, string>}
+     * @return array{laravel: string, php: string, phpPath: string, composerHash: string|null, packages: array<string, string>}
      */
     public function framework(): array
     {
@@ -248,6 +248,7 @@ final class AppInfoService
         return [
             'laravel' => $laravel,
             'php' => PHP_VERSION,
+            'phpPath' => UpdateService::phpBinary(),
             'composerHash' => $composerHash,
             'packages' => $packages,
         ];

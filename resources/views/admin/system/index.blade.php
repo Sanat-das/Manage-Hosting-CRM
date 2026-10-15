@@ -188,6 +188,7 @@
                             $fw = $appInfo['framework'] ?? [];
                             $packages = $fw['packages'] ?? [];
                             $composerHash = $fw['composerHash'] ?? null;
+                            $phpPath = $fw['phpPath'] ?? null;
                         @endphp
                         <div class="table-responsive">
                             <table class="table table-sm table-borderless align-middle mb-0">
@@ -199,6 +200,17 @@
                                     <tr>
                                         <th class="text-muted small">PHP</th>
                                         <td><code>{{ $fw['php'] ?? PHP_VERSION }}</code></td>
+                                    </tr>
+                                    <tr>
+                                        <th class="text-muted small">PHP path</th>
+                                        <td>
+                                            @if ($phpPath)
+                                                <code class="small">{{ $phpPath }}</code>
+                                                <button type="button" class="btn btn-sm btn-outline-secondary ms-2 py-0 px-1 copy-btn" data-copy="{{ $phpPath }}" aria-label="Copy PHP path"><i class="bi bi-clipboard"></i></button>
+                                            @else
+                                                <span class="text-muted small">—</span>
+                                            @endif
+                                        </td>
                                     </tr>
                                     <tr>
                                         <th class="text-muted small">Composer lock</th>
@@ -325,7 +337,7 @@
                         </div>
                         @if (! $healthy)
                             <div class="alert alert-warning mt-3 mb-0 small">
-                                Every minute, a scheduler tick must run: <code>php artisan schedule:run</code>
+                                Every minute, a scheduler tick must run: <code>{{ $appInfo['framework']['phpPath'] ?? 'php' }} artisan schedule:run</code>
                             </div>
                         @endif
                     </x-adminlte-card>
