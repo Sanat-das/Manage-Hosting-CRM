@@ -59,19 +59,91 @@ const SETUP_STEPS = [
 ];
 
 /**
- * @return array{root: string, autoload: string, cache: string, log: string, lock: string}
+ * Build an environment for the background install (and its children) so
+ * Composer has a usable COMPOSER_HOME even when the web process that starts
+ * the install has none. php-cgi workers often lack APPDATA/COMPOSER_HOME, so
+ * Composer then refuses with "APPDATA or COMPOSER_HOME must be set" even
+ * though the same `composer install` works from a shell.
+ *
+ * On Windows an interactive user's cache is reused when it exists, kept warm
+ * on the first run thereafter; every location falls back to a directory under
+ * bootstrap/cache, which is gitignored and writable by the server.
+ */
+function setup_install_environment(array $paths): array
+{
+    $env = $_ENV;
+
+    foreach (['PATH', 'ComSpec', 'SystemRoot', 'PATHEXT', 'APPDATA', 'LOCALAPPDATA', 'HOME', 'USERNAME', 'USER', 'TEMP', 'TMP', 'TERM'] as $key) {
+        if (! array_key_exists($key, $env) || $env[$key] === '') {
+            $value = getenv($key);
+
+            if ($value !== false && $value !== '') {
+                $env[$key] = $value;
+            }
+        }
+    }
+
+    if (PHP_OS_FAMILY === 'Windows') {
+        if (! isset($env['APPDATA']) || $env['APPDATA'] === '') {
+            $env['APPDATA'] = sys_get_temp_dir();
+        }
+
+        $composerHome = $env['APPDATA'].DIRECTORY_SEPARATOR.'Composer';
+    } else {
+        if (! isset($env['HOME']) || $env['HOME'] === '') {
+            $env['HOME'] = sys_get_temp_dir();
+        }
+
+        $composerHome = $env['HOME'].DIRECTORY_SEPARATOR.'.composer';
+    }
+
+    // Reuse an existing interactive composer home as the cache source when it
+    // is present, so the install does not re-download 170 packages.
+    $existingHome = PHP_OS_FAMILY === 'Windows'
+        ? [($env['APPDATA'] ?? ''), 'Composer']
+        : [($env['HOME'] ?? ''), '.composer'];
+
+    $candidate = implode(DIRECTORY_SEPARATOR, array_filter($existingHome, 'strlen')) ?? '';
+
+    if ($candidate !== '' && is_dir($candidate)) {
+        $composerHome = $candidate;
+    }
+
+    foreach (['COMPOSER_HOME', 'COMPOSER_CACHE_DIR'] as $key) {
+        if (! isset($env[$key]) || $env[$key] === '') {
+            $env[$key] = $key === 'COMPOSER_HOME'
+                ? $composerHome
+                : $composerHome.DIRECTORY_SEPARATOR.'cache';
+        }
+    }
+
+    foreach ([$env['COMPOSER_HOME'], $env['COMPOSER_CACHE_DIR']] as $directory) {
+        @mkdir($directory, 0775, true);
+    }
+
+    return $env;
+}
+
+/**
+ * @return array{root: string, autoload: string, cache: string, log: string, lock: string, env: array}
  */
 function setup_paths(): array
 {
     $root = dirname(__DIR__);
 
-    return [
+    $paths = [
         'root' => $root,
         'autoload' => $root.'/vendor/autoload.php',
         'cache' => $root.'/bootstrap/cache',
         'log' => $root.SETUP_LOG_FILE,
         'lock' => $root.SETUP_LOCK_FILE,
     ];
+
+    // Computed after the rest so the helper (which only needs $root) can also
+    // fill $paths with the Composer home dir it chose.
+    $paths['env'] = setup_install_environment($paths);
+
+    return $paths;
 }
 
 function setup_esc(string $value): string
@@ -408,7 +480,7 @@ function setup_spawn_background(array $paths): bool
         2 => ['pipe', 'w'],
     ];
 
-    $process = @proc_open($command, $descriptors, $pipes, $paths['root']);
+    $process = @proc_open($command, $descriptors, $pipes, $paths['root'], $paths['env']);
     if (! is_resource($process)) {
         return false;
     }
@@ -425,7 +497,7 @@ function setup_spawn_background(array $paths): bool
  * Run one command from the application root and append its output to the
  * log. Returns the exit code.
  */
-function setup_run_command(string $command, string $root, string $log): int
+function setup_run_command(string $command, string $root, string $log, array $env = []): int
 {
     $descriptors = [
         0 => ['pipe', 'r'],
@@ -433,7 +505,7 @@ function setup_run_command(string $command, string $root, string $log): int
         2 => ['pipe', 'w'],
     ];
 
-    $process = @proc_open($command, $descriptors, $pipes, $root);
+    $process = @proc_open($command, $descriptors, $pipes, $root, $env !== [] ? $env : null);
     if (! is_resource($process)) {
         setup_log_write($log, 'STEP FAILED (exit code 127) - the command could not be started');
 
@@ -494,7 +566,7 @@ function setup_run_install(array $paths): int
 
         foreach ($step['commands'] as $attempt => $command) {
             setup_log_write($paths['log'], 'STEP '.$step['step'].': '.$command);
-            $exitCode = setup_run_command($command, $paths['root'], $paths['log']);
+            $exitCode = setup_run_command($command, $paths['root'], $paths['log'], $paths['env']);
 
             if ($exitCode === 0) {
                 break;
