@@ -517,6 +517,8 @@ function setup_run_command(string $command, string $root, string $log, array $en
     stream_set_blocking($pipes[2], false);
 
     $open = [1 => $pipes[1], 2 => $pipes[2]];
+    $lastOutputAt = microtime(true);
+    $nextHeartbeatAt = time() + 30;
 
     while ($open !== []) {
         $read = array_values($open);
@@ -527,10 +529,14 @@ function setup_run_command(string $command, string $root, string $log, array $en
             break;
         }
 
+        $now = microtime(true);
+
         foreach ($read as $stream) {
             $chunk = fread($stream, 8192);
             if ($chunk !== '' && $chunk !== false) {
                 setup_log_output($log, $chunk);
+                $lastOutputAt = microtime(true);
+                $nextHeartbeatAt = time() + 30;
             }
 
             if (! feof($stream)) {
@@ -543,6 +549,16 @@ function setup_run_command(string $command, string $root, string $log, array $en
                     unset($open[$descriptor]);
                 }
             }
+        }
+
+        // Composer prints its progress only when the writer actually flushes;
+        // on a slow Windows host it can be silent for two minutes. A heartbeat
+        // so a human watching the page knows the install is alive, and that
+        // silence is expected rather than a hang.
+        if ($now - $lastOutputAt >= 30 && time() >= $nextHeartbeatAt && $open !== []) {
+            setup_log_write($log, '[still installing... waiting for composer/npm to produce output]');
+            $lastOutputAt = microtime(true);
+            $nextHeartbeatAt = time() + 30;
         }
 
         usleep(20000);
