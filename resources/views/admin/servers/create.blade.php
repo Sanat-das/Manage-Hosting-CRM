@@ -162,7 +162,10 @@
                                     {{ $label }} @if ($required)<span class="text-danger">*</span>@endif
                                     @if ($encrypted)<span class="badge text-bg-secondary border fw-normal ms-1" style="font-size:var(--text-xs);">encrypted</span>@endif
                                 </label>
-                                <input type="password" id="{{ $fieldId }}" name="{{ $key }}" value="{{ old($key) }}" class="form-control @error($key) is-invalid @enderror" placeholder="••••••••" @if($required) required @endif autocomplete="new-password">
+                                <div class="input-group" data-password-field>
+                                    <input type="password" id="{{ $fieldId }}" name="{{ $key }}" value="{{ old($key) }}" class="form-control @error($key) is-invalid @enderror" placeholder="Enter password" @if($required) required @endif autocomplete="new-password" data-password-input>
+                                    <x-password-actions />
+                                </div>
                                 @if ($help)<div class="form-text">{{ $help }}</div>@endif
                                 @error($key)<div class="invalid-feedback">{{ $message }}</div>@enderror
                             </div>

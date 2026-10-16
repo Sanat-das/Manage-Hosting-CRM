@@ -15,14 +15,15 @@
         <form action="{{ route('login') }}" method="post">
             @csrf
 
-            <div class="input-group mb-3">
-                <input type="password" name="password"
+            <div class="input-group mb-3" data-password-field>
+                <input type="password" name="password" data-password-input
                        class="form-control @error('password') is-invalid @enderror"
                        placeholder="{{ __('adminlte.password') }}"
                        inputmode="numeric"
                        maxlength="6"
                        required>
                 <div class="input-group-text"><span class="bi bi-lock-fill"></span></div>
+                <x-password-actions :generate="false" :copy="false" />
                 @error('password')<div class="invalid-feedback d-block">{{ $message }}</div>@enderror
             </div>
 

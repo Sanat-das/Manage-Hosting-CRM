@@ -89,7 +89,14 @@
         @else
             <div class="col-md-6 field-group"
                  @if ($showIfKey !== null) data-show-if-key="{{ $showIfKey }}" data-show-if-value="{{ $showIfValue }}" @endif>
-                @if ($isSecret)
+                @if ($isSecret && $type === 'password')
+                    <label for="config-{{ $key }}" class="form-label">{{ $label }}</label>
+                    <div class="input-group" data-password-field>
+                        <input type="password" id="config-{{ $key }}" name="config[{{ $key }}]" value="{{ $displayValue }}" data-password-input
+                               class="form-control" placeholder="Leave blank to keep current">
+                        <x-password-actions />
+                    </div>
+                @elseif ($isSecret)
                     <x-adminlte-input name="config[{{ $key }}]" id="config-{{ $key }}" :label="$label"
                                       value="{{ $displayValue }}"
                                       placeholder="Leave blank to keep current"

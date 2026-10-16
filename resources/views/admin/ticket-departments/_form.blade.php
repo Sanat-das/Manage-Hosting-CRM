@@ -146,9 +146,12 @@
     <div class="col-md-6">
         <div class="mb-3">
             <label for="imap_password" class="form-label">Password</label>
-            <input type="password" name="imap_password" id="imap_password" value=""
-                   placeholder="{{ $department->exists && $department->imap_password ? 'Leave blank to keep current' : '' }}"
-                   class="form-control @error('imap_password') is-invalid @enderror" autocomplete="new-password">
+            <div class="input-group" data-password-field>
+                <input type="password" name="imap_password" id="imap_password" value=""
+                       placeholder="{{ $department->exists && $department->imap_password ? 'Leave blank to keep current' : '' }}"
+                       class="form-control @error('imap_password') is-invalid @enderror" autocomplete="new-password" data-password-input>
+                <x-password-actions />
+            </div>
             @error('imap_password')
                 <span class="invalid-feedback d-block" role="alert">{{ $message }}</span>
             @enderror

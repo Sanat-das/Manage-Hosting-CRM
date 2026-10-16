@@ -211,7 +211,10 @@
                                         </div>
                                         <div class="mb-3">
                                             <label for="rdp-password" class="form-label">Password</label>
-                                            <input type="password" class="form-control @error('password') is-invalid @enderror" id="rdp-password" name="password" maxlength="255" placeholder="•••••••• (leave blank to keep existing)" autocomplete="new-password">
+                                            <div class="input-group" data-password-field>
+                                            <input type="password" class="form-control @error('password') is-invalid @enderror" id="rdp-password" name="password" maxlength="255" placeholder="•••••••• (leave blank to keep existing)" autocomplete="new-password" data-password-input>
+                                                <x-password-actions />
+                                            </div>
                                             <div class="form-text">Stored encrypted. Leave blank to keep the current password.</div>
                                             @error('password')<div class="invalid-feedback">{{ $message }}</div>@enderror
                                         </div>

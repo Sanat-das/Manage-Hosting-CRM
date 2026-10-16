@@ -48,22 +48,24 @@
 
         <x-ui.phone-input name="phone" label="Phone Number" :value="old('phone')" placeholder="98007 44827" />
 
-        <div class="input-group mb-3">
+        <div class="input-group mb-3" data-password-field data-password-confirm="register-password-confirm">
             <label class="visually-hidden" for="register-password">{{ __('adminlte.password') }}</label>
-            <input type="password" id="register-password" name="password"
+            <input type="password" id="register-password" name="password" data-password-input
                    class="form-control @error('password') is-invalid @enderror"
                    placeholder="{{ __('adminlte.password') }}" required
                    autocomplete="new-password" aria-label="{{ __('adminlte.password') }}">
             <div class="input-group-text"><span class="bi bi-lock-fill" aria-hidden="true"></span></div>
+            <x-password-actions />
             @error('password')<div class="invalid-feedback d-block">{{ $message }}</div>@enderror
         </div>
 
-        <div class="input-group mb-3">
+        <div class="input-group mb-3" data-password-field data-password-confirm="register-password">
             <label class="visually-hidden" for="register-password-confirm">{{ __('adminlte.confirm_password') }}</label>
-            <input type="password" id="register-password-confirm" name="password_confirmation"
+            <input type="password" id="register-password-confirm" name="password_confirmation" data-password-input
                    class="form-control" placeholder="{{ __('adminlte.confirm_password') }}" required
                    autocomplete="new-password" aria-label="{{ __('adminlte.confirm_password') }}">
             <div class="input-group-text"><span class="bi bi-lock-fill" aria-hidden="true"></span></div>
+            <x-password-actions />
         </div>
 
         <div class="border rounded p-3 mb-3 bg-body-tertiary">

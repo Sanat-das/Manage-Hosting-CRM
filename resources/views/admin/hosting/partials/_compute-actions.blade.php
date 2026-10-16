@@ -403,16 +403,20 @@
                              container id: the Generate button targets it by id
                              and must land on the INPUT. --}}
                         <label for="compute-reset-new-password-{{ $computeSlug }}" class="form-label small mb-1">New password</label>
-                        <div class="input-group input-group-sm">
+                        <div class="input-group input-group-sm" data-password-field data-password-confirm="compute-reset-password-confirm-{{ $computeSlug }}">
                             <input id="compute-reset-new-password-{{ $computeSlug }}" name="password" type="password" class="form-control"
-                                   autocomplete="new-password" required minlength="8" aria-label="New password">
-                            <button type="button" class="btn btn-outline-secondary" data-compute-generate-target="compute-reset-new-password-{{ $computeSlug }}">Generate</button>
+                                   autocomplete="new-password" required minlength="8" aria-label="New password" data-password-input>
+                            <button type="button" class="btn btn-outline-secondary" data-compute-generate-target="compute-reset-new-password-{{ $computeSlug }}" data-pw-generate aria-label="Generate password" title="Generate password"><i class="bi bi-magic" aria-hidden="true"></i></button>
+                            <x-password-actions :generate="false" />
                         </div>
                     </div>
                     <div class="mb-2">
                         <label for="compute-reset-password-confirm-{{ $computeSlug }}" class="form-label small mb-1">Confirm new password</label>
-                        <input id="compute-reset-password-confirm-{{ $computeSlug }}" name="password_confirmation" type="password" class="form-control form-control-sm"
-                               autocomplete="new-password" required minlength="8" aria-label="Confirm new password">
+                        <div class="input-group input-group-sm" data-password-field data-password-confirm="compute-reset-new-password-{{ $computeSlug }}">
+                            <input id="compute-reset-password-confirm-{{ $computeSlug }}" name="password_confirmation" type="password" class="form-control form-control-sm"
+                                   autocomplete="new-password" required minlength="8" aria-label="Confirm new password" data-password-input>
+                            <x-password-actions />
+                        </div>
                     </div>
                     <div id="compute-reset-result-{{ $computeSlug }}" class="border rounded-2 p-2 mt-2 d-none" role="status" aria-live="polite">
                         <div class="d-flex align-items-center justify-content-between gap-2">

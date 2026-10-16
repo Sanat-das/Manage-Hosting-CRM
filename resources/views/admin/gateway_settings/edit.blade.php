@@ -49,7 +49,7 @@
             @case('stripe')
                 <div class="row">
                     <div class="col-md-6">
-                        <x-adminlte-input name="credentials[secret_key]" label="Secret Key" type="password" value="" />
+                        <x-password-field name="credentials[secret_key]" id="credentials[secret_key]" label="Secret Key" />
                         @if ($gateway->getCredential('secret_key'))
                             <small class="text-muted">Current: <code>{{ $mask($gateway->getCredential('secret_key')) }}</code></small>
                         @endif
@@ -68,7 +68,7 @@
                             value="{{ $gateway->getCredential('client_id', '') }}" />
                     </div>
                     <div class="col-md-6">
-                        <x-adminlte-input name="credentials[client_secret]" label="Client Secret" type="password" value="" />
+                        <x-password-field name="credentials[client_secret]" id="credentials[client_secret]" label="Client Secret" />
                         @if ($gateway->getCredential('client_secret'))
                             <small class="text-muted">Current: <code>{{ $mask($gateway->getCredential('client_secret')) }}</code></small>
                         @endif
@@ -83,7 +83,7 @@
                             value="{{ $gateway->getCredential('key_id', '') }}" />
                     </div>
                     <div class="col-md-6">
-                        <x-adminlte-input name="credentials[key_secret]" label="Key Secret" type="password" value="" />
+                        <x-password-field name="credentials[key_secret]" id="credentials[key_secret]" label="Key Secret" />
                         @if ($gateway->getCredential('key_secret'))
                             <small class="text-muted">Current: <code>{{ $mask($gateway->getCredential('key_secret')) }}</code></small>
                         @endif
@@ -98,7 +98,7 @@
                             value="{{ $gateway->getCredential('account_name', '') }}" />
                     </div>
                     <div class="col-md-6">
-                        <x-adminlte-input name="credentials[account_number]" label="Account Number" type="password" value="" />
+                        <x-password-field name="credentials[account_number]" id="credentials[account_number]" label="Account Number" />
                         @if ($gateway->getCredential('account_number'))
                             <small class="text-muted">Current: <code>{{ $mask($gateway->getCredential('account_number')) }}</code></small>
                         @endif

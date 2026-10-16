@@ -21,12 +21,13 @@
             @error('email')<div class="invalid-feedback d-block">{{ $message }}</div>@enderror
         </div>
 
-        <div class="input-group mb-3">
-            <input type="password" name="password"
+        <div class="input-group mb-3" data-password-field>
+            <input type="password" name="password" data-password-input
                    class="form-control @error('password') is-invalid @enderror"
                    placeholder="{{ __('adminlte.password') }}" required
                    autocomplete="current-password" aria-label="{{ __('adminlte.password') }}">
             <div class="input-group-text"><span class="bi bi-lock-fill" aria-hidden="true"></span></div>
+            <x-password-actions :generate="false" :copy="false" />
             @error('password')<div class="invalid-feedback d-block">{{ $message }}</div>@enderror
         </div>
 

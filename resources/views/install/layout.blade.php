@@ -25,6 +25,18 @@
         })();
     </script>
     <style>
+        /* Password field controls — the installer has no Bootstrap, so these
+           get the same shape the layout's own .btn already uses. */
+        .pw-row { display: flex; align-items: stretch; gap: 6px; }
+        .pw-row input { flex: 1 1 auto; min-width: 0; }
+        .pw-btn {
+            flex: none; display: inline-flex; align-items: center; justify-content: center;
+            padding: 0 12px; border: 1px solid var(--border); border-radius: 8px;
+            background: var(--card); color: var(--muted); font: inherit; font-size: 12.5px;
+            font-weight: 600; cursor: pointer;
+        }
+        .pw-btn:hover { color: var(--text); border-color: var(--accent); }
+        .pw-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
         :root {
             --bg: #f6f7f9; --card: #ffffff; --text: #1b1b18; --muted: #6b7280;
             --border: #e5e7eb; --accent: #2563eb; --ok: #15803d; --err: #b91c1c; --input: #ffffff;
@@ -105,6 +117,10 @@
             .checks .name { min-width: 0; }
         }
     </style>
+
+    {{-- Password field controls. A separate Vite entry: this layout has no
+         Bootstrap and no AdminLTE bundle, so the main entry cannot come along. --}}
+    @vite('resources/js/password-field.js')
 </head>
 <body>
     <main class="shell">

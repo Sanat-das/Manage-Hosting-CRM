@@ -515,11 +515,12 @@
                                    value="{{ $vmGuestUsername }}" maxlength="64" autocomplete="username" aria-label="Administrator username">
                         </div>
                         <div class="hv-view__field">
-                            {{-- No Generate button here on purpose: this password must
-                                 match the template image, it must not be invented. --}}
                             <label for="hv-guest-password-{{ $hvSlug }}" class="form-label small mb-1">Administrator password</label>
-                            <input id="hv-guest-password-{{ $hvSlug }}" name="guest_password" type="password" class="form-control form-control-sm"
-                                   autocomplete="new-password" aria-label="Administrator password" placeholder="The password already set inside the template image">
+                            <div class="input-group input-group-sm" data-password-field>
+                                <input id="hv-guest-password-{{ $hvSlug }}" name="guest_password" type="password" class="form-control form-control-sm"
+                                       autocomplete="new-password" aria-label="Administrator password" placeholder="The password already set inside the template image" data-password-input>
+                                <x-password-actions :generate="false" />
+                            </div>
                             <div class="form-text small">Must match the password already set inside the template image. Stored encrypted; used for RDP and for <em>Reset password</em> (which changes it inside Windows). Leave blank if unknown.</div>
                         </div>
                         <div class="form-check hv-view__field">
@@ -607,21 +608,28 @@
                                  bug when this form lived in a modal whose root the
                                  id collided with). --}}
                             <label for="hv-reset-new-password-{{ $hvSlug }}" class="form-label small mb-1">New password</label>
-                            <div class="input-group input-group-sm">
+                            <div class="input-group input-group-sm" data-password-field data-password-confirm="hv-reset-password-confirm-{{ $hvSlug }}">
                                 <input id="hv-reset-new-password-{{ $hvSlug }}" name="password" type="password" class="form-control"
-                                       autocomplete="new-password" required minlength="8" aria-label="New password">
-                                <button type="button" class="btn btn-outline-secondary" data-hv-generate-target="hv-reset-new-password-{{ $hvSlug }}">Generate</button>
+                                       autocomplete="new-password" required minlength="8" aria-label="New password" data-password-input>
+                                <button type="button" class="btn btn-outline-secondary" data-hv-generate-target="hv-reset-new-password-{{ $hvSlug }}" data-pw-generate aria-label="Generate password" title="Generate password"><i class="bi bi-magic" aria-hidden="true"></i></button>
+                                <x-password-actions :generate="false" />
                             </div>
                         </div>
                         <div class="hv-view__field">
                             <label for="hv-reset-password-confirm-{{ $hvSlug }}" class="form-label small mb-1">Confirm new password</label>
-                            <input id="hv-reset-password-confirm-{{ $hvSlug }}" name="password_confirmation" type="password" class="form-control form-control-sm"
-                                   autocomplete="new-password" required minlength="8" aria-label="Confirm new password">
+                            <div class="input-group input-group-sm" data-password-field data-password-confirm="hv-reset-new-password-{{ $hvSlug }}">
+                                <input id="hv-reset-password-confirm-{{ $hvSlug }}" name="password_confirmation" type="password" class="form-control form-control-sm"
+                                       autocomplete="new-password" required minlength="8" aria-label="Confirm new password" data-password-input>
+                                <x-password-actions />
+                            </div>
                         </div>
                         <div class="hv-view__field {{ $hvNeedsCurrent ? '' : 'd-none' }}" id="hv-reset-current-wrap-{{ $hvSlug }}">
                             <label for="hv-reset-current-{{ $hvSlug }}" class="form-label small mb-1">Current password</label>
-                            <input id="hv-reset-current-{{ $hvSlug }}" name="current_password" type="password" class="form-control form-control-sm"
-                                   autocomplete="current-password" @if ($hvNeedsCurrent) required @endif aria-label="Current password">
+                            <div class="input-group input-group-sm" data-password-field>
+                                <input id="hv-reset-current-{{ $hvSlug }}" name="current_password" type="password" class="form-control form-control-sm"
+                                       autocomplete="current-password" @if ($hvNeedsCurrent) required @endif aria-label="Current password" data-password-input>
+                                <x-password-actions :generate="false" :copy="false" />
+                            </div>
                             <div class="form-text small">Required because no password is stored for this account.</div>
                         </div>
                         <div id="hv-reset-result" class="hv-view__result d-none" role="status" aria-live="polite">

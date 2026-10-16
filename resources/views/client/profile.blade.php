@@ -87,11 +87,11 @@
 
             <div class="row">
                 <div class="col-md-6">
-                    <x-adminlte-input name="password" type="password" label="New password (optional)"
-                                      placeholder="Leave blank to keep current" />
+                    <x-password-field name="password" id="password" label="New password (optional)"
+                                      placeholder="Leave blank to keep current" confirm="password_confirmation" />
                 </div>
                 <div class="col-md-6">
-                    <x-adminlte-input name="password_confirmation" type="password" label="Confirm new password" />
+                    <x-password-field name="password_confirmation" id="password_confirmation" label="Confirm new password" confirm="password" />
                 </div>
             </div>
 

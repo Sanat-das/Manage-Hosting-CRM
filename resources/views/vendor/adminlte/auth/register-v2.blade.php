@@ -24,21 +24,27 @@
             @error('email')<div class="invalid-feedback d-block">{{ $message }}</div>@enderror
         </div>
 
-        <div class="form-floating mb-3">
-            <input type="password" name="password"
-                   class="form-control @error('password') is-invalid @enderror"
-                   id="password"
-                   placeholder="{{ __('adminlte.password') }}" required>
-            <label for="password">{{ __('adminlte.password') }}</label>
+        <div class="input-group mb-3" data-password-field data-password-confirm="password_confirmation">
+            <div class="form-floating">
+                <input type="password" name="password" data-password-input
+                       class="form-control @error('password') is-invalid @enderror"
+                       id="password"
+                       placeholder="{{ __('adminlte.password') }}" required>
+                <label for="password">{{ __('adminlte.password') }}</label>
+            </div>
+            <x-password-actions />
             @error('password')<div class="invalid-feedback d-block">{{ $message }}</div>@enderror
         </div>
 
-        <div class="form-floating mb-3">
-            <input type="password" name="password_confirmation"
-                   class="form-control"
-                   id="password_confirmation"
-                   placeholder="{{ __('adminlte.confirm_password') }}" required>
-            <label for="password_confirmation">{{ __('adminlte.confirm_password') }}</label>
+        <div class="input-group mb-3" data-password-field data-password-confirm="password">
+            <div class="form-floating">
+                <input type="password" name="password_confirmation" data-password-input
+                       class="form-control"
+                       id="password_confirmation"
+                       placeholder="{{ __('adminlte.confirm_password') }}" required>
+                <label for="password_confirmation">{{ __('adminlte.confirm_password') }}</label>
+            </div>
+            <x-password-actions />
         </div>
 
         <button type="submit" class="btn btn-primary w-100">{{ __('adminlte.register') }}</button>

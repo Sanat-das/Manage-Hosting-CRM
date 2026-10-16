@@ -15,18 +15,20 @@
             @error('email')<div class="invalid-feedback d-block">{{ $message }}</div>@enderror
         </div>
 
-        <div class="input-group mb-3">
-            <input type="password" name="password"
+        <div class="input-group mb-3" data-password-field data-password-confirm="password_confirmation">
+            <input type="password" name="password" id="password" data-password-input
                    class="form-control @error('password') is-invalid @enderror"
                    placeholder="{{ __('adminlte.password') }}" required>
             <div class="input-group-text"><span class="bi bi-lock-fill"></span></div>
+            <x-password-actions />
             @error('password')<div class="invalid-feedback d-block">{{ $message }}</div>@enderror
         </div>
 
-        <div class="input-group mb-3">
-            <input type="password" name="password_confirmation"
+        <div class="input-group mb-3" data-password-field data-password-confirm="password">
+            <input type="password" name="password_confirmation" id="password_confirmation" data-password-input
                    class="form-control" placeholder="{{ __('adminlte.confirm_password') }}" required>
             <div class="input-group-text"><span class="bi bi-lock-fill"></span></div>
+            <x-password-actions />
         </div>
 
         <button type="submit" class="btn btn-primary w-100">{{ __('adminlte.change_password') }}</button>

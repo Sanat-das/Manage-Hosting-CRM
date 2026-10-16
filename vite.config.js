@@ -21,6 +21,10 @@ export default defineConfig({
                 // must not drag the operator workspace's JS along with it.
                 'resources/js/client-chat.js',
                 'resources/css/client-chat.css',
+                // Its own entry, not an import of adminlte.js: the installer
+                // runs on a bespoke layout with no Bootstrap and no AdminLTE
+                // bundle, yet needs the same password controls.
+                'resources/js/password-field.js',
             ],
             refresh: true,
             fonts: [

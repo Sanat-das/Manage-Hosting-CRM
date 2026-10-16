@@ -73,8 +73,12 @@
                             </div>
 
                         @elseif($type === 'password')
-                            <x-adminlte-input name="config[{{ $key }}]" id="config-{{ $key }}" label="{{ $label }}" type="password"
-                                value="" placeholder="Leave blank to keep current" />
+                            <label for="config-{{ $key }}" class="form-label">{{ $label }}</label>
+                            <div class="input-group" data-password-field>
+                                <input type="password" id="config-{{ $key }}" name="config[{{ $key }}]" value="" data-password-input
+                                       class="form-control" placeholder="Leave blank to keep current">
+                                <x-password-actions />
+                            </div>
 
                         @else
                             <x-adminlte-input name="config[{{ $key }}]" id="config-{{ $key }}" label="{{ $label }}"

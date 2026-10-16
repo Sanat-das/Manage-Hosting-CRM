@@ -1120,10 +1120,11 @@
                         <div class="col-md-6">
                             <div class="mb-3">
                                 <label for="smtp_password" class="form-label">SMTP Password</label>
-                                <div class="input-group">
+                                <div class="input-group" data-password-field>
                                     <input type="password" name="settings[smtp_password]" id="smtp_password"
-                                        value="" placeholder="Leave blank to keep current" class="form-control @error('settings.smtp_password') is-invalid @enderror" autocomplete="new-password">
+                                        value="" placeholder="Leave blank to keep current" class="form-control @error('settings.smtp_password') is-invalid @enderror" autocomplete="new-password" data-password-input>
                                     <button type="button" class="btn btn-outline-secondary encrypted-reveal-btn" data-target="smtp_password" aria-pressed="false" aria-label="Reveal masked value for SMTP Password">Reveal</button>
+                                    <button type="button" class="btn btn-outline-secondary" data-pw-generate aria-label="Generate password" title="Generate password"><i class="bi bi-magic" aria-hidden="true"></i></button>
                                 </div>
                                 @error('settings.smtp_password')
                                     <span class="invalid-feedback d-block" role="alert">{{ $message }}</span>
@@ -1483,10 +1484,11 @@
                             <div class="col-md-3">
                                 <div class="mb-3">
                                     <label for="cpanel_api_token" class="form-label">cPanel API Token</label>
-                                    <div class="input-group">
+                                    <div class="input-group" data-password-field>
                                         <input type="password" name="settings[cpanel_api_token]" id="cpanel_api_token"
-                                            value="" placeholder="Leave blank to keep current" class="form-control @error('settings.cpanel_api_token') is-invalid @enderror" autocomplete="new-password">
+                                            value="" placeholder="Leave blank to keep current" class="form-control @error('settings.cpanel_api_token') is-invalid @enderror" autocomplete="new-password" data-password-input>
                                         <button type="button" class="btn btn-outline-secondary encrypted-reveal-btn" data-target="cpanel_api_token" aria-pressed="false" aria-label="Reveal masked value for cPanel API Token">Reveal</button>
+                                        <button type="button" class="btn btn-outline-secondary" data-pw-generate aria-label="Generate password" title="Generate password"><i class="bi bi-magic" aria-hidden="true"></i></button>
                                     </div>
                                     @error('settings.cpanel_api_token')
                                         <span class="invalid-feedback d-block" role="alert">{{ $message }}</span>
@@ -1504,10 +1506,11 @@
                             <div class="col-md-3">
                                 <div class="mb-3">
                                     <label for="plesk_password" class="form-label">Plesk Password</label>
-                                    <div class="input-group">
+                                    <div class="input-group" data-password-field>
                                         <input type="password" name="settings[plesk_password]" id="plesk_password"
-                                            value="" placeholder="Leave blank to keep current" class="form-control @error('settings.plesk_password') is-invalid @enderror" autocomplete="new-password">
+                                            value="" placeholder="Leave blank to keep current" class="form-control @error('settings.plesk_password') is-invalid @enderror" autocomplete="new-password" data-password-input>
                                         <button type="button" class="btn btn-outline-secondary encrypted-reveal-btn" data-target="plesk_password" aria-pressed="false" aria-label="Reveal masked value for Plesk Password">Reveal</button>
+                                        <button type="button" class="btn btn-outline-secondary" data-pw-generate aria-label="Generate password" title="Generate password"><i class="bi bi-magic" aria-hidden="true"></i></button>
                                     </div>
                                     @error('settings.plesk_password')
                                         <span class="invalid-feedback d-block" role="alert">{{ $message }}</span>
@@ -1527,10 +1530,11 @@
                             <div class="col-md-4">
                                 <div class="mb-3">
                                     <label for="resellerclub_api_key" class="form-label">ResellerClub API Key</label>
-                                    <div class="input-group">
+                                    <div class="input-group" data-password-field>
                                         <input type="password" name="settings[resellerclub_api_key]" id="resellerclub_api_key"
-                                            value="" placeholder="Leave blank to keep current" class="form-control @error('settings.resellerclub_api_key') is-invalid @enderror" autocomplete="new-password">
+                                            value="" placeholder="Leave blank to keep current" class="form-control @error('settings.resellerclub_api_key') is-invalid @enderror" autocomplete="new-password" data-password-input>
                                         <button type="button" class="btn btn-outline-secondary encrypted-reveal-btn" data-target="resellerclub_api_key" aria-pressed="false" aria-label="Reveal masked value for ResellerClub API Key">Reveal</button>
+                                        <button type="button" class="btn btn-outline-secondary" data-pw-generate aria-label="Generate password" title="Generate password"><i class="bi bi-magic" aria-hidden="true"></i></button>
                                     </div>
                                     @error('settings.resellerclub_api_key')
                                         <span class="invalid-feedback d-block" role="alert">{{ $message }}</span>
@@ -2935,6 +2939,22 @@
                 var ENCRYPTED_MASK = '\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022';
                 var encryptedRevealBtns = document.querySelectorAll('.encrypted-reveal-btn');
                 encryptedRevealBtns.forEach(function (btn) {
+                    var targetId = btn.getAttribute('data-target');
+                    var input = document.getElementById(targetId);
+                    // Accessible name tracks the visible Reveal/Hide text
+                    // (WCAG 2.5.3): keep each button's own field description and
+                    // swap only the verb, so label and name stay in sync.
+                    var labelBody = (btn.getAttribute('aria-label') || '').replace(/^Reveal\s*/, '');
+                    if (input) {
+                        input.addEventListener('password-field:generate', function () {
+                            if (input.getAttribute('data-masked') !== 'true') return;
+                            input.removeAttribute('data-masked');
+                            input.readOnly = false;
+                            btn.textContent = 'Reveal';
+                            btn.setAttribute('aria-label', 'Reveal ' + labelBody);
+                            btn.setAttribute('aria-pressed', 'false');
+                        });
+                    }
                     btn.addEventListener('click', function () {
                         var targetId = btn.getAttribute('data-target');
                         var input = document.getElementById(targetId);
@@ -2945,12 +2965,17 @@
                             input.removeAttribute('data-masked');
                             input.readOnly = false;
                             btn.textContent = 'Reveal';
+                            btn.setAttribute('aria-label', 'Reveal ' + labelBody);
                             btn.setAttribute('aria-pressed', 'false');
                         } else {
+                            // Never clobber a freshly generated secret: only mask
+                            // a field that is genuinely empty (or already masked).
+                            if (input.value !== '' && input.value !== ENCRYPTED_MASK) { return; }
                             input.value = ENCRYPTED_MASK;
                             input.setAttribute('data-masked', 'true');
                             input.readOnly = true;
                             btn.textContent = 'Hide';
+                            btn.setAttribute('aria-label', 'Hide ' + labelBody);
                             btn.setAttribute('aria-pressed', 'true');
                         }
                     });

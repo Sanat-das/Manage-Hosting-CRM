@@ -380,8 +380,11 @@
                             </div>
                             <div class="col-12">
                                 <label class="form-label small" for="qc-password">Password</label>
-                                <input type="password" class="form-control form-control-sm" id="qc-password" name="password"
-                                       minlength="8" placeholder="Min 8 chars, with upper, lower & number" required>
+                                <div class="input-group input-group-sm" data-password-field>
+                                    <input type="password" class="form-control form-control-sm" id="qc-password" name="password"
+                                           minlength="8" placeholder="Min 8 chars, with upper, lower & number" required data-password-input>
+                                    <x-password-actions size="sm" />
+                                </div>
                             </div>
                             <div class="col-md-6">
                                 <label class="form-label small" for="qc-phone_number">Phone Number</label>

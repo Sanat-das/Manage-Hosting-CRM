@@ -184,8 +184,11 @@
             <div class="row">
                 <div class="col-md-6">
                     <label for="field_password" class="form-label fw-medium">Password</label>
-                    <input type="password" id="field_password" name="password" value="" class="form-control"
-                           placeholder="Leave blank to keep existing" autocomplete="new-password">
+                    <div class="input-group" data-password-field>
+                        <input type="password" id="field_password" name="password" value="" class="form-control"
+                               placeholder="Leave blank to keep existing" autocomplete="new-password" data-password-input>
+                        <x-password-actions />
+                    </div>
                     <div class="form-text">Leave blank to keep existing.</div>
                 </div>
             </div>

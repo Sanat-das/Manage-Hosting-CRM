@@ -15,12 +15,15 @@
             @error('email')<div class="invalid-feedback d-block">{{ $message }}</div>@enderror
         </div>
 
-        <div class="form-floating mb-3">
-            <input type="password" name="password"
-                   class="form-control @error('password') is-invalid @enderror"
-                   id="password"
-                   placeholder="{{ __('adminlte.password') }}" required>
-            <label for="password">{{ __('adminlte.password') }}</label>
+        <div class="input-group mb-3" data-password-field>
+            <div class="form-floating">
+                <input type="password" name="password" data-password-input
+                       class="form-control @error('password') is-invalid @enderror"
+                       id="password"
+                       placeholder="{{ __('adminlte.password') }}" required>
+                <label for="password">{{ __('adminlte.password') }}</label>
+            </div>
+            <x-password-actions :generate="false" :copy="false" />
             @error('password')<div class="invalid-feedback d-block">{{ $message }}</div>@enderror
         </div>
 

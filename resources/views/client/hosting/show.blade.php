@@ -284,13 +284,19 @@
                     <x-slot name="fields">
                         <div class="text-start" style="margin-bottom: var(--space-2);">
                             <label for="client-reset-password" class="form-label small mb-1">New password</label>
-                            <input id="client-reset-password" name="password" type="password" class="form-control form-control-sm"
-                                   autocomplete="new-password" required minlength="8" aria-label="New password">
+                            <div class="input-group input-group-sm" data-password-field data-password-confirm="client-reset-password-confirm">
+                                <input id="client-reset-password" name="password" type="password" class="form-control form-control-sm"
+                                       autocomplete="new-password" required minlength="8" aria-label="New password" data-password-input>
+                                <x-password-actions size="sm" />
+                            </div>
                         </div>
                         <div class="text-start" style="margin-bottom: var(--space-2);">
                             <label for="client-reset-password-confirm" class="form-label small mb-1">Confirm new password</label>
-                            <input id="client-reset-password-confirm" name="password_confirmation" type="password" class="form-control form-control-sm"
-                                   autocomplete="new-password" required minlength="8" aria-label="Confirm new password">
+                            <div class="input-group input-group-sm" data-password-field data-password-confirm="client-reset-password">
+                                <input id="client-reset-password-confirm" name="password_confirmation" type="password" class="form-control form-control-sm"
+                                       autocomplete="new-password" required minlength="8" aria-label="Confirm new password" data-password-input>
+                                <x-password-actions size="sm" />
+                            </div>
                         </div>
                     </x-slot>
                 </x-adminlte.partials.confirm-modal>

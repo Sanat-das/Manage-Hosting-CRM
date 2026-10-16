@@ -137,12 +137,18 @@
                             @enderror
                             <div class="mb-3">
                                 <label for="new_password" class="form-label">New Password</label>
-                                <input type="password" class="form-control" id="new_password" name="new_password" autocomplete="new-password" required>
+                                <div class="input-group" data-password-field data-password-confirm="new_password_confirmation">
+                                    <input type="password" class="form-control" id="new_password" name="new_password" autocomplete="new-password" required data-password-input>
+                                    <x-password-actions />
+                                </div>
                                 <div class="form-text">Min 8 characters, must include uppercase, lowercase, and a number.</div>
                             </div>
                             <div class="mb-3">
                                 <label for="new_password_confirmation" class="form-label">Confirm Password</label>
-                                <input type="password" class="form-control" id="new_password_confirmation" name="new_password_confirmation" autocomplete="new-password" required>
+                                <div class="input-group" data-password-field data-password-confirm="new_password">
+                                    <input type="password" class="form-control" id="new_password_confirmation" name="new_password_confirmation" autocomplete="new-password" required data-password-input>
+                                    <x-password-actions />
+                                </div>
                             </div>
                         </div>
                         <div class="modal-footer">

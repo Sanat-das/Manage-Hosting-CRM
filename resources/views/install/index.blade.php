@@ -57,7 +57,12 @@
                 </div>
                 <div class="field full">
                     <label for="db_password">Password</label>
-                    <input id="db_password" name="db_password" type="password" value="{{ old('db_password', $defaults['db_password']) }}" autocomplete="off">
+                    <div class="pw-row" data-password-field>
+                        <input id="db_password" name="db_password" type="password" data-password-input value="{{ old('db_password', $defaults['db_password']) }}" autocomplete="off">
+                        <button type="button" class="pw-btn" data-pw-generate aria-label="Generate password">Generate</button>
+                        <button type="button" class="pw-btn" data-pw-copy aria-label="Copy password">Copy</button>
+                        <button type="button" class="pw-btn" data-pw-toggle aria-pressed="false" aria-label="Show password">View</button>
+                    </div>
                     @error('db_password')<span class="err">{{ $message }}</span>@enderror
                 </div>
             </div>
@@ -81,12 +86,22 @@
                 </div>
                 <div class="field">
                     <label for="password">Password (min. 8 characters)</label>
-                    <input id="password" name="password" type="password" required minlength="8" autocomplete="new-password">
+                    <div class="pw-row" data-password-field data-password-confirm="password_confirmation">
+                        <input id="password" name="password" type="password" data-password-input required minlength="8" autocomplete="new-password">
+                        <button type="button" class="pw-btn" data-pw-generate aria-label="Generate password">Generate</button>
+                        <button type="button" class="pw-btn" data-pw-copy aria-label="Copy password">Copy</button>
+                        <button type="button" class="pw-btn" data-pw-toggle aria-pressed="false" aria-label="Show password">View</button>
+                    </div>
                     @error('password')<span class="err">{{ $message }}</span>@enderror
                 </div>
                 <div class="field">
                     <label for="password_confirmation">Confirm password</label>
-                    <input id="password_confirmation" name="password_confirmation" type="password" required autocomplete="new-password">
+                    <div class="pw-row" data-password-field data-password-confirm="password">
+                        <input id="password_confirmation" name="password_confirmation" type="password" data-password-input required autocomplete="new-password">
+                        <button type="button" class="pw-btn" data-pw-generate aria-label="Generate password">Generate</button>
+                        <button type="button" class="pw-btn" data-pw-copy aria-label="Copy password">Copy</button>
+                        <button type="button" class="pw-btn" data-pw-toggle aria-pressed="false" aria-label="Show password">View</button>
+                    </div>
                 </div>
             </div>
 

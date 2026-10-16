@@ -43,14 +43,14 @@
                                   value="{{ old('email') }}" required />
             </div>
             <div class="col-md-6">
-                <x-adminlte-input name="password" type="password" label="Password" placeholder="Min 8 chars, A-Z, a-z, 0-9"
-                                  required />
+                <x-password-field name="password" id="password" label="Password" placeholder="Min 8 chars, A-Z, a-z, 0-9"
+                                  required confirm="password_confirmation" />
             </div>
         </div>
 
         <div class="row">
             <div class="col-md-6">
-                <x-adminlte-input name="password_confirmation" type="password" label="Confirm password" required />
+                <x-password-field name="password_confirmation" id="password_confirmation" label="Confirm password" required confirm="password" />
             </div>
             <div class="col-md-6">
                 <x-ui.phone-input name="phone" label="Phone Number" :value="old('phone')" placeholder="98007 44827" />

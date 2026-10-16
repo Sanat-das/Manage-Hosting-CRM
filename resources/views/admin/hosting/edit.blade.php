@@ -254,13 +254,19 @@
                                         @csrf
                                         <div class="mb-2">
                                             <label class="visually-hidden" for="new-panel-password">New panel password</label>
-                                            <input type="password" id="new-panel-password" name="password" class="form-control form-control-sm"
-                                                   placeholder="New panel password" minlength="8" required aria-label="New panel password">
+                                            <div class="input-group input-group-sm" data-password-field data-password-confirm="confirm-panel-password">
+                                                <input type="password" id="new-panel-password" name="password" class="form-control form-control-sm"
+                                                       placeholder="New panel password" minlength="8" required aria-label="New panel password" data-password-input>
+                                                <x-password-actions size="sm" />
+                                            </div>
                                         </div>
                                         <div class="mb-2">
                                             <label class="visually-hidden" for="confirm-panel-password">Confirm new password</label>
-                                            <input type="password" id="confirm-panel-password" name="password_confirmation" class="form-control form-control-sm"
-                                                   placeholder="Confirm new password" minlength="8" required aria-label="Confirm new password">
+                                            <div class="input-group input-group-sm" data-password-field data-password-confirm="new-panel-password">
+                                                <input type="password" id="confirm-panel-password" name="password_confirmation" class="form-control form-control-sm"
+                                                       placeholder="Confirm new password" minlength="8" required aria-label="Confirm new password" data-password-input>
+                                                <x-password-actions size="sm" />
+                                            </div>
                                         </div>
                                         <button type="submit" class="btn btn-outline-secondary btn-sm">
                                             <i class="bi bi-shield-lock me-1"></i> Change Password
