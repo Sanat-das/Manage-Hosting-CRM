@@ -136,8 +136,21 @@ class HostingService
 
         $product = $order->product;
 
-        if (! $product?->requiresIp() && ! (bool) $product->group?->is_hosting) {
-            return null; // nothing to provision for non-hosting products
+        if ($product === null) {
+            return null; // nothing to provision without a product
+        }
+
+        // A product/service row must exist for everything we actually sell:
+        // IP-backed services, products in a hosting group, and any non-domain
+        // (non-hosting) service such as Website AMC. Domain-registration
+        // products (require_domain) are fulfilled through the domains table
+        // instead, so they never get a hosting account.
+        $createsAccount = $product->requiresIp()
+            || (bool) $product->group?->is_hosting
+            || ! (bool) $product->require_domain;
+
+        if (! $createsAccount) {
+            return null; // nothing to provision for domain-registration products
         }
 
         $account = HostingAccount::create([
