@@ -606,8 +606,8 @@
                                 <tr>
                                     <td class="text-muted">{{ $tx->created_at?->format('M j, Y H:i') }}</td>
                                     <td>{{ ucfirst(str_replace('_', ' ', $tx->type)) }}</td>
-                                    <td class="text-end {{ in_array($tx->type, ['deposit', 'credit'], true) ? 'text-success' : 'text-danger' }}">
-                                        {{ in_array($tx->type, ['deposit', 'credit'], true) ? '+₹' : '−₹' }}{{ number_format($tx->amount, 2) }}
+                                    <td class="text-end {{ in_array($tx->type, ['deposit', 'credit', 'refund'], true) ? 'text-success' : 'text-danger' }}">
+                                        {{ in_array($tx->type, ['deposit', 'credit', 'refund'], true) ? '+₹' : '−₹' }}{{ number_format($tx->amount, 2) }}
                                     </td>
                                     <td class="text-muted">{{ $tx->description ?? '—' }}</td>
                                     <td class="text-muted">{{ $tx->adminUser?->full_name ?? '—' }}</td>

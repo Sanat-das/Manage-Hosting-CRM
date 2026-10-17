@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Customer;
+use App\Models\CustomerWallet;
 use App\Models\Invoice;
 use App\Models\Permission;
 use App\Models\Role;
@@ -298,5 +299,95 @@ class AdminInvoiceTest extends TestCase
         $response->assertSessionHasErrors('payment');
         $this->assertDatabaseCount('payments', 0);
         $this->assertEquals('paid', $invoice->fresh()->status);
+    }
+
+    // ─── Refund ──────────────────────────────────────────────────
+
+    /**
+     * The refund route is gated by permission:invoices.edit
+     * (routes/admin/billing.php) and redirects back to the invoice page.
+     */
+    private function actingAsInvoiceRefunder(): static
+    {
+        $user = User::factory()->create();
+
+        $adminRole = Role::firstOrCreate(['name' => 'admin'], ['label' => 'Administrator']);
+        $view = Permission::firstOrCreate(['name' => 'invoices.view'], ['label' => 'View Invoices']);
+        $edit = Permission::firstOrCreate(['name' => 'invoices.edit'], ['label' => 'Edit Invoices']);
+        $adminRole->permissions()->syncWithoutDetaching([$view->id, $edit->id]);
+
+        $user->assignRole('admin');
+
+        return $this->actingAs($user);
+    }
+
+    /**
+     * Refunding a paid invoice must end to end: mark the invoice 'refunded'
+     * (a value the invoices.status enum only gained in
+     * 2026_10_17_134816_add_refunded_to_invoices_status_enum) and keep the
+     * reason on the invoice.
+     */
+    public function test_invoice_refund_marks_paid_invoice_refunded(): void
+    {
+        $customer = $this->createCustomerWithUser();
+        $invoice = Invoice::create([
+            'customer_id' => $customer->id,
+            'invoice_no' => 'INV-2026-00003',
+            'amount' => 100.00,
+            'tax' => 0,
+            'total' => 100.00,
+            'status' => Invoice::STATUS_PAID,
+            'paid_amount' => 100.00,
+            'paid_at' => now(),
+            'due_date' => now()->addDays(7),
+        ]);
+
+        $customer->refresh();
+        $creditBefore = (float) $customer->credit;
+        $balanceBefore = (float) $customer->balance;
+
+        $response = $this->actingAsInvoiceRefunder()->post("/admin/invoices/{$invoice->id}/refund", [
+            'reason' => 'Customer cancelled the service',
+        ]);
+
+        $response->assertRedirect(route('admin.invoices.show', $invoice));
+        $response->assertSessionHasNoErrors();
+
+        $invoice->refresh();
+        $this->assertSame(Invoice::STATUS_REFUNDED, $invoice->status);
+        $this->assertStringContainsString('Customer cancelled the service', (string) $invoice->notes);
+
+        $customer->refresh();
+        $this->assertEqualsWithDelta($creditBefore + 100.0, (float) $customer->credit, 0.001);
+        $this->assertEqualsWithDelta($balanceBefore, (float) $customer->balance, 0.001);
+
+        $this->assertDatabaseHas('customer_wallet', [
+            'customer_id' => $customer->id,
+            'invoice_id' => $invoice->id,
+            'type' => 'refund',
+            'balance_type' => 'credit',
+            'amount' => 100.0,
+        ]);
+        $this->assertSame(1, CustomerWallet::where('invoice_id', $invoice->id)->where('type', 'refund')->count());
+
+        $wallet = CustomerWallet::where('invoice_id', $invoice->id)->where('type', 'refund')->firstOrFail();
+        $this->assertStringContainsString((string) $invoice->invoice_no, (string) $wallet->description);
+
+        $this->assertEqualsWithDelta(100.0, (float) $invoice->paid_amount, 0.001);
+    }
+
+    public function test_invoice_refund_rejects_unpaid_invoice(): void
+    {
+        $customer = $this->createCustomerWithUser();
+        $invoice = $this->makeInvoice($customer->id, Invoice::STATUS_SENT);
+
+        $response = $this->actingAsInvoiceRefunder()->post("/admin/invoices/{$invoice->id}/refund", [
+            'reason' => 'Customer changed their mind',
+        ]);
+
+        $response->assertSessionHasErrors('refund');
+
+        $invoice->refresh();
+        $this->assertSame(Invoice::STATUS_SENT, $invoice->status);
     }
 }
