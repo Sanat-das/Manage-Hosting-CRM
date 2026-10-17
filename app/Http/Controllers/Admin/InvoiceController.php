@@ -252,7 +252,7 @@ class InvoiceController extends Controller
      */
     public function storePayment(Request $request, Invoice $invoice): RedirectResponse
     {
-        if (in_array($invoice->status, [Invoice::STATUS_PAID, Invoice::STATUS_VOID, Invoice::STATUS_CANCELLED], true)) {
+        if (in_array($invoice->status, [Invoice::STATUS_PAID, Invoice::STATUS_VOID, Invoice::STATUS_CANCELLED, Invoice::STATUS_REFUNDED], true)) {
             return back()->withErrors(['payment' => 'Payments cannot be recorded against a paid, void or cancelled invoice.']);
         }
 
@@ -291,7 +291,7 @@ class InvoiceController extends Controller
      */
     public function send(Invoice $invoice): RedirectResponse
     {
-        if (in_array($invoice->status, [Invoice::STATUS_PAID, Invoice::STATUS_VOID, Invoice::STATUS_CANCELLED], true)) {
+        if (in_array($invoice->status, [Invoice::STATUS_PAID, Invoice::STATUS_VOID, Invoice::STATUS_CANCELLED, Invoice::STATUS_REFUNDED], true)) {
             return back()->withErrors(['send' => 'A paid, void or cancelled invoice cannot be emailed.']);
         }
 
@@ -308,6 +308,21 @@ class InvoiceController extends Controller
         return redirect()
             ->route('admin.invoices.show', $invoice)
             ->with('success', "Invoice {$invoice->invoice_no} sent to the customer.");
+    }
+
+    public function refund(Request $request, Invoice $invoice): RedirectResponse
+    {
+        if (! in_array($invoice->status, [Invoice::STATUS_PAID, Invoice::STATUS_PARTIAL], true)) {
+            return back()->withErrors(['refund' => 'Only paid or partially paid invoices can be refunded.']);
+        }
+        $validated = $request->validate([
+            'reason' => ['nullable', 'string', 'max:1000'],
+        ]);
+        $this->billing->refund($invoice, $validated['reason'] ?? null);
+
+        return redirect()
+            ->route('admin.invoices.show', $invoice)
+            ->with('success', "Invoice {$invoice->invoice_no} marked refunded.");
     }
 
     public function pdf(Request $request, Invoice $invoice): Response

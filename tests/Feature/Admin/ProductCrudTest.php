@@ -388,7 +388,7 @@ class ProductCrudTest extends TestCase
         $this->assertDatabaseMissing('product_pricing', ['product_id' => $product->id]);
     }
 
-    public function test_destroy_is_blocked_while_live_orders_reference_the_product(): void
+    public function test_destroy_archives_product_with_order_history(): void
     {
         $this->actingAsAdmin();
 
@@ -407,9 +407,14 @@ class ProductCrudTest extends TestCase
             $this->from(route('admin.products.index'))
                 ->delete(route('admin.products.destroy', $product))
                 ->assertRedirect(route('admin.products.index'))
-                ->assertSessionHas('error');
+                ->assertSessionHas('success');
 
-            $this->assertDatabaseHas('products', ['id' => $product->id]);
+            // Archived, not deleted: order history must survive.
+            $this->assertDatabaseHas('products', [
+                'id' => $product->id,
+                'status' => 'inactive',
+                'show_in_order' => 0,
+            ]);
         }
     }
 

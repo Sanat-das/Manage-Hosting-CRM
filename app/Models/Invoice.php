@@ -56,6 +56,8 @@ class Invoice extends Model
 
     public const STATUS_CANCELLED = 'cancelled';
 
+    public const STATUS_REFUNDED = 'refunded';
+
     public const STATUS_LABELS = [
         self::STATUS_DRAFT => 'Draft',
         self::STATUS_SENT => 'Sent',
@@ -64,6 +66,7 @@ class Invoice extends Model
         self::STATUS_PARTIAL => 'Partial',
         self::STATUS_VOID => 'Void',
         self::STATUS_CANCELLED => 'Cancelled',
+        self::STATUS_REFUNDED => 'Refunded',
     ];
 
     /**
@@ -75,8 +78,8 @@ class Invoice extends Model
         self::STATUS_DRAFT => [self::STATUS_SENT, self::STATUS_CANCELLED, self::STATUS_VOID],
         self::STATUS_SENT => [self::STATUS_DRAFT, self::STATUS_OVERDUE, self::STATUS_PAID, self::STATUS_CANCELLED, self::STATUS_VOID],
         self::STATUS_OVERDUE => [self::STATUS_SENT, self::STATUS_PAID, self::STATUS_CANCELLED, self::STATUS_VOID],
-        self::STATUS_PARTIAL => [self::STATUS_PAID, self::STATUS_VOID],
-        self::STATUS_PAID => [self::STATUS_VOID],
+        self::STATUS_PARTIAL => [self::STATUS_PAID, self::STATUS_VOID, self::STATUS_REFUNDED],
+        self::STATUS_PAID => [self::STATUS_REFUNDED],
         self::STATUS_VOID => [self::STATUS_DRAFT],
         self::STATUS_CANCELLED => [self::STATUS_DRAFT],
     ];
@@ -91,7 +94,7 @@ class Invoice extends Model
     {
         return (float) $this->paid_amount > 0
             || $this->payments()->exists()
-            || in_array($this->status, [self::STATUS_PAID, self::STATUS_PARTIAL, self::STATUS_VOID, self::STATUS_CANCELLED], true);
+            || in_array($this->status, [self::STATUS_PAID, self::STATUS_PARTIAL, self::STATUS_VOID, self::STATUS_CANCELLED, self::STATUS_REFUNDED], true);
     }
 
     /**

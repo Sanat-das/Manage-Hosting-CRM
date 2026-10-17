@@ -20,6 +20,7 @@ use App\Support\GstStateCodes;
 use Carbon\CarbonImmutable;
 use DateTimeInterface;
 use Illuminate\Support\Facades\DB;
+use InvalidArgumentException;
 
 /**
  * BillingService — billing engine facade (Session 3A.1).
@@ -992,5 +993,49 @@ class BillingService
         }
 
         return ['terminated' => $terminated, 'errors' => $errors];
+    }
+
+    /**
+     * Refund a paid or partially paid invoice: credit the paid amount back to
+     * the customer's wallet and mark the invoice refunded. Amounts are kept
+     * for audit — nothing is voided or deleted.
+     *
+     * @throws InvalidArgumentException
+     */
+    public function refund(Invoice $invoice, ?string $reason = null): Invoice
+    {
+        return DB::transaction(function () use ($invoice, $reason) {
+            if (! in_array($invoice->status, [Invoice::STATUS_PAID, Invoice::STATUS_PARTIAL], true)) {
+                throw new InvalidArgumentException('Only paid or partially paid invoices can be refunded.');
+            }
+
+            $paidAmount = (float) ($invoice->paid_amount ?? 0);
+
+            if ($paidAmount <= 0) {
+                $paidAmount = (float) Payment::where('invoice_id', $invoice->id)
+                    ->where('status', 'completed')
+                    ->sum('amount');
+            }
+
+            if ($invoice->customer_id !== null && (int) $invoice->customer_id > 0 && $paidAmount > 0) {
+                Customer::where('id', $invoice->customer_id)->increment('credit', $paidAmount);
+
+                CustomerWallet::create([
+                    'customer_id' => $invoice->customer_id,
+                    'type' => 'refund',
+                    'amount' => $paidAmount,
+                    'balance_type' => 'credit',
+                    'description' => 'Refund for invoice '.$invoice->invoice_no.($reason !== null && $reason !== '' ? ': '.$reason : ''),
+                    'invoice_id' => $invoice->id,
+                ]);
+            }
+
+            $invoice->update([
+                'status' => Invoice::STATUS_REFUNDED,
+                'notes' => trim((string) $invoice->notes.($reason !== null && $reason !== '' ? "\nRefunded: ".$reason : "\nRefunded.")),
+            ]);
+
+            return $invoice->fresh();
+        });
     }
 }

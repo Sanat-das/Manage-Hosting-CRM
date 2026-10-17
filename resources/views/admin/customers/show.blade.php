@@ -144,7 +144,7 @@
                     <table class="table table-sm align-middle mb-0">
                         <thead>
                             <tr>
-                                <th>Service</th><th>Domain</th><th>Product</th><th>Server</th><th>IP address</th><th>Order</th><th>Cycle</th><th class="text-end">Amount</th><th>Next billing</th><th>Status</th>
+                                <th>Service</th><th>Product</th><th>Server</th><th>IP address</th><th>Domain</th><th>Cycle</th><th class="text-end">Amount</th><th>Next billing</th><th>Status</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -172,17 +172,6 @@
                                             <strong>#{{ $account->id }}</strong>
                                         </a>
                                     </td>
-                                    <td>
-                                        @if ($domainName)
-                                            @if ($serviceOrder?->domain)
-                                                <a href="{{ route('admin.domains.show', $serviceOrder->domain) }}">{{ $domainName }}</a>
-                                            @else
-                                                {{ $domainName }}
-                                            @endif
-                                        @else
-                                            <span class="text-muted">—</span>
-                                        @endif
-                                    </td>
                                     <td class="text-muted">
                                         {{ $account->product?->name ?? '—' }}
                                         @if ($serviceItem && (int) $serviceItem->quantity > 1)
@@ -198,9 +187,12 @@
                                         @endforelse
                                     </td>
                                     <td>
-                                        @if ($serviceOrder)
-                                            <a href="{{ route('admin.orders.show', $serviceOrder) }}"><strong>{{ $serviceOrder->order_no }}</strong></a>
-                                            <x-adminlte.partials.status-badge :status="$serviceOrder->status" />
+                                        @if ($domainName)
+                                            @if ($serviceOrder?->domain)
+                                                <a href="{{ route('admin.domains.show', $serviceOrder->domain) }}">{{ $domainName }}</a>
+                                            @else
+                                                {{ $domainName }}
+                                            @endif
                                         @else
                                             <span class="text-muted">—</span>
                                         @endif
@@ -213,7 +205,7 @@
                                     <td><x-adminlte.partials.status-badge :status="$account->status" /></td>
                                 </tr>
                             @empty
-                                <x-ui.empty-table-row colSpan="10" icon="bi bi-hdd-stack" title="No hosting accounts yet." />
+                                <x-ui.empty-table-row colSpan="9" icon="bi bi-hdd-stack" title="No hosting accounts yet." />
                             @endforelse
                         </tbody>
                     </table>

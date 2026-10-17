@@ -120,7 +120,17 @@
 
     {{-- Password field controls. A separate Vite entry: this layout has no
          Bootstrap and no AdminLTE bundle, so the main entry cannot come along. --}}
+@php
+    $_pfAsset = null;
+    try {
+        $_pfAsset = \Illuminate\Support\Facades\Vite::asset('resources/js/password-field.js');
+    } catch (\Throwable) {
+        $_pfAsset = null;
+    }
+@endphp
+@if (is_string($_pfAsset))
     @vite('resources/js/password-field.js')
+@endif
 </head>
 <body>
     <main class="shell">

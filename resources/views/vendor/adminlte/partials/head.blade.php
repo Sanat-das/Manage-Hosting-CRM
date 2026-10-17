@@ -56,7 +56,19 @@
 @endif
 
 {{-- Compiled AdminLTE + Bootstrap from Vite pipeline — branding.css last so :root wins --}}
-@vite(['resources/css/app.css', 'resources/css/adminlte.css', 'resources/css/branding.css', 'resources/js/adminlte.js', 'resources/js/echo.js', 'resources/js/password-field.js'])
+@vite(['resources/css/app.css', 'resources/css/adminlte.css', 'resources/css/branding.css', 'resources/js/adminlte.js', 'resources/js/echo.js'])
+
+@php
+    $__passwordFieldAsset = null;
+    try {
+        $__passwordFieldAsset = \Illuminate\Support\Facades\Vite::asset('resources/js/password-field.js');
+    } catch (\Throwable) {
+        $__passwordFieldAsset = null;
+    }
+@endphp
+@if (is_string($__passwordFieldAsset))
+    @vite('resources/js/password-field.js')
+@endif
 
 {{-- HostVexa branding: dynamic favicon, OG, theme-color, and primary/accent CSS overrides --}}
 @php

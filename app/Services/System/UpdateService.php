@@ -151,7 +151,7 @@ class UpdateService
 
             return [
                 'status' => 'no_git',
-                'message' => 'This installation was not deployed via git. To update, download the latest ZIP from GitHub, replace files (keep .env, storage/, install.lock), then run composer install --optimize-autoloader && php artisan migrate --force && php artisan optimize:clear.',
+                'message' => 'This installation was not deployed via git. To update, download the latest ZIP from GitHub, replace files (keep .env, storage/, install.lock), then run composer install --optimize-autoloader && npm ci && npm run build && php artisan migrate --force && php artisan optimize:clear.',
                 'behind' => 0,
                 'commits' => [],
                 'diffStat' => null,

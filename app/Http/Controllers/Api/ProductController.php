@@ -101,15 +101,17 @@ class ProductController extends Controller
 
     public function destroy(Request $request, Product $product): JsonResponse
     {
-        $hasLiveOrders = Order::query()
+        $hasOrderHistory = Order::query()
             ->where('product_id', $product->id)
-            ->whereIn('status', ['active', 'pending'])
             ->exists();
 
-        if ($hasLiveOrders) {
-            return response()->json([
-                'message' => "Cannot delete product {$product->name}: it has active or pending orders.",
-            ], 422);
+        if ($hasOrderHistory) {
+            $product->update([
+                'status' => 'inactive',
+                'show_in_order' => false,
+            ]);
+
+            return response()->json(['message' => "Product {$product->name} archived (it has order history and cannot be deleted)."]);
         }
 
         $product->delete(); // cascades to pricing, options, addons, meta

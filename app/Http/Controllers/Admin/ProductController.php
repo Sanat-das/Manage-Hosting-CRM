@@ -294,14 +294,19 @@ class ProductController extends Controller
 
     public function destroy(Request $request, Product $product): RedirectResponse
     {
-        $hasLiveOrders = Order::query()
+        $hasOrderHistory = Order::query()
             ->where('product_id', $product->id)
-            ->whereIn('status', ['active', 'pending'])
             ->exists();
 
-        if ($hasLiveOrders) {
-            return back()
-                ->with('error', "Cannot delete product {$product->name}: it has active or pending orders.");
+        if ($hasOrderHistory) {
+            $product->update([
+                'status' => 'inactive',
+                'show_in_order' => false,
+            ]);
+
+            return redirect()
+                ->route('admin.products.index')
+                ->with('success', "Product {$product->name} archived (it has order history and cannot be deleted).");
         }
 
         $product->delete(); // cascades to pricing, options, addons, meta

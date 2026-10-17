@@ -52,6 +52,10 @@ Route::middleware(['web', 'auth', 'admin', 'throttle:admin'])->prefix('admin')->
         ->middleware('permission:invoices.edit')
         ->name('invoices.send');
 
+    Route::post('invoices/{invoice}/refund', [InvoiceController::class, 'refund'])
+        ->middleware('permission:invoices.edit')
+        ->name('invoices.refund');
+
     Route::get('invoices/{invoice}/pdf', [InvoiceController::class, 'pdf'])
         ->middleware('permission:invoices.view')
         ->name('invoices.pdf');

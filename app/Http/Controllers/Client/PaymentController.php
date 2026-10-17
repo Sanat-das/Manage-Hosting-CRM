@@ -184,7 +184,7 @@ class PaymentController extends Controller
      */
     private function uncollectable(Invoice $invoice): ?RedirectResponse
     {
-        if (! in_array($invoice->status, [Invoice::STATUS_VOID, Invoice::STATUS_CANCELLED], true)) {
+        if (! in_array($invoice->status, [Invoice::STATUS_VOID, Invoice::STATUS_CANCELLED, Invoice::STATUS_REFUNDED], true)) {
             return null;
         }
 
