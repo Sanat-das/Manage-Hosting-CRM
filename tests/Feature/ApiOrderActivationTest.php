@@ -87,7 +87,7 @@ class ApiOrderActivationTest extends TestCase
         $this->assertSame(1, OrderStatusHistory::where('order_id', $order->id)->count());
     }
 
-    public function test_activation_of_ip_less_product_skips_provisioning(): void
+    public function test_activation_of_ip_less_product_creates_pending_account(): void
     {
         $user = $this->apiUser();
         $customer = $this->makeCustomer();
@@ -100,7 +100,11 @@ class ApiOrderActivationTest extends TestCase
 
         $response->assertOk();
         $response->assertJsonPath('data.status', 'active');
-        $this->assertSame(0, HostingAccount::count());
+        // Every product now provisions a local Products/Services row on
+        // activation, even without IP flags (require_domain only means the
+        // service needs a domain attached, not that it is a domain sale).
+        $this->assertSame(1, HostingAccount::count());
+        $this->assertSame(HostingService::STATUS_PENDING, HostingAccount::sole()->status);
     }
 
     public function test_illegal_transition_returns_422(): void

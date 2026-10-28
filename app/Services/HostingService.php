@@ -141,13 +141,19 @@ class HostingService
         }
 
         // A product/service row must exist for everything we actually sell:
-        // IP-backed services, products in a hosting group, and any non-domain
-        // (non-hosting) service such as Website AMC. Domain-registration
-        // products (require_domain) are fulfilled through the domains table
-        // instead, so they never get a hosting account.
+        // IP-backed services, products in a hosting group, and any other
+        // service (Website AMC, email, etc.). Only genuine domain-registration
+        // products are fulfilled through the domains table instead, so they
+        // never get a hosting account. "require_domain" means "needs a domain
+        // attached to the service", NOT "is a domain registration" — the
+        // latter is identified by its product group (slug 'domain-registration').
+        // Keying the skip off require_domain hid every domain-attached service
+        // (e.g. Zoho Business Email) from Products/Services.
+        $isDomainRegistration = $product->group?->slug === 'domain-registration';
+
         $createsAccount = $product->requiresIp()
             || (bool) $product->group?->is_hosting
-            || ! (bool) $product->require_domain;
+            || ! $isDomainRegistration;
 
         if (! $createsAccount) {
             return null; // nothing to provision for domain-registration products
