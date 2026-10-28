@@ -13,6 +13,7 @@ use App\Models\CustomerNote;
 use App\Models\CustomerWallet;
 use App\Models\Invoice;
 use App\Models\Order;
+use App\Models\OrderItem;
 use App\Models\ServiceInstance;
 use App\Models\SubscriptionChange;
 use App\Models\SubscriptionPeriod;
@@ -439,6 +440,15 @@ class CustomerController extends Controller
 
         $domains = $domainsQuery->paginate($perPage, ['*'], 'domains_page')->withQueryString();
 
+        // All domains for the customer (separate group under Products/Services).
+        $customerDomains = $customer->domains()->latest()->get();
+        // Add-ons attached to this customer's orders (separate group, WHMCS-style).
+        $addonItems = OrderItem::query()
+            ->whereHas('order', fn ($q) => $q->where('customer_id', $customer->id))
+            ->whereNotNull('product_addon_id')
+            ->with(['order:id,order_number,status', 'addon', 'parentItem:id,product_name'])
+            ->latest()
+            ->get();
         // Contacts
         $contactsQuery = $customer->contacts()
             ->when($search !== '', function ($query) use ($search) {
@@ -527,7 +537,7 @@ class CustomerController extends Controller
 
         return view('admin.customers.show', compact(
             'customer', 'hostingAccounts', 'orders', 'invoices', 'tickets', 'domains',
-            'contacts', 'walletTransactions', 'activity', 'filters', 'statusOptions', 'counts', 'search'
+            'customerDomains', 'addonItems', 'contacts', 'walletTransactions', 'activity', 'filters', 'statusOptions', 'counts', 'search'
         ));
     }
 

@@ -14,7 +14,6 @@
         ['id' => 'orders', 'label' => 'Orders', 'icon' => 'bi bi-cart3'],
         ['id' => 'invoices', 'label' => 'Invoices', 'icon' => 'bi bi-receipt'],
         ['id' => 'tickets', 'label' => 'Tickets', 'icon' => 'bi bi-life-preserver'],
-        ['id' => 'domains', 'label' => 'Domains', 'icon' => 'bi bi-globe2'],
         ['id' => 'contacts', 'label' => 'Contacts', 'icon' => 'bi bi-people'],
         ['id' => 'notes', 'label' => 'Notes', 'icon' => 'bi bi-sticky'],
         ['id' => 'billing', 'label' => 'Billing', 'icon' => 'bi bi-wallet2'],
@@ -227,6 +226,88 @@
                                 <x-ui.empty-table-row colSpan="9" icon="bi bi-hdd-stack" title="No hosting accounts yet." />
                             @endforelse
                 </x-adminlte.partials.datatable>
+
+                {{-- Domains (separate group, WHMCS-style) --}}
+                <div class="mt-4">
+                    <h6 class="mb-2"><i class="bi bi-globe2 me-1"></i> Domains</h6>
+                    @if ($customerDomains->isEmpty())
+                        <div class="text-muted small">No domains for this customer.</div>
+                    @else
+                        <div class="table-responsive">
+                            <table class="table table-sm table-hover align-middle mb-0">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>Domain</th>
+                                        <th>Type</th>
+                                        <th>Expiry</th>
+                                        <th>Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach ($customerDomains as $domain)
+                                        @php $expiring = $domain->status === 'active' && $domain->expiry_date?->isBefore(now()->addDays(30)); @endphp
+                                        <tr>
+                                            <td><a href="{{ route('admin.domains.show', $domain) }}">{{ $domain->name }}</a></td>
+                                            <td class="text-muted">{{ ucfirst($domain->type) }}</td>
+                                            <td class="{{ $expiring ? 'text-danger fw-bold' : 'text-muted' }}">
+                                                {{ $domain->expiry_date?->format('M j, Y') ?? '—' }}
+                                                @if ($expiring)
+                                                    <span class="badge text-bg-warning ms-1">Expiring soon</span>
+                                                @endif
+                                            </td>
+                                            <td><x-adminlte.partials.status-badge :status="$domain->status" /></td>
+                                        </tr>
+                                    @endforeach
+                                </tbody>
+                            </table>
+                        </div>
+                    @endif
+                </div>
+
+                {{-- Add-ons (separate group, WHMCS-style) --}}
+                <div class="mt-4">
+                    <h6 class="mb-2"><i class="bi bi-puzzle me-1"></i> Add-ons</h6>
+                    @if ($addonItems->isEmpty())
+                        <div class="text-muted small">No add-ons on this customer's services.</div>
+                    @else
+                        <div class="table-responsive">
+                            <table class="table table-sm table-hover align-middle mb-0">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>Add-on</th>
+                                        <th>Parent service</th>
+                                        <th>Order</th>
+                                        <th>Cycle</th>
+                                        <th class="text-end">Qty</th>
+                                        <th class="text-end">Amount</th>
+                                        <th>Next billing</th>
+                                        <th>Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach ($addonItems as $item)
+                                        <tr>
+                                            <td>{{ $item->product_name }}</td>
+                                            <td class="text-muted">{{ $item->parentItem?->product_name ?? '—' }}</td>
+                                            <td>
+                                                @if ($item->order)
+                                                    <a href="{{ route('admin.orders.show', $item->order) }}">{{ $item->order->order_number }}</a>
+                                                @else
+                                                    —
+                                                @endif
+                                            </td>
+                                            <td class="text-muted">{{ $item->billing_cycle ? ucfirst(str_replace('_', ' ', $item->billing_cycle)) : '—' }}</td>
+                                            <td class="text-end">{{ $item->quantity }}</td>
+                                            <td class="text-end">₹{{ number_format((float) $item->total, 2) }}</td>
+                                            <td class="text-muted">{{ $item->next_billing_date?->format('M j, Y') ?? '—' }}</td>
+                                            <td>{{ $item->order?->status ?? '—' }}</td>
+                                        </tr>
+                                    @endforeach
+                                </tbody>
+                            </table>
+                        </div>
+                    @endif
+                </div>
             </div>
 
             {{-- Orders --}}
@@ -345,49 +426,6 @@
                                 </tr>
                             @empty
                                 <x-ui.empty-table-row colSpan="4" icon="bi bi-life-preserver" title="No tickets yet." />
-                            @endforelse
-                </x-adminlte.partials.datatable>
-            </div>
-
-            {{-- Domains --}}
-            <div class="tab-pane fade {{ $activeTab === 'domains' ? 'show active' : '' }}" id="domains" role="tabpanel" aria-labelledby="domains-tab">
-                <x-adminlte.partials.datatable
-                    frameless
-                    icon="bi bi-globe2"
-                    title=""
-                    grid-key="customer.show.domains"
-                    :query="['tab' => 'domains']"
-                    search-placeholder="Search domain name..."
-                    :search-value="$filters['search']"
-                    status-field="domain_status"
-                    :status-options="$statusOptions['domains']"
-                    :status-value="$filters['domain_status']"
-                    :sticky-header="true"
-                    :column-toggle="true"
-                    :pagination="$domains"
-                    :export-url="route('admin.customers.show', ['customer' => $customer, 'tab' => 'domains'])"
-                    export-label="Export CSV"                    :columns="[
-                        ['label' => 'Domain', 'sort' => 'name'],
-                        ['label' => 'Type', 'sort' => 'type'],
-                        ['label' => 'Expiry', 'sort' => 'expiry_date'],
-                        ['label' => 'Status', 'sort' => 'status'],
-                    ]"
-                >
-                    @forelse ($domains as $domain)
-                                @php $expiring = $domain->status === 'active' && $domain->expiry_date?->isBefore(now()->addDays(30)); @endphp
-                                <tr>
-                                    <td><a href="{{ route('admin.domains.show', $domain) }}">{{ $domain->name }}</a></td>
-                                    <td class="text-muted">{{ ucfirst($domain->type) }}</td>
-                                    <td class="{{ $expiring ? 'text-danger fw-bold' : 'text-muted' }}">
-                                        {{ $domain->expiry_date?->format('M j, Y') ?? '—' }}
-                                        @if ($expiring)
-                                            <span class="badge text-bg-warning ms-1">Expiring soon</span>
-                                        @endif
-                                    </td>
-                                    <td><x-adminlte.partials.status-badge :status="$domain->status" /></td>
-                                </tr>
-                            @empty
-                                <x-ui.empty-table-row colSpan="4" icon="bi bi-globe2" title="No domains yet." />
                             @endforelse
                 </x-adminlte.partials.datatable>
             </div>
