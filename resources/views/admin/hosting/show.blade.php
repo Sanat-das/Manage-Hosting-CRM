@@ -664,6 +664,76 @@
                         @endif
                     </div>
                 </div>
+
+                {{-- Add-ons attached to this service's order (editable here,
+                     WHMCS-style: the order is a one-time purchase record). --}}
+                @php
+                    $billingCycleLabels = [
+                        'monthly' => 'Monthly',
+                        'quarterly' => 'Quarterly',
+                        'semi_annual' => 'Semi-Annual',
+                        'annual' => 'Annual',
+                        'biennial' => 'Biennial',
+                        'one_time' => 'One Time',
+                    ];
+                    $serviceAddons = $order?->items?->whereNotNull('product_addon_id') ?? collect();
+                @endphp
+                @if ($serviceAddons->isNotEmpty())
+                    <div class="mt-4">
+                        <h6 class="text-muted mb-2"><i class="bi bi-puzzle me-1"></i> Add-ons</h6>
+                        <div class="table-responsive">
+                            <table class="table table-grid align-middle m-0">
+                                <thead>
+                                    <tr>
+                                        <th>Add-on</th>
+                                        <th>Cycle</th>
+                                        <th class="text-end">Qty</th>
+                                        <th class="text-end">Unit price</th>
+                                        <th>Next billing</th>
+                                        <th class="text-end">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach ($serviceAddons as $item)
+                                        <tr>
+                                            <td>{{ $item->product_name }}</td>
+                                            <td>{{ $billingCycleLabels[$item->billing_cycle] ?? ucfirst(str_replace('_', ' ', (string) $item->billing_cycle)) }}</td>
+                                            <td class="text-end">{{ $item->quantity }}</td>
+                                            <td class="text-end">₹{{ number_format((float) $item->unit_price, 2) }}</td>
+                                            <td>
+                                                @if ($item->next_billing_date)
+                                                    {{ $item->next_billing_date->format('M j, Y') }}
+                                                @else
+                                                    <span class="text-muted">—</span>
+                                                @endif
+                                            </td>
+                                            <td class="text-end">
+                                                @can('orders.edit')
+                                                    <a href="{{ route('admin.orders.addons.edit', [$order, $item]) }}"
+                                                       class="btn btn-sm btn-outline-primary me-1">
+                                                        <i class="bi bi-pencil me-1"></i>Edit
+                                                    </a>
+                                                @endcan
+                                                @if ($item->next_billing_date)
+                                                    @can('orders.edit')
+                                                        <form method="POST" action="{{ route('admin.orders.addons.destroy', [$order, $item]) }}" class="d-inline">
+                                                            @csrf
+                                                            @method('DELETE')
+                                                            <button type="submit" class="btn btn-sm btn-outline-danger"
+                                                                    onclick="return confirm('Cancel this add-on?')">
+                                                                <i class="bi bi-x-circle me-1"></i>Cancel
+                                                            </button>
+                                                        </form>
+                                                    @endcan
+                                                @endif
+                                            </td>
+                                        </tr>
+                                    @endforeach
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                @endif
             </div>
 
             {{-- Domain --}}

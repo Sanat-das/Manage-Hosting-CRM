@@ -362,12 +362,7 @@
                                         @endif
                                     </td>
                                     <td class="text-end">
-                                        @can('orders.edit')
-                                            <a href="{{ route('admin.orders.addons.edit', [$order, $item]) }}"
-                                               class="btn btn-sm btn-outline-primary me-1">
-                                                <i class="bi bi-pencil me-1"></i>Edit
-                                            </a>
-                                        @endcan
+                                        {{-- Edit moved to the hosting service page (order is one-time). --}}
                                         @if ($item->next_billing_date)
                                             @can('orders.edit')
                                                 <button type="button" class="btn btn-sm btn-outline-danger"
