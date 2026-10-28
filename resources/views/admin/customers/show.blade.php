@@ -234,7 +234,7 @@
                         <div class="text-muted small">No domains for this customer.</div>
                     @else
                         <div class="table-responsive">
-                            <table class="table table-sm table-hover align-middle mb-0">
+                            <table class="table table-grid align-middle m-0">
                                 <thead class="table-light">
                                     <tr>
                                         <th>Domain</th>
@@ -271,7 +271,7 @@
                         <div class="text-muted small">No add-ons on this customer's services.</div>
                     @else
                         <div class="table-responsive">
-                            <table class="table table-sm table-hover align-middle mb-0">
+                            <table class="table table-grid align-middle m-0">
                                 <thead class="table-light">
                                     <tr>
                                         <th>Add-on</th>

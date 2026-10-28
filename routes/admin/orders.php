@@ -54,4 +54,8 @@ Route::middleware(['web', 'auth', 'admin', 'throttle:admin'])->prefix('admin')->
     Route::delete('orders/{order}/addons/{orderItem}', [OrderAddonController::class, 'destroy'])
         ->middleware('permission:orders.edit')
         ->name('orders.addons.destroy');
+
+    Route::put('orders/{order}/addons/{orderItem}', [OrderAddonController::class, 'update'])
+        ->middleware('permission:orders.edit')
+        ->name('orders.addons.update');
 });

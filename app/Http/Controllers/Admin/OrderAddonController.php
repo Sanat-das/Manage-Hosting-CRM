@@ -9,6 +9,7 @@ use App\Models\ProductAddon;
 use App\Services\Billing\AddOnService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 use InvalidArgumentException;
 
 /**
@@ -80,5 +81,35 @@ class OrderAddonController extends Controller
         $this->addons->cancel($orderItem, $validated['reason'] ?? null, $request->user());
 
         return back()->with('success', "Add-on {$orderItem->product_name} cancelled.");
+    }
+
+    public function update(Request $request, Order $order, OrderItem $orderItem): RedirectResponse
+    {
+        abort_unless((int) $orderItem->order_id === (int) $order->id, 404);
+        abort_unless($orderItem->isAddon(), 404);
+
+        $validated = $request->validate([
+            'billing_cycle' => ['nullable', 'string', Rule::in(Order::BILLING_CYCLES)],
+            'next_billing_date' => ['nullable', 'date'],
+            'quantity' => ['sometimes', 'integer', 'min:1', 'max:'.Order::MAX_QUANTITY],
+        ]);
+
+        $updates = [];
+        if (array_key_exists('billing_cycle', $validated) && $validated['billing_cycle'] !== null) {
+            $updates['billing_cycle'] = $validated['billing_cycle'];
+        }
+        if (array_key_exists('next_billing_date', $validated)) {
+            $updates['next_billing_date'] = $validated['next_billing_date'];
+        }
+        if (isset($validated['quantity'])) {
+            $updates['quantity'] = $validated['quantity'];
+            $updates['total'] = round((float) $orderItem->unit_price * (int) $validated['quantity'], 2);
+        }
+
+        if ($updates !== []) {
+            $orderItem->update($updates);
+        }
+
+        return back()->with('success', "Add-on {$orderItem->product_name} updated.");
     }
 }
