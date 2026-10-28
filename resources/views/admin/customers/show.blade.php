@@ -282,6 +282,7 @@
                                         <th class="text-end">Amount</th>
                                         <th>Next billing</th>
                                         <th>Status</th>
+                                        <th class="text-end">Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -301,6 +302,16 @@
                                             <td class="text-end">₹{{ number_format((float) $item->total, 2) }}</td>
                                             <td class="text-muted">{{ $item->next_billing_date?->format('M j, Y') ?? '—' }}</td>
                                             <td>{{ $item->order?->status ?? '—' }}</td>
+                                            <td class="text-end">
+                                                @if ($item->order)
+                                                    @can('orders.edit')
+                                                        <a href="{{ route('admin.orders.addons.edit', [$item->order, $item]) }}"
+                                                           class="btn btn-sm btn-outline-primary">
+                                                            <i class="bi bi-pencil me-1"></i>Edit
+                                                        </a>
+                                                    @endcan
+                                                @endif
+                                            </td>
                                         </tr>
                                     @endforeach
                                 </tbody>
