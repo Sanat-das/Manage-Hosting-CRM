@@ -10,6 +10,7 @@ use App\Services\Billing\AddOnService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
+use Illuminate\View\View;
 use InvalidArgumentException;
 
 /**
@@ -83,6 +84,23 @@ class OrderAddonController extends Controller
         return back()->with('success', "Add-on {$orderItem->product_name} cancelled.");
     }
 
+    public function edit(Request $request, Order $order, OrderItem $orderItem): View
+    {
+        abort_unless((int) $orderItem->order_id === (int) $order->id, 404);
+        abort_unless($orderItem->isAddon(), 404);
+
+        $billingCycleLabels = [
+            'monthly' => 'Monthly',
+            'quarterly' => 'Quarterly',
+            'semi_annual' => 'Semi-Annual',
+            'annual' => 'Annual',
+            'biennial' => 'Biennial',
+            'one_time' => 'One Time',
+        ];
+
+        return view('admin.orders.addons.edit', compact('order', 'orderItem', 'billingCycleLabels'));
+    }
+
     public function update(Request $request, Order $order, OrderItem $orderItem): RedirectResponse
     {
         abort_unless((int) $orderItem->order_id === (int) $order->id, 404);
@@ -92,6 +110,7 @@ class OrderAddonController extends Controller
             'billing_cycle' => ['nullable', 'string', Rule::in(Order::BILLING_CYCLES)],
             'next_billing_date' => ['nullable', 'date'],
             'quantity' => ['sometimes', 'integer', 'min:1', 'max:'.Order::MAX_QUANTITY],
+            'unit_price' => ['sometimes', 'numeric', 'min:0'],
         ]);
 
         $updates = [];
@@ -101,10 +120,15 @@ class OrderAddonController extends Controller
         if (array_key_exists('next_billing_date', $validated)) {
             $updates['next_billing_date'] = $validated['next_billing_date'];
         }
+        if (isset($validated['unit_price'])) {
+            $updates['unit_price'] = $validated['unit_price'];
+        }
         if (isset($validated['quantity'])) {
             $updates['quantity'] = $validated['quantity'];
-            $updates['total'] = round((float) $orderItem->unit_price * (int) $validated['quantity'], 2);
         }
+        $unitPrice = (float) ($updates['unit_price'] ?? $orderItem->unit_price);
+        $qty = (int) ($updates['quantity'] ?? $orderItem->quantity);
+        $updates['total'] = round($unitPrice * $qty, 2);
 
         if ($updates !== []) {
             $orderItem->update($updates);

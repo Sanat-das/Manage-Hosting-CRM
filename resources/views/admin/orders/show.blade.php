@@ -363,10 +363,10 @@
                                     </td>
                                     <td class="text-end">
                                         @can('orders.edit')
-                                            <button type="button" class="btn btn-sm btn-outline-primary me-1"
-                                                    data-bs-toggle="modal" data-bs-target="#edit-addon-{{ $item->id }}">
+                                            <a href="{{ route('admin.orders.addons.edit', [$order, $item]) }}"
+                                               class="btn btn-sm btn-outline-primary me-1">
                                                 <i class="bi bi-pencil me-1"></i>Edit
-                                            </button>
+                                            </a>
                                         @endcan
                                         @if ($item->next_billing_date)
                                             @can('orders.edit')
@@ -522,37 +522,6 @@
              outside the table, per the confirm-modal component contract; the
              optional reason is submitted with the DELETE form. --}}
         @foreach ($liveAddons as $item)
-            <x-adminlte.partials.confirm-modal
-                :id="'edit-addon-' . $item->id"
-                title="Edit add-on billing"
-                :message="'Update billing schedule for ' . $item->product_name . ' on ' . $order->order_no . '.'"
-                method="PUT"
-                :action="route('admin.orders.addons.update', [$order, $item])"
-                confirm-label="Save changes"
-            >
-                <x-slot name="fields">
-                    <div class="mt-3">
-                        <label class="form-label small text-muted" for="edit-addon-cycle-{{ $item->id }}">Billing cycle</label>
-                        <select class="form-select form-select-sm" id="edit-addon-cycle-{{ $item->id }}" name="billing_cycle">
-                            @foreach ($billingCycleLabels as $value => $label)
-                                <option value="{{ $value }}" @selected($item->billing_cycle === $value)>{{ $label }}</option>
-                            @endforeach
-                        </select>
-                    </div>
-                    <div class="mt-2">
-                        <label class="form-label small text-muted" for="edit-addon-date-{{ $item->id }}">Next billing date</label>
-                        <input type="date" class="form-control form-control-sm" id="edit-addon-date-{{ $item->id }}"
-                               name="next_billing_date"
-                               value="{{ $item->next_billing_date?->format('Y-m-d') }}">
-                    </div>
-                    <div class="mt-2">
-                        <label class="form-label small text-muted" for="edit-addon-qty-{{ $item->id }}">Quantity</label>
-                        <input type="number" class="form-control form-control-sm" id="edit-addon-qty-{{ $item->id }}"
-                               name="quantity" min="1" max="{{ \App\Models\Order::MAX_QUANTITY }}" value="{{ $item->quantity }}">
-                    </div>
-                </x-slot>
-            </x-adminlte.partials.confirm-modal>
-
             <x-adminlte.partials.confirm-modal
                 :id="'cancel-addon-' . $item->id"
                 title="Cancel add-on"
