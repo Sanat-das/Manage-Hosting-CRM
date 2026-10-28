@@ -18,6 +18,14 @@ Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote');
 
+// Renewal reminders run BEFORE the billing run: the client (and the admin
+// digest) hear about a renewal ahead of the invoice that bills it, which is
+// the whole point of the reminder. `renewal_reminder_days` sets the window.
+Schedule::command('renewals:remind')
+    ->dailyAt('00:30')
+    ->withoutOverlapping()
+    ->runInBackground();
+
 Schedule::command('billing:recurring')
     ->dailyAt('01:00')
     ->withoutOverlapping()

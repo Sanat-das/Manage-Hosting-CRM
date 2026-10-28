@@ -23,6 +23,12 @@ class BillingSettings extends Settings
      */
     public int $renewal_invoice_days = 0;
 
+    /**
+     * Renewal reminder window, in days before the renewal date.
+     * 0 = remind on the due date.
+     */
+    public int $renewal_reminder_days = 7;
+
     public ?string $bank_name = null;
 
     public ?string $bank_account_holder = null;
@@ -44,6 +50,7 @@ class BillingSettings extends Settings
             'invoice_prefix' => ['nullable', 'string', 'max:20'],
             'tax_rate' => ['nullable', 'numeric', 'min:0', 'max:100'],
             'renewal_invoice_days' => ['nullable', 'integer', 'min:0', 'max:90'],
+            'renewal_reminder_days' => ['nullable', 'integer', 'min:0', 'max:90'],
             'bank_name' => ['nullable', 'string', 'max:255'],
             'bank_account_holder' => ['nullable', 'string', 'max:255'],
             'bank_account_no' => ['nullable', 'string', 'max:34'],

@@ -103,9 +103,9 @@
 
     {{-- Metric row --}}
     <x-adminlte.partials.metric-cards :items="[
-        ['title' => count($customer->hostingAccounts), 'text' => 'Hosting Accounts', 'icon' => 'bi bi-hdd-stack', 'theme' => 'primary'],
-        ['title' => count($customer->invoices), 'text' => 'Invoices', 'icon' => 'bi bi-receipt', 'theme' => 'warning'],
-        ['title' => count($customer->tickets), 'text' => 'Tickets', 'icon' => 'bi bi-life-preserver', 'theme' => 'success'],
+        ['title' => $counts['hosting'], 'text' => 'Hosting Accounts', 'icon' => 'bi bi-hdd-stack', 'theme' => 'primary'],
+        ['title' => $counts['invoices'], 'text' => 'Invoices', 'icon' => 'bi bi-receipt', 'theme' => 'warning'],
+        ['title' => $counts['tickets'], 'text' => 'Tickets', 'icon' => 'bi bi-life-preserver', 'theme' => 'success'],
         ['title' => '₹'.number_format($customer->balance, 2), 'text' => 'Account Balance', 'icon' => 'bi bi-wallet2', 'theme' => 'info'],
     ]" />
 
@@ -140,15 +140,34 @@
 
             {{-- Products/Services --}}
             <div class="tab-pane fade {{ $activeTab === 'hosting' ? 'show active' : '' }}" id="hosting" role="tabpanel" aria-labelledby="hosting-tab">
-                <div class="table-responsive">
-                    <table class="table table-sm align-middle mb-0">
-                        <thead>
-                            <tr>
-                                <th>Service</th><th>Product</th><th>Server</th><th>IP address</th><th>Domain</th><th>Cycle</th><th class="text-end">Amount</th><th>Next billing</th><th>Status</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @forelse ($customer->hostingAccounts as $account)
+                <x-adminlte.partials.datatable
+                    frameless
+                    icon="bi bi-hdd-stack"
+                    title=""
+                    grid-key="customer.show.hosting"
+                    :query="['tab' => 'hosting']"
+                    search-placeholder="Search service, product, server, domain..."
+                    :search-value="$filters['search']"
+                    status-field="hosting_status"
+                    :status-options="$statusOptions['hosting']"
+                    :status-value="$filters['hosting_status']"
+                    :sticky-header="true"
+                    :column-toggle="true"
+                    :pagination="$hostingAccounts"
+                    :export-url="route('admin.customers.show', ['customer' => $customer, 'tab' => 'hosting'])"
+                    export-label="Export CSV"                    :columns="[
+                        ['label' => 'Service', 'sort' => 'id'],
+                        ['label' => 'Product', 'sort' => 'product'],
+                        ['label' => 'Server', 'sort' => 'server'],
+                        ['label' => 'IP address'],
+                        ['label' => 'Domain'],
+                        ['label' => 'Cycle', 'sort' => 'cycle'],
+                        ['label' => 'Amount', 'sort' => 'amount', 'class' => 'text-end grid-numeric'],
+                        ['label' => 'Next billing', 'sort' => 'next_billing'],
+                        ['label' => 'Status', 'sort' => 'status'],
+                    ]"
+                >
+                    @forelse ($hostingAccounts as $account)
                                 @php
                                     $serviceOrder = $account->order;
                                     $serviceItem = $serviceOrder?->items
@@ -207,22 +226,36 @@
                             @empty
                                 <x-ui.empty-table-row colSpan="9" icon="bi bi-hdd-stack" title="No hosting accounts yet." />
                             @endforelse
-                        </tbody>
-                    </table>
-                </div>
+                </x-adminlte.partials.datatable>
             </div>
 
             {{-- Orders --}}
             <div class="tab-pane fade {{ $activeTab === 'orders' ? 'show active' : '' }}" id="orders" role="tabpanel" aria-labelledby="orders-tab">
-                <div class="table-responsive">
-                    <table class="table table-sm align-middle mb-0">
-                        <thead>
-                            <tr>
-                                <th>Order</th><th>Product</th><th>Cycle</th><th class="text-end">Total</th><th>Status</th><th>Created</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @forelse ($orders as $order)
+                <x-adminlte.partials.datatable
+                    frameless
+                    icon="bi bi-cart3"
+                    title=""
+                    grid-key="customer.show.orders"
+                    :query="['tab' => 'orders']"
+                    search-placeholder="Search order number, product..."
+                    :search-value="$filters['search']"
+                    status-field="order_status"
+                    :status-options="$statusOptions['orders']"
+                    :status-value="$filters['order_status']"
+                    :sticky-header="true"
+                    :column-toggle="true"
+                    :pagination="$orders"
+                    :export-url="route('admin.customers.show', ['customer' => $customer, 'tab' => 'orders'])"
+                    export-label="Export CSV"                    :columns="[
+                        ['label' => 'Order', 'sort' => 'order_no'],
+                        ['label' => 'Product', 'sort' => 'product'],
+                        ['label' => 'Cycle', 'sort' => 'cycle'],
+                        ['label' => 'Total', 'sort' => 'total', 'class' => 'text-end grid-numeric'],
+                        ['label' => 'Status', 'sort' => 'status'],
+                        ['label' => 'Created', 'sort' => 'created_at'],
+                    ]"
+                >
+                    @forelse ($orders as $order)
                                 <tr>
                                     <td>
                                         <a href="{{ route('admin.orders.show', $order) }}"><strong>{{ $order->order_no }}</strong></a>
@@ -239,23 +272,34 @@
                             @empty
                                 <x-ui.empty-table-row colSpan="6" icon="bi bi-cart3" title="No orders yet." />
                             @endforelse
-                        </tbody>
-                    </table>
-                </div>
-                {{ $orders->appends(['tab' => 'orders'])->links() }}
+                </x-adminlte.partials.datatable>
             </div>
 
             {{-- Invoices --}}
             <div class="tab-pane fade {{ $activeTab === 'invoices' ? 'show active' : '' }}" id="invoices" role="tabpanel" aria-labelledby="invoices-tab">
-                <div class="table-responsive">
-                    <table class="table table-sm align-middle mb-0">
-                        <thead>
-                            <tr>
-                                <th>Invoice</th><th>Total</th><th>Status</th><th>Due date</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @forelse ($invoices as $invoice)
+                <x-adminlte.partials.datatable
+                    frameless
+                    icon="bi bi-receipt"
+                    title=""
+                    grid-key="customer.show.invoices"
+                    :query="['tab' => 'invoices']"
+                    search-placeholder="Search invoice number..."
+                    :search-value="$filters['search']"
+                    status-field="invoice_status"
+                    :status-options="$statusOptions['invoices']"
+                    :status-value="$filters['invoice_status']"
+                    :sticky-header="true"
+                    :column-toggle="true"
+                    :pagination="$invoices"
+                    :export-url="route('admin.customers.show', ['customer' => $customer, 'tab' => 'invoices'])"
+                    export-label="Export CSV"                    :columns="[
+                        ['label' => 'Invoice', 'sort' => 'invoice_no'],
+                        ['label' => 'Total', 'sort' => 'total', 'class' => 'text-end grid-numeric'],
+                        ['label' => 'Status', 'sort' => 'status'],
+                        ['label' => 'Due date', 'sort' => 'due_date'],
+                    ]"
+                >
+                    @forelse ($invoices as $invoice)
                                 <tr>
                                     <td><a href="{{ route('admin.invoices.show', $invoice) }}"><strong>{{ $invoice->invoice_no }}</strong></a></td>
                                     <td>₹{{ number_format($invoice->total, 2) }}</td>
@@ -265,23 +309,34 @@
                             @empty
                                 <x-ui.empty-table-row colSpan="4" icon="bi bi-receipt" title="No invoices yet." />
                             @endforelse
-                        </tbody>
-                    </table>
-                </div>
-                {{ $invoices->appends(['tab' => 'invoices'])->links() }}
+                </x-adminlte.partials.datatable>
             </div>
 
             {{-- Tickets --}}
             <div class="tab-pane fade {{ $activeTab === 'tickets' ? 'show active' : '' }}" id="tickets" role="tabpanel" aria-labelledby="tickets-tab">
-                <div class="table-responsive">
-                    <table class="table table-sm align-middle mb-0">
-                        <thead>
-                            <tr>
-                                <th>Ticket</th><th>Subject</th><th>Priority</th><th>Status</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @forelse ($customer->tickets as $ticket)
+                <x-adminlte.partials.datatable
+                    frameless
+                    icon="bi bi-life-preserver"
+                    title=""
+                    grid-key="customer.show.tickets"
+                    :query="['tab' => 'tickets']"
+                    search-placeholder="Search ticket number or subject..."
+                    :search-value="$filters['search']"
+                    status-field="ticket_status"
+                    :status-options="$statusOptions['tickets']"
+                    :status-value="$filters['ticket_status']"
+                    :sticky-header="true"
+                    :column-toggle="true"
+                    :pagination="$tickets"
+                    :export-url="route('admin.customers.show', ['customer' => $customer, 'tab' => 'tickets'])"
+                    export-label="Export CSV"                    :columns="[
+                        ['label' => 'Ticket', 'sort' => 'ticket_no'],
+                        ['label' => 'Subject', 'sort' => 'subject'],
+                        ['label' => 'Priority', 'sort' => 'priority'],
+                        ['label' => 'Status', 'sort' => 'status'],
+                    ]"
+                >
+                    @forelse ($tickets as $ticket)
                                 <tr>
                                     <td><a href="{{ route('admin.tickets.show', $ticket) }}"><strong>{{ $ticket->ticket_no }}</strong></a></td>
                                     <td><a href="{{ route('admin.tickets.show', $ticket) }}">{{ $ticket->subject }}</a></td>
@@ -291,22 +346,34 @@
                             @empty
                                 <x-ui.empty-table-row colSpan="4" icon="bi bi-life-preserver" title="No tickets yet." />
                             @endforelse
-                        </tbody>
-                    </table>
-                </div>
+                </x-adminlte.partials.datatable>
             </div>
 
             {{-- Domains --}}
             <div class="tab-pane fade {{ $activeTab === 'domains' ? 'show active' : '' }}" id="domains" role="tabpanel" aria-labelledby="domains-tab">
-                <div class="table-responsive">
-                    <table class="table table-sm align-middle mb-0">
-                        <thead>
-                            <tr>
-                                <th>Domain</th><th>Type</th><th>Expiry</th><th>Status</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @forelse ($customer->domains as $domain)
+                <x-adminlte.partials.datatable
+                    frameless
+                    icon="bi bi-globe2"
+                    title=""
+                    grid-key="customer.show.domains"
+                    :query="['tab' => 'domains']"
+                    search-placeholder="Search domain name..."
+                    :search-value="$filters['search']"
+                    status-field="domain_status"
+                    :status-options="$statusOptions['domains']"
+                    :status-value="$filters['domain_status']"
+                    :sticky-header="true"
+                    :column-toggle="true"
+                    :pagination="$domains"
+                    :export-url="route('admin.customers.show', ['customer' => $customer, 'tab' => 'domains'])"
+                    export-label="Export CSV"                    :columns="[
+                        ['label' => 'Domain', 'sort' => 'name'],
+                        ['label' => 'Type', 'sort' => 'type'],
+                        ['label' => 'Expiry', 'sort' => 'expiry_date'],
+                        ['label' => 'Status', 'sort' => 'status'],
+                    ]"
+                >
+                    @forelse ($domains as $domain)
                                 @php $expiring = $domain->status === 'active' && $domain->expiry_date?->isBefore(now()->addDays(30)); @endphp
                                 <tr>
                                     <td><a href="{{ route('admin.domains.show', $domain) }}">{{ $domain->name }}</a></td>
@@ -322,9 +389,7 @@
                             @empty
                                 <x-ui.empty-table-row colSpan="4" icon="bi bi-globe2" title="No domains yet." />
                             @endforelse
-                        </tbody>
-                    </table>
-                </div>
+                </x-adminlte.partials.datatable>
             </div>
 
             {{-- Contacts --}}
@@ -378,15 +443,29 @@
                     </div>
                 @endcan
 
-                <div class="table-responsive">
-                    <table class="table table-sm align-middle mb-0">
-                        <thead>
-                            <tr>
-                                <th>Name</th><th>Email</th><th>Phone</th><th>Role</th><th>Type</th><th class="text-end">Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @forelse ($customer->contacts as $contact)
+                <x-adminlte.partials.datatable
+                    frameless
+                    icon="bi bi-people"
+                    title=""
+                    grid-key="customer.show.contacts"
+                    :query="['tab' => 'contacts']"
+                    search-placeholder="Search name, email, phone..."
+                    :search-value="$filters['search']"
+                    :status-options="[]"
+                    :sticky-header="true"
+                    :column-toggle="true"
+                    :pagination="$contacts"
+                    :export-url="route('admin.customers.show', ['customer' => $customer, 'tab' => 'contacts'])"
+                    export-label="Export CSV"                    :columns="[
+                        ['label' => 'Name'],
+                        ['label' => 'Email'],
+                        ['label' => 'Phone'],
+                        ['label' => 'Role'],
+                        ['label' => 'Type', 'sort' => 'status'],
+                        ['label' => 'Actions', 'class' => 'text-end'],
+                    ]"
+                >
+                    @forelse ($contacts as $contact)
                                 <tr>
                                     <td>
                                         {{ $contact->first_name }} {{ $contact->last_name }}
@@ -461,9 +540,7 @@
                             @empty
                                 <x-ui.empty-table-row colSpan="6" icon="bi bi-people" title="No contacts yet." />
                             @endforelse
-                        </tbody>
-                    </table>
-                </div>
+                </x-adminlte.partials.datatable>
             </div>
 
             {{-- Notes --}}
@@ -594,15 +671,30 @@
                     </div>
                 </div>
 
-                <div class="table-responsive">
-                    <table class="table table-sm align-middle mb-0">
-                        <thead>
-                            <tr>
-                                <th>Date</th><th>Type</th><th class="text-end">Amount</th><th>Description</th><th>By</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @forelse ($walletTransactions as $tx)
+                <x-adminlte.partials.datatable
+                    frameless
+                    icon="bi bi-wallet2"
+                    title=""
+                    grid-key="customer.show.billing"
+                    :query="['tab' => 'billing']"
+                    search-placeholder="Search description..."
+                    :search-value="$filters['search']"
+                    status-field="wallet_type"
+                    :status-options="$statusOptions['billing']"
+                    :status-value="$filters['wallet_type']"
+                    :sticky-header="true"
+                    :column-toggle="true"
+                    :pagination="$walletTransactions"
+                    :export-url="route('admin.customers.show', ['customer' => $customer, 'tab' => 'billing'])"
+                    export-label="Export CSV"                    :columns="[
+                        ['label' => 'Date', 'sort' => 'created_at'],
+                        ['label' => 'Type', 'sort' => 'type'],
+                        ['label' => 'Amount', 'sort' => 'amount', 'class' => 'text-end grid-numeric'],
+                        ['label' => 'Description', 'sort' => 'description'],
+                        ['label' => 'By'],
+                    ]"
+                >
+                    @forelse ($walletTransactions as $tx)
                                 <tr>
                                     <td class="text-muted">{{ $tx->created_at?->format('M j, Y H:i') }}</td>
                                     <td>{{ ucfirst(str_replace('_', ' ', $tx->type)) }}</td>
@@ -615,23 +707,32 @@
                             @empty
                                 <x-ui.empty-table-row colSpan="5" icon="bi bi-wallet2" title="No wallet transactions yet." />
                             @endforelse
-                        </tbody>
-                    </table>
-                </div>
-                {{ $walletTransactions->appends(['tab' => 'billing'])->links() }}
+                </x-adminlte.partials.datatable>
             </div>
 
             {{-- Activity --}}
             <div class="tab-pane fade {{ $activeTab === 'activity' ? 'show active' : '' }}" id="activity" role="tabpanel" aria-labelledby="activity-tab">
-                <div class="table-responsive">
-                    <table class="table table-sm align-middle mb-0">
-                        <thead>
-                            <tr>
-                                <th>When</th><th>Action</th><th>Description</th><th>By</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @forelse ($activity as $entry)
+                <x-adminlte.partials.datatable
+                    frameless
+                    icon="bi bi-clock-history"
+                    title=""
+                    grid-key="customer.show.activity"
+                    :query="['tab' => 'activity']"
+                    search-placeholder="Search action or description..."
+                    :search-value="$filters['search']"
+                    :status-options="[]"
+                    :sticky-header="true"
+                    :column-toggle="true"
+                    :pagination="$activity"
+                    :export-url="route('admin.customers.show', ['customer' => $customer, 'tab' => 'activity'])"
+                    export-label="Export CSV"                    :columns="[
+                        ['label' => 'When', 'sort' => 'created_at'],
+                        ['label' => 'Action', 'sort' => 'action'],
+                        ['label' => 'Description', 'sort' => 'description'],
+                        ['label' => 'By'],
+                    ]"
+                >
+                    @forelse ($activity as $entry)
                                 <tr>
                                     <td class="text-muted" style="white-space: nowrap;">{{ $entry->created_at?->format('M j, Y H:i') }}</td>
                                     <td><span class="badge text-bg-info">{{ $entry->action }}</span></td>
@@ -641,10 +742,7 @@
                             @empty
                                 <x-ui.empty-table-row colSpan="4" icon="bi bi-clock-history" title="No activity recorded." />
                             @endforelse
-                        </tbody>
-                    </table>
-                </div>
-                {{ $activity->appends(['tab' => 'activity'])->links() }}
+                </x-adminlte.partials.datatable>
             </div>
         </x-adminlte.partials.detail-tabs>
     </x-adminlte-card>

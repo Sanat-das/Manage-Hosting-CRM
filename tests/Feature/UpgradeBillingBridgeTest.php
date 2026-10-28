@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Customer;
+use App\Models\EmailTemplate;
 use App\Models\Invoice;
 use App\Models\Order;
 use App\Models\OrderItem;
@@ -39,6 +40,18 @@ class UpgradeBillingBridgeTest extends TestCase
         $ref = new \ReflectionClass(AppSettings::class);
         $prop = $ref->getProperty('cache');
         $prop->setValue(null, null);
+
+        // Production carries the invoice template. Without an active
+        // 'invoice_created' row InvoiceEmailService::send() reports a
+        // non-delivery by design, and the run counts it as an error.
+        EmailTemplate::firstOrCreate(
+            ['name' => 'invoice_created'],
+            [
+                'subject' => 'Invoice {{invoice_no}} from {{company_name}} - {{currency_symbol}}{{total}} due {{due_date}}',
+                'body' => 'Invoice {{invoice_no}} for {{currency_symbol}}{{total}} is due on {{due_date}}.',
+                'status' => 'active',
+            ],
+        );
     }
 
     private function makeProduct(string $name, float $price): Product

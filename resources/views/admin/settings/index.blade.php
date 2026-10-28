@@ -953,6 +953,12 @@
                                 </x-adminlte-input>
                             </div>
                             <div class="col-md-3">
+                                <x-adminlte-input name="settings[renewal_reminder_days]" label="Renewal Reminder Lead Days" type="number" min="0" max="90"
+                                    value="{{ old('settings.renewal_reminder_days', $settings['renewal_reminder_days'] ?? '7') }}">
+                                    <small class="form-text text-muted">Days before the renewal date to remind the client and admin.</small>
+                                </x-adminlte-input>
+                            </div>
+                            <div class="col-md-3">
                                 <x-adminlte-input name="settings[ticket_next_number]" label="Next Ticket Number" type="number" min="0"
                                     value="{{ old('settings.ticket_next_number', $settings['ticket_next_number'] ?? '1') }}">
                                     <small class="form-text text-muted">Min 0</small>

@@ -61,6 +61,7 @@ class AdminSettingsInventoryTest extends TestCase
      * v13: 2026-10-05 removed ipam_scan_interval_minutes — a control nothing
      *     ever read (no scheduler entry, job or command scanned on an
      *     interval). See migration 2026_10_05_170000_remove_dead_ipam_scan_setting.
+     * v14: 2026-10-17 added renewal_reminder_days (renewal reminder window, BillingSettings) — typed billing key on the Billing tab.
      */
     public const BASELINE_KEYS = [
         'activity_retention_days',
@@ -225,6 +226,7 @@ class AdminSettingsInventoryTest extends TestCase
         'quote_prefix',
         'registration_enabled',
         'renewal_invoice_days',
+        'renewal_reminder_days',
         'resellerclub_api_id',
         'resellerclub_api_key',
         'resellerclub_enabled',
@@ -283,7 +285,7 @@ class AdminSettingsInventoryTest extends TestCase
         $expected = self::BASELINE_KEYS;
         sort($expected);
 
-        $this->assertCount(190, $keys, 'Baseline field count changed - expected 190 name="settings[*]" keys. Got: '.implode(', ', $keys));
+        $this->assertCount(191, $keys, 'Baseline field count changed - expected 191 name="settings[*]" keys. Got: '.implode(', ', $keys));
         $this->assertSame($expected, $keys, 'Baseline field set changed - keys were dropped, renamed, or added.');
     }
 

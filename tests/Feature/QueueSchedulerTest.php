@@ -7,6 +7,7 @@ use App\Jobs\SyncDomainStatus;
 use App\Models\Customer;
 use App\Models\Domain;
 use App\Models\EmailLog;
+use App\Models\EmailTemplate;
 use App\Models\HostingAccount;
 use App\Models\Invoice;
 use App\Models\Order;
@@ -15,6 +16,7 @@ use App\Models\Product;
 use App\Models\SslCertificate;
 use App\Models\Ticket;
 use App\Models\User;
+use App\Services\Billing\BillingService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
@@ -33,6 +35,24 @@ use Tests\TestCase;
 class QueueSchedulerTest extends TestCase
 {
     use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        // Production carries the invoice template. Without an active
+        // 'invoice_created' row InvoiceEmailService::send() reports a
+        // non-delivery by design, so the recurring-billing command would exit
+        // non-zero for a run that actually did its job.
+        EmailTemplate::firstOrCreate(
+            ['name' => 'invoice_created'],
+            [
+                'subject' => 'Invoice {{invoice_no}} from {{company_name}} - {{currency_symbol}}{{total}} due {{due_date}}',
+                'body' => 'Invoice {{invoice_no}} for {{currency_symbol}}{{total}} is due on {{due_date}}.',
+                'status' => 'active',
+            ],
+        );
+    }
 
     private function makeCustomer(): Customer
     {
@@ -237,6 +257,24 @@ class QueueSchedulerTest extends TestCase
         $this->artisan('billing:recurring')->assertExitCode(0);
 
         $this->assertSame(0, Invoice::count());
+    }
+
+    /**
+     * An error counted by either engine pass must reach the caller as a
+     * non-zero exit code — that is what the Cron Jobs page surfaces as Failed.
+     */
+    public function test_billing_recurring_exits_failure_when_the_engine_reports_errors(): void
+    {
+        $this->mock(BillingService::class, function ($mock): void {
+            $mock->shouldReceive('processAutoTerminations')
+                ->once()
+                ->andReturn(['terminated' => 0, 'errors' => 0]);
+            $mock->shouldReceive('processRecurringBilling')
+                ->once()
+                ->andReturn(['invoices_generated' => 0, 'errors' => 1]);
+        });
+
+        $this->artisan('billing:recurring')->assertExitCode(1);
     }
 
     public function test_domains_expiry_check_marks_expired_domains(): void

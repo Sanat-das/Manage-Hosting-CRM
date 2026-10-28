@@ -59,6 +59,7 @@ class AppSettings
         'invoice_prefix' => BillingSettings::class,
         'tax_rate' => BillingSettings::class,
         'renewal_invoice_days' => BillingSettings::class,
+        'renewal_reminder_days' => BillingSettings::class,
         'bank_name' => BillingSettings::class,
         'bank_account_holder' => BillingSettings::class,
         'bank_account_no' => BillingSettings::class,

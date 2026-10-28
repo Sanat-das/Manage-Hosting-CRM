@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Customer;
+use App\Models\EmailTemplate;
 use App\Models\Invoice;
 use App\Models\Order;
 use App\Models\OrderItem;
@@ -32,6 +33,19 @@ class RenewalInvoiceWindowTest extends TestCase
 
         // Spatie settings are container-scoped; resolve a fresh instance.
         app()->forgetScopedInstances();
+
+        // Production carries the invoice template. Without an active
+        // 'invoice_created' row InvoiceEmailService::send() reports a
+        // non-delivery by design, and the run counts it as an error.
+        // firstOrCreate: the email test below owns this row's content itself.
+        EmailTemplate::firstOrCreate(
+            ['name' => 'invoice_created'],
+            [
+                'subject' => 'Invoice {{invoice_no}} from {{company_name}} - {{currency_symbol}}{{total}} due {{due_date}}',
+                'body' => 'Invoice {{invoice_no}} for {{currency_symbol}}{{total}} is due on {{due_date}}.',
+                'status' => 'active',
+            ],
+        );
     }
 
     public function test_window_generates_early_due_on_the_items_own_date_and_advances_from_it(): void
@@ -258,6 +272,40 @@ class RenewalInvoiceWindowTest extends TestCase
             ->assertSessionHasErrors('settings.renewal_invoice_days');
     }
 
+    /**
+     * A generated renewal invoice is emailed to the customer: the engine
+     * dispatches the invoice_created template once the schedule has advanced.
+     */
+    public function test_the_renewal_invoice_is_emailed_to_the_customer(): void
+    {
+        $asOf = CarbonImmutable::today('Asia/Kolkata');
+
+        $this->makeTemplate(
+            'invoice_created',
+            'Your invoice {{invoice_no}}',
+            'Invoice {{invoice_no}} is ready.'
+        );
+
+        $customer = $this->makeCustomer();
+        $product = $this->makeProduct(['price' => 100.00]);
+
+        $order = $this->makeOrder($customer, $product, ['next_billing_date' => $asOf->toDateString()]);
+        $this->makeItem($order, $product, [
+            'next_billing_date' => $asOf->toDateString(),
+            'billing_cycles_count' => 1,
+        ]);
+
+        $result = app(BillingService::class)->processRecurringBilling($asOf);
+
+        $this->assertSame(1, $result['invoices_generated']);
+        $this->assertSame(0, $result['errors']);
+
+        $this->assertDatabaseHas('emails', [
+            'to_email' => $customer->user->email,
+            'status' => 'sent',
+        ]);
+    }
+
     private function makeSettingsAdmin(): User
     {
         $user = User::factory()->create();
@@ -320,5 +368,15 @@ class RenewalInvoiceWindowTest extends TestCase
             'unit_price' => (float) $product->price,
             'total' => (float) $product->price,
         ], $overrides));
+    }
+
+    private function makeTemplate(string $name, string $subject, string $body): EmailTemplate
+    {
+        // setUp() already provides the production 'invoice_created' row, so
+        // take ownership of its content instead of colliding on the unique name.
+        return EmailTemplate::updateOrCreate(
+            ['name' => $name],
+            ['subject' => $subject, 'body' => $body, 'status' => 'active'],
+        );
     }
 }

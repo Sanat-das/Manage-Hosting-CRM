@@ -3,6 +3,7 @@
 namespace Tests\Unit;
 
 use App\Models\Customer;
+use App\Models\EmailTemplate;
 use App\Models\GstSetting;
 use App\Models\Invoice;
 use App\Models\Order;
@@ -19,6 +20,23 @@ use Tests\TestCase;
 class BillingServiceTest extends TestCase
 {
     use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        // Production carries the invoice template. Without an active
+        // 'invoice_created' row InvoiceEmailService::send() reports a
+        // non-delivery by design, and the run counts it as an error.
+        EmailTemplate::firstOrCreate(
+            ['name' => 'invoice_created'],
+            [
+                'subject' => 'Invoice {{invoice_no}} from {{company_name}} - {{currency_symbol}}{{total}} due {{due_date}}',
+                'body' => 'Invoice {{invoice_no}} for {{currency_symbol}}{{total}} is due on {{due_date}}.',
+                'status' => 'active',
+            ],
+        );
+    }
 
     /**
      * The invoice number carries the financial-year label (Apr–Mar), not the

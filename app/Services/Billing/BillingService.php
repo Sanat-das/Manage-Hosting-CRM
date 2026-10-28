@@ -13,10 +13,12 @@ use App\Models\InvoiceItem;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Payment;
+use App\Services\InvoiceEmailService;
 use App\Services\OrderNumberService;
 use App\Services\OrderService;
 use App\Support\AppSettings;
 use App\Support\GstStateCodes;
+use App\Support\Logging\AppLog;
 use Carbon\CarbonImmutable;
 use DateTimeInterface;
 use Illuminate\Support\Facades\DB;
@@ -623,7 +625,22 @@ class BillingService
      *    billing_cycles_count, so an early-generation window never drifts the
      *    billing anniversary;
      *  - recomputes the order-level next_billing_date as the earliest
-     *    remaining item date (null when no item is still recurring).
+     *    remaining item date (null when no item is still recurring);
+     *  - commits the invoice and the schedule advance in ONE transaction, so a
+     *    crash can never leave an issued renewal invoice whose items are still
+     *    due — which would bill the same period again on the next run;
+     *  - counts every committed invoice in invoices_generated immediately after
+     *    that commit, before the post-commit steps, so a failure there can never
+     *    hide an invoice that was in fact generated;
+     *  - runs the post-commit steps after that commit, each isolated: a
+     *    superseded unpaid upgrade request that fails to cancel is logged at
+     *    warning and is NOT an error (internal bookkeeping, not a client
+     *    deliverable), while a renewal email that is not dispatched — a false
+     *    return or a throw — is logged at error and counted in errors, because
+     *    a renewal invoice the client never receives is a failed deliverable
+     *    even when the money row is correct; no post-commit failure ever rolls
+     *    back the invoice, alters its status, rewinds the schedule, or aborts
+     *    the run.
      *
      * A null item next_billing_date means "intentionally ended" (cancelled
      * add-on, exhausted cycle limit, elapsed fixed term) — such items are
@@ -806,40 +823,88 @@ class BillingService
                     }
                 }
 
-                $this->createWithItems([
-                    'customer_id' => $order->customer_id,
-                    'order_id' => $order->id,
-                    'amount' => $invoiceAmount,
-                    'status' => Invoice::STATUS_SENT,
-                    'due_date' => $earliestDueDate->toDateString(),
-                    'notes' => 'Auto-generated renewal invoice',
-                ], $items, $customerStateCode);
+                // The invoice and the schedule advance that pays for it are one
+                // unit of money-truth: commit them together, or a crash between
+                // the two leaves an issued renewal invoice with its item still
+                // due, and the next run bills the same period again.
+                // createWithItems opens its own DB::transaction, which Laravel
+                // nests as a savepoint (supported by both the MySQL production
+                // driver and the SQLite test driver), so an outer rollback still
+                // discards the whole invoice.
+                $renewalInvoice = DB::transaction(function () use ($order, $invoiceAmount, $earliestDueDate, $items, $customerStateCode, $dueItems, $today): Invoice {
+                    $invoice = $this->createWithItems([
+                        'customer_id' => $order->customer_id,
+                        'order_id' => $order->id,
+                        'amount' => $invoiceAmount,
+                        'status' => Invoice::STATUS_SENT,
+                        'due_date' => $earliestDueDate->toDateString(),
+                        'notes' => 'Auto-generated renewal invoice',
+                    ], $items, $customerStateCode);
+
+                    // Advance each billed item on ITS cycle FROM ITS OWN due
+                    // date (not the run date) so an early-generation window
+                    // never drifts the billing anniversary; the order summary
+                    // date becomes the earliest remaining item date.
+                    foreach ($dueItems as $due) {
+                        $item = $due['item'];
+                        $item->update([
+                            'next_billing_date' => CarbonImmutable::parse($due['dueDate'])->addMonths($due['cycleMonths'])->toDateString(),
+                            'last_billing_date' => $today->toDateString(),
+                            'billing_cycles_count' => $item->billing_cycles_count !== null
+                                ? (int) $item->billing_cycles_count + 1
+                                : null,
+                        ]);
+                    }
+
+                    $this->syncOrderSummary($order, $today->toDateString());
+
+                    return $invoice;
+                });
+
+                // The invoice and its schedule advance are committed, so the
+                // invoice was generated: count it now, before the post-commit
+                // steps, so nothing that fails there can hide it.
+                $invoicesGenerated++;
 
                 // WHMCS rule: an upgrade still unpaid when the renewal cron
                 // bills the service is superseded by that renewal invoice —
-                // cancel it now that the invoice exists.
-                app(UpgradeRequestService::class)->cancelUnpaidForOrder($order);
-
-                // Advance each billed item on ITS cycle FROM ITS OWN due date
-                // (not the run date) so an early-generation window never drifts
-                // the billing anniversary; the order summary date becomes the
-                // earliest remaining item date.
-                foreach ($dueItems as $due) {
-                    $item = $due['item'];
-                    $item->update([
-                        'next_billing_date' => CarbonImmutable::parse($due['dueDate'])->addMonths($due['cycleMonths'])->toDateString(),
-                        'last_billing_date' => $today->toDateString(),
-                        'billing_cycles_count' => $item->billing_cycles_count !== null
-                            ? (int) $item->billing_cycles_count + 1
-                            : null,
+                // cancel it now that the invoice is committed. This is internal
+                // bookkeeping, not a client deliverable: a failure is logged at
+                // warning and never counted as a billing error.
+                try {
+                    app(UpgradeRequestService::class)->cancelUnpaidForOrder($order);
+                } catch (\Throwable $e) {
+                    AppLog::billing()->warning('Renewal invoice issued but the superseded unpaid upgrade request was not cancelled', [
+                        'order_id' => $order->id,
+                        'invoice_no' => $renewalInvoice->invoice_no,
+                        'error' => $e->getMessage(),
                     ]);
                 }
 
-                $this->syncOrderSummary($order, $today->toDateString());
+                // The email IS the deliverable: a renewal invoice the client
+                // never receives failed, even though the money row is correct.
+                // Count it in errors so the run reports FAILURE; the invoice,
+                // its status and the advanced schedule stay exactly as committed.
+                $emailDispatched = false;
+                $emailFailure = null;
 
-                $invoicesGenerated++;
-            } catch (\Throwable) {
+                try {
+                    $emailDispatched = app(InvoiceEmailService::class)->send($renewalInvoice);
+                } catch (\Throwable $e) {
+                    $emailFailure = $e->getMessage();
+                }
+
+                if (! $emailDispatched) {
+                    $errors++;
+                    AppLog::billing()->error('Renewal invoice issued but the invoice email was not dispatched; the client did not receive it', [
+                        'order_id' => $order->id,
+                        'invoice_no' => $renewalInvoice->invoice_no,
+                        'error' => $emailFailure,
+                    ]);
+                }
+            } catch (\Throwable $e) {
                 $errors++;
+                AppLog::billing()->error('Recurring billing failed for one order; run continues.', ['order_id' => $order->id, 'error' => $e->getMessage()]);
             }
         }
 
@@ -987,8 +1052,9 @@ class BillingService
 
                     $terminated++;
                 }
-            } catch (\Throwable) {
+            } catch (\Throwable $e) {
                 $errors++;
+                AppLog::billing()->error('Recurring billing failed for one order; run continues.', ['order_id' => $order->id, 'error' => $e->getMessage()]);
             }
         }
 

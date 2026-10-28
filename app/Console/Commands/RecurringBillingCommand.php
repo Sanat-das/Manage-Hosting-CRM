@@ -11,7 +11,8 @@ use Illuminate\Console\Command;
  * Thin scheduler wrapper over BillingService::processRecurringBilling — the
  * canonical renewal engine (working from next_billing_date on Order). The
  * date the cycle advances from is fixed to today, matching the scheduled
- * one-shot run; there is no --days look-ahead window.
+ * one-shot run; there is no --days look-ahead window. A non-zero exit on
+ * errors is what the Cron Jobs page surfaces as Failed.
  */
 class RecurringBillingCommand extends Command
 {
@@ -30,6 +31,6 @@ class RecurringBillingCommand extends Command
             $this->info("{$termination['terminated']} order(s) auto-terminated at the end of their fixed term.");
         }
 
-        return self::SUCCESS;
+        return ($result['errors'] > 0 || $termination['errors'] > 0) ? self::FAILURE : self::SUCCESS;
     }
 }

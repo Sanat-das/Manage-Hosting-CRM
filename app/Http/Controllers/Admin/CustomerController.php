@@ -11,12 +11,16 @@ use App\Models\Customer;
 use App\Models\CustomerContact;
 use App\Models\CustomerNote;
 use App\Models\CustomerWallet;
+use App\Models\Invoice;
+use App\Models\Order;
 use App\Models\ServiceInstance;
 use App\Models\SubscriptionChange;
 use App\Models\SubscriptionPeriod;
 use App\Models\UsageRecord;
 use App\Models\User;
+use App\Services\DomainService;
 use App\Services\Exports\CsvStreamService;
+use App\Services\HostingService;
 use App\Support\Audit\AuditEvent;
 use App\Support\Audit\AuditRecorder;
 use App\Support\GstStateCodes;
@@ -261,38 +265,517 @@ class CustomerController extends Controller
         ], 201);
     }
 
-    public function show(Customer $customer): View
+    public function show(Request $request, Customer $customer): View|StreamedResponse
     {
         $customer->load([
             'user',
-            'hostingAccounts' => fn ($q) => $q->with([
-                'product',
-                'server',
-                'ipAddresses.subnet',
-                'order.items',
-                'order.statusHistory',
-                'order.domain',
-            ])->latest(),
-            'orders' => fn ($q) => $q->with('product')->latest(),
-            'domains' => fn ($q) => $q->latest(),
-            'tickets' => fn ($q) => $q->latest(),
-            'notes' => fn ($q) => $q->with('user')->orderByDesc('is_important')->orderByDesc('created_at'),
             'contacts' => fn ($q) => $q->orderByDesc('is_primary')->orderBy('created_at'),
+            'notes' => fn ($q) => $q->with('user')->orderByDesc('is_important')->orderByDesc('created_at'),
         ]);
+
+        $search = trim((string) $request->query('search', ''));
+
+        $filters = [
+            'search' => $search,
+            'hosting_status' => trim((string) $request->query('hosting_status', '')),
+            'order_status' => trim((string) $request->query('order_status', '')),
+            'invoice_status' => trim((string) $request->query('invoice_status', '')),
+            'ticket_status' => trim((string) $request->query('ticket_status', '')),
+            'domain_status' => trim((string) $request->query('domain_status', '')),
+            'wallet_type' => trim((string) $request->query('wallet_type', '')),
+        ];
+
+        $activeTab = (string) $request->query('tab', 'profile');
+
+        if ($request->query('export') === 'csv') {
+            $tab = (string) $request->query('tab', 'profile');
+
+            return $this->exportTabCsv($request, $customer, $tab, $search, $filters);
+        }
+
+        $statusOptions = [
+            'hosting' => collect(HostingService::STATUSES)->mapWithKeys(fn (string $value) => [$value => ucfirst(str_replace('_', ' ', $value))])->all(),
+            'orders' => collect(Order::STATUSES)->mapWithKeys(fn (string $value) => [$value => ucfirst(str_replace('_', ' ', $value))])->all(),
+            'invoices' => Invoice::STATUS_LABELS,
+            'tickets' => TicketController::STATUSES,
+            'domains' => DomainService::STATUS_LABELS,
+            'contacts' => [],
+            'billing' => [
+                'deposit' => 'Deposit',
+                'credit' => 'Credit',
+                'debit' => 'Debit',
+                'invoice_payment' => 'Invoice payment',
+            ],
+            'activity' => [],
+        ];
 
         $perPage = 10;
 
-        $invoices = $customer->invoices()->latest()->paginate($perPage, ['*'], 'invoices_page');
-        $orders = $customer->orders()->with('product')->latest()->paginate($perPage, ['*'], 'orders_page');
-        $walletTransactions = $customer->walletTransactions()->with('adminUser')->latest()->paginate($perPage, ['*'], 'wallet_page');
+        // Hosting accounts
+        $hostingQuery = $customer->hostingAccounts()
+            ->with(['product', 'server', 'ipAddresses.subnet', 'order.items', 'order.statusHistory', 'order.domain'])
+            ->when($search !== '', function ($query) use ($search) {
+                $query->where(function ($q) use ($search) {
+                    $q->where('domain', 'like', "%{$search}%")
+                        ->orWhere('host_name', 'like', "%{$search}%")
+                        ->orWhere('id', 'like', "%{$search}%")
+                        ->orWhereHas('product', fn ($p) => $p->where('name', 'like', "%{$search}%"))
+                        ->orWhereHas('server', fn ($s) => $s->where('name', 'like', "%{$search}%"));
+                });
+            })
+            ->when($filters['hosting_status'] !== '', fn ($query) => $query->where('status', $filters['hosting_status']))
+            ->gridFilters([
+                'id' => 'id',
+                'product' => 'product.name',
+                'server' => 'server.name',
+                'domain' => fn ($q, $value) => $q->where('domain', 'like', "%{$value}%"),
+                'status' => ['status', '='],
+            ])
+            ->gridSort([
+                'id' => 'id',
+                'product' => 'product.name',
+                'server' => 'server.name',
+                'cycle' => 'order.billing_cycle',
+                'amount' => 'order.total',
+                'next_billing' => 'next_due_date',
+                'status' => 'status',
+            ])
+            ->latest();
 
-        $activity = ActivityLog::query()
+        $hostingAccounts = $hostingQuery->paginate($perPage, ['*'], 'hosting_page')->withQueryString();
+
+        // Orders
+        $ordersQuery = $customer->orders()
+            ->with('product')
+            ->when($search !== '', function ($query) use ($search) {
+                $query->where(function ($q) use ($search) {
+                    $q->where('order_number', 'like', "%{$search}%")
+                        ->orWhere('domain_name', 'like', "%{$search}%")
+                        ->orWhereHas('product', fn ($p) => $p->where('name', 'like', "%{$search}%"));
+                });
+            })
+            ->when($filters['order_status'] !== '', fn ($query) => $query->where('status', $filters['order_status']))
+            ->gridFilters([
+                'order_no' => 'order_number',
+                'product' => 'product.name',
+                'domain_name' => 'domain_name',
+                'status' => ['status', '='],
+            ])
+            ->gridSort([
+                'order_no' => 'order_number',
+                'product' => 'product.name',
+                'cycle' => 'billing_cycle',
+                'total' => 'total',
+                'status' => 'status',
+                'created_at' => 'created_at',
+            ])
+            ->latest();
+
+        $orders = $ordersQuery->paginate($perPage, ['*'], 'orders_page')->withQueryString();
+
+        // Invoices
+        $invoicesQuery = $customer->invoices()
+            ->when($search !== '', function ($query) use ($search) {
+                $query->where('invoice_no', 'like', "%{$search}%");
+            })
+            ->when($filters['invoice_status'] !== '', fn ($query) => $query->where('status', $filters['invoice_status']))
+            ->gridFilters([
+                'invoice_no' => 'invoice_no',
+                'status' => ['status', '='],
+            ])
+            ->gridSort([
+                'invoice_no' => 'invoice_no',
+                'total' => 'total',
+                'status' => 'status',
+                'due_date' => 'due_date',
+            ])
+            ->latest();
+
+        $invoices = $invoicesQuery->paginate($perPage, ['*'], 'invoices_page')->withQueryString();
+
+        // Tickets
+        $ticketsQuery = $customer->tickets()
+            ->when($search !== '', function ($query) use ($search) {
+                $query->where(function ($q) use ($search) {
+                    $q->where('ticket_no', 'like', "%{$search}%")
+                        ->orWhere('subject', 'like', "%{$search}%");
+                });
+            })
+            ->when($filters['ticket_status'] !== '', fn ($query) => $query->where('status', $filters['ticket_status']))
+            ->gridFilters([
+                'ticket_no' => 'ticket_no',
+                'subject' => 'subject',
+                'status' => ['status', '='],
+                'priority' => ['priority', '='],
+            ])
+            ->gridSort([
+                'ticket_no' => 'ticket_no',
+                'subject' => 'subject',
+                'priority' => 'priority',
+                'status' => 'status',
+                'created_at' => 'created_at',
+            ])
+            ->latest();
+
+        $tickets = $ticketsQuery->paginate($perPage, ['*'], 'tickets_page')->withQueryString();
+
+        // Domains
+        $domainsQuery = $customer->domains()
+            ->when($search !== '', function ($query) use ($search) {
+                $query->where('name', 'like', "%{$search}%");
+            })
+            ->when($filters['domain_status'] !== '', fn ($query) => $query->where('status', $filters['domain_status']))
+            ->gridFilters([
+                'name' => 'name',
+                'status' => ['status', '='],
+            ])
+            ->gridSort([
+                'name' => 'name',
+                'type' => 'type',
+                'expiry_date' => 'expiry_date',
+                'status' => 'status',
+            ])
+            ->latest();
+
+        $domains = $domainsQuery->paginate($perPage, ['*'], 'domains_page')->withQueryString();
+
+        // Contacts
+        $contactsQuery = $customer->contacts()
+            ->when($search !== '', function ($query) use ($search) {
+                $query->where(function ($q) use ($search) {
+                    $q->where('first_name', 'like', "%{$search}%")
+                        ->orWhere('last_name', 'like', "%{$search}%")
+                        ->orWhere('email', 'like', "%{$search}%")
+                        ->orWhere('phone', 'like', "%{$search}%")
+                        ->orWhere('role', 'like', "%{$search}%");
+                });
+            })
+            ->gridFilters([
+                'name' => fn ($q, $value) => $q->where(function ($q2) use ($value) {
+                    $q2->where('first_name', 'like', "%{$value}%")
+                        ->orWhere('last_name', 'like', "%{$value}%");
+                }),
+                'email' => 'email',
+                'phone' => 'phone',
+                'role' => 'role',
+            ])
+            ->gridSort([
+                'name' => fn (Builder $q, string $dir) => $q->orderBy('first_name', $dir)->orderBy('last_name', $dir),
+                'email' => 'email',
+                'phone' => 'phone',
+                'role' => 'role',
+                'type' => 'status',
+            ]);
+
+        // default: primary-first then created
+        $contactsQuery->orderByDesc('is_primary')->orderBy('created_at');
+
+        $contacts = $contactsQuery->paginate($perPage, ['*'], 'contacts_page')->withQueryString();
+
+        // Wallet / billing
+        $walletQuery = $customer->walletTransactions()
+            ->with('adminUser')
+            ->when($search !== '', function ($query) use ($search) {
+                $query->where(function ($q) use ($search) {
+                    $q->where('description', 'like', "%{$search}%")
+                        ->orWhere('type', 'like', "%{$search}%");
+                });
+            })
+            ->when($filters['wallet_type'] !== '', fn ($query) => $query->where('type', $filters['wallet_type']))
+            ->gridFilters([
+                'description' => 'description',
+                'type' => ['type', '='],
+            ])
+            ->gridSort([
+                'created_at' => 'created_at',
+                'type' => 'type',
+                'amount' => 'amount',
+                'description' => 'description',
+            ])
+            ->latest();
+
+        $walletTransactions = $walletQuery->paginate($perPage, ['*'], 'wallet_page')->withQueryString();
+
+        // Activity
+        $activityQuery = ActivityLog::query()
             ->where('customer_id', $customer->id)
             ->with('user')
-            ->orderByDesc('created_at')
-            ->paginate($perPage, ['*'], 'activity_page');
+            ->when($search !== '', function ($query) use ($search) {
+                $query->where(function ($q) use ($search) {
+                    $q->where('action', 'like', "%{$search}%")
+                        ->orWhere('description', 'like', "%{$search}%");
+                });
+            })
+            ->gridFilters([
+                'action' => 'action',
+                'description' => 'description',
+            ])
+            ->gridSort([
+                'created_at' => 'created_at',
+                'action' => 'action',
+                'description' => 'description',
+            ])
+            ->latest();
 
-        return view('admin.customers.show', compact('customer', 'invoices', 'orders', 'walletTransactions', 'activity'));
+        $activity = $activityQuery->paginate($perPage, ['*'], 'activity_page')->withQueryString();
+
+        $counts = [
+            'hosting' => $customer->hostingAccounts()->count(),
+            'invoices' => $customer->invoices()->count(),
+            'tickets' => $customer->tickets()->count(),
+        ];
+
+        return view('admin.customers.show', compact(
+            'customer', 'hostingAccounts', 'orders', 'invoices', 'tickets', 'domains',
+            'contacts', 'walletTransactions', 'activity', 'filters', 'statusOptions', 'counts', 'search'
+        ));
+    }
+
+    private function exportTabCsv(Request $request, Customer $customer, string $tab, string $search, array $filters): StreamedResponse
+    {
+        $filename = 'customer-'.$tab.'-'.now()->format('Y-m-d_His').'.csv';
+
+        switch ($tab) {
+            case 'hosting':
+                $headers = ['Service #', 'Product', 'Server', 'IP addresses', 'Domain', 'Cycle', 'Amount', 'Next billing', 'Status'];
+                $query = $customer->hostingAccounts()
+                    ->with(['product', 'server', 'ipAddresses', 'order.items', 'order.domain'])
+                    ->when($search !== '', function ($q) use ($search) {
+                        $q->where(function ($w) use ($search) {
+                            $w->where('domain', 'like', "%{$search}%")
+                                ->orWhere('host_name', 'like', "%{$search}%")
+                                ->orWhere('id', 'like', "%{$search}%")
+                                ->orWhereHas('product', fn ($p) => $p->where('name', 'like', "%{$search}%"))
+                                ->orWhereHas('server', fn ($s) => $s->where('name', 'like', "%{$search}%"));
+                        });
+                    })
+                    ->when(($filters['hosting_status'] ?? '') !== '', fn ($q) => $q->where('status', $filters['hosting_status']))
+                    ->latest();
+
+                /** @var CsvStreamService $csv */
+                $csv = app(CsvStreamService::class);
+
+                return $csv->stream($filename, $headers, function ($handle) use ($query): void {
+                    $query->chunk(500, function ($accounts) use ($handle): void {
+                        foreach ($accounts as $account) {
+                            $serviceOrder = $account->order;
+                            $serviceItem = $serviceOrder?->items?->first(fn ($item) => $item->product_id === $account->product_id)
+                                ?? $serviceOrder?->items?->first();
+                            $cycle = $serviceItem?->billing_cycle ?? $serviceOrder?->billing_cycle ?? $account->product?->billing_cycle;
+                            $amount = $serviceItem?->total ?? $serviceOrder?->total;
+                            $nextBilling = $serviceItem?->next_billing_date ?? $serviceOrder?->next_billing_date ?? $account->next_due_date;
+                            $domainName = $account->domain ?? $serviceItem?->domain_name ?? $serviceOrder?->domain_name ?? $serviceOrder?->domain?->name;
+                            $ips = $account->ipAddresses->pluck('ip_address')->implode(', ');
+
+                            fputcsv($handle, [
+                                $account->id,
+                                $account->product?->name ?? '',
+                                $account->server?->name ?? '',
+                                $ips,
+                                $domainName ?? '',
+                                $cycle ? ucfirst(str_replace('_', ' ', $cycle)) : '',
+                                $amount !== null ? number_format((float) $amount, 2, '.', '') : '',
+                                $nextBilling?->format('Y-m-d H:i') ?? '',
+                                $account->status,
+                            ]);
+                        }
+                    });
+                });
+
+            case 'orders':
+                $headers = ['Order #', 'Product', 'Cycle', 'Total', 'Status', 'Created'];
+                $query = $customer->orders()
+                    ->with('product')
+                    ->when($search !== '', function ($q) use ($search) {
+                        $q->where(function ($w) use ($search) {
+                            $w->where('order_number', 'like', "%{$search}%")
+                                ->orWhere('domain_name', 'like', "%{$search}%")
+                                ->orWhereHas('product', fn ($p) => $p->where('name', 'like', "%{$search}%"));
+                        });
+                    })
+                    ->when(($filters['order_status'] ?? '') !== '', fn ($q) => $q->where('status', $filters['order_status']))
+                    ->latest();
+
+                $csv = app(CsvStreamService::class);
+
+                return $csv->stream($filename, $headers, function ($handle) use ($query): void {
+                    $query->chunk(500, function ($orders) use ($handle): void {
+                        foreach ($orders as $order) {
+                            fputcsv($handle, [
+                                $order->order_no,
+                                $order->product?->name ?? '',
+                                ucfirst(str_replace('_', ' ', (string) $order->billing_cycle)),
+                                number_format((float) $order->total, 2, '.', ''),
+                                $order->status,
+                                $order->created_at?->format('Y-m-d H:i') ?? '',
+                            ]);
+                        }
+                    });
+                });
+
+            case 'invoices':
+                $headers = ['Invoice #', 'Total', 'Status', 'Due date'];
+                $query = $customer->invoices()
+                    ->when($search !== '', fn ($q) => $q->where('invoice_no', 'like', "%{$search}%"))
+                    ->when(($filters['invoice_status'] ?? '') !== '', fn ($q) => $q->where('status', $filters['invoice_status']))
+                    ->latest();
+
+                $csv = app(CsvStreamService::class);
+
+                return $csv->stream($filename, $headers, function ($handle) use ($query): void {
+                    $query->chunk(500, function ($invoices) use ($handle): void {
+                        foreach ($invoices as $invoice) {
+                            fputcsv($handle, [
+                                $invoice->invoice_no,
+                                number_format((float) $invoice->total, 2, '.', ''),
+                                $invoice->status,
+                                $invoice->due_date?->format('Y-m-d H:i') ?? '',
+                            ]);
+                        }
+                    });
+                });
+
+            case 'tickets':
+                $headers = ['Ticket #', 'Subject', 'Priority', 'Status'];
+                $query = $customer->tickets()
+                    ->when($search !== '', function ($q) use ($search) {
+                        $q->where(function ($w) use ($search) {
+                            $w->where('ticket_no', 'like', "%{$search}%")
+                                ->orWhere('subject', 'like', "%{$search}%");
+                        });
+                    })
+                    ->when(($filters['ticket_status'] ?? '') !== '', fn ($q) => $q->where('status', $filters['ticket_status']))
+                    ->latest();
+
+                $csv = app(CsvStreamService::class);
+
+                return $csv->stream($filename, $headers, function ($handle) use ($query): void {
+                    $query->chunk(500, function ($tickets) use ($handle): void {
+                        foreach ($tickets as $ticket) {
+                            fputcsv($handle, [
+                                $ticket->ticket_no,
+                                $ticket->subject,
+                                $ticket->priority,
+                                $ticket->status,
+                            ]);
+                        }
+                    });
+                });
+
+            case 'domains':
+                $headers = ['Domain', 'Type', 'Expiry', 'Status'];
+                $query = $customer->domains()
+                    ->when($search !== '', fn ($q) => $q->where('name', 'like', "%{$search}%"))
+                    ->when(($filters['domain_status'] ?? '') !== '', fn ($q) => $q->where('status', $filters['domain_status']))
+                    ->latest();
+
+                $csv = app(CsvStreamService::class);
+
+                return $csv->stream($filename, $headers, function ($handle) use ($query): void {
+                    $query->chunk(500, function ($domains) use ($handle): void {
+                        foreach ($domains as $domain) {
+                            fputcsv($handle, [
+                                $domain->name,
+                                ucfirst((string) $domain->type),
+                                $domain->expiry_date?->format('Y-m-d H:i') ?? '',
+                                $domain->status,
+                            ]);
+                        }
+                    });
+                });
+
+            case 'contacts':
+                $headers = ['Name', 'Email', 'Phone', 'Role', 'Type', 'Primary'];
+                $query = $customer->contacts()
+                    ->when($search !== '', function ($q) use ($search) {
+                        $q->where(function ($w) use ($search) {
+                            $w->where('first_name', 'like', "%{$search}%")
+                                ->orWhere('last_name', 'like', "%{$search}%")
+                                ->orWhere('email', 'like', "%{$search}%")
+                                ->orWhere('phone', 'like', "%{$search}%")
+                                ->orWhere('role', 'like', "%{$search}%");
+                        });
+                    })
+                    ->orderByDesc('is_primary')
+                    ->orderBy('created_at');
+
+                $csv = app(CsvStreamService::class);
+
+                return $csv->stream($filename, $headers, function ($handle) use ($query): void {
+                    $query->chunk(500, function ($contacts) use ($handle): void {
+                        foreach ($contacts as $contact) {
+                            fputcsv($handle, [
+                                trim($contact->first_name.' '.$contact->last_name),
+                                $contact->email,
+                                $contact->phone ?? '',
+                                $contact->role ?? '',
+                                $contact->status,
+                                $contact->is_primary ? 'Yes' : 'No',
+                            ]);
+                        }
+                    });
+                });
+
+            case 'billing':
+                $headers = ['Date', 'Type', 'Amount', 'Description', 'By'];
+                $query = $customer->walletTransactions()
+                    ->with('adminUser')
+                    ->when($search !== '', function ($q) use ($search) {
+                        $q->where(function ($w) use ($search) {
+                            $w->where('description', 'like', "%{$search}%")
+                                ->orWhere('type', 'like', "%{$search}%");
+                        });
+                    })
+                    ->when(($filters['wallet_type'] ?? '') !== '', fn ($q) => $q->where('type', $filters['wallet_type']))
+                    ->latest();
+
+                $csv = app(CsvStreamService::class);
+
+                return $csv->stream($filename, $headers, function ($handle) use ($query): void {
+                    $query->chunk(500, function ($txs) use ($handle): void {
+                        foreach ($txs as $tx) {
+                            fputcsv($handle, [
+                                $tx->created_at?->format('Y-m-d H:i') ?? '',
+                                ucfirst(str_replace('_', ' ', (string) $tx->type)),
+                                number_format((float) $tx->amount, 2, '.', ''),
+                                $tx->description ?? '',
+                                $tx->adminUser?->full_name ?? '',
+                            ]);
+                        }
+                    });
+                });
+
+            case 'activity':
+                $headers = ['When', 'Action', 'Description', 'By'];
+                $query = ActivityLog::query()
+                    ->where('customer_id', $customer->id)
+                    ->with('user')
+                    ->when($search !== '', function ($q) use ($search) {
+                        $q->where(function ($w) use ($search) {
+                            $w->where('action', 'like', "%{$search}%")
+                                ->orWhere('description', 'like', "%{$search}%");
+                        });
+                    })
+                    ->latest();
+
+                $csv = app(CsvStreamService::class);
+
+                return $csv->stream($filename, $headers, function ($handle) use ($query): void {
+                    $query->chunk(500, function ($entries) use ($handle): void {
+                        foreach ($entries as $entry) {
+                            fputcsv($handle, [
+                                $entry->created_at?->format('Y-m-d H:i') ?? '',
+                                $entry->action,
+                                $entry->description,
+                                $entry->user?->full_name ?? 'System',
+                            ]);
+                        }
+                    });
+                });
+
+            default:
+                abort(404);
+        }
     }
 
     public function edit(Customer $customer): View
