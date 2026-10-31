@@ -1,9 +1,9 @@
 @extends('adminlte::page')
 
-@section('title', 'Edit Add-on')
+@section('title', 'Edit ' . $orderItem->product_name)
 
 @section('content_header')
-    <x-ui.page-header title="Edit Add-on" subtitle="{{ $order->order_number }}" :breadcrumbs="[
+    <x-ui.page-header title="Edit {{ $orderItem->product_name }}" subtitle="Order {{ $order->order_number }}" :breadcrumbs="[
         ['label' => __('adminlte.home'), 'url' => url('/')],
         ['label' => 'Orders', 'url' => route('admin.orders.index')],
         ['label' => $order->order_number, 'url' => route('admin.orders.show', $order)],
@@ -14,47 +14,53 @@
 @section('content')
     <x-adminlte.partials.flash-alert />
 
-    <x-adminlte-card icon="bi bi-pencil" title="Edit {{ $orderItem->product_name }}">
-        <form method="POST" action="{{ route('admin.orders.addons.update', [$order, $orderItem]) }}">
-            @csrf
-            @method('PUT')
+    <x-adminlte.partials.form-card
+        icon="bi bi-pencil-square"
+        title="Edit {{ $orderItem->product_name }}"
+        :action="route('admin.orders.addons.update', [$order, $orderItem])"
+        method="PUT"
+        form-id="addon-edit-form"
+        :show-footer="false"
+    >
+        {{-- Save / Cancel live in the card header (card-tools), matching the
+             product edit page: Save submits the form by id, Cancel returns to
+             the order page. --}}
+        <x-slot name="tools">
+            <a href="{{ route('admin.orders.show', $order) }}?tab=addons" class="btn btn-sm btn-outline-secondary">
+                <i class="bi bi-x-lg me-1" aria-hidden="true"></i> Cancel
+            </a>
+            <button type="submit" form="addon-edit-form" class="btn btn-sm btn-primary">
+                <i class="bi bi-check-lg me-1" aria-hidden="true"></i> Save Changes
+            </button>
+        </x-slot>
 
-            <div class="row g-3">
-                <div class="col-md-6">
-                    <label class="form-label" for="addon-name">Add-on</label>
-                    <input type="text" class="form-control" id="addon-name" value="{{ $orderItem->product_name }}" disabled>
-                </div>
-                <div class="col-md-6">
-                    <label class="form-label" for="addon-cycle">Billing cycle</label>
-                    <select name="billing_cycle" id="addon-cycle" class="form-select">
-                        @foreach ($billingCycleLabels as $value => $label)
-                            <option value="{{ $value }}" @selected($orderItem->billing_cycle === $value)>{{ $label }}</option>
-                        @endforeach
-                    </select>
-                </div>
-                <div class="col-md-4">
-                    <label class="form-label" for="addon-price">Unit price</label>
-                    <input type="number" step="0.01" min="0" name="unit_price" id="addon-price"
-                           class="form-control" value="{{ $orderItem->unit_price }}">
-                </div>
-                <div class="col-md-4">
-                    <label class="form-label" for="addon-qty">Quantity</label>
-                    <input type="number" min="1" max="{{ \App\Models\Order::MAX_QUANTITY }}" name="quantity" id="addon-qty"
-                           class="form-control" value="{{ $orderItem->quantity }}">
-                </div>
-                <div class="col-md-4">
-                    <label class="form-label" for="addon-date">Next billing date</label>
-                    <input type="date" name="next_billing_date" id="addon-date" class="form-control"
-                           value="{{ $orderItem->next_billing_date?->format('Y-m-d') }}">
-                </div>
+        <div class="row">
+            <div class="col-md-6">
+                <x-adminlte-input name="product_name" label="Add-on"
+                                  value="{{ $orderItem->product_name }}" disabled />
             </div>
+            <div class="col-md-6">
+                <x-adminlte-select name="billing_cycle" label="Billing cycle">
+                    @foreach ($billingCycleLabels as $value => $label)
+                        <option value="{{ $value }}" @selected(old('billing_cycle', $orderItem->billing_cycle) === $value)>{{ $label }}</option>
+                    @endforeach
+                </x-adminlte-select>
+            </div>
+        </div>
 
-            <div class="mt-4 d-flex gap-2">
-                <button type="submit" class="btn btn-primary">
-                    <i class="bi bi-check-lg me-1"></i>Save changes
-                </button>
-                <a href="{{ route('admin.orders.show', $order) }}?tab=addons" class="btn btn-outline-secondary">Cancel</a>
+        <div class="row">
+            <div class="col-md-4">
+                <x-adminlte-input name="unit_price" type="number" step="0.01" min="0" label="Unit price"
+                                  value="{{ old('unit_price', $orderItem->unit_price) }}" />
             </div>
-        </form>
-    </x-adminlte-card>
+            <div class="col-md-4">
+                <x-adminlte-input name="quantity" type="number" min="1" max="{{ \App\Models\Order::MAX_QUANTITY }}" label="Quantity"
+                                  value="{{ old('quantity', $orderItem->quantity) }}" />
+            </div>
+            <div class="col-md-4">
+                <x-adminlte-input name="next_billing_date" type="date" label="Next billing date"
+                                  value="{{ old('next_billing_date', $orderItem->next_billing_date?->format('Y-m-d')) }}" />
+            </div>
+        </div>
+    </x-adminlte.partials.form-card>
 @stop

@@ -13,10 +13,18 @@
         icon="bi bi-plus-square"
         title="Edit: {{ $addon->name }}"
         :action="route('admin.addons.update', $addon)"
-        submit-label="Save Changes"
-        :cancel-url="route('admin.addons.index')"
+        method="PUT"
+        form-id="addon-edit-form"
+        :show-footer="false"
     >
-        @method('PUT')
+        <x-slot name="tools">
+            <a href="{{ route('admin.addons.index') }}" class="btn btn-sm btn-outline-secondary">
+                <i class="bi bi-x-lg me-1" aria-hidden="true"></i> Cancel
+            </a>
+            <button type="submit" form="addon-edit-form" class="btn btn-sm btn-primary">
+                <i class="bi bi-check-lg me-1" aria-hidden="true"></i> Save Changes
+            </button>
+        </x-slot>
 
         <div class="row">
             <div class="col-md-6">
