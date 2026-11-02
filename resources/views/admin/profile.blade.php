@@ -10,6 +10,9 @@
     @if (session('success'))
         <x-adminlte-alert theme="success" dismissible>{{ session('success') }}</x-adminlte-alert>
     @endif
+    @if (session('status'))
+        <x-adminlte-alert theme="success" dismissible>{{ session('status') }}</x-adminlte-alert>
+    @endif
 
     <x-adminlte-card icon="bi bi-person-circle" title="Account Details">
         <dl class="row mb-0">
@@ -47,6 +50,36 @@
                 <div class="form-text">Plain text only. Max 2,000 characters.</div>
             </div>
             <button type="submit" class="btn btn-primary btn-sm">Save signature</button>
+        </form>
+    </x-adminlte-card>
+
+    <x-adminlte-card icon="bi bi-key" title="Change Password">
+        <p class="text-muted small mb-3">Update your password. You will need your current password to confirm the change.</p>
+        <form method="POST" action="{{ route('user-password.update') }}">
+            @csrf
+            @method('PUT')
+            <div class="mb-3">
+                <label for="current_password" class="form-label">Current password</label>
+                <input type="password" name="current_password" id="current_password"
+                       class="form-control @error('current_password', 'updatePassword') is-invalid @enderror" required autocomplete="current-password">
+                @error('current_password', 'updatePassword')
+                    <div class="invalid-feedback">{{ $message }}</div>
+                @enderror
+            </div>
+            <div class="mb-3">
+                <label for="password" class="form-label">New password</label>
+                <input type="password" name="password" id="password"
+                       class="form-control @error('password', 'updatePassword') is-invalid @enderror" required autocomplete="new-password">
+                @error('password', 'updatePassword')
+                    <div class="invalid-feedback">{{ $message }}</div>
+                @enderror
+            </div>
+            <div class="mb-3">
+                <label for="password_confirmation" class="form-label">Confirm new password</label>
+                <input type="password" name="password_confirmation" id="password_confirmation"
+                       class="form-control" required autocomplete="new-password">
+            </div>
+            <button type="submit" class="btn btn-primary btn-sm">Update password</button>
         </form>
     </x-adminlte-card>
 
