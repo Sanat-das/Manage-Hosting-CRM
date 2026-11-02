@@ -12,6 +12,7 @@ use App\Models\Role;
 use App\Models\User;
 use App\Services\Billing\RenewalReminderService;
 use App\Settings\BillingSettings;
+use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
@@ -107,11 +108,11 @@ class RenewalReminderTest extends TestCase
 
         $service = app(RenewalReminderService::class);
 
-        $this->assertTrue($service->remind($order));
+        $this->assertTrue($service->remind($order, 7));
         $this->assertSame(1, DB::table('emails')->where('to_email', $customer->user->email)->count());
 
         // A fresh instance, so the guard must read the persisted marker.
-        $this->assertTrue($service->remind($order->fresh()));
+        $this->assertTrue($service->remind($order->fresh(), 7));
 
         $this->assertSame(
             1,
@@ -126,6 +127,35 @@ class RenewalReminderTest extends TestCase
      * The admin digest carries its own once-per-day guard: a second callee on
      * the same calendar day reports zero recipients and sends nothing.
      */
+    /**
+     * An admin granted access through the RBAC pivot (and whose legacy
+     * `users.role` column is not 'admin') must still receive the digest:
+     * recipient resolution must agree with access control, not only the column.
+     */
+    public function test_an_rbac_granted_admin_receives_the_digest(): void
+    {
+        $customer = $this->makeCustomer();
+        $product = $this->makeProduct();
+
+        $admin = User::factory()->create(['status' => 'active']);
+        $adminRole = Role::firstOrCreate(['name' => 'admin'], ['label' => 'Administrator']);
+        $admin->assignRole('admin');
+
+        $this->makeTemplate('renewal_reminder', 'Renewal on {{renewal_date}}', 'Hi {{name}}, {{product_name}} renews on {{renewal_date}}.');
+        $this->makeTemplate('renewal_reminder_admin', '{{renewal_count}} renewals', '{{renewals_html}}');
+
+        $due = now()->addDays(3)->toDateString();
+        $order = $this->makeOrder($customer, $product, ['next_billing_date' => $due]);
+        $this->makeItem($order, $product, ['next_billing_date' => $due]);
+
+        $this->artisan('renewals:remind')->assertExitCode(0);
+
+        $this->assertDatabaseHas('emails', [
+            'to_email' => $admin->email,
+            'status' => 'sent',
+        ]);
+    }
+
     public function test_the_admin_digest_is_sent_once_per_day(): void
     {
         $customer = $this->makeCustomer();
@@ -174,7 +204,7 @@ class RenewalReminderTest extends TestCase
             }
         });
 
-        $this->assertTrue(app(RenewalReminderService::class)->remind($order));
+        $this->assertTrue(app(RenewalReminderService::class)->remind($order, 7));
         $this->assertSame(1, DB::table('emails')->where('to_email', $customer->user->email)->count());
         $this->assertNull($order->fresh()->renewal_reminder_for);
     }
@@ -221,7 +251,8 @@ class RenewalReminderTest extends TestCase
 
     /**
      * The window is a typed BillingSettings key: the admin form must persist it
-     * through the settings class, and the frozen 0–90 validation must be live.
+     * through the settings class, and the frozen 0–365-per-token validation
+     * must be live.
      */
     public function test_admin_settings_form_persists_the_reminder_window_as_a_typed_billing_key(): void
     {
@@ -233,13 +264,167 @@ class RenewalReminderTest extends TestCase
             ])
             ->assertRedirect();
 
-        $this->assertSame(3, app(BillingSettings::class)->renewal_reminder_days);
+        $this->assertSame('3', app(BillingSettings::class)->renewal_reminder_days);
 
         $this->actingAs($admin)
             ->post(route('admin.settings.update'), [
-                'settings' => ['renewal_reminder_days' => '120'],
+                'settings' => ['renewal_reminder_days' => '400'],
             ])
             ->assertSessionHasErrors('settings.renewal_reminder_days');
+    }
+
+    /**
+     * The ladder is a set of independent rungs: each lead day fires once, on
+     * its own day, and a run after every rung has fired sends nothing.
+     */
+    public function test_the_ladder_sends_each_rung_on_its_own_day(): void
+    {
+        $customer = $this->makeCustomer();
+        $product = $this->makeProduct();
+
+        $this->makeTemplate('renewal_reminder', 'Renewal on {{renewal_date}}', 'Hi {{name}}, {{product_name}} renews on {{renewal_date}}.');
+        $this->setReminderLadder('30,15,7');
+
+        $due = CarbonImmutable::parse(now()->toDateString())->addDays(30);
+        $order = $this->makeOrder($customer, $product, ['next_billing_date' => $due->toDateString()]);
+        $this->makeItem($order, $product, ['next_billing_date' => $due->toDateString()]);
+
+        $this->travelTo($due->subDays(30));
+        $this->artisan('renewals:remind')->assertExitCode(0);
+        $this->assertSame(1, $this->clientEmailCount($customer), 'The 30-day rung fires on its own day.');
+
+        $this->travelTo($due->subDays(15));
+        $this->artisan('renewals:remind')->assertExitCode(0);
+        $this->assertSame(2, $this->clientEmailCount($customer), 'The 15-day rung fires on its own day.');
+
+        $this->travelTo($due->subDays(7));
+        $this->artisan('renewals:remind')->assertExitCode(0);
+        $this->assertSame(3, $this->clientEmailCount($customer), 'The 7-day rung fires on its own day.');
+
+        $this->travelTo($due->subDays(1));
+        $this->artisan('renewals:remind')->assertExitCode(0);
+        $this->assertSame(3, $this->clientEmailCount($customer), 'Every rung already fired for this cycle.');
+    }
+
+    /**
+     * A run that finds several passed rungs (a paused cron, a late deploy)
+     * catches up with only the most recent one and records the older rungs as
+     * suppressed, so the client is not mailed a burst of stale reminders.
+     */
+    public function test_a_missed_rung_sends_only_the_most_recent_one(): void
+    {
+        $customer = $this->makeCustomer();
+        $product = $this->makeProduct();
+
+        $this->makeTemplate('renewal_reminder', 'Renewal on {{renewal_date}}', 'Hi {{name}}, {{product_name}} renews on {{renewal_date}}.');
+        $this->setReminderLadder('30,15,7');
+
+        // 10 days out: the 30- and 15-day rungs have passed, the 7-day one has not.
+        $due = CarbonImmutable::parse(now()->toDateString())->addDays(10);
+        $order = $this->makeOrder($customer, $product, ['next_billing_date' => $due->toDateString()]);
+        $this->makeItem($order, $product, ['next_billing_date' => $due->toDateString()]);
+
+        $this->artisan('renewals:remind')->assertExitCode(0);
+
+        $this->assertSame(1, $this->clientEmailCount($customer), 'Only the most recent passed rung is sent.');
+
+        $stale = DB::table('renewal_reminder_logs')
+            ->where('order_id', $order->id)
+            ->whereDate('cycle_date', $due->toDateString())
+            ->where('days_before', 30)
+            ->first();
+
+        $this->assertNotNull($stale, 'The older passed rung is recorded.');
+        $this->assertNull($stale->sent_at, 'The superseded rung is recorded as suppressed, not delivered.');
+
+        $sentAt = DB::table('renewal_reminder_logs')
+            ->where('order_id', $order->id)
+            ->whereDate('cycle_date', $due->toDateString())
+            ->where('days_before', 15)
+            ->value('sent_at');
+
+        $this->assertNotNull($sentAt, 'The rung actually sent is recorded as delivered.');
+
+        $this->artisan('renewals:remind')->assertExitCode(0);
+        $this->assertSame(1, $this->clientEmailCount($customer), 'A second run sends nothing more for the cycle.');
+    }
+
+    /**
+     * The ladder is scoped to the cycle: advancing next_billing_date re-arms
+     * every rung for the new cycle.
+     */
+    public function test_the_ladder_restarts_when_the_cycle_advances(): void
+    {
+        $customer = $this->makeCustomer();
+        $product = $this->makeProduct();
+
+        $this->makeTemplate('renewal_reminder', 'Renewal on {{renewal_date}}', 'Hi {{name}}, {{product_name}} renews on {{renewal_date}}.');
+        $this->setReminderLadder('30,15,7');
+
+        $due = CarbonImmutable::parse(now()->toDateString())->addDays(7);
+        $order = $this->makeOrder($customer, $product, ['next_billing_date' => $due->toDateString()]);
+        $this->makeItem($order, $product, ['next_billing_date' => $due->toDateString()]);
+
+        $this->artisan('renewals:remind')->assertExitCode(0);
+        $this->assertSame(1, $this->clientEmailCount($customer));
+
+        $next = $due->addMonth();
+        $order->forceFill(['next_billing_date' => $next->toDateString()])->save();
+
+        $this->travelTo($next->subDays(7));
+        $this->artisan('renewals:remind')->assertExitCode(0);
+
+        $this->assertSame(2, $this->clientEmailCount($customer), 'A new cycle re-arms the ladder.');
+    }
+
+    /**
+     * An order reminded under the pre-ladder single-slot marker must not be
+     * re-counted, re-sent or digested by the first ladder run of that same
+     * cycle — the old marker covered the whole cycle.
+     */
+    public function test_a_legacy_single_slot_reminder_covers_the_cycle(): void
+    {
+        $customer = $this->makeCustomer();
+        $product = $this->makeProduct();
+
+        $this->makeTemplate('renewal_reminder', 'Renewal on {{renewal_date}}', 'Hi {{name}}, {{product_name}} renews on {{renewal_date}}.');
+        $this->setReminderLadder('30,15,7');
+
+        $due = CarbonImmutable::parse(now()->toDateString())->addDays(3);
+        $order = $this->makeOrder($customer, $product, [
+            'next_billing_date' => $due->toDateString(),
+            'renewal_reminder_for' => $due->toDateString(),
+            'renewal_reminder_sent_at' => now(),
+        ]);
+        $this->makeItem($order, $product, ['next_billing_date' => $due->toDateString()]);
+
+        $this->artisan('renewals:remind')->assertExitCode(0);
+
+        $this->assertSame(0, $this->clientEmailCount($customer), 'The legacy marker already covered this cycle.');
+        $this->assertSame(0, DB::table('renewal_reminder_logs')->where('order_id', $order->id)->count());
+    }
+
+    /**
+     * The admin-entered ladder is free text: parsing normalises it into a
+     * descending, unique list of whole days.
+     */
+    public function test_parse_offsets_normalises_the_setting(): void
+    {
+        $this->assertSame([30, 15, 7], RenewalReminderService::parseOffsets('7, 30 ,15,15,400,abc'));
+        $this->assertSame([0], RenewalReminderService::parseOffsets('0'));
+        $this->assertSame([], RenewalReminderService::parseOffsets(''));
+    }
+
+    private function setReminderLadder(string $days): void
+    {
+        $settings = app(BillingSettings::class);
+        $settings->renewal_reminder_days = $days;
+        $settings->save();
+    }
+
+    private function clientEmailCount(Customer $customer): int
+    {
+        return DB::table('emails')->where('to_email', $customer->user->email)->count();
     }
 
     private function makeSettingsAdmin(): User

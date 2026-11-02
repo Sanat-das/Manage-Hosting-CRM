@@ -953,9 +953,9 @@
                                 </x-adminlte-input>
                             </div>
                             <div class="col-md-3">
-                                <x-adminlte-input name="settings[renewal_reminder_days]" label="Renewal Reminder Lead Days" type="number" min="0" max="90"
+                                <x-adminlte-input name="settings[renewal_reminder_days]" label="Renewal Reminder Lead Days" type="text" placeholder="30,15,7"
                                     value="{{ old('settings.renewal_reminder_days', $settings['renewal_reminder_days'] ?? '7') }}">
-                                    <small class="form-text text-muted">Days before the renewal date to remind the client and admin.</small>
+                                    <small class="form-text text-muted">Comma-separated days before the due date, e.g. 30,15,7. 0 = on the due date.</small>
                                 </x-adminlte-input>
                             </div>
                             <div class="col-md-3">

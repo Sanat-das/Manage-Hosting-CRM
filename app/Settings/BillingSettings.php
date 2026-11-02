@@ -24,10 +24,11 @@ class BillingSettings extends Settings
     public int $renewal_invoice_days = 0;
 
     /**
-     * Renewal reminder window, in days before the renewal date.
-     * 0 = remind on the due date.
+     * Renewal reminder ladder: comma-separated lead days before the due date,
+     * e.g. `30,15,7`. A single value is a one-rung ladder; 0 means on the due
+     * date.
      */
-    public int $renewal_reminder_days = 7;
+    public string $renewal_reminder_days = '7';
 
     public ?string $bank_name = null;
 
@@ -50,7 +51,24 @@ class BillingSettings extends Settings
             'invoice_prefix' => ['nullable', 'string', 'max:20'],
             'tax_rate' => ['nullable', 'numeric', 'min:0', 'max:100'],
             'renewal_invoice_days' => ['nullable', 'integer', 'min:0', 'max:90'],
-            'renewal_reminder_days' => ['nullable', 'integer', 'min:0', 'max:90'],
+            'renewal_reminder_days' => [
+                'nullable',
+                'string',
+                'max:100',
+                function (string $attribute, mixed $value, \Closure $fail): void {
+                    $raw = trim((string) $value);
+
+                    foreach (explode(',', $raw) as $token) {
+                        $token = trim($token);
+
+                        if ($token === '' || ! ctype_digit($token) || (int) $token > 365) {
+                            $fail('Renewal reminder lead days must be comma-separated whole days between 0 and 365, e.g. 30,15,7.');
+
+                            return;
+                        }
+                    }
+                },
+            ],
             'bank_name' => ['nullable', 'string', 'max:255'],
             'bank_account_holder' => ['nullable', 'string', 'max:255'],
             'bank_account_no' => ['nullable', 'string', 'max:34'],

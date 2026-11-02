@@ -117,4 +117,9 @@ class Order extends Model
     {
         return $this->hasMany(UpgradeRequest::class);
     }
+
+    public function reminderLogs(): HasMany
+    {
+        return $this->hasMany(RenewalReminderLog::class);
+    }
 }

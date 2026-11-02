@@ -6,6 +6,7 @@ use App\Jobs\SendEmail;
 use App\Models\EmailTemplate;
 use App\Models\Order;
 use App\Models\OrderItem;
+use App\Models\RenewalReminderLog;
 use App\Models\User;
 use App\Notifications\ServiceRenewalReminderNotification;
 use App\Services\Concerns\BuildsEmailVariables;
@@ -17,36 +18,87 @@ use Illuminate\Support\Facades\Cache;
 use RuntimeException;
 
 /**
- * Sends the "your service renews soon" reminder (client) and the daily
+ * Sends the "your service renews soon" reminders (client) and the daily
  * upcoming-renewals digest (admin).
  *
  * The sibling of InvoiceEmailService / OrderEmailService for the pre-renewal
  * window: the client half renders the admin-managed 'renewal_reminder'
  * template and raises an in-app notification, the admin half renders
- * 'renewal_reminder_admin' with every order inside the run's window so ops
- * sees the day's renewal load in one message.
+ * 'renewal_reminder_admin' with every order reminded in the run so ops sees
+ * the day's renewal load in one message.
+ *
+ * The client half is a LADDER, not a single window: `renewal_reminder_days`
+ * holds comma-separated lead days (e.g. `30,15,7`), and each rung is sent
+ * once per billing cycle. A run that has missed rungs (a late deploy, a
+ * paused cron) catches up by sending only the most recent passed rung and
+ * recording the older ones as suppressed, so a client never receives a burst
+ * of stale reminders. The rung sent is resolved by RenewalsRemindCommand and
+ * recorded here in `renewal_reminder_logs`; the legacy
+ * `orders.renewal_reminder_for` / `renewal_reminder_sent_at` pair is still
+ * stamped as a "last reminder" summary for installs and reports that read it.
  *
  * remind() returns whether the client EMAIL dispatched — not merely whether
  * anything happened. A missing/inactive template or a mail transport failure
  * therefore fails the run instead of reporting a success the customer never
  * received. The two faults differ in bookkeeping: a missing template is an
  * ops configuration fault, so the portal notification still goes out and the
- * per-cycle marker is still written (fixing the template must not unleash a
- * backlog of reminders); a transport failure leaves the marker untouched so
- * the next run retries it. The amount shown mirrors the renewal engine:
- * unit_price × quantity over the order's recurring lines only.
+ * rung is still recorded (fixing the template must not unleash a backlog of
+ * reminders); a transport failure records nothing so the next run retries it.
+ * The amount shown mirrors the renewal engine: unit_price × quantity over the
+ * order's recurring lines only.
  *
  * Both halves are safe to invoke from anywhere, not just the CLI command: the
- * per-cycle marker is honoured and written here, so a caller that forgets to
- * pre-check still sends at most one client reminder per cycle, and the admin
- * digest carries its own once-per-day guard.
+ * per-rung record is honoured and written here, so a caller that forgets to
+ * pre-check still sends at most one reminder per rung, and the admin digest
+ * carries its own once-per-day guard.
  */
 final class RenewalReminderService
 {
     use BuildsEmailVariables;
 
     /**
-     * Send the client renewal reminder: email plus in-app notification.
+     * Normalise the `renewal_reminder_days` setting into a ladder.
+     *
+     * The setting is admin-entered free text (`30,15,7`), so this drops
+     * blanks, non-digits and anything beyond a year, de-duplicates, and sorts
+     * descending so the widest lead time comes first. An empty result means no
+     * ladder is configured.
+     *
+     * @return list<int>
+     */
+    public static function parseOffsets(string $raw): array
+    {
+        $offsets = [];
+
+        foreach (explode(',', $raw) as $token) {
+            $token = trim($token);
+
+            if ($token === '' || ! ctype_digit($token)) {
+                continue;
+            }
+
+            $days = (int) $token;
+
+            if ($days > 365) {
+                continue;
+            }
+
+            $offsets[$days] = $days;
+        }
+
+        $offsets = array_values($offsets);
+        rsort($offsets);
+
+        return $offsets;
+    }
+
+    /**
+     * Send one rung of the client renewal ladder: email plus in-app
+     * notification.
+     *
+     * `$daysBefore` is the rung — the lead time before `next_billing_date`
+     * (30, 15 or 7 in a `30,15,7` ladder). The command decides which rung is
+     * due; this method only guarantees it goes out once.
      *
      * The return value means "the client EMAIL was dispatched" — it is the
      * signal RenewalsRemindCommand turns into a non-zero exit, so a run with a
@@ -54,20 +106,29 @@ final class RenewalReminderService
      *
      * A missing/inactive template is a configuration fault: it is logged at
      * error level and returns false, but the portal notification still goes
-     * out and the per-cycle marker is still written, so the customer is not
-     * reminded every day while ops fixes the template. A transport failure is
-     * retried on the next run instead, so it deliberately leaves the marker
-     * untouched even when the in-app channel succeeded. An order with no
-     * linked user email dispatches no email and therefore returns false.
+     * out and the rung is still recorded, so the customer is not reminded
+     * every day while ops fixes the template. A transport failure is retried
+     * on the next run instead, so it deliberately records nothing even when
+     * the in-app channel succeeded. An order with no linked user email
+     * dispatches no email and therefore returns false.
      *
-     * Idempotent for the cycle: an order already reminded for its CURRENT
-     * next_billing_date is a no-op that reports success, so a second caller in
-     * the same cycle neither re-sends nor counts as an error.
+     * Idempotent for the rung: a rung already resolved for the order's
+     * CURRENT cycle — sent or suppressed — is a no-op that reports success,
+     * so a second caller neither re-sends nor counts as an error. An order
+     * reminded under the legacy single-slot marker (no ladder rows yet for
+     * the cycle) is likewise a no-op, which stops the first ladder run from
+     * repeating a reminder the old code already sent in that cycle.
      */
-    public function remind(Order $order): bool
+    public function remind(Order $order, int $daysBefore): bool
     {
-        if ($this->alreadyRemindedForCurrentCycle($order)) {
-            AppLog::billing()->info('Renewal reminder skipped: already sent for this cycle.', ['order_id' => $order->id]);
+        $cycle = $order->next_billing_date?->toDateString();
+
+        if ($cycle !== null && $this->alreadyResolved($order, $cycle, $daysBefore)) {
+            AppLog::billing()->info('Renewal reminder skipped: this rung is already resolved.', [
+                'order_id' => $order->id,
+                'cycle_date' => $cycle,
+                'days_before' => $daysBefore,
+            ]);
 
             return true;
         }
@@ -159,20 +220,34 @@ final class RenewalReminderService
 
         // A transport failure must be retried. Every other outcome that reached
         // the customer — email dispatched, in-app only, or a missing template
-        // we refuse to repeat daily — stamps the cycle marker.
+        // we refuse to repeat daily — resolves the rung.
         //
         // Bookkeeping must never downgrade a dispatched reminder to an error:
-        // the mail/notification already left, so a failed marker write is
-        // logged and swallowed (the worst case is one extra reminder).
+        // the mail/notification already left, so a failed write is logged and
+        // swallowed (the worst case is one extra reminder). The ladder row is
+        // written FIRST so the rung is claimed even if the legacy summary write
+        // fails afterwards.
         if (! $emailTransportFailed && ($emailDispatched || $inAppSent || $templateMissing)) {
             try {
+                if ($cycle !== null) {
+                    RenewalReminderLog::updateOrCreate(
+                        [
+                            'order_id' => $order->id,
+                            'cycle_date' => $cycle,
+                            'days_before' => $daysBefore,
+                        ],
+                        ['sent_at' => now()],
+                    );
+                }
+
                 $order->forceFill([
-                    'renewal_reminder_for' => $order->next_billing_date->toDateString(),
+                    'renewal_reminder_for' => $cycle,
                     'renewal_reminder_sent_at' => now(),
                 ])->save();
             } catch (\Throwable $e) {
-                AppLog::billing()->warning('Renewal reminder sent but the per-cycle marker could not be written.', [
+                AppLog::billing()->warning('Renewal reminder sent but its bookkeeping could not be written.', [
                     'order_id' => $order->id,
+                    'days_before' => $daysBefore,
                     'error' => $e->getMessage(),
                 ]);
             }
@@ -182,16 +257,46 @@ final class RenewalReminderService
     }
 
     /**
-     * Whether the order was already reminded for the cycle it is currently in.
+     * Whether this rung is already resolved for the order's current cycle.
      *
-     * The marker stores the next_billing_date the last reminder went out for,
-     * so an advance (or an admin edit) re-arms the reminder.
+     * Two sources count: a ladder row for (cycle, rung) — delivered or
+     * suppressed — and, on installs upgraded from the single-slot marker,
+     * `renewal_reminder_for` matching the cycle while no ladder rows exist for
+     * it. The legacy guard switches off as soon as the first rung of the cycle
+     * is logged, so later rungs of the same cycle still fire.
      */
-    private function alreadyRemindedForCurrentCycle(Order $order): bool
+    private function alreadyResolved(Order $order, string $cycle, int $daysBefore): bool
     {
-        return $order->renewal_reminder_for !== null
-            && $order->next_billing_date !== null
-            && $order->renewal_reminder_for->toDateString() === $order->next_billing_date->toDateString();
+        $logs = $this->logsForCycle($order, $cycle);
+
+        if ($logs->contains(fn (RenewalReminderLog $log): bool => (int) $log->days_before === $daysBefore)) {
+            return true;
+        }
+
+        return $logs->isEmpty()
+            && $order->renewal_reminder_for !== null
+            && $order->renewal_reminder_for->toDateString() === $cycle;
+    }
+
+    /**
+     * The ladder rows already resolved for one cycle.
+     *
+     * Prefers the eager-loaded relation so a command run does not query per
+     * order; falls back to a scoped query for direct callers.
+     *
+     * @return Collection<int, RenewalReminderLog>
+     */
+    private function logsForCycle(Order $order, string $cycle): Collection
+    {
+        if ($order->relationLoaded('reminderLogs')) {
+            return $order->reminderLogs
+                ->filter(fn (RenewalReminderLog $log): bool => $log->cycle_date?->toDateString() === $cycle)
+                ->values();
+        }
+
+        return $order->reminderLogs()
+            ->whereDate('cycle_date', $cycle)
+            ->get();
     }
 
     /**
@@ -205,12 +310,12 @@ final class RenewalReminderService
      * or a migration, so a second invocation of the run on the same calendar
      * day is a no-op (returns 0) instead of a duplicate digest.
      *
-     * A missing/inactive template while there are orders in the window is a
+     * A missing/inactive template while there are orders to report is a
      * configuration fault, not an empty result: it throws so the caller can
      * fail the run. An empty collection and the already-sent-today guard still
      * report 0.
      *
-     * @param  Collection<int, Order>  $orders  every order inside the run's window
+     * @param  Collection<int, Order>  $orders  every order reminded in this run
      *
      * @throws RuntimeException when the digest is due but its template is missing or inactive
      */
@@ -228,9 +333,19 @@ final class RenewalReminderService
             return 0;
         }
 
+        // Recipient resolution must agree with access control: a user may hold
+        // the admin/staff/support role through the RBAC pivot (adminlte_role_user)
+        // even when the legacy `users.role` column is not one of those values
+        // (e.g. an admin granted access via the pivot only). Filtering on the
+        // column alone silently drops those users from the digest.
         $recipients = User::query()
-            ->whereIn('role', ['admin', 'staff', 'support'])
             ->where('status', 'active')
+            ->where(function ($query): void {
+                $query->whereIn('role', ['admin', 'staff', 'support'])
+                    ->orWhereHas('roles', static function ($roleQuery): void {
+                        $roleQuery->whereIn('name', ['admin', 'staff', 'support']);
+                    });
+            })
             ->pluck('email')
             ->unique();
 
@@ -389,9 +504,12 @@ final class RenewalReminderService
         // subject line must never promise a different span than the rows below.
         $latestDate = $orders->max(fn (Order $order): string => $order->next_billing_date?->toDateString() ?? '');
 
+        $ladder = self::parseOffsets((string) AppSettings::get('renewal_reminder_days', '7'));
+        $configuredWindow = $ladder === [] ? 7 : max($ladder);
+
         $windowDays = $latestDate !== null && $latestDate !== ''
             ? (string) max(0, (int) today()->diffInDays($latestDate, false))
-            : (string) max(0, (int) AppSettings::get('renewal_reminder_days', '7'));
+            : (string) max(0, $configuredWindow);
 
         return $this->brandingVariables() + [
             'renewal_count' => (string) $orders->count(),

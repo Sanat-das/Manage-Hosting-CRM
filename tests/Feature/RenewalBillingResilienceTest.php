@@ -184,7 +184,7 @@ class RenewalBillingResilienceTest extends TestCase
             ->where('name', 'renewal_reminder')
             ->update(['status' => 'inactive']);
 
-        $this->assertFalse(app(RenewalReminderService::class)->remind($order));
+        $this->assertFalse(app(RenewalReminderService::class)->remind($order, 7));
         $this->assertDatabaseCount('emails', 0);
 
         $user = $order->customer->user;
