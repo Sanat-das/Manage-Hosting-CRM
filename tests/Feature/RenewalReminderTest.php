@@ -260,15 +260,38 @@ class RenewalReminderTest extends TestCase
 
         $this->actingAs($admin)
             ->post(route('admin.settings.update'), [
+                'settings' => ['renewal_reminder_days' => '30,15,7'],
+            ])
+            ->assertRedirect();
+
+        $this->assertSame('30,15,7', app(BillingSettings::class)->renewal_reminder_days);
+
+        $this->actingAs($admin)
+            ->post(route('admin.settings.update'), [
                 'settings' => ['renewal_reminder_days' => '3'],
             ])
             ->assertRedirect();
 
         $this->assertSame('3', app(BillingSettings::class)->renewal_reminder_days);
 
+        // The rendered Billing tab must expose the ladder as free text, not the
+        // old 0–90 number input.
+        $this->actingAs($admin)
+            ->get(route('admin.settings.index', ['tab' => 'billing']))
+            ->assertOk()
+            ->assertSee('name="settings[renewal_reminder_days]"', false)
+            ->assertSee('placeholder="30,15,7"', false)
+            ->assertSee('0 = on the due date', false);
+
         $this->actingAs($admin)
             ->post(route('admin.settings.update'), [
                 'settings' => ['renewal_reminder_days' => '400'],
+            ])
+            ->assertSessionHasErrors('settings.renewal_reminder_days');
+
+        $this->actingAs($admin)
+            ->post(route('admin.settings.update'), [
+                'settings' => ['renewal_reminder_days' => '30,abc'],
             ])
             ->assertSessionHasErrors('settings.renewal_reminder_days');
     }

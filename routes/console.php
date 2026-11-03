@@ -20,7 +20,8 @@ Artisan::command('inspire', function () {
 
 // Renewal reminders run BEFORE the billing run: the client (and the admin
 // digest) hear about a renewal ahead of the invoice that bills it, which is
-// the whole point of the reminder. `renewal_reminder_days` sets the window.
+// the whole point of the reminder. `renewal_reminder_days` sets the ladder
+// (e.g. 30,15,7 — one reminder per rung, per cycle).
 Schedule::command('renewals:remind')
     ->dailyAt('00:30')
     ->withoutOverlapping()
