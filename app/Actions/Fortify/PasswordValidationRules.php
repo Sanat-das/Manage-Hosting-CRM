@@ -15,14 +15,20 @@ trait PasswordValidationRules
      */
     protected function passwordRules(): array
     {
-        // Gated by security_strong_password_enabled toggle (default: enabled).
-        // Wrapped for early boot / missing table (testing RefreshDatabase).
+        // Minimum length comes from the `password_min_length` setting (default 8).
+        try {
+            $minLength = max(1, (int) (AppSettings::get('password_min_length', '8') ?? '8'));
+        } catch (\Throwable) {
+            $minLength = 8;
+        }
+
+        // Strong policy adds complexity + breach checks on top of the configured min.
         try {
             if (AppSettings::bool('security_strong_password_enabled', true)) {
                 return [
                     'required',
                     'string',
-                    Password::min(12)
+                    Password::min($minLength)
                         ->letters()
                         ->mixedCase()
                         ->numbers()
@@ -32,13 +38,13 @@ trait PasswordValidationRules
                 ];
             }
         } catch (\Throwable) {
-            // Fall through to weak default when settings not yet available.
+            // Fall through to plain min-length default when settings not yet available.
         }
 
         return [
             'required',
             'string',
-            Password::min(8),
+            Password::min($minLength),
             'confirmed',
         ];
     }
