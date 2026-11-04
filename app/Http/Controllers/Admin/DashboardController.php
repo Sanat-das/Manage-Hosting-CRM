@@ -12,6 +12,7 @@ use App\Models\Order;
 use App\Models\Ticket;
 use App\ViewModels\Admin\CapacityPressureViewModel;
 use App\ViewModels\Admin\OutstandingReceivablesViewModel;
+use App\ViewModels\Admin\OverdueRenewalsViewModel;
 use App\ViewModels\Admin\SupportQueueRiskViewModel;
 use App\ViewModels\Admin\SystemHealthViewModel;
 use App\ViewModels\Admin\UpcomingRenewalsViewModel;
@@ -39,6 +40,7 @@ class DashboardController extends Controller
         $expiringDomains = $this->expiringDomains();
         $receivables = new OutstandingReceivablesViewModel;
         $renewals = new UpcomingRenewalsViewModel;
+        $overdueRenewals = new OverdueRenewalsViewModel;
         $support = new SupportQueueRiskViewModel;
         $health = new SystemHealthViewModel;
         $capacity = new CapacityPressureViewModel;
@@ -52,6 +54,7 @@ class DashboardController extends Controller
             'expiringDomains',
             'receivables',
             'renewals',
+            'overdueRenewals',
             'support',
             'health',
             'capacity',

@@ -373,6 +373,15 @@ body.grid-is-resizing {
 /* Fallback: any right-aligned last column with numbers */
 .table-grid tbody td.text-end { font-variant-numeric: tabular-nums; }
 
+/* Overdue due date */
+.text-overdue {
+    color: #dc2626 !important;
+    font-weight: 600;
+}
+[data-bs-theme="dark"] .text-overdue {
+    color: #f87171 !important;
+}
+
 /* ── Row hover — subtle primary tint ────────────────────────────── */
 .table-grid tbody tr {
     transition: background var(--duration-fast) var(--ease-default);

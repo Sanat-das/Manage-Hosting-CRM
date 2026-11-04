@@ -320,6 +320,9 @@
          Each card is independently resizable (grid-column span 2-12, remembered in
          localStorage) and can be switched off with the eye toggle in its card tools. --}}
     <div class="dashboard-widget-grid" data-dashboard-widget-grid>
+        <div class="dashboard-widget" data-widget="overdue-renewals" style="grid-column: span 4">
+            @include('admin.dashboard.partials.overdue-renewals', ['widget' => $overdueRenewals])
+        </div>
         <div class="dashboard-widget" data-widget="receivables" style="grid-column: span 4">
             @include('admin.dashboard.partials.outstanding-receivables', ['receivables' => $receivables])
         </div>

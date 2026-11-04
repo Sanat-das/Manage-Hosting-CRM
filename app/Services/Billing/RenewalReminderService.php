@@ -4,6 +4,7 @@ namespace App\Services\Billing;
 
 use App\Jobs\SendEmail;
 use App\Models\EmailTemplate;
+use App\Models\HostingAccount;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\RenewalReminderLog;
@@ -333,21 +334,7 @@ final class RenewalReminderService
             return 0;
         }
 
-        // Recipient resolution must agree with access control: a user may hold
-        // the admin/staff/support role through the RBAC pivot (adminlte_role_user)
-        // even when the legacy `users.role` column is not one of those values
-        // (e.g. an admin granted access via the pivot only). Filtering on the
-        // column alone silently drops those users from the digest.
-        $recipients = User::query()
-            ->where('status', 'active')
-            ->where(function ($query): void {
-                $query->whereIn('role', ['admin', 'staff', 'support'])
-                    ->orWhereHas('roles', static function ($roleQuery): void {
-                        $roleQuery->whereIn('name', ['admin', 'staff', 'support']);
-                    });
-            })
-            ->pluck('email')
-            ->unique();
+        $recipients = $this->staffUsers()->pluck('email')->unique();
 
         if ($recipients->isEmpty()) {
             return 0;
@@ -395,6 +382,125 @@ final class RenewalReminderService
                 $htmlBody,
                 [],
                 templateName: 'renewal_reminder_admin',
+            );
+
+            $dispatched++;
+        }
+
+        // Only a digest that actually reached someone blocks the rest of the
+        // day; a run that dispatched nothing may still succeed later.
+        if ($dispatched > 0) {
+            Cache::put($sentKey, true, now()->addDay());
+        }
+
+        return $dispatched;
+    }
+
+    /**
+     * Active admin/staff/support users, resolved from both role sources.
+     *
+     * Recipient resolution must agree with access control: a user may hold
+     * the admin/staff/support role through the RBAC pivot (adminlte_role_user)
+     * even when the legacy `users.role` column is not one of those values
+     * (e.g. an admin granted access via the pivot only). Filtering on the
+     * column alone silently drops those users.
+     *
+     * @return Collection<int, User>
+     */
+    public function staffUsers(): Collection
+    {
+        return User::query()
+            ->where('status', 'active')
+            ->where(function ($query): void {
+                $query->whereIn('role', ['admin', 'staff', 'support'])
+                    ->orWhereHas('roles', static function ($roleQuery): void {
+                        $roleQuery->whereIn('name', ['admin', 'staff', 'support']);
+                    });
+            })
+            ->get();
+    }
+
+    /**
+     * Email the daily overdue-services digest to admin/staff/support.
+     *
+     * The sibling of sendAdminDigest() for accounts that passed their renewal
+     * due date unpaid: one dispatch per recipient and never a Cc, and the
+     * once-per-day guard lives in the cache, so a second invocation of the
+     * run on the same calendar day is a no-op (returns 0) instead of a
+     * duplicate digest.
+     *
+     * A missing/inactive template while there are accounts to report is a
+     * configuration fault, not an empty result: it throws so the caller can
+     * fail the run. An empty collection and the already-sent-today guard
+     * still report 0.
+     *
+     * @param  Collection<int, HostingAccount>  $services  every overdue account found in this run
+     *
+     * @throws RuntimeException when the digest is due but its template is missing or inactive
+     */
+    public function sendAdminOverdueDigest(Collection $services): int
+    {
+        if ($services->isEmpty()) {
+            return 0;
+        }
+
+        $sentKey = 'overdue-admin-digest:'.today()->toDateString();
+
+        if (Cache::has($sentKey)) {
+            AppLog::billing()->info('Overdue service admin digest skipped: already sent today.', ['cache_key' => $sentKey]);
+
+            return 0;
+        }
+
+        $recipients = $this->staffUsers()->pluck('email')->unique();
+
+        if ($recipients->isEmpty()) {
+            return 0;
+        }
+
+        $template = EmailTemplate::query()
+            ->where('name', 'overdue_renewal_admin')
+            ->where('status', 'active')
+            ->first();
+
+        if ($template === null) {
+            // There ARE overdue services to report, so this is a broken
+            // configuration rather than an empty day: the caller must see it
+            // as a failure.
+            throw new RuntimeException('Overdue service renewals admin digest cannot be sent: template "overdue_renewal_admin" is missing or inactive.');
+        }
+
+        [$subject, $body] = $this->renderTemplate($template, $this->buildOverdueAdminVariables($services));
+
+        $body = $this->stripAvailableVariablesFooter($body);
+        $subject = $this->stripAvailableVariablesFooter($subject);
+
+        $htmlBody = null;
+        $plainBody = $body;
+
+        if ($this->isHtml($template->body)) {
+            $htmlBody = $body;
+            $plainBody = $this->toPlainText($body);
+        }
+
+        $dispatched = 0;
+
+        foreach ($recipients as $email) {
+            if (! filter_var($email, FILTER_VALIDATE_EMAIL)) {
+                continue;
+            }
+
+            SendEmail::dispatch(
+                $email,
+                $subject,
+                $plainBody,
+                null,
+                [],
+                [],
+                [],
+                $htmlBody,
+                [],
+                templateName: 'overdue_renewal_admin',
             );
 
             $dispatched++;
@@ -519,6 +625,21 @@ final class RenewalReminderService
     }
 
     /**
+     * The variable map for the overdue admin digest: shared branding plus the
+     * count of overdue services and the rendered table it carries.
+     *
+     * @param  Collection<int, HostingAccount>  $services
+     * @return array<string, string>
+     */
+    public function buildOverdueAdminVariables(Collection $services): array
+    {
+        return $this->brandingVariables() + [
+            'overdue_count' => (string) $services->count(),
+            'overdue_html' => $this->overdueServicesHtml($services),
+        ];
+    }
+
+    /**
      * One table row per order: order number, customer, service, renewal date.
      *
      * @param  Collection<int, Order>  $orders
@@ -551,6 +672,47 @@ final class RenewalReminderService
             .'<th style="'.$headStyle.'">Customer</th>'
             .'<th style="'.$headStyle.'">Service</th>'
             .'<th style="'.$headStyle.'">Renews</th>'
+            .'</tr>'
+            ."\n".implode("\n", $rows)
+            ."\n".'</table>';
+    }
+
+    /**
+     * One table row per overdue account: order number, customer, service, due
+     * date. The due date is the effective one (the account's own, falling
+     * back to the order's) and is rendered in a red-ish inline style.
+     *
+     * @param  Collection<int, HostingAccount>  $services
+     */
+    private function overdueServicesHtml(Collection $services): string
+    {
+        $cellStyle = 'padding:10px 14px;font-size:13px;color:#334155;border-bottom:1px solid #f1f5f9;';
+        $headStyle = 'padding:10px 14px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#64748b;text-align:left;';
+        $dueCellStyle = 'padding:10px 14px;font-size:13px;font-weight:700;color:#dc2626;border-bottom:1px solid #f1f5f9;';
+        $rows = [];
+
+        foreach ($services as $account) {
+            $due = $account->next_due_date ?? $account->order?->next_billing_date;
+            $productName = trim((string) ($account->product?->name ?? ''));
+
+            if ($productName === '') {
+                $productName = 'Service';
+            }
+
+            $rows[] = '<tr>'
+                .'<td style="'.$cellStyle.'">'.e($account->order?->order_number ?? '').'</td>'
+                .'<td style="'.$cellStyle.'">'.e($account->customer?->full_name ?? '').'</td>'
+                .'<td style="'.$cellStyle.'">'.e($productName).'</td>'
+                .'<td style="'.$dueCellStyle.'">'.e($due?->format('M j, Y') ?? '').'</td>'
+                .'</tr>';
+        }
+
+        return '<table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;">'
+            ."\n".'<tr style="background:#f8fafc;">'
+            .'<th style="'.$headStyle.'">Order</th>'
+            .'<th style="'.$headStyle.'">Customer</th>'
+            .'<th style="'.$headStyle.'">Service</th>'
+            .'<th style="'.$headStyle.'">Due</th>'
             .'</tr>'
             ."\n".implode("\n", $rows)
             ."\n".'</table>';

@@ -27,6 +27,14 @@ Schedule::command('renewals:remind')
     ->withoutOverlapping()
     ->runInBackground();
 
+// Overdue services get their own staff-facing nudge the morning after the
+// reminder ladder would have caught them — renewals:remind covers future
+// due dates, this covers the ones already missed.
+Schedule::command('hosting:overdue-check')
+    ->dailyAt('06:15')
+    ->withoutOverlapping()
+    ->runInBackground();
+
 Schedule::command('billing:recurring')
     ->dailyAt('01:00')
     ->withoutOverlapping()

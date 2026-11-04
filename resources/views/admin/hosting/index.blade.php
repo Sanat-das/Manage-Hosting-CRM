@@ -80,8 +80,12 @@
                 <td class="text-end">
                     ₹{{ number_format((float) ($amounts[$account->id] ?? 0), 2) }}
                 </td>
-                <td class="text-end">
-                    {{ ($account->next_due_date ?? $account->order?->next_billing_date)?->format('d M Y') ?? '—' }}
+                @php
+                    $dueDate = $account->next_due_date ?? $account->order?->next_billing_date;
+                    $isOverdue = $dueDate !== null && $dueDate->lt(today()) && $account->status !== 'terminated';
+                @endphp
+                <td class="text-end {{ $isOverdue ? 'text-overdue' : '' }}" @if ($isOverdue) title="Overdue" @endif>
+                    {{ $dueDate?->format('d M Y') ?? '—' }}
                 </td>
                 <td>
                     <x-adminlte.partials.status-badge :status="$account->status" />

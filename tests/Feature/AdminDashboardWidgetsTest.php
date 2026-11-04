@@ -17,7 +17,7 @@ use Illuminate\Support\Facades\Blade;
 use Tests\TestCase;
 
 /**
- * The five enterprise dashboard widgets render real data on GET /admin/dashboard.
+ * The six enterprise dashboard widgets render real data on GET /admin/dashboard.
  *
  * Each widget is a Blade partial under admin/dashboard/partials fed by its
  * ViewModel (see DashboardController::index). These tests seed the tables each
@@ -179,6 +179,34 @@ final class AdminDashboardWidgetsTest extends TestCase
             ->assertSee('₹1,234.50');
     }
 
+    public function test_overdue_renewals_lists_the_missed_hosting_account_and_domain(): void
+    {
+        $admin = User::factory()->create(['role' => 'admin']);
+        $customer = $this->makeCustomer();
+
+        HostingAccount::create([
+            'customer_id' => $customer->id,
+            'product_id' => 1,
+            'host_name' => 'host-overdue-001',
+            'status' => 'active',
+            'next_due_date' => now()->subDays(9),
+        ]);
+
+        Domain::create([
+            'customer_id' => $customer->id,
+            'name' => 'overdue-demo.test',
+            'status' => 'active',
+            'recurring_amount' => 500.00,
+            'next_due_date' => now()->subDays(4),
+        ]);
+
+        $this->actingAs($admin)
+            ->get(route('admin.dashboard'))
+            ->assertSee('host-overdue-001')
+            ->assertSee('overdue-demo.test')
+            ->assertSee('Overdue renewals');
+    }
+
     public function test_support_queue_risk_surfaces_the_unassigned_and_awaiting_reply_figures(): void
     {
         $admin = User::factory()->create(['role' => 'admin']);
@@ -221,6 +249,7 @@ final class AdminDashboardWidgetsTest extends TestCase
             ->get(route('admin.dashboard'))
             ->assertOk()
             ->assertSee('<div class="dashboard-widget-grid" data-dashboard-widget-grid>', false)
+            ->assertSee('<div class="dashboard-widget" data-widget="overdue-renewals" style="grid-column: span 4">', false)
             ->assertSee('<div class="dashboard-widget" data-widget="receivables" style="grid-column: span 4">', false)
             ->assertSee('<div class="dashboard-widget" data-widget="renewals" style="grid-column: span 4">', false)
             ->assertSee('<div class="dashboard-widget" data-widget="support" style="grid-column: span 4">', false)
@@ -289,9 +318,9 @@ final class AdminDashboardWidgetsTest extends TestCase
             ->getContent();
 
         $this->assertSame(
-            5,
+            6,
             substr_count($html, 'data-widget-toggle'),
-            'the hide-widget toggle sits outside every @can, so all five must render regardless of permissions'
+            'the hide-widget toggle sits outside every @can, so all six must render regardless of permissions'
         );
 
         // Scoped to the grid on purpose: the rest of the page renders its own
@@ -329,9 +358,9 @@ final class AdminDashboardWidgetsTest extends TestCase
         // ambiguous: one id, two subtrees, one set of remembered spans.
         preg_match_all('/data-widget="([^"]+)"/', $html, $ids);
 
-        $this->assertCount(5, $ids[1], 'the document must render exactly five widget wrappers');
+        $this->assertCount(6, $ids[1], 'the document must render exactly six widget wrappers');
 
-        foreach (['receivables', 'renewals', 'support', 'health', 'capacity'] as $id) {
+        foreach (['overdue-renewals', 'receivables', 'renewals', 'support', 'health', 'capacity'] as $id) {
             $this->assertSame(
                 1,
                 substr_count($html, 'data-widget="'.$id.'"'),
