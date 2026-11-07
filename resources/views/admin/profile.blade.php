@@ -7,12 +7,7 @@
 @stop
 
 @section('content')
-    @if (session('success'))
-        <x-adminlte-alert theme="success" dismissible>{{ session('success') }}</x-adminlte-alert>
-    @endif
-    @if (session('status'))
-        <x-adminlte-alert theme="success" dismissible>{{ session('status') }}</x-adminlte-alert>
-    @endif
+    <x-adminlte.partials.flash-alert />
 
     <x-adminlte-card icon="bi bi-person-circle" title="Account Details">
         <dl class="row mb-0">
@@ -51,6 +46,11 @@
             </div>
             <button type="submit" class="btn btn-primary btn-sm">Save signature</button>
         </form>
+    </x-adminlte-card>
+
+    <x-adminlte-card icon="bi bi-bell" title="My Notification Preferences">
+        <p class="text-muted small mb-3">Uncheck a box to stop receiving that notification. Unchecked items fall back to the global defaults until you change them here.</p>
+        @include('partials.notification-preferences', ['action' => route('admin.profile.notification-preferences.update'), 'buttonClass' => 'btn btn-primary btn-sm mt-3'])
     </x-adminlte-card>
 
     <x-adminlte-card icon="bi bi-key" title="Change Password">

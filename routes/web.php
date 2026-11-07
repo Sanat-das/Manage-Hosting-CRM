@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Admin\CustomerController;
 use App\Http\Controllers\Admin\DashboardController;
+use App\Http\Controllers\Admin\NotificationPreferenceController;
 use App\Http\Controllers\Admin\ProfileController;
 use App\Http\Controllers\AdminLte\RoleController;
 use App\Http\Controllers\Auth\ImpersonationController;
@@ -45,6 +46,8 @@ Route::middleware(['web', 'auth', 'admin', 'throttle:admin'])->prefix('admin')->
         ->name('profile');
     Route::post('profile', [ProfileController::class, 'update'])
         ->name('profile.update');
+    Route::post('profile/notification-preferences', [NotificationPreferenceController::class, 'update'])
+        ->name('profile.notification-preferences.update');
 
     // Admin impersonation (admin → client session switching)
     Route::post('impersonate/{user}', [ImpersonationController::class, 'start'])

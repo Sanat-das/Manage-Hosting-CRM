@@ -6,6 +6,7 @@ use App\Http\Controllers\Client\HostingController;
 use App\Http\Controllers\Client\InvoiceController;
 use App\Http\Controllers\Client\KbController;
 use App\Http\Controllers\Client\NotificationController;
+use App\Http\Controllers\Client\NotificationPreferenceController;
 use App\Http\Controllers\Client\OrderController;
 use App\Http\Controllers\Client\PaymentController;
 use App\Http\Controllers\Client\ProfileController;
@@ -95,6 +96,7 @@ Route::middleware(['web', 'auth', 'client', 'customer.record'])->prefix('client'
     Route::get('profile', [ProfileController::class, 'edit'])->name('profile');
     Route::put('profile', [ProfileController::class, 'update'])->name('profile.update');
     Route::post('profile/consent', [ProfileController::class, 'toggleConsent'])->name('profile.consent');
+    Route::post('notification-preferences', [NotificationPreferenceController::class, 'update'])->name('notification-preferences.update');
 
     // Notifications
     Route::get('notifications', [NotificationController::class, 'index'])->name('notifications.index');

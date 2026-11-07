@@ -21,6 +21,7 @@ use App\Listeners\SendDomainExpiringNotification;
 use App\Listeners\SendInvoiceOverdueNotification;
 use App\Listeners\SendOrderCreatedNotification;
 use App\Listeners\SendOrderPaidNotification;
+use App\Listeners\SendPaymentReceivedNotification;
 use App\Listeners\SendTicketCreatedNotification;
 use App\Listeners\SendTicketReplyNotification;
 use App\Listeners\SendTicketTransferredNotification;
@@ -59,6 +60,7 @@ class EventServiceProvider extends ServiceProvider
         InvoicePaid::class => [
             AdvanceOrderOnPayment::class,
             ApplyUpgradeOnInvoicePaid::class,
+            SendPaymentReceivedNotification::class,
         ],
         OrderCreated::class => [
             SendOrderCreatedNotification::class,

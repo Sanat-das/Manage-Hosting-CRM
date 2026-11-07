@@ -9,9 +9,11 @@ use App\Models\ChatConversation;
 use App\Models\ChatConversationMessage;
 use App\Models\ChatSetting;
 use App\Models\EmailTemplate;
+use App\Models\User;
 use App\Services\Concerns\BuildsEmailVariables;
 use App\Support\ChatMessagePayload;
 use App\Support\Logging\AppLog;
+use App\Support\Notifications\NotificationMatrix;
 use Illuminate\Support\Collection;
 
 /**
@@ -39,8 +41,10 @@ use Illuminate\Support\Collection;
  *                        past it.
  *
  * send() returns whether the mail was queued, and skips quietly (with a log
- * line) when the feature is off, the conversation has no email to send to, the
- * template is missing or inactive, or there is nothing to send.
+ * line) when the feature is off, the notification matrix has the
+ * chat.transcript mail channel disabled (per-customer for a linked customer
+ * user, the global matrix for guest chats), the conversation has no email to
+ * send to, the template is missing or inactive, or there is nothing to send.
  */
 class ChatTranscriptEmailService
 {
@@ -57,6 +61,18 @@ class ChatTranscriptEmailService
         }
 
         if (! ChatSetting::current()->send_transcript_on_close) {
+            return false;
+        }
+
+        $user = $conversation->customer?->user;
+
+        $allowed = $user instanceof User
+            ? app(NotificationPreferenceService::class)->isEnabled($user, 'chat.transcript', 'mail')
+            : NotificationMatrix::allows('chat.transcript', 'customer', 'mail');
+
+        if (! $allowed) {
+            AppLog::app()->info('Chat transcript skipped: chat.transcript mail channel disabled.', ['conversation_id' => $conversation->id]);
+
             return false;
         }
 

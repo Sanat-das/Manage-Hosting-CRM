@@ -11,8 +11,8 @@ use Illuminate\Database\Eloquent\Relations\MorphTo;
  *
  * One row per (preferrable, type, channel). `enabled` is the authoritative
  * override: when a row exists its truthiness wins; when no row exists the
- * caller falls back to the global `settings` key (see
- * NotificationPreferenceService::SETTINGS_KEY_MAP) and then to "enabled".
+ * caller falls back to the global notification matrix
+ * (see NotificationMatrix) and then to "enabled".
  *
  * The compound unique index (preferrable_type, preferrable_id, type, channel)
  * is owned by the T3.1 migration — do not duplicate it here.

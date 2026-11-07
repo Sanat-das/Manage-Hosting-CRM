@@ -8,6 +8,8 @@ use App\Jobs\SendEmail;
 use App\Models\EmailTemplate;
 use App\Models\Order;
 use App\Models\ServiceInstance;
+use App\Models\User;
+use App\Services\NotificationPreferenceService;
 use App\Support\AppSettings;
 use App\Support\Branding;
 use App\Support\Logging\AppLog;
@@ -77,6 +79,15 @@ class WelcomeMailer
 
         if (! $email) {
             AppLog::provisioning()->info('Welcome email skipped: customer has no linked user email.', ['order_id' => $order->id]);
+
+            return false;
+        }
+
+        $customerUser = $order->customer?->user;
+
+        if (! $customerUser instanceof User
+            || ! app(NotificationPreferenceService::class)->isEnabled($customerUser, 'service.activated', 'mail')) {
+            AppLog::provisioning()->info('Welcome email skipped: mail channel disabled for service.activated.', ['order_id' => $order->id]);
 
             return false;
         }

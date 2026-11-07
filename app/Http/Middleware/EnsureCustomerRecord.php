@@ -23,7 +23,7 @@ class EnsureCustomerRecord
         $user = $request->user();
 
         if ($user !== null && $user->customer === null
-            && ! $request->routeIs('client.dashboard', 'client.profile', 'client.profile.update')) {
+            && ! $request->routeIs('client.dashboard', 'client.profile', 'client.profile.update', 'client.notification-preferences.update')) {
             return redirect()->route('client.dashboard');
         }
 

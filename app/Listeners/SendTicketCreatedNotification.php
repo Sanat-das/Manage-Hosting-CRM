@@ -10,7 +10,6 @@ use App\Notifications\TicketCreatedNotification;
 use App\Services\NotificationPreferenceService;
 use App\Services\TicketMailService;
 use App\Services\TicketService;
-use App\Support\AppSettings;
 
 /**
  * Notify the customer when a support ticket is created.
@@ -20,15 +19,17 @@ use App\Support\AppSettings;
  * from the portal or from an inbound email does not sit unseen. Gated through
  * NotificationPreferenceService (type "ticket.new").
  *
- * The in-app notification and the email are two channels of the same decision,
- * so one preference check covers both. The email additionally carries the
+ * The in-app notification and the email are independent channels; each is
+ * gated on its own (ticket.new, channel) cell — the database gate covers
+ * the notification only, the mail gate is applied inside TicketMailService.
+ * The email additionally carries the
  * `[TKT-…]` tag and a Message-ID (TicketMailService), which is what lets the
  * customer's reply come back into this ticket.
  *
  * A guest ticket (no linked customer) has no notifiable model to check a
  * per-customer preference row against — an unauthenticated visitor cannot log
- * in to set one — so it only gets the email, gated on the global
- * `notify_new_tickets` setting instead of a per-customer row.
+ * in to set one — so it only gets the email, gated on the global matrix
+ * (NotificationMatrix, via TicketMailService) instead of a per-customer row.
  */
 class SendTicketCreatedNotification
 {
@@ -46,17 +47,16 @@ class SendTicketCreatedNotification
         $this->notifyStaff($ticket);
 
         if ($customer instanceof Customer) {
-            if ($this->prefs->isEnabled($customer, 'ticket.new')) {
+            if ($this->prefs->isEnabled($customer, 'ticket.new', 'database')) {
                 $customer->notify(new TicketCreatedNotification($ticket));
-                $this->mail->sendCreated($ticket);
             }
+
+            $this->mail->sendCreated($ticket);
 
             return;
         }
 
-        if (AppSettings::bool('notify_new_tickets', true)) {
-            $this->mail->sendCreated($ticket);
-        }
+        $this->mail->sendCreated($ticket);
     }
 
     /**
@@ -80,7 +80,7 @@ class SendTicketCreatedNotification
         $this->tickets
             ->staffRecipientsFor($ticket, $openedBy !== null ? (int) $openedBy : null)
             ->each(function (User $staff) use ($ticket) {
-                if ($this->prefs->isEnabled($staff, 'ticket.new')) {
+                if ($this->prefs->isEnabled($staff, 'ticket.new', 'database')) {
                     $staff->notify(new TicketCreatedNotification($ticket));
                 }
             });

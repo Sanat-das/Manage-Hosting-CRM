@@ -4,6 +4,8 @@ namespace App\Http\Controllers\Client;
 
 use App\Http\Controllers\Controller;
 use App\Models\MarketingConsentLog;
+use App\Services\NotificationPreferenceService;
+use App\Support\Notifications\PerUserNotificationMap;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -20,6 +22,10 @@ class ProfileController extends Controller
 {
     private const CONSENT_CONTACT_TYPE = 'marketing_email';
 
+    public function __construct(
+        private readonly NotificationPreferenceService $preferences,
+    ) {}
+
     public function edit(Request $request): View
     {
         $user = $request->user();
@@ -32,7 +38,15 @@ class ProfileController extends Controller
                 ->exists()
             : false;
 
-        return view('client.profile', compact('user', 'marketingConsent'));
+        $customerPending = $user->customer === null;
+        $notificationPreferences = PerUserNotificationMap::rows(
+            PerUserNotificationMap::client(),
+            $user,
+            $user->customer,
+            $this->preferences,
+        );
+
+        return view('client.profile', compact('user', 'marketingConsent', 'notificationPreferences', 'customerPending'));
     }
 
     public function toggleConsent(Request $request): RedirectResponse
@@ -66,7 +80,9 @@ class ProfileController extends Controller
         if ($request->has('phone_code') || $request->has('phone_number')) {
             $code = trim((string) $request->input('phone_code', ''));
             $number = trim((string) $request->input('phone_number', ''));
-            if ($code === '' && $number !== '') $code = '+91';
+            if ($code === '' && $number !== '') {
+                $code = '+91';
+            }
             $request->merge(['phone' => $number !== '' ? trim($code.' '.$number) : $code]);
         }
 

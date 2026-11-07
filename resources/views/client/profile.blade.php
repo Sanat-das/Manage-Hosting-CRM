@@ -41,7 +41,7 @@
             <div class="border rounded p-3 mb-3 bg-body-tertiary">
                 <div class="d-flex align-items-center gap-2 mb-3">
                     <i class="bi bi-geo-alt text-primary"></i>
-                    <h6 class="mb-0 fw-semibold">Billing Address</h6>
+                    <h2 class="h6 mb-0 fw-semibold">Billing Address</h2>
                     <span class="text-muted small ms-1">— shown on invoices</span>
                 </div>
                 <div class="row">
@@ -99,6 +99,11 @@
                 <i class="bi bi-check-lg me-1" aria-hidden="true"></i> Save Changes
             </button>
         </form>
+    </x-adminlte-card>
+
+    <x-adminlte-card icon="bi bi-bell" title="Notification Preferences">
+        <p class="text-muted small mb-3">Uncheck a box to stop receiving those notifications. You'll keep getting the standard notifications until you change them here.</p>
+        @include('partials.notification-preferences', ['action' => route('client.notification-preferences.update'), 'channelHelp' => 'In-app means notifications shown in the portal; Email is sent to your account address.'])
     </x-adminlte-card>
 
     <x-adminlte-card icon="bi bi-megaphone" title="Marketing Preferences">

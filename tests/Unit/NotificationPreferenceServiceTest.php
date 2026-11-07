@@ -3,9 +3,11 @@
 namespace Tests\Unit;
 
 use App\Models\NotificationPreference;
+use App\Models\Role;
 use App\Models\User;
 use App\Services\NotificationPreferenceService;
-use App\Support\AppSettings;
+use App\Support\Notifications\EventCatalogue;
+use App\Support\Notifications\NotificationMatrix;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
@@ -22,42 +24,53 @@ class NotificationPreferenceServiceTest extends TestCase
 
         $this->service = new NotificationPreferenceService;
 
-        // AppSettings caches settings statically for the request lifetime;
-        // reset so each test reads freshly-seeded settings rows.
-        $ref = new \ReflectionClass(AppSettings::class);
-        $prop = $ref->getProperty('cache');
-        $prop->setValue(null, null);
+        foreach (['admin', 'staff', 'support', 'sales', 'marketing'] as $name) {
+            Role::firstOrCreate(['name' => $name], ['label' => ucfirst($name)]);
+        }
+
+        EventCatalogue::flushAudiences();
+
+        NotificationMatrix::flush();
     }
 
     /**
-     * (a) No preference row + a truthy settings key => enabled true.
+     * (a) No preference row => the global matrix decides; seeded default is enabled.
      */
-    public function test_no_preference_row_falls_back_to_truthy_setting(): void
+    public function test_no_preference_row_falls_back_to_matrix_default(): void
     {
-        $user = User::factory()->create();
-
-        DB::table('settings')->updateOrInsert(
-            ['setting_key' => 'notify_overdue_invoices'],
-            ['setting_value' => 'yes'],
-        );
+        $user = User::factory()->create(['role' => 'client']);
 
         $this->assertTrue(
             $this->service->isEnabled($user, 'invoice.overdue'),
-            'Missing preference should fall back to the truthy notify_overdue_invoices setting.',
+            'Missing preference should fall back to the seeded matrix default (enabled).',
         );
     }
 
     /**
-     * (b) A preference row enabled=false OVERRIDES a truthy settings key.
+     * (a2) No preference row + a disabled matrix row => denied.
      */
-    public function test_preference_row_overrides_truthy_setting(): void
+    public function test_no_preference_row_respects_disabled_matrix_row(): void
     {
-        $user = User::factory()->create();
+        $user = User::factory()->create(['role' => 'client']);
 
-        DB::table('settings')->updateOrInsert(
-            ['setting_key' => 'notify_overdue_invoices'],
-            ['setting_value' => 'yes'],
+        DB::table('notification_event_settings')->updateOrInsert(
+            ['event_key' => 'invoice.overdue', 'audience' => 'customer', 'channel' => 'database'],
+            ['enabled' => false, 'updated_at' => now()],
         );
+        NotificationMatrix::flush();
+
+        $this->assertFalse(
+            $this->service->isEnabled($user, 'invoice.overdue'),
+            'A disabled matrix row must deny the notification.',
+        );
+    }
+
+    /**
+     * (b) A preference row enabled=false OVERRIDES an enabled matrix default.
+     */
+    public function test_preference_row_overrides_matrix(): void
+    {
+        $user = User::factory()->create(['role' => 'client']);
 
         NotificationPreference::create([
             'preferrable_type' => $user->getMorphClass(),
@@ -69,7 +82,7 @@ class NotificationPreferenceServiceTest extends TestCase
 
         $this->assertFalse(
             $this->service->isEnabled($user, 'invoice.overdue'),
-            'An explicit enabled=false preference must win over a truthy global setting.',
+            'An explicit enabled=false preference must win over an enabled matrix row.',
         );
     }
 
@@ -78,7 +91,7 @@ class NotificationPreferenceServiceTest extends TestCase
      */
     public function test_set_preference_upserts_without_duplicate(): void
     {
-        $user = User::factory()->create();
+        $user = User::factory()->create(['role' => 'client']);
 
         $first = $this->service->setPreference($user, 'domain.expiring', true, 'database');
         $second = $this->service->setPreference($user, 'domain.expiring', false, 'database');
@@ -93,28 +106,41 @@ class NotificationPreferenceServiceTest extends TestCase
     }
 
     /**
-     * (d) Unknown type with no settings key => defaults to enabled true.
+     * (d) Unknown type with no catalogue entry and no preference row => enabled.
      */
-    public function test_unknown_type_with_no_setting_defaults_enabled(): void
+    public function test_unknown_type_with_no_row_defaults_enabled(): void
     {
-        $user = User::factory()->create();
+        $user = User::factory()->create(['role' => 'client']);
 
         $this->assertTrue(
             $this->service->isEnabled($user, 'some.unknown.type'),
-            'An unmapped type with no preference row must default to enabled.',
+            'An unknown type with no preference row must default to enabled.',
         );
     }
 
     /**
-     * The full settings-key => notification-type map is the contract T3.3 reuses.
+     * Applicability: combinations absent from the catalogue deny, seeded
+     * staff-broadcast defaults enable the right audiences.
      */
-    public function test_settings_key_map_matches_contract(): void
+    public function test_matrix_applicability_and_seed_contract(): void
     {
-        $this->assertSame([
-            'notify_overdue_invoices' => 'invoice.overdue',
-            'notify_domain_expiry' => 'domain.expiring',
-            'notify_new_tickets' => 'ticket.new',
-        ], NotificationPreferenceService::SETTINGS_KEY_MAP);
+        $this->assertTrue(
+            NotificationMatrix::allows('ticket.new', 'sales', 'database'),
+            'ticket.new must be enabled for sales by default.',
+        );
+        $this->assertFalse(
+            NotificationMatrix::allows('scheduled.report', 'sales', 'mail'),
+            'scheduled.report is not applicable to sales and must deny.',
+        );
+        $this->assertFalse(
+            NotificationMatrix::allows('invoice.overdue', 'admin', 'database'),
+            'invoice.overdue has no admin audience and must deny.',
+        );
+        $this->assertSame(
+            ['admin', 'staff', 'support'],
+            NotificationMatrix::enabledStaffRoles('service.overdue', 'database'),
+            'service.overdue must broadcast to admin/staff/support by default.',
+        );
     }
 
     /**
@@ -122,8 +148,8 @@ class NotificationPreferenceServiceTest extends TestCase
      */
     public function test_preferences_for_scoped_to_notifiable(): void
     {
-        $userA = User::factory()->create();
-        $userB = User::factory()->create();
+        $userA = User::factory()->create(['role' => 'client']);
+        $userB = User::factory()->create(['role' => 'client']);
 
         $this->service->setPreference($userA, 'ticket.new', true);
         $this->service->setPreference($userA, 'invoice.overdue', false);

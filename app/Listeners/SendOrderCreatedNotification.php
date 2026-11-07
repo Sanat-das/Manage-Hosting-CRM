@@ -7,13 +7,15 @@ use App\Models\Customer;
 use App\Models\User;
 use App\Notifications\OrderCreatedNotification;
 use App\Services\NotificationPreferenceService;
+use App\Support\Notifications\NotificationMatrix;
 
 /**
- * Notify the customer (and admin users) when an order is activated or placed.
+ * Notify the customer (and matrix-enabled staff) when an order is activated or placed.
  *
  * Mirrors SendOrderPaidNotification: the Customer model is the aggregate that
- * owns the order and is the database-channel notifiable target; admin users
- * are notified too. Every target is gated through NotificationPreferenceService.
+ * owns the order and is the database-channel notifiable target; staff are notified
+ * for the notification_event_settings-enabled roles. Every target is gated through
+ * NotificationPreferenceService.
  *
  * The notification wording follows the order's status, so the same listener
  * serves both an activation and a pending storefront order.
@@ -31,7 +33,7 @@ class SendOrderCreatedNotification
             return;
         }
 
-        if ($this->prefs->isEnabled($customer, 'order.created')) {
+        if ($this->prefs->isEnabled($customer, 'order.created', 'database')) {
             $customer->notify(new OrderCreatedNotification($order));
         }
 
@@ -40,12 +42,10 @@ class SendOrderCreatedNotification
 
     private function notifyAdmins($order): void
     {
-        User::query()
-            ->where('role', 'admin')
-            ->get()
-            ->each(function (User $admin) use ($order) {
-                if ($this->prefs->isEnabled($admin, 'order.created')) {
-                    $admin->notify(new OrderCreatedNotification($order));
+        NotificationMatrix::staffPool('order.created', 'database')
+            ->each(function (User $staff) use ($order) {
+                if ($this->prefs->isEnabled($staff, 'order.created', 'database')) {
+                    $staff->notify(new OrderCreatedNotification($order));
                 }
             });
     }

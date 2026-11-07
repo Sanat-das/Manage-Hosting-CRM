@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Jobs\SendEmail;
+use App\Models\Customer;
 use App\Models\EmailTemplate;
 use App\Models\Ticket;
 use App\Models\TicketDepartment;
@@ -10,6 +11,7 @@ use App\Models\TicketReply;
 use App\Support\AppSettings;
 use App\Support\Branding;
 use App\Support\Logging\AppLog;
+use App\Support\Notifications\NotificationMatrix;
 use Illuminate\Support\Str;
 
 /**
@@ -69,23 +71,29 @@ final class TicketMailService
     /**
      * Email the customer their ticket's opening message.
      *
-     * @return bool false when the ticket has no reachable customer address
+     * The default customer-acknowledgement is gated on the notification matrix
+     * ('ticket.new' / mail); an explicit staff-composed To/Cc/Bcc bypasses it.
+     *
+     * @return bool false when the ticket has no reachable customer address, or the matrix has the mail channel disabled
      */
     public function sendCreated(Ticket $ticket): bool
     {
         $reply = $ticket->replies()->orderBy('id')->first();
 
-        return $this->sendToCustomer($ticket, $reply, self::CREATED_TEMPLATES);
+        return $this->sendToCustomer($ticket, $reply, self::CREATED_TEMPLATES, 'ticket.new');
     }
 
     /**
      * Email the customer a staff reply.
      *
-     * @return bool false when the ticket has no reachable customer address
+     * Gated on the notification matrix ('ticket.reply' / mail); an explicit
+     * staff-composed To/Cc/Bcc bypasses it.
+     *
+     * @return bool false when the ticket has no reachable customer address, or the matrix has the mail channel disabled
      */
     public function sendReply(Ticket $ticket, TicketReply $reply): bool
     {
-        return $this->sendToCustomer($ticket, $reply, self::REPLY_TEMPLATES);
+        return $this->sendToCustomer($ticket, $reply, self::REPLY_TEMPLATES, 'ticket.reply');
     }
 
     /**
@@ -136,9 +144,33 @@ final class TicketMailService
      * from so a response can be threaded back.
      *
      * @param  list<string>  $templateNames  candidate template names, most specific first
+     * @param  string  $eventKey  notification-matrix event key for the mail gate
      */
-    private function sendToCustomer(Ticket $ticket, ?TicketReply $reply, array $templateNames): bool
+    private function sendToCustomer(Ticket $ticket, ?TicketReply $reply, array $templateNames, string $eventKey): bool
     {
+        // Notification-matrix gate: the default customer-bound send is gated on
+        // '{eventKey}' / mail — per-customer matrix when the ticket has a linked
+        // customer, the global matrix for guest tickets. An explicit staff-composed
+        // To/Cc/Bcc is a manual send and bypasses the matrix.
+        $isStaffComposed = $reply?->is_staff
+            && ((is_array($reply->to) && $reply->to !== [])
+                || ! empty($reply->cc)
+                || ! empty($reply->bcc));
+
+        if (! $isStaffComposed) {
+            $customer = $ticket->customer;
+
+            $allowed = $customer instanceof Customer
+                ? app(NotificationPreferenceService::class)->isEnabled($customer, $eventKey, 'mail')
+                : NotificationMatrix::allows($eventKey, 'customer', 'mail');
+
+            if (! $allowed) {
+                AppLog::cron()->info('Ticket email skipped: mail channel disabled.', ['ticket_id' => $ticket->id, 'event' => $eventKey]);
+
+                return false;
+            }
+        }
+
         // A staff compose form may have set an explicit To (edited from the
         // default) plus Cc/Bcc; anything it left blank falls back to exactly
         // what a plain-text reply has always done. To now supports multiple

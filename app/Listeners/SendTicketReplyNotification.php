@@ -29,9 +29,8 @@ use App\Services\TicketService;
  *
  * A guest ticket (no linked customer) has no notifiable model to check a
  * per-customer preference row against or to send the in-app notification to,
- * so a staff reply on one just emails the guest address unconditionally —
- * "ticket.reply" has no global settings key to fall back to either, so this
- * matches the effective default `isEnabled()` would already return.
+ * so a staff reply on one emails the guest address, gated on the global
+ * matrix (NotificationMatrix, via TicketMailService) instead.
  */
 class SendTicketReplyNotification
 {
@@ -55,10 +54,11 @@ class SendTicketReplyNotification
                 return;
             }
 
-            if ($this->prefs->isEnabled($customer, 'ticket.reply')) {
+            if ($this->prefs->isEnabled($customer, 'ticket.reply', 'database')) {
                 $customer->notify(new TicketReplyNotification($ticket, true));
-                $this->mail->sendReply($ticket, $event->reply);
             }
+
+            $this->mail->sendReply($ticket, $event->reply);
 
             return;
         }
@@ -69,7 +69,7 @@ class SendTicketReplyNotification
         $this->tickets
             ->staffRecipientsFor($ticket, $event->reply->user_id)
             ->each(function (User $staff) use ($ticket) {
-                if ($this->prefs->isEnabled($staff, 'ticket.reply')) {
+                if ($this->prefs->isEnabled($staff, 'ticket.reply', 'database')) {
                     $staff->notify(new TicketReplyNotification($ticket, false));
                 }
             });

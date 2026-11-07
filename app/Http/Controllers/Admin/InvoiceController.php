@@ -295,7 +295,7 @@ class InvoiceController extends Controller
             return back()->withErrors(['send' => 'A paid, void or cancelled invoice cannot be emailed.']);
         }
 
-        if (! $this->invoiceEmails->send($invoice)) {
+        if (! $this->invoiceEmails->send($invoice, bypassMatrix: true)) {
             return back()->withErrors(['send' => 'Invoice email skipped: no active "invoice_created" template or no customer email on file.']);
         }
 

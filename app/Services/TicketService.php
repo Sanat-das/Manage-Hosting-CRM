@@ -6,6 +6,7 @@ use App\Events\TicketCreated;
 use App\Events\TicketReply as TicketReplyEvent;
 use App\Events\TicketTransferred;
 use App\Models\Customer;
+use App\Models\CustomerContact;
 use App\Models\Setting;
 use App\Models\Ticket;
 use App\Models\TicketAttachment;
@@ -177,7 +178,7 @@ class TicketService
                 $existingUser = User::whereRaw('LOWER(email) = ?', [strtolower($guestEmail)])->first();
                 $userId = $existingUser?->id; // nullable allowed since 2026_08_31_000002 migration
             } else {
-                throw new \DomainException('customer_id or guest_email is required.');
+                throw new DomainException('customer_id or guest_email is required.');
             }
 
             $ticket = Ticket::create([
@@ -219,7 +220,7 @@ class TicketService
     public function linkGuestToCustomer(Ticket $ticket, Customer $customer, bool $createContact = false): Ticket
     {
         if ($ticket->customer_id !== null) {
-            throw new \DomainException('Ticket is already linked to a customer.');
+            throw new DomainException('Ticket is already linked to a customer.');
         }
         $guestEmail = $ticket->guest_email;
         $guestName = $ticket->guest_name;
@@ -234,9 +235,9 @@ class TicketService
             if ($createContact && $guestEmail) {
                 $parts = preg_split('/\s+/', trim((string) $guestName), 2) ?: [];
                 // Avoid duplicate contact email
-                $exists = \App\Models\CustomerContact::where('customer_id', $customer->id)->whereRaw('LOWER(email) = ?', [strtolower($guestEmail)])->exists();
+                $exists = CustomerContact::where('customer_id', $customer->id)->whereRaw('LOWER(email) = ?', [strtolower($guestEmail)])->exists();
                 if (! $exists) {
-                    \App\Models\CustomerContact::create([
+                    CustomerContact::create([
                         'customer_id' => $customer->id,
                         'first_name' => $parts[0] ?? 'Guest',
                         'last_name' => $parts[1] ?? '',
@@ -254,15 +255,16 @@ class TicketService
     /**
      * Add the guest sender as a contact on the given customer. Does not link ticket.
      */
-    public function addGuestAsContact(Ticket $ticket, Customer $customer, array $overrides = []): \App\Models\CustomerContact
+    public function addGuestAsContact(Ticket $ticket, Customer $customer, array $overrides = []): CustomerContact
     {
         if (! $ticket->isGuest()) {
-            throw new \DomainException('Only guest tickets have a guest to add as contact.');
+            throw new DomainException('Only guest tickets have a guest to add as contact.');
         }
         $email = $ticket->guest_email;
         $name = $ticket->guest_name ?? $ticket->guest_email;
         $parts = preg_split('/\s+/', trim($name), 2) ?: [];
-        return \App\Models\CustomerContact::create([
+
+        return CustomerContact::create([
             'customer_id' => $customer->id,
             'first_name' => $overrides['first_name'] ?? ($parts[0] ?? 'Guest'),
             'last_name' => $overrides['last_name'] ?? ($parts[1] ?? ''),
@@ -283,6 +285,7 @@ class TicketService
      *                                            means "behave exactly as a plain-text reply always has" —
      *                                            `TicketMailService::recipientFor()` still supplies `to`.
      * @param  list<UploadedFile>  $attachments
+     *
      * @throws DomainException when the ticket is closed
      */
     public function reply(Ticket $ticket, User $user, string $message, array $attributes = [], array $attachments = []): TicketReply
@@ -473,7 +476,7 @@ class TicketService
         if ($ticket->assigned_to !== null) {
             $assignee = User::find($ticket->assigned_to);
 
-            if ($assignee !== null && $this->isStaff($assignee)) {
+            if ($assignee !== null && $assignee->status === 'active' && $this->isStaff($assignee)) {
                 $recipients->push($assignee);
             }
         }
@@ -486,7 +489,9 @@ class TicketService
 
                 if ($department !== null) {
                     foreach ($department->staff as $member) {
-                        $recipients->push($member);
+                        if ($member->status === 'active') {
+                            $recipients->push($member);
+                        }
                     }
                 }
             } catch (\Throwable $e) {
@@ -496,7 +501,7 @@ class TicketService
         }
 
         if ($recipients->isEmpty()) {
-            $recipients = User::query()->where('role', 'admin')->get();
+            $recipients = User::query()->where('role', 'admin')->where('status', 'active')->get();
         }
 
         return $recipients

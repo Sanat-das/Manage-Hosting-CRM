@@ -21,8 +21,9 @@ use App\Support\Logging\AppLog;
  * `{{currency_symbol}}` …) rendering as literal text.
  *
  * send() returns whether the email was queued; it is skipped quietly (with a
- * log line) when the customer has no linked user email or the template is
- * missing/inactive.
+ * log line) when the customer has no linked user email, the template is
+ * missing/inactive, or the notification matrix has the order.created mail
+ * channel disabled.
  */
 final class OrderEmailService
 {
@@ -34,6 +35,14 @@ final class OrderEmailService
 
         if (! $email) {
             AppLog::billing()->info('Order confirmation email skipped: customer has no linked user email.', ['order_id' => $order->id]);
+
+            return false;
+        }
+
+        $user = $order->customer?->user;
+
+        if (! $user || ! app(NotificationPreferenceService::class)->isEnabled($user, 'order.created', 'mail')) {
+            AppLog::billing()->info('Order confirmation email skipped: mail channel disabled for order.created.', ['order_id' => $order->id]);
 
             return false;
         }

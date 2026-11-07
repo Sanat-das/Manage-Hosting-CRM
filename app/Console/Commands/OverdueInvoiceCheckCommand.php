@@ -2,8 +2,10 @@
 
 namespace App\Console\Commands;
 
+use App\Events\InvoiceOverdue;
 use App\Models\Invoice;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Mark past-due unpaid invoices as `overdue` so the status reflects reality.
@@ -27,13 +29,28 @@ class OverdueInvoiceCheckCommand extends Command
     {
         $now = now()->startOfDay();
 
-        $marked = Invoice::whereIn('status', [Invoice::STATUS_DRAFT, Invoice::STATUS_SENT, Invoice::STATUS_PARTIAL])
-            ->whereNotNull('due_date')
-            ->where('due_date', '<', $now)
-            ->update(['status' => Invoice::STATUS_OVERDUE]);
+        $transitioned = DB::transaction(function () use ($now) {
+            $invoices = Invoice::whereIn('status', [Invoice::STATUS_DRAFT, Invoice::STATUS_SENT, Invoice::STATUS_PARTIAL])
+                ->whereNotNull('due_date')
+                ->where('due_date', '<', $now)
+                ->lockForUpdate()
+                ->get();
 
-        if ($marked > 0) {
-            $this->info("⚠️  Marked {$marked} past-due invoices as overdue.");
+            if ($invoices->isNotEmpty()) {
+                Invoice::whereIn('id', $invoices->pluck('id'))
+                    ->update(['status' => Invoice::STATUS_OVERDUE]);
+            }
+
+            return $invoices;
+        });
+
+        if ($transitioned->isNotEmpty()) {
+            foreach ($transitioned as $invoice) {
+                $invoice->status = Invoice::STATUS_OVERDUE;
+                InvoiceOverdue::dispatch($invoice);
+            }
+
+            $this->info("⚠️  Marked {$transitioned->count()} past-due invoices as overdue.");
         } else {
             $this->line('No past-due invoices found.');
         }

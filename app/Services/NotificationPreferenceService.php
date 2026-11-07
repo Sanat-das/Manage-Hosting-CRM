@@ -3,45 +3,25 @@
 namespace App\Services;
 
 use App\Models\NotificationPreference;
-use App\Support\AppSettings;
+use App\Support\Notifications\NotificationMatrix;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
 
 /**
- * Per-notifiable notification gate (T3.2).
+ * Per-notifiable notification gate.
  *
  * Resolves whether a given notification `type` is enabled for a notifiable
  * on a given `channel`. Resolution order:
  *   1. A matching `notification_preferences` row wins (its `enabled` flag).
- *   2. With no row, fall back to the mapped global `settings` key truthiness.
- *   3. With neither a row nor a mapped settings key, default to enabled.
+ *   2. With no row, fall back to the global matrix
+ *      (notification_event_settings, admin-controlled, keyed by the
+ *      notifiable's audience — see EventCatalogue/NotificationMatrix).
+ *   3. Unknown types with no catalogue entry default to enabled.
  *
- * This service only GATES — it never dispatches. Event/listener wiring is T3.3.
+ * This service only GATES — it never dispatches.
  */
 class NotificationPreferenceService
 {
-    /**
-     * Global settings key => notification type.
-     *
-     * @var array<string, string>
-     */
-    public const SETTINGS_KEY_MAP = [
-        'notify_overdue_invoices' => 'invoice.overdue',
-        'notify_domain_expiry' => 'domain.expiring',
-        'notify_new_tickets' => 'ticket.new',
-    ];
-
-    /**
-     * Notification type => global settings key (inverse of SETTINGS_KEY_MAP).
-     *
-     * @var array<string, string>
-     */
-    private const TYPE_TO_KEY = [
-        'invoice.overdue' => 'notify_overdue_invoices',
-        'domain.expiring' => 'notify_domain_expiry',
-        'ticket.new' => 'notify_new_tickets',
-    ];
-
     /**
      * Default channel when none is specified.
      */
@@ -63,14 +43,7 @@ class NotificationPreferenceService
             return (bool) $preference->enabled;
         }
 
-        $settingsKey = self::TYPE_TO_KEY[$type] ?? null;
-
-        if ($settingsKey === null) {
-            // Unknown type with no preference row and no mapped setting: opt-in by default.
-            return true;
-        }
-
-        return AppSettings::bool($settingsKey, true);
+        return NotificationMatrix::allows($type, NotificationMatrix::audienceFor($notifiable), $channel);
     }
 
     /**

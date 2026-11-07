@@ -474,6 +474,12 @@ return [
             ],
         ],
         [
+            'text' => 'Notification Settings',
+            'route' => 'admin.notification-settings.index',
+            'icon' => 'bi bi-bell-fill',
+            'can' => 'settings.view',
+        ],
+        [
             'text' => 'Settings',
             'route' => 'admin.settings.index',
             'icon' => 'bi bi-gear',

@@ -10,9 +10,13 @@ use App\Models\User;
 use App\Services\NotificationPreferenceService;
 use App\Services\TicketMailService;
 use App\Services\TicketService;
+use App\Support\Notifications\NotificationMatrix;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
 /**
@@ -101,12 +105,64 @@ class TicketMailTest extends TestCase
         Queue::fake();
 
         $customer = $this->customerWithEmail('client@example.test');
-        app(NotificationPreferenceService::class)->setPreference($customer, 'ticket.reply', false);
+        // The email is gated on the mail channel; the database channel only
+        // gates the in-app notification.
+        app(NotificationPreferenceService::class)->setPreference($customer, 'ticket.reply', false, 'mail');
         $ticket = $this->ticketFor($customer);
 
         app(TicketService::class)->reply($ticket, $this->staff(), 'We have fixed it.');
 
         Queue::assertNotPushed(SendEmail::class);
+    }
+
+    public function test_a_disabled_database_preference_does_not_suppress_the_ticket_email(): void
+    {
+        Queue::fake();
+
+        $customer = $this->customerWithEmail('client@example.test');
+        // The mail channel is independent of the database channel: the
+        // customer receives the email even with in-app notifications off.
+        app(NotificationPreferenceService::class)->setPreference($customer, 'ticket.reply', false, 'database');
+        $ticket = $this->ticketFor($customer);
+
+        app(TicketService::class)->reply($ticket, $this->staff(), 'We have fixed it.');
+
+        Queue::assertPushed(SendEmail::class);
+    }
+
+    /**
+     * Guest tickets have no notifiable model, so the global matrix cell is
+     * the only gate. Disabling it must suppress the email.
+     */
+    public function test_a_disabled_global_matrix_cell_suppresses_the_guest_ticket_email(): void
+    {
+        Queue::fake();
+
+        DB::table('notification_event_settings')
+            ->where('event_key', 'ticket.reply')
+            ->where('audience', 'customer')
+            ->where('channel', 'mail')
+            ->update(['enabled' => false]);
+        NotificationMatrix::flush();
+
+        $ticket = $this->guestTicket('guest@example.test');
+
+        app(TicketService::class)->reply($ticket->fresh(), $this->staff(), 'We have fixed it.');
+
+        // Only the creation acknowledgement is queued; the reply email is suppressed.
+        Queue::assertPushedTimes(SendEmail::class, 1);
+    }
+
+    public function test_the_default_global_matrix_cell_allows_the_guest_ticket_email(): void
+    {
+        Queue::fake();
+
+        $ticket = $this->guestTicket('guest@example.test');
+
+        app(TicketService::class)->reply($ticket->fresh(), $this->staff(), 'We have fixed it.');
+
+        // Creation acknowledgement plus the reply email.
+        Queue::assertPushedTimes(SendEmail::class, 2);
     }
 
     public function test_opening_a_ticket_emails_the_customer(): void
@@ -301,8 +357,8 @@ class TicketMailTest extends TestCase
     public function test_the_send_email_job_attaches_a_file_from_disk(): void
     {
         config(['mail.default' => 'array']);
-        \Illuminate\Support\Facades\Storage::fake('local');
-        \Illuminate\Support\Facades\Storage::disk('local')->put('ticket-attachments/1/1/0-screenshot.png', 'fake-bytes');
+        Storage::fake('local');
+        Storage::disk('local')->put('ticket-attachments/1/1/0-screenshot.png', 'fake-bytes');
 
         (new SendEmail(
             'client@example.test',
@@ -346,7 +402,7 @@ class TicketMailTest extends TestCase
     public function test_a_staff_reply_with_html_body_cc_bcc_and_attachments_carries_them_through(): void
     {
         Queue::fake();
-        \Illuminate\Support\Facades\Storage::fake('local');
+        Storage::fake('local');
 
         $customer = $this->customerWithEmail('client@example.test');
         $ticket = $this->ticketFor($customer);
@@ -357,7 +413,7 @@ class TicketMailTest extends TestCase
             'bcc' => ['audit@example.test'],
             'html_body' => '<p>We have fixed it.</p>',
         ], [
-            \Illuminate\Http\UploadedFile::fake()->image('screenshot.png'),
+            UploadedFile::fake()->image('screenshot.png'),
         ]);
 
         Queue::assertPushed(SendEmail::class, function (SendEmail $job) {
@@ -408,5 +464,16 @@ class TicketMailTest extends TestCase
         ]);
 
         return $ticket;
+    }
+
+    private function guestTicket(string $email): Ticket
+    {
+        return app(TicketService::class)->create([
+            'guest_email' => $email,
+            'guest_name' => 'Guest User',
+            'subject' => 'Cannot reach my site',
+            'department' => 'support',
+            'priority' => 'high',
+        ], 'It has been down since noon.');
     }
 }

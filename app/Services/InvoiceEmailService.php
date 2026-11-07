@@ -23,7 +23,11 @@ use Illuminate\Support\Facades\Storage;
  * form, via OrderController) and the invoice page "Send Invoice" action so
  * both render identically. send() returns whether the email was dispatched;
  * it is skipped (quietly, with a log line) when the customer has no linked
- * user email or the template is missing/inactive.
+ * user email or the template is missing/inactive, or when the notification
+ * matrix has the matching mail channel disabled ('invoice.overdue' for the
+ * invoice_overdue_reminder template, 'invoice.paid' for payment_received,
+ * 'invoice.created' otherwise). The manual
+ * admin "Send Invoice" path passes bypassMatrix: true and is never gated.
  */
 final class InvoiceEmailService
 {
@@ -38,9 +42,10 @@ final class InvoiceEmailService
      * still sent without the attachment (logged).
      *
      * @param  string  $templateName  allow reuse for invoice_created / invoice_overdue_reminder / payment_received
+     * @param  bool  $bypassMatrix  skip the notification-matrix gate (manual admin sends)
      * @return bool true when the email was queued, false when skipped
      */
-    public function send(Invoice $invoice, string $templateName = 'invoice_created'): bool
+    public function send(Invoice $invoice, string $templateName = 'invoice_created', bool $bypassMatrix = false): bool
     {
         $email = $invoice->customer?->user?->email;
 
@@ -104,6 +109,21 @@ final class InvoiceEmailService
                 'invoice_id' => $invoice->id,
                 'error' => $e->getMessage(),
             ]);
+        }
+
+        if (! $bypassMatrix) {
+            $event = match ($templateName) {
+                'invoice_overdue_reminder' => 'invoice.overdue',
+                'payment_received' => 'invoice.paid',
+                default => 'invoice.created',
+            };
+            $user = $invoice->customer?->user;
+
+            if (! $user || ! app(NotificationPreferenceService::class)->isEnabled($user, $event, 'mail')) {
+                AppLog::billing()->info('Invoice email skipped: mail channel disabled.', ['invoice_id' => $invoice->id, 'event' => $event]);
+
+                return false;
+            }
         }
 
         SendEmail::dispatch(

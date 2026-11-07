@@ -3,6 +3,8 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Services\NotificationPreferenceService;
+use App\Support\Notifications\PerUserNotificationMap;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -15,11 +17,22 @@ use Illuminate\View\View;
  */
 class ProfileController extends Controller
 {
+    public function __construct(
+        private readonly NotificationPreferenceService $preferences,
+    ) {}
+
     public function edit(Request $request): View
     {
         $user = $request->user();
 
-        return view('admin.profile', compact('user'));
+        $notificationPreferences = PerUserNotificationMap::rows(
+            PerUserNotificationMap::staffFor($user),
+            $user,
+            null,
+            $this->preferences,
+        );
+
+        return view('admin.profile', compact('user', 'notificationPreferences'));
     }
 
     public function update(Request $request): RedirectResponse

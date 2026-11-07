@@ -7,13 +7,15 @@ use App\Models\Customer;
 use App\Models\User;
 use App\Notifications\OrderPaidNotification;
 use App\Services\NotificationPreferenceService;
+use App\Support\Notifications\NotificationMatrix;
 
 /**
- * Notify the customer (and admin users) when an order is paid.
+ * Notify the customer (and matrix-enabled staff) when an order is paid.
  *
  * The Customer model is Notifiable directly and is the aggregate that owns
- * the order, so it is the database-channel notifiable target. Admin users are
- * notified too. Every target is gated through NotificationPreferenceService.
+ * the order, so it is the database-channel notifiable target. Staff are notified
+ * for the notification_event_settings-enabled roles. Every target is gated through
+ * NotificationPreferenceService.
  */
 class SendOrderPaidNotification
 {
@@ -28,7 +30,7 @@ class SendOrderPaidNotification
             return;
         }
 
-        if ($this->prefs->isEnabled($customer, 'order.paid')) {
+        if ($this->prefs->isEnabled($customer, 'order.paid', 'database')) {
             $customer->notify(new OrderPaidNotification($order));
         }
 
@@ -37,12 +39,10 @@ class SendOrderPaidNotification
 
     private function notifyAdmins($order): void
     {
-        User::query()
-            ->where('role', 'admin')
-            ->get()
-            ->each(function (User $admin) use ($order) {
-                if ($this->prefs->isEnabled($admin, 'order.paid')) {
-                    $admin->notify(new OrderPaidNotification($order));
+        NotificationMatrix::staffPool('order.paid', 'database')
+            ->each(function (User $staff) use ($order) {
+                if ($this->prefs->isEnabled($staff, 'order.paid', 'database')) {
+                    $staff->notify(new OrderPaidNotification($order));
                 }
             });
     }

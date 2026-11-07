@@ -14,11 +14,12 @@ use Tests\TestCase;
 /**
  * Baseline inventory guard for admin/settings.
  *
- * - Captures the 182 name="settings[*]" keys rendered by
+ * - Captures the 188 name="settings[*]" keys rendered by
  *   resources/views/admin/settings/index.blade.php (84 baseline + 94 task-8 typed
  *   surfaced + 3 imap_* policy keys for ticket email piping + 4 security hardening
  *   toggles + 6 branding_* keys added with BrandingSettings + 8 company split
- *   + 1 renewal_invoice_days + 1 company_gstin + 4 invoice bank details) and asserts the set is unchanged after refactors
+ *   + 1 renewal_invoice_days + 1 company_gstin + 4 invoice bank details, minus the
+ *   3 retired notify_* toggles) and asserts the set is unchanged after refactors
  *   (no drop/rename).
  * - Guards GET query count: 1 legacy settings pluck + 17 typed group loads = <=19.
  *   Ensures SettingsController::loadAll() does not introduce N+1 per-key queries.
@@ -28,7 +29,7 @@ class AdminSettingsInventoryTest extends TestCase
     use RefreshDatabase;
 
     /**
-     * Baseline set - 182 keys rendered by admin/settings/index.blade.php (84 + 94 typed + 3 imap policy + 4 security hardening + 6 branding + 8 company split + 1 company_gstin + 4 bank).
+     * Baseline set - 188 keys rendered by admin/settings/index.blade.php (84 + 94 typed + 3 imap policy + 4 security hardening + 6 branding + 8 company split + 1 company_gstin + 4 bank - 3 notify_* toggles).
      * Global Incoming Mail host/user/pwd removed in department-only refactor (9 keys dropped).
      * Documented verbatim so any drop or rename fails this test.
      * Sorted alphabetically for diff stability; source order is the blade file.
@@ -62,6 +63,12 @@ class AdminSettingsInventoryTest extends TestCase
      *     ever read (no scheduler entry, job or command scanned on an
      *     interval). See migration 2026_10_05_170000_remove_dead_ipam_scan_setting.
      * v14: 2026-10-17 added renewal_reminder_days (renewal reminder window, BillingSettings) — typed billing key on the Billing tab.
+     * v15: 2026-11-06 removed notify_overdue_invoices, notify_domain_expiry and
+     *     notify_new_tickets — the legacy flat toggles superseded by the
+     *     notification-event matrix (/admin/notification-settings). The keys stay
+     *     accepted by SettingsController (see UntypedSettingsTest) — only the
+     *     form controls are gone. See migration
+     *     2026_11_06_000001_remove_legacy_notification_settings.
      */
     public const BASELINE_KEYS = [
         'activity_retention_days',
@@ -199,9 +206,6 @@ class AdminSettingsInventoryTest extends TestCase
         'mail_from_address',
         'mail_from_name',
         'module_retention_days',
-        'notify_domain_expiry',
-        'notify_new_tickets',
-        'notify_overdue_invoices',
         'password_min_length',
         'plesk_enabled',
         'plesk_host',
@@ -285,7 +289,7 @@ class AdminSettingsInventoryTest extends TestCase
         $expected = self::BASELINE_KEYS;
         sort($expected);
 
-        $this->assertCount(191, $keys, 'Baseline field count changed - expected 191 name="settings[*]" keys. Got: '.implode(', ', $keys));
+        $this->assertCount(188, $keys, 'Baseline field count changed - expected 188 name="settings[*]" keys. Got: '.implode(', ', $keys));
         $this->assertSame($expected, $keys, 'Baseline field set changed - keys were dropped, renamed, or added.');
     }
 

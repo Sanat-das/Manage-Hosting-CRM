@@ -264,7 +264,6 @@ class AppSettings
             ['id' => 'user',         'label' => 'User',          'icon' => 'bi bi-people',        'group' => 'System'],
             // Communication
             ['id' => 'email',        'label' => 'Email',         'icon' => 'bi bi-envelope',      'group' => 'Communication'],
-            ['id' => 'notification', 'label' => 'Notifications', 'icon' => 'bi bi-bell',          'group' => 'Communication'],
             // Commerce
             ['id' => 'billing',      'label' => 'Billing',       'icon' => 'bi bi-receipt',       'group' => 'Commerce'],
             ['id' => 'catalog',      'label' => 'Catalog',       'icon' => 'bi bi-shop',          'group' => 'Commerce'],
@@ -323,9 +322,6 @@ class AppSettings
             'security_headers_enabled' => 'security',
             'security_strong_password_enabled' => 'security',
             'security_math_captcha_enabled' => 'security',
-            'notify_overdue_invoices' => 'notification',
-            'notify_domain_expiry' => 'notification',
-            'notify_new_tickets' => 'notification',
         ];
         foreach ($legacy as $k => $tab) {
             $map[$k] = $tab;

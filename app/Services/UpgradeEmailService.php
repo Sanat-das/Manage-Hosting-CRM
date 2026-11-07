@@ -16,7 +16,9 @@ use App\Support\Logging\AppLog;
  * The structural sibling of OrderEmailService: renderTemplate +
  * buildVariables produce the subject/body, SendEmail is dispatched with the
  * same HTML/plain split, and the same quiet skips apply when the customer has
- * no linked user email or the template is missing/inactive.
+ * no linked user email or the template is missing/inactive. The send is gated
+ * on the notification matrix mail channel matching the template
+ * (upgrade.requested / upgrade.applied / upgrade.cancelled).
  */
 final class UpgradeEmailService
 {
@@ -30,6 +32,25 @@ final class UpgradeEmailService
             AppLog::billing()->info('Upgrade email skipped: customer has no linked user email.', [
                 'upgrade_request_id' => $request->id,
                 'event' => $event,
+            ]);
+
+            return false;
+        }
+
+        $matrixEvent = match ($event) {
+            'upgrade_requested' => 'upgrade.requested',
+            'upgrade_applied' => 'upgrade.applied',
+            'upgrade_cancelled' => 'upgrade.cancelled',
+            default => null,
+        };
+
+        $customer = $request->customer;
+
+        if ($matrixEvent !== null && $customer !== null
+            && ! app(NotificationPreferenceService::class)->isEnabled($customer, $matrixEvent, 'mail')) {
+            AppLog::billing()->info('Upgrade email skipped: mail channel disabled.', [
+                'upgrade_request_id' => $request->id,
+                'event' => $matrixEvent,
             ]);
 
             return false;

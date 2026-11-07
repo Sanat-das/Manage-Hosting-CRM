@@ -26,12 +26,18 @@ class SendTicketTransferredNotification
     {
         $department = TicketDepartment::where('slug', $event->toDepartment)->first();
 
-        $recipients = $department?->staff ?? collect();
+        $departmentRecipients = ($department?->staff ?? collect())
+            ->filter(fn (User $member) => $member->status === 'active');
 
-        $admins = User::query()->where('role', 'admin')->get();
+        $admins = User::query()
+            ->where('status', 'active')
+            ->where(fn ($query) => $query
+                ->where('role', 'admin')
+                ->orWhereHas('roles', fn ($roleQuery) => $roleQuery->where('name', 'admin')))
+            ->get();
 
-        $recipients->concat($admins)->unique('id')->each(function (User $user) use ($event) {
-            if ($this->prefs->isEnabled($user, 'ticket.transfer')) {
+        $departmentRecipients->concat($admins)->unique('id')->each(function (User $user) use ($event) {
+            if ($this->prefs->isEnabled($user, 'ticket.transfer', 'database')) {
                 $user->notify(new TicketTransferredNotification($event->ticket, $event->fromDepartment, $event->toDepartment));
             }
         });

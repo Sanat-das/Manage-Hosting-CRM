@@ -69,6 +69,7 @@ return Application::configure(basePath: dirname(__DIR__))
             require base_path('routes/admin/dns.php');
             require base_path('routes/admin/inventory.php');
             require base_path('routes/admin/notifications.php');
+            require base_path('routes/admin/notification-settings.php');
             require base_path('routes/admin/tax-rates.php');
             require base_path('routes/admin/product-bundles.php');
             require base_path('routes/admin/product-upgrades.php');

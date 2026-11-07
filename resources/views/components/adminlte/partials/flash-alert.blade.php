@@ -2,13 +2,14 @@
     // Map flash keys → theme + icon + token colour for accent border
     $flashMap = [
         'success' => ['theme' => 'success', 'icon' => 'bi bi-check-circle-fill', 'token' => 'var(--color-success)'],
+        'status'  => ['theme' => 'success', 'icon' => 'bi bi-check-circle-fill', 'token' => 'var(--color-success)'],
         'error'   => ['theme' => 'danger',  'icon' => 'bi bi-exclamation-triangle-fill', 'token' => 'var(--color-danger)'],
         'warning' => ['theme' => 'warning', 'icon' => 'bi bi-exclamation-circle-fill', 'token' => 'var(--color-warning)'],
         'info'    => ['theme' => 'info',    'icon' => 'bi bi-info-circle-fill', 'token' => 'var(--color-info)'],
     ];
     $activeKey = null;
     $activeMessage = null;
-    foreach (['success', 'error', 'warning', 'info'] as $k) {
+    foreach (['success', 'status', 'error', 'warning', 'info'] as $k) {
         if (session($k)) { $activeKey = $k; $activeMessage = session($k); break; }
     }
     $active = $activeKey ? $flashMap[$activeKey] : null;

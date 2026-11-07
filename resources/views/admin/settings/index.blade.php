@@ -1298,37 +1298,6 @@
                 <small class="text-muted d-block mb-2 last-updated" data-section="security">@if($lu)Last updated: {{ \Illuminate\Support\Carbon::parse($lu->created_at)->format('Y-m-d H:i:s') }} — <span title="{{ $lu->description }}">{{ \Illuminate\Support\Str::limit($lu->description, 120) }}</span>@else Last updated: never @endif</small>
             </div>
 
-            {{-- Notifications --}}
-            <div class="tab-pane fade @if ($activeTab === 'notification') show active @endif" id="pane-notification" role="tabpanel" aria-labelledby="tab-notification">
-                <x-adminlte-card icon="bi bi-bell" title="Notification Settings">
-                    <div class="row">
-                        <div class="col-md-4">
-                            <x-adminlte-select name="settings[notify_overdue_invoices]" label="Overdue invoice notifications">
-                                <option value="yes" @selected(($settings['notify_overdue_invoices'] ?? 'yes') === 'yes')>Yes</option>
-                                <option value="no" @selected(($settings['notify_overdue_invoices'] ?? 'yes') === 'no')>No</option>
-                            </x-adminlte-select>
-                            <small class="form-text text-muted">Yes / No</small>
-                        </div>
-                        <div class="col-md-4">
-                            <x-adminlte-select name="settings[notify_domain_expiry]" label="Domain expiry notifications">
-                                <option value="yes" @selected(($settings['notify_domain_expiry'] ?? 'yes') === 'yes')>Yes</option>
-                                <option value="no" @selected(($settings['notify_domain_expiry'] ?? 'yes') === 'no')>No</option>
-                            </x-adminlte-select>
-                            <small class="form-text text-muted">Yes / No</small>
-                        </div>
-                        <div class="col-md-4">
-                            <x-adminlte-select name="settings[notify_new_tickets]" label="New ticket notifications">
-                                <option value="yes" @selected(($settings['notify_new_tickets'] ?? 'yes') === 'yes')>Yes</option>
-                                <option value="no" @selected(($settings['notify_new_tickets'] ?? 'yes') === 'no')>No</option>
-                            </x-adminlte-select>
-                            <small class="form-text text-muted">Yes / No</small>
-                        </div>
-                    </div>
-                </x-adminlte-card>
-                @php $lu = $lastUpdated['notification'] ?? $lastUpdated['all'] ?? null; @endphp
-                <small class="text-muted d-block mb-2 last-updated" data-section="notification">@if($lu)Last updated: {{ \Illuminate\Support\Carbon::parse($lu->created_at)->format('Y-m-d H:i:s') }} — <span title="{{ $lu->description }}">{{ \Illuminate\Support\Str::limit($lu->description, 120) }}</span>@else Last updated: never @endif</small>
-            </div>
-
             {{-- Domain --}}
             <div class="tab-pane fade @if ($activeTab === 'domain') show active @endif" id="pane-domain" role="tabpanel" aria-labelledby="tab-domain">
                 <x-adminlte-card icon="bi bi-globe" title="Domain Settings">

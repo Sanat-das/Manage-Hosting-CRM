@@ -14,6 +14,7 @@ use App\Services\Concerns\BuildsEmailVariables;
 use App\Services\NotificationPreferenceService;
 use App\Support\AppSettings;
 use App\Support\Logging\AppLog;
+use App\Support\Notifications\NotificationMatrix;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use RuntimeException;
@@ -37,6 +38,8 @@ use RuntimeException;
  * recorded here in `renewal_reminder_logs`; the legacy
  * `orders.renewal_reminder_for` / `renewal_reminder_sent_at` pair is still
  * stamped as a "last reminder" summary for installs and reports that read it.
+ * The client email is gated on `renewal.upcoming` / mail; a disabled channel
+ * dispatches no email but the in-app notification may still go out.
  *
  * remind() returns whether the client EMAIL dispatched — not merely whether
  * anything happened. A missing/inactive template or a mail transport failure
@@ -137,10 +140,14 @@ final class RenewalReminderService
         $emailDispatched = false;
         $emailTransportFailed = false;
         $templateMissing = false;
-        $email = $order->customer?->user?->email;
+        $customerUser = $order->customer?->user;
+        $email = $customerUser?->email;
 
         if (! $email) {
             AppLog::billing()->info('Renewal reminder email skipped: customer has no linked user email.', ['order_id' => $order->id]);
+        } elseif (! $customerUser instanceof User
+            || ! app(NotificationPreferenceService::class)->isEnabled($customerUser, 'renewal.upcoming', 'mail')) {
+            AppLog::billing()->info('Renewal reminder email skipped: mail channel disabled for renewal.upcoming.', ['order_id' => $order->id]);
         } else {
             $template = EmailTemplate::query()
                 ->where('name', 'renewal_reminder')
@@ -301,7 +308,23 @@ final class RenewalReminderService
     }
 
     /**
-     * Email the daily upcoming-renewals digest to admin/staff/support.
+     * Staff recipient pool for matrix-broadcast digests.
+     *
+     * The matrix decides WHICH roles are eligible (both the `users.role`
+     * column and the RBAC pivot are honoured, matching how access control
+     * resolves staff — a pivot-only grant must not silently drop the
+     * recipient); the per-recipient matrix/preference gate is applied by the
+     * caller. An empty enabled-role set yields an empty pool.
+     *
+     * @return Collection<int, User>
+     */
+    public function matrixStaffUsers(string $eventKey, string $channel): Collection
+    {
+        return NotificationMatrix::staffPool($eventKey, $channel);
+    }
+
+    /**
+     * Email the daily upcoming-renewals digest to matrix-enabled staff.
      *
      * One dispatch per recipient and never a Cc: the recipient list is
      * internal, and no admin needs to learn who else received the digest.
@@ -334,7 +357,10 @@ final class RenewalReminderService
             return 0;
         }
 
-        $recipients = $this->staffUsers()->pluck('email')->unique();
+        $recipients = $this->matrixStaffUsers('renewal.upcoming', 'mail')
+            ->filter(fn (User $user): bool => app(NotificationPreferenceService::class)->isEnabled($user, 'renewal.upcoming', 'mail'))
+            ->unique('email')
+            ->values();
 
         if ($recipients->isEmpty()) {
             return 0;
@@ -366,7 +392,9 @@ final class RenewalReminderService
 
         $dispatched = 0;
 
-        foreach ($recipients as $email) {
+        foreach ($recipients as $user) {
+            $email = (string) $user->email;
+
             if (! filter_var($email, FILTER_VALIDATE_EMAIL)) {
                 continue;
             }
@@ -397,31 +425,7 @@ final class RenewalReminderService
     }
 
     /**
-     * Active admin/staff/support users, resolved from both role sources.
-     *
-     * Recipient resolution must agree with access control: a user may hold
-     * the admin/staff/support role through the RBAC pivot (adminlte_role_user)
-     * even when the legacy `users.role` column is not one of those values
-     * (e.g. an admin granted access via the pivot only). Filtering on the
-     * column alone silently drops those users.
-     *
-     * @return Collection<int, User>
-     */
-    public function staffUsers(): Collection
-    {
-        return User::query()
-            ->where('status', 'active')
-            ->where(function ($query): void {
-                $query->whereIn('role', ['admin', 'staff', 'support'])
-                    ->orWhereHas('roles', static function ($roleQuery): void {
-                        $roleQuery->whereIn('name', ['admin', 'staff', 'support']);
-                    });
-            })
-            ->get();
-    }
-
-    /**
-     * Email the daily overdue-services digest to admin/staff/support.
+     * Email the daily overdue-services digest to matrix-enabled staff.
      *
      * The sibling of sendAdminDigest() for accounts that passed their renewal
      * due date unpaid: one dispatch per recipient and never a Cc, and the
@@ -452,7 +456,10 @@ final class RenewalReminderService
             return 0;
         }
 
-        $recipients = $this->staffUsers()->pluck('email')->unique();
+        $recipients = $this->matrixStaffUsers('service.overdue', 'mail')
+            ->filter(fn (User $user): bool => app(NotificationPreferenceService::class)->isEnabled($user, 'service.overdue', 'mail'))
+            ->unique('email')
+            ->values();
 
         if ($recipients->isEmpty()) {
             return 0;
@@ -485,7 +492,9 @@ final class RenewalReminderService
 
         $dispatched = 0;
 
-        foreach ($recipients as $email) {
+        foreach ($recipients as $user) {
+            $email = (string) $user->email;
+
             if (! filter_var($email, FILTER_VALIDATE_EMAIL)) {
                 continue;
             }
