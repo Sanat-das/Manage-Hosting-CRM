@@ -116,9 +116,36 @@
         </thead>
         <tbody>
             @foreach ($invoice->items as $item)
+                @php
+                    $validityPeriod = null;
+                    $cycleKey = $item->config_options['billing_cycle'] ?? null;
+                    if ($cycleKey === null) {
+                        $lower = strtolower((string) $item->description);
+                        foreach (['monthly', 'quarterly', 'semi_annual', 'semi annual', 'annual', 'biennial', 'triennial', 'one_time', 'one time'] as $candidate) {
+                            if (str_ends_with(trim($lower), str_replace('_', ' ', $candidate))) {
+                                $cycleKey = str_replace(' ', '_', $candidate);
+                                break;
+                            }
+                        }
+                    }
+                    $cycleMonths = match ($cycleKey) {
+                        'monthly' => 1,
+                        'quarterly' => 3,
+                        'semi_annual' => 6,
+                        'annual' => 12,
+                        'biennial' => 24,
+                        'triennial' => 36,
+                        default => 0,
+                    };
+                    if ($cycleMonths > 0 && $invoice->due_date) {
+                        $start = $invoice->due_date;
+                        $end = $start->copy()->addMonths($cycleMonths);
+                        $validityPeriod = $start->format('M j, Y').' to '.$end->format('M j, Y');
+                    }
+                @endphp
                 <tr>
                     <td>
-                        {{ $item->description }}
+                        {{ $item->description }}@if ($validityPeriod) ( {{ $validityPeriod }} )@endif
                         {{-- Configuration without price chips: the line already
                              states its amount, and dompdf need not render the
                              currency glyph twice per line. --}}
