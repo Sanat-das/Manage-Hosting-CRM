@@ -7,7 +7,7 @@
 @stop
 
 @php
-    $activeTab = (string) request()->query('tab', 'profile');
+    $activeTab = (string) request()->query('tab', 'hosting');
     $tabs = [
         ['id' => 'profile', 'label' => 'Profile', 'icon' => 'bi bi-person'],
         ['id' => 'hosting', 'label' => 'Products/Services', 'icon' => 'bi bi-hdd-stack'],
@@ -139,6 +139,11 @@
 
             {{-- Products/Services --}}
             <div class="tab-pane fade {{ $activeTab === 'hosting' ? 'show active' : '' }}" id="hosting" role="tabpanel" aria-labelledby="hosting-tab">
+                @can('invoices.create')
+                    <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+                        <button type="submit" form="invoice-selected-form" id="invoice-selected-common-btn" class="btn btn-sm btn-primary" disabled><i class="bi bi-receipt me-1"></i> Invoice Selected Items</button>
+                    </div>
+                @endcan
                 <x-adminlte.partials.datatable
                     frameless
                     icon="bi bi-hdd-stack"
@@ -152,6 +157,8 @@
                     :status-value="$filters['hosting_status']"
                     :sticky-header="true"
                     :column-toggle="true"
+                    :show-checkboxes="auth()->user()?->can('invoices.create') ?? false"
+                    :hide-bulk-bar="true"
                     :pagination="$hostingAccounts"
                     :export-url="route('admin.customers.show', ['customer' => $customer, 'tab' => 'hosting'])"
                     export-label="Export CSV"                    :columns="[
@@ -164,8 +171,17 @@
                         ['label' => 'Amount', 'sort' => 'amount', 'class' => 'text-end grid-numeric'],
                         ['label' => 'Next billing', 'sort' => 'next_billing'],
                         ['label' => 'Status', 'sort' => 'status'],
+                        ['label' => 'Actions', 'class' => 'text-end'],
                     ]"
                 >
+                    <x-slot name="bulkActions">
+                        @can('invoices.create')
+                            <form method="POST" action="{{ route('admin.customers.services.invoice-selected', $customer) }}" id="invoice-selected-form" class="d-inline-flex align-items-center gap-2">
+                                @csrf
+                            </form>
+                        @endcan
+                    </x-slot>
+
                     @forelse ($hostingAccounts as $account)
                                 @php
                                     $serviceOrder = $account->order;
@@ -185,6 +201,15 @@
                                         ?? $serviceOrder?->domain?->name;
                                 @endphp
                                 <tr>
+                                    @can('invoices.create')
+                                        <td class="text-center">
+                                            <input type="checkbox" class="form-check-input" name="service_ids[]" value="{{ $account->id }}"
+                                                   form="invoice-selected-form" data-grid-bulk
+                                                   @disabled(! $serviceOrder)
+                                                   aria-label="Select service #{{ $account->id }}"
+                                                   @if(! $serviceOrder) title="Only services with an order can be invoiced" @endif>
+                                        </td>
+                                    @endcan
                                     <td>
                                         <a href="{{ route('admin.hosting.show', $account) }}">
                                             <strong>#{{ $account->id }}</strong>
@@ -221,9 +246,14 @@
                                         {{ $nextBilling?->format('M j, Y') ?? '—' }}
                                     </td>
                                     <td><x-adminlte.partials.status-badge :status="$account->status" /></td>
+                                    <td class="text-end">
+                                        @can('hosting.edit')
+                                            <a href="{{ route('admin.hosting.edit', $account) }}" class="btn btn-sm btn-outline-primary"><i class="bi bi-pencil me-1"></i>Edit</a>
+                                        @endcan
+                                    </td>
                                 </tr>
                             @empty
-                                <x-ui.empty-table-row colSpan="9" icon="bi bi-hdd-stack" title="No hosting accounts yet." />
+                                <x-ui.empty-table-row colSpan="{{ auth()->user()?->can('invoices.create') ? 11 : 10 }}" icon="bi bi-hdd-stack" title="No hosting accounts yet." />
                             @endforelse
                 </x-adminlte.partials.datatable>
 
@@ -233,14 +263,15 @@
                     @if ($customerDomains->isEmpty())
                         <div class="text-muted small">No domains for this customer.</div>
                     @else
-                        <div class="table-responsive">
-                            <table class="table table-grid align-middle m-0">
-                                <thead class="table-light">
+                        <div class="table-responsive has-sticky">
+                            <table class="table table-grid align-middle m-0" data-grid-resizable data-grid-key="customer.show.domains">
+                                <thead>
                                     <tr>
-                                        <th>Domain</th>
-                                        <th>Type</th>
-                                        <th>Expiry</th>
-                                        <th>Status</th>
+                                        <th scope="col">Domain</th>
+                                        <th scope="col">Type</th>
+                                        <th scope="col">Expiry</th>
+                                        <th scope="col">Status</th>
+                                        <th scope="col" class="text-end">Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -256,6 +287,11 @@
                                                 @endif
                                             </td>
                                             <td><x-adminlte.partials.status-badge :status="$domain->status" /></td>
+                                            <td class="text-end">
+                                                @can('domains.edit')
+                                                    <a href="{{ route('admin.domains.edit', $domain) }}" class="btn btn-sm btn-outline-primary"><i class="bi bi-pencil me-1"></i>Edit</a>
+                                                @endcan
+                                            </td>
                                         </tr>
                                     @endforeach
                                 </tbody>
@@ -270,16 +306,21 @@
                     @if ($addonItems->isEmpty())
                         <div class="text-muted small">No add-ons on this customer's services.</div>
                     @else
-                        <div class="table-responsive">
-                            <table class="table table-grid align-middle m-0">
-                                <thead class="table-light">
+                        <div class="table-responsive has-sticky">
+                            <table id="addon-invoice-table" class="table table-grid align-middle m-0" data-grid-resizable data-grid-key="customer.show.addons">
+                                <thead>
                                     <tr>
+                                        @can('invoices.create')
+                                            <th class="text-center" scope="col" style="width: 40px; min-width: 40px; max-width: 40px;">
+                                                <input type="checkbox" class="form-check-input addon-select-all" id="addon-select-all" aria-label="Select all add-ons">
+                                            </th>
+                                        @endcan
                                         <th>Add-on</th>
                                         <th>Parent service</th>
                                         <th>Order</th>
                                         <th>Cycle</th>
-                                        <th class="text-end">Qty</th>
-                                        <th class="text-end">Amount</th>
+                                        <th class="text-end grid-numeric">Qty</th>
+                                        <th class="text-end grid-numeric">Amount</th>
                                         <th>Next billing</th>
                                         <th>Status</th>
                                         <th class="text-end">Actions</th>
@@ -287,7 +328,22 @@
                                 </thead>
                                 <tbody>
                                     @foreach ($addonItems as $item)
+                                        @php $addonEligible = $item->billing_cycle !== 'one_time' && ! empty($item->next_billing_date); @endphp
                                         <tr>
+                                            @can('invoices.create')
+                                                <td class="text-center">
+                                                    @if ($addonEligible)
+                                                        <input type="checkbox" class="form-check-input addon-bulk" name="addon_ids[]" value="{{ $item->id }}"
+                                                               form="invoice-selected-form"
+                                                               aria-label="Select add-on #{{ $item->id }}">
+                                                    @else
+                                                        <input type="checkbox" class="form-check-input addon-bulk" name="addon_ids[]" value="{{ $item->id }}"
+                                                               form="invoice-selected-form" disabled
+                                                               aria-label="Select add-on #{{ $item->id }}"
+                                                               @if($item->billing_cycle === 'one_time') title="One-time setup fees cannot be invoiced" @else title="Add-ons without a next billing date cannot be invoiced" @endif>
+                                                    @endif
+                                                </td>
+                                            @endcan
                                             <td>{{ $item->product_name }}</td>
                                             <td class="text-muted">{{ $item->parentItem?->product_name ?? '—' }}</td>
                                             <td>
@@ -298,10 +354,10 @@
                                                 @endif
                                             </td>
                                             <td class="text-muted">{{ $item->billing_cycle ? ucfirst(str_replace('_', ' ', $item->billing_cycle)) : '—' }}</td>
-                                            <td class="text-end">{{ $item->quantity }}</td>
-                                            <td class="text-end">₹{{ number_format((float) $item->total, 2) }}</td>
+                                            <td class="text-end grid-numeric">{{ $item->quantity }}</td>
+                                            <td class="text-end grid-numeric">₹{{ number_format((float) $item->total, 2) }}</td>
                                             <td class="text-muted">{{ $item->next_billing_date?->format('M j, Y') ?? '—' }}</td>
-                                            <td>{{ $item->order?->status ?? '—' }}</td>
+                                            <td><x-adminlte.partials.status-badge :status="$item->order?->status" /></td>
                                             <td class="text-end">
                                                 @if ($item->order)
                                                     @can('orders.edit')
@@ -849,6 +905,57 @@
                 var el = document.getElementById(btn.getAttribute('data-toggle-target'));
                 if (el) el.classList.toggle('d-none');
             });
+            (function () {
+                var table = document.getElementById('addon-invoice-table');
+                var selectAll = document.getElementById('addon-select-all');
+                if (!table || !selectAll) return;
+                function enabledBoxes() {
+                    return table.querySelectorAll('.addon-bulk:not(:disabled)');
+                }
+                function syncSelectAll() {
+                    var boxes = enabledBoxes();
+                    var checked = 0;
+                    boxes.forEach(function (box) {
+                        if (box.checked) checked++;
+                    });
+                    selectAll.checked = boxes.length > 0 && checked === boxes.length;
+                    selectAll.indeterminate = checked > 0 && checked < boxes.length;
+                }
+                selectAll.addEventListener('change', function () {
+                    enabledBoxes().forEach(function (box) {
+                        box.checked = selectAll.checked;
+                    });
+                    syncSelectAll();
+                });
+                table.addEventListener('change', function (e) {
+                    if (e.target.classList.contains('addon-bulk')) syncSelectAll();
+                });
+                syncSelectAll();
+            })();
+            (function () {
+                var btn = document.getElementById('invoice-selected-common-btn');
+                if (!btn) return;
+                function updateCommon() {
+                    var serviceChecked = document.querySelectorAll('#hosting input[name="service_ids[]"]:checked').length;
+                    var addonChecked = document.querySelectorAll('#addon-invoice-table .addon-bulk:checked').length;
+                    var total = serviceChecked + addonChecked;
+                    btn.disabled = total === 0;
+                }
+                document.addEventListener('change', function (e) {
+                    var t = e.target;
+                    if (t && (t.matches('input[name="service_ids[]"]') || t.matches('.addon-bulk') || t.id === 'addon-select-all' || t.matches('input[data-grid-select-all]'))) {
+                        updateCommon();
+                    }
+                }, true);
+                document.addEventListener('click', function (e) {
+                    var t = e.target;
+                    if (t && (t.matches('input[name="service_ids[]"]') || t.matches('.addon-bulk') || t.id === 'addon-select-all' || t.matches('input[data-grid-select-all]'))) {
+                        // datatable JS updates checked on click; sync shortly after
+                        setTimeout(updateCommon, 0);
+                    }
+                }, true);
+                updateCommon();
+            })();
         </script>
     @endpush
 @stop

@@ -11,6 +11,7 @@ use App\Models\Customer;
 use App\Models\CustomerContact;
 use App\Models\CustomerNote;
 use App\Models\CustomerWallet;
+use App\Models\HostingAccount;
 use App\Models\Invoice;
 use App\Models\Order;
 use App\Models\OrderItem;
@@ -19,12 +20,14 @@ use App\Models\SubscriptionChange;
 use App\Models\SubscriptionPeriod;
 use App\Models\UsageRecord;
 use App\Models\User;
+use App\Services\Billing\BillingService;
 use App\Services\DomainService;
 use App\Services\Exports\CsvStreamService;
 use App\Services\HostingService;
 use App\Support\Audit\AuditEvent;
 use App\Support\Audit\AuditRecorder;
 use App\Support\GstStateCodes;
+use App\Support\Logging\AppLog;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -48,6 +51,10 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 class CustomerController extends Controller
 {
     private const PER_PAGE = 20;
+
+    public function __construct(
+        private readonly BillingService $billing,
+    ) {}
 
     public function index(Request $request): View|StreamedResponse
     {
@@ -286,10 +293,10 @@ class CustomerController extends Controller
             'wallet_type' => trim((string) $request->query('wallet_type', '')),
         ];
 
-        $activeTab = (string) $request->query('tab', 'profile');
+        $activeTab = (string) $request->query('tab', 'hosting');
 
         if ($request->query('export') === 'csv') {
-            $tab = (string) $request->query('tab', 'profile');
+            $tab = (string) $request->query('tab', 'hosting');
 
             return $this->exportTabCsv($request, $customer, $tab, $search, $filters);
         }
@@ -1173,6 +1180,218 @@ class CustomerController extends Controller
         return redirect()
             ->route('admin.customers.show', ['customer' => $customer, 'tab' => 'billing'])
             ->with('success', 'Wallet updated.');
+    }
+
+    public function invoiceSelected(Request $request, Customer $customer): RedirectResponse
+    {
+        $validated = $request->validate([
+            'service_ids' => ['nullable', 'array'],
+            'service_ids.*' => ['integer', 'min:1'],
+            'addon_ids' => ['nullable', 'array'],
+            'addon_ids.*' => ['integer', 'min:1'],
+        ]);
+
+        $serviceIds = array_values(array_unique(array_filter(
+            array_map(fn ($id) => (int) $id, $validated['service_ids'] ?? []),
+            fn (int $id) => $id > 0
+        )));
+
+        $addonIds = array_values(array_unique(array_filter(
+            array_map(fn ($id) => (int) $id, $validated['addon_ids'] ?? []),
+            fn (int $id) => $id > 0
+        )));
+
+        if ($serviceIds === [] && $addonIds === []) {
+            return back()->withErrors(['error' => 'No services were selected.']);
+        }
+
+        $services = $serviceIds !== []
+            ? HostingAccount::query()
+                ->whereIn('id', $serviceIds)
+                ->where('customer_id', $customer->id)
+                ->with('order.items')
+                ->get()
+            : collect();
+
+        $addonItems = $addonIds !== []
+            ? OrderItem::query()
+                ->whereIn('id', $addonIds)
+                ->whereNotNull('product_addon_id')
+                ->where(function ($q) {
+                    $q->whereNull('billing_cycle')
+                        ->orWhere('billing_cycle', '!=', 'one_time');
+                })
+                ->whereNotNull('next_billing_date')
+                ->whereHas('order', fn ($q) => $q->where('customer_id', $customer->id))
+                ->with('order')
+                ->get()
+            : collect();
+
+        if ($services->isEmpty() && $addonItems->isEmpty()) {
+            return back()->withErrors(['error' => 'No services were selected.']);
+        }
+
+        $created = 0;
+        $existing = 0;
+        $skipped = 0;
+        $failed = 0;
+        $existingNotes = [];
+        $skippedNotes = [];
+        $seenOrderIds = [];
+        $serviceCreatedOrderIds = [];
+        $unpaidStatuses = [Invoice::STATUS_DRAFT, Invoice::STATUS_SENT, Invoice::STATUS_OVERDUE, Invoice::STATUS_PARTIAL];
+
+        foreach ($services as $service) {
+            $orderId = $service->order_id;
+
+            if ($orderId === null) {
+                $skipped++;
+                $skippedNotes[] = "service #{$service->id} has no order";
+
+                continue;
+            }
+
+            $orderId = (int) $orderId;
+
+            if (in_array($orderId, $seenOrderIds, true)) {
+                continue;
+            }
+
+            $seenOrderIds[] = $orderId;
+
+            $order = $service->order;
+
+            if ($order === null || (int) $order->customer_id !== (int) $customer->id) {
+                $skipped++;
+                $skippedNotes[] = "order #{$orderId} not found";
+
+                continue;
+            }
+
+            if (in_array($order->status, [Order::STATUS_CANCELLED, Order::STATUS_TERMINATED], true)) {
+                $skipped++;
+                $skippedNotes[] = "{$order->order_number} {$order->status} order";
+
+                continue;
+            }
+
+            $unpaidInvoice = $order->invoices()
+                ->whereIn('status', $unpaidStatuses)
+                ->latest('id')
+                ->first();
+
+            if ($unpaidInvoice !== null) {
+                $existing++;
+                $existingNotes[] = "{$unpaidInvoice->invoice_no} Unpaid";
+
+                continue;
+            }
+
+            try {
+                $this->billing->createInvoiceForOrder($order);
+                $created++;
+                $serviceCreatedOrderIds[] = $orderId;
+            } catch (\Throwable $e) {
+                $failed++;
+                AppLog::billing()->error('Customer service invoice creation failed', ['exception' => $e, 'order_id' => $order->id, 'customer_id' => $customer->id]);
+            }
+        }
+
+        foreach ($addonItems->groupBy('order_id') as $orderId => $items) {
+            $orderId = (int) $orderId;
+
+            if ($orderId <= 0) {
+                $skipped++;
+                $skippedNotes[] = 'add-on has no order';
+
+                continue;
+            }
+
+            if (in_array($orderId, $serviceCreatedOrderIds, true)) {
+                $existing++;
+                $existingNotes[] = "order #{$orderId} covered by service invoice";
+
+                continue;
+            }
+
+            if (in_array($orderId, $seenOrderIds, true)) {
+                continue;
+            }
+
+            $seenOrderIds[] = $orderId;
+
+            $order = $items->first()->order;
+
+            if ($order === null || (int) $order->customer_id !== (int) $customer->id) {
+                $skipped++;
+                $skippedNotes[] = "order #{$orderId} not found";
+
+                continue;
+            }
+
+            if (in_array($order->status, [Order::STATUS_CANCELLED, Order::STATUS_TERMINATED], true)) {
+                $skipped++;
+                $skippedNotes[] = "{$order->order_number} {$order->status} order";
+
+                continue;
+            }
+
+            $unpaidInvoice = $order->invoices()
+                ->whereIn('status', $unpaidStatuses)
+                ->latest('id')
+                ->first();
+
+            if ($unpaidInvoice !== null) {
+                $existing++;
+                $existingNotes[] = "{$unpaidInvoice->invoice_no} Unpaid";
+
+                continue;
+            }
+
+            try {
+                $lines = $items->map(function (OrderItem $item) use ($order) {
+                    $lineCycle = $item->billing_cycle ?? $order->billing_cycle;
+
+                    return [
+                        'description' => $item->product_name.' — '.ucfirst(str_replace('_', ' ', (string) $lineCycle)),
+                        'quantity' => (int) $item->quantity,
+                        'unit_price' => (float) $item->unit_price,
+                        'total' => (float) $item->total,
+                        'product_id' => $item->product_id,
+                        'config_options' => $item->config_options,
+                    ];
+                })->all();
+
+                $this->billing->createWithItems([
+                    'customer_id' => $customer->id,
+                    'order_id' => $order->id,
+                    'amount' => round(array_sum(array_column($lines, 'total')), 2),
+                    'status' => Invoice::STATUS_DRAFT,
+                    'due_date' => now()->addDays(7)->toDateString(),
+                    'notes' => "Add-on invoice for order {$order->order_number}",
+                ], $lines, $this->billing->resolveCustomerStateCode((int) $customer->id));
+                $created++;
+            } catch (\Throwable $e) {
+                $failed++;
+                AppLog::billing()->error('Customer add-on invoice creation failed', ['exception' => $e, 'order_id' => $order->id, 'customer_id' => $customer->id]);
+            }
+        }
+
+        $message = "Invoices: {$created} created, {$existing} existing";
+
+        if ($existingNotes !== []) {
+            $message .= ' ('.implode(', ', $existingNotes).')';
+        }
+
+        $message .= ", {$skipped} skipped";
+
+        if ($skippedNotes !== []) {
+            $message .= ' ('.implode(', ', $skippedNotes).')';
+        }
+
+        $message .= ", {$failed} failed.";
+
+        return back()->with('success', $message);
     }
 
     /**

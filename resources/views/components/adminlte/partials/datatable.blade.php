@@ -21,6 +21,7 @@
     'loadingRows' => 5,
     'query' => [],
     'frameless' => false,
+    'hideBulkBar' => false,
 ])
 
 @php

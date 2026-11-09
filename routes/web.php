@@ -106,6 +106,9 @@ Route::middleware(['web', 'auth', 'admin', 'throttle:admin'])->prefix('admin')->
     Route::post('customers/{customer}/wallet', [CustomerController::class, 'storeWallet'])
         ->middleware('permission:customers.edit')
         ->name('customers.wallet.store');
+    Route::post('customers/{customer}/services/invoice-selected', [CustomerController::class, 'invoiceSelected'])
+        ->middleware('permission:invoices.create')
+        ->name('customers.services.invoice-selected');
 });
 
 // Stop impersonation is available to ANY authenticated user (the impersonated

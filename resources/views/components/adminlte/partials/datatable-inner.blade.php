@@ -98,7 +98,13 @@
         @endisset
     </form>
 
-    @if ($showCheckboxes && isset($bulkActions))
+    @if ($showCheckboxes && ($hideBulkBar ?? false))
+        @isset($bulkActions)
+            <div class="d-none" data-grid-bulk-bar="{{ $gridKey }}">
+                {{ $bulkActions }}
+            </div>
+        @endisset
+    @elseif ($showCheckboxes && isset($bulkActions))
         <div id="{{ $bulkBarId }}" class="grid-bulk-bar d-none align-items-center gap-2 px-3 py-2 border-bottom" data-grid-bulk-bar="{{ $gridKey }}" style="background: color-mix(in srgb, var(--color-primary) 6%, var(--bs-body-bg));">
             <span class="small fw-medium"><span data-grid-selected-count>0</span> selected</span>
             <div class="d-inline-flex align-items-center gap-2 ms-2 flex-wrap">
@@ -106,7 +112,7 @@
             </div>
             <button type="button" class="btn btn-sm btn-outline-secondary ms-auto" data-grid-bulk-clear>Clear</button>
         </div>
-    @elseif ($showCheckboxes)
+    @elseif ($showCheckboxes && ! ($hideBulkBar ?? false))
         <div id="{{ $bulkBarId }}" class="grid-bulk-bar d-none align-items-center gap-2 px-3 py-2 border-bottom" data-grid-bulk-bar="{{ $gridKey }}" style="background: color-mix(in srgb, var(--color-primary) 6%, var(--bs-body-bg));">
             <span class="small fw-medium"><span data-grid-selected-count>0</span> selected</span>
             <span class="small text-muted ms-1">— add bulk actions via &lt;x-slot name=&quot;bulkActions&quot;&gt;</span>
