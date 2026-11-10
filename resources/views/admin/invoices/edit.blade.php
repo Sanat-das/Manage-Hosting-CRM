@@ -21,17 +21,16 @@
         @method('PUT')
 
         @if ($locked)
-            @php $lockedCustomer = $customers->firstWhere('id', $invoice->customer_id); @endphp
             <div class="row">
                 <div class="col-md-6">
                     <div class="mb-3">
                         <label for="locked-customer">Customer</label>
-                        <input type="text" id="locked-customer" class="form-control-plaintext" value="{{ $lockedCustomer?->full_name }} ({{ $lockedCustomer?->user?->email }})" readonly>
+                        <input type="text" id="locked-customer" class="form-control-plaintext" value="{{ $invoice->customer?->full_name }} ({{ $invoice->customer?->user?->email }})" readonly>
                     </div>
                 </div>
                 <div class="col-md-6">
                     <x-adminlte-select name="status" label="Status">
-                        @foreach ($allowedStatuses as $val => $lbl)
+                        @foreach ($editableStatuses as $val => $lbl)
                             <option value="{{ $val }}" @selected(old('status', $invoice->status) === $val)>{{ $lbl }}</option>
                         @endforeach
                     </x-adminlte-select>
@@ -63,19 +62,19 @@
         @else
             <div class="row">
                 <div class="col-md-6">
-                    <x-adminlte-select name="customer_id" label="Customer" required>
-                        <option value="">Select customer...</option>
-                        @foreach ($customers as $c)
-                            <option value="{{ $c->id }}" @selected(old('customer_id', $invoice->customer_id) == $c->id)>{{ $c->full_name }} ({{ $c->user?->email }})</option>
-                        @endforeach
-                    </x-adminlte-select>
+                    {{-- The customer cannot be reassigned here: an invoice
+                         belongs to the customer it was raised for. --}}
+                    <div class="mb-3">
+                        <label for="invoice-customer">Customer</label>
+                        <input type="text" id="invoice-customer" class="form-control-plaintext" value="{{ $invoice->customer?->full_name }} ({{ $invoice->customer?->user?->email }})" readonly>
+                    </div>
                 </div>
                 <div class="col-md-3">
                     <x-adminlte-input name="discount" type="number" step="0.01" min="0" label="Discount" value="{{ old('discount', number_format((float) $invoice->discount, 2, '.', '')) }}" />
                 </div>
                 <div class="col-md-3">
                     <x-adminlte-select name="status" label="Status">
-                        @foreach ($allowedStatuses as $val => $lbl)
+                        @foreach ($editableStatuses as $val => $lbl)
                             <option value="{{ $val }}" @selected(old('status', $invoice->status) === $val)>{{ $lbl }}</option>
                         @endforeach
                     </x-adminlte-select>
@@ -112,7 +111,7 @@
     </x-adminlte.partials.form-card>
 
     @if (!$locked)
-        @push('scripts')
+        @push('js')
         <script>
             let idx = {{ $invoice->items->count() }};
             document.getElementById('add-item').addEventListener('click', function() {

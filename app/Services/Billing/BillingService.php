@@ -63,16 +63,30 @@ class BillingService
     public function createWithItems(array $invoiceData, array $items, ?string $customerStateCode = null): Invoice
     {
         $settings = GstTaxService::loadSettings(GstSetting::find(1));
-        $computed = GstTaxService::computeInvoiceTaxes($items, $settings, $customerStateCode);
 
         $amount = (float) ($invoiceData['amount'] ?? 0);
-        $discount = (float) ($invoiceData['discount'] ?? 0);
+
+        // A discount larger than the amount would make the total negative
+        // (total = amount + tax - discount), so it is capped here as well as
+        // in the form: this service is called from paths that never validate.
+        $discount = min(max(0.0, (float) ($invoiceData['discount'] ?? 0)), max(0.0, $amount));
+
+        // The tax base is the DISCOUNTED value: the invoice discount is split
+        // across the lines pro-rata and every line is taxed on what it bills
+        // after its share of the discount.
+        $computed = GstTaxService::computeInvoiceTaxes(
+            $this->applyDiscountToTaxBase($items, $discount),
+            $settings,
+            $customerStateCode
+        );
+
         $invoiceTax = $computed['invoice'];
 
         return DB::transaction(function () use ($invoiceData, $computed, $amount, $discount, $invoiceTax, $customerStateCode) {
             $attributes = array_merge($invoiceData, [
                 'invoice_no' => $this->generateNumber(),
                 'tax' => $invoiceTax['tax'],
+                'tax_rate' => $this->effectiveTaxRate((float) $invoiceTax['tax'], $amount - $discount),
                 'gst_enabled' => $invoiceTax['gst_enabled'],
                 'cgst_rate' => $invoiceTax['cgst_rate'],
                 'cgst_amount' => $invoiceTax['cgst_amount'],
@@ -98,7 +112,13 @@ class BillingService
                     'description' => $item['description'],
                     'quantity' => $item['quantity'] ?? 1,
                     'unit_price' => $item['unit_price'],
-                    'total' => $item['total'],
+                    // The line bills its GROSS total; the discount is an
+                    // invoice-level reduction, applied once on the header.
+                    'total' => $item['gross_total'] ?? $item['total'],
+                    // The billing period this line billed, when it advanced a
+                    // schedule (renewal lines). Null on hand-written lines.
+                    'billed_due_date' => $item['billed_due_date'] ?? null,
+                    'billed_cycle_months' => $item['billed_cycle_months'] ?? null,
                     // Configurable options the line bills for; absent on
                     // hand-written invoice lines.
                     'config_options' => $item['config_options'] ?? null,
@@ -139,15 +159,25 @@ class BillingService
         $items = $this->carryForwardLineDetails($invoice, $items);
 
         $settings = GstTaxService::loadSettings(GstSetting::find(1));
-        $computed = GstTaxService::computeInvoiceTaxes($items, $settings, $customerStateCode);
 
         $amount = (float) ($invoiceData['amount'] ?? 0);
-        $discount = (float) ($invoiceData['discount'] ?? 0);
+        $discount = min(max(0.0, (float) ($invoiceData['discount'] ?? 0)), max(0.0, $amount));
+
+        // The tax base is the DISCOUNTED value: the invoice discount is split
+        // across the lines pro-rata and every line is taxed on what it bills
+        // after its share of the discount.
+        $computed = GstTaxService::computeInvoiceTaxes(
+            $this->applyDiscountToTaxBase($items, $discount),
+            $settings,
+            $customerStateCode
+        );
+
         $invoiceTax = $computed['invoice'];
 
         DB::transaction(function () use ($invoice, $invoiceData, $computed, $amount, $discount, $invoiceTax, $customerStateCode) {
             $attributes = array_merge($invoiceData, [
                 'tax' => $invoiceTax['tax'],
+                'tax_rate' => $this->effectiveTaxRate((float) $invoiceTax['tax'], $amount - $discount),
                 'gst_enabled' => $invoiceTax['gst_enabled'],
                 'cgst_rate' => $invoiceTax['cgst_rate'],
                 'cgst_amount' => $invoiceTax['cgst_amount'],
@@ -175,7 +205,13 @@ class BillingService
                     'description' => $item['description'],
                     'quantity' => $item['quantity'] ?? 1,
                     'unit_price' => $item['unit_price'],
-                    'total' => $item['total'],
+                    // The line bills its GROSS total; the discount is an
+                    // invoice-level reduction, applied once on the header.
+                    'total' => $item['gross_total'] ?? $item['total'],
+                    // The billing period this line billed, when it advanced a
+                    // schedule (renewal lines). Null on hand-written lines.
+                    'billed_due_date' => $item['billed_due_date'] ?? null,
+                    'billed_cycle_months' => $item['billed_cycle_months'] ?? null,
                     'config_options' => $item['config_options'] ?? null,
                     'gst_enabled' => $item['gst_enabled'],
                     'gst_rate' => $item['gst_rate'],
@@ -191,6 +227,66 @@ class BillingService
         });
 
         return $invoice->fresh();
+    }
+
+    /**
+     * Split an invoice-level discount across the lines, pro-rata by line
+     * total, so the tax base is the DISCOUNTED value.
+     *
+     * The business rule: a trade discount shown on the invoice reduces the
+     * taxable value. Each line keeps its GROSS total (what it bills); only
+     * the value it is taxed on drops by its share of the discount. The last
+     * line absorbs the rounding remainder, so the shares sum to the discount
+     * exactly.
+     *
+     * @param  array<int,array>  $items  Lines with a numeric 'total'.
+     * @return array<int,array> Lines with 'gross_total' (what the line bills)
+     *                          and 'total' (the taxable value).
+     */
+    private function applyDiscountToTaxBase(array $items, float $discount): array
+    {
+        $grossTotal = 0.0;
+
+        foreach ($items as $item) {
+            $grossTotal += (float) ($item['total'] ?? 0);
+        }
+
+        if ($discount <= 0.0 || $grossTotal <= 0.0) {
+            return array_map(
+                fn (array $item) => array_merge($item, ['gross_total' => (float) ($item['total'] ?? 0)]),
+                $items
+            );
+        }
+
+        $allocated = 0.0;
+        $lastKey = array_key_last($items);
+        $result = [];
+
+        foreach ($items as $key => $item) {
+            $gross = (float) ($item['total'] ?? 0);
+
+            $share = $key === $lastKey
+                ? round($discount - $allocated, 2)
+                : round($discount * ($gross / $grossTotal), 2);
+
+            $allocated = round($allocated + $share, 2);
+
+            $result[$key] = array_merge($item, [
+                'gross_total' => $gross,
+                'total' => round($gross - $share, 2),
+            ]);
+        }
+
+        return $result;
+    }
+
+    /**
+     * The effective tax rate on the taxable base (net of the discount), as a
+     * percentage. Zero when there is nothing to tax.
+     */
+    private function effectiveTaxRate(float $tax, float $taxableBase): float
+    {
+        return $taxableBase > 0.0 ? round($tax / $taxableBase * 100, 2) : 0.0;
     }
 
     /**
@@ -284,10 +380,14 @@ class BillingService
                 $consumed[(int) $match->id] = true;
 
                 // Anything the caller stated explicitly wins; the stored line
-                // only fills the gaps.
+                // only fills the gaps. The billed period rides along, so
+                // editing a renewal invoice does not lose the link to the
+                // schedule its lines advanced.
                 $item = array_merge($item, [
                     'product_id' => $item['product_id'] ?? $match->product_id,
                     'config_options' => $item['config_options'] ?? $match->config_options,
+                    'billed_due_date' => $item['billed_due_date'] ?? $match->billed_due_date?->toDateString(),
+                    'billed_cycle_months' => $item['billed_cycle_months'] ?? $match->billed_cycle_months,
                 ]);
             }
 
@@ -801,6 +901,10 @@ class BillingService
                     // The product link drives per-product GST; without it a
                     // per_product-mode line would silently bill tax-free.
                     'product_id' => $due['item']->product_id,
+                    // The period this line bills, and the cycle the advance
+                    // applies — what a void has to give back.
+                    'billed_due_date' => CarbonImmutable::parse($due['dueDate'])->toDateString(),
+                    'billed_cycle_months' => $due['cycleMonths'],
                     // A renewal bills the same configuration as the original
                     // order, so the renewal invoice states it too.
                     'config_options' => $due['item']->config_options,
@@ -909,6 +1013,69 @@ class BillingService
         }
 
         return ['invoices_generated' => $invoicesGenerated, 'errors' => $errors];
+    }
+
+    /**
+     * Give a billing period back when the invoice that billed it dies.
+     *
+     * The renewal engine issues an invoice and advances the service's next
+     * billing date in the same transaction, so a voided or cancelled renewal
+     * invoice must hand the period back — otherwise the service silently
+     * stops billing for it until the next cycle.
+     *
+     * Only the period the line itself billed is restored, and only while the
+     * schedule still sits where that advance put it: a line that has since
+     * been billed again is left alone.
+     *
+     * @return array<int, array{order_item_id:int, restored_to:string}> The order lines rewound.
+     */
+    public function rewindBillingSchedule(Invoice $invoice): array
+    {
+        if ($invoice->order_id === null) {
+            return [];
+        }
+
+        $order = Order::find($invoice->order_id);
+
+        if ($order === null) {
+            return [];
+        }
+
+        $restored = [];
+
+        DB::transaction(function () use ($invoice, $order, &$restored) {
+            foreach ($invoice->items()->get() as $line) {
+                if ($line->billed_due_date === null || $line->billed_cycle_months === null || $line->product_id === null) {
+                    continue;
+                }
+
+                $billedDue = $line->billed_due_date->toDateString();
+                $advancedTo = CarbonImmutable::parse($billedDue)->addMonths((int) $line->billed_cycle_months)->toDateString();
+
+                $item = $order->items()
+                    ->where('product_id', $line->product_id)
+                    ->get()
+                    ->first(fn ($candidate) => $candidate->next_billing_date?->toDateString() === $advancedTo);
+
+                if ($item === null) {
+                    continue;
+                }
+
+                $item->update([
+                    'next_billing_date' => $billedDue,
+                    'last_billing_date' => null,
+                    'billing_cycles_count' => $item->billing_cycles_count !== null
+                        ? max(0, (int) $item->billing_cycles_count - 1)
+                        : null,
+                ]);
+
+                $restored[] = ['order_item_id' => (int) $item->id, 'restored_to' => $billedDue];
+            }
+
+            $this->syncOrderSummary($order);
+        });
+
+        return $restored;
     }
 
     /**

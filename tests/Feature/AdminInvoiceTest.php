@@ -145,7 +145,9 @@ class AdminInvoiceTest extends TestCase
         $response->assertStatus(200);
         $response->assertSee('name="items[0][description]"', false);
         $response->assertSee('name="discount"', false);
-        $response->assertSee('name="customer_id"', false);
+        // The customer is shown, not offered: an editor may not reassign it.
+        $response->assertDontSee('name="customer_id"', false);
+        $response->assertSee($customer->user->email, false);
     }
 
     public function test_invoice_update_recomputes_totals(): void

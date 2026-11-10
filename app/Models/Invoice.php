@@ -70,6 +70,22 @@ class Invoice extends Model
     ];
 
     /**
+     * Statuses only a money movement may set: a payment settles an invoice
+     * (paid), a partial payment leaves it partly settled (partial) and a
+     * refund reverses it (refunded).
+     *
+     * Each carries side effects the edit form must not fake — paid_amount and
+     * paid_at, the InvoicePaid event that advances the linked order, and the
+     * wallet credit a refund writes. They are reachable through the payment
+     * and refund actions, never through editing.
+     */
+    public const MONEY_STATUSES = [
+        self::STATUS_PAID,
+        self::STATUS_PARTIAL,
+        self::STATUS_REFUNDED,
+    ];
+
+    /**
      * Allowed status transitions from each current status. Only these statuses
      * may be selected when editing an invoice; amounts are locked (see
      * isAmountLocked) so status is the only mutable field once money moved.
@@ -108,6 +124,34 @@ class Invoice extends Model
         $statuses = [$this->status => self::STATUS_LABELS[$this->status] ?? ucfirst((string) $this->status)];
 
         foreach (self::STATUS_TRANSITIONS[$this->status] ?? [] as $status) {
+            $statuses[$status] = self::STATUS_LABELS[$status] ?? ucfirst((string) $status);
+        }
+
+        return $statuses;
+    }
+
+    /**
+     * Statuses an editor may set directly: the current status plus every
+     * allowed transition that is NOT a money status (see MONEY_STATUSES).
+     *
+     * The current status is always offered — a settled invoice keeps its own
+     * status as the no-op choice — but the money statuses are never offered as
+     * a TARGET, so editing can never mark an invoice paid or refunded
+     * without the money moving. Those go through the payment and refund
+     * actions, which also write paid_amount, the InvoicePaid event and the
+     * wallet credit.
+     *
+     * @return array<string,string> status => label
+     */
+    public function editableStatusTransitions(): array
+    {
+        $statuses = [$this->status => self::STATUS_LABELS[$this->status] ?? ucfirst((string) $this->status)];
+
+        foreach (self::STATUS_TRANSITIONS[$this->status] ?? [] as $status) {
+            if (in_array($status, self::MONEY_STATUSES, true)) {
+                continue;
+            }
+
             $statuses[$status] = self::STATUS_LABELS[$status] ?? ucfirst((string) $status);
         }
 

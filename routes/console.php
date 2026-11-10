@@ -80,6 +80,14 @@ Schedule::command('invoices:overdue-check')
     ->withoutOverlapping()
     ->runInBackground();
 
+// Past-due invoices that are still unpaid are chased on a ladder: the first
+// reminder goes out when invoices:overdue-check flips the invoice, this one
+// repeats it every automation_invoice_reminder_days until the invoice is paid.
+Schedule::command('invoices:remind')
+    ->dailyAt('04:00')
+    ->withoutOverlapping()
+    ->runInBackground();
+
 Schedule::command('reports:send-scheduled --days=7')
     ->weeklyOn(1, '06:00')
     ->withoutOverlapping()

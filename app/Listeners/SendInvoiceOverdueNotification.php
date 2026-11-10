@@ -46,7 +46,15 @@ class SendInvoiceOverdueNotification
 
         if ($this->prefs->isEnabled($customer, 'invoice.overdue', 'mail')) {
             try {
-                $this->invoiceEmails->send($invoice, 'invoice_overdue_reminder');
+                if ($this->invoiceEmails->send($invoice, 'invoice_overdue_reminder')) {
+                    // Record the reminder so the ladder (invoices:remind)
+                    // picks up from here instead of sending a second copy
+                    // hours after this one.
+                    $invoice->update([
+                        'reminder_count' => (int) $invoice->reminder_count + 1,
+                        'last_reminder_at' => now(),
+                    ]);
+                }
             } catch (\Throwable $e) {
                 AppLog::billing()->error('Invoice overdue email failed to dispatch; continuing.', [
                     'invoice_id' => $invoice->id,

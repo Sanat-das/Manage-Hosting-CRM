@@ -6,6 +6,59 @@ All notable user-facing changes to this project are documented in this file.
 
 ### Fixed
 
+- **Editing an invoice could mark it paid or refunded.**
+  The status dropdown offered `paid` and `refunded` on an invoice that had
+  moved no money: the invoice was marked paid with `paid_amount = 0`, no
+  payment row and no `InvoicePaid` event (so the linked order never
+  advanced), and it could no longer be paid through the app at all. A paid
+  invoice could be flipped to `refunded` without the customer's wallet ever
+  being credited — after which the real refund action refused to run. Those
+  statuses now go through the payment and refund actions only.
+
+- **An unpaid renewal invoice was never chased, and the service looked due next year.**
+  The renewal engine advances a service's billing schedule when it issues the
+  invoice, so an invoice the customer never paid left the schedule pointing
+  at the following year: nothing flagged the service overdue, no reminder
+  ladder ran, and no suspension could ever trigger. The overdue check now
+  reads the oldest unpaid invoice as well, and `invoices:remind` reminds the
+  customer every `automation_invoice_reminder_days` until the invoice is paid.
+
+- **Voiding an invoice left the service billed a year ahead.**
+  The renewal invoice and the schedule advance are committed together, so an
+  invoice that was voided or cancelled still held the period it had billed:
+  the service was not billed for it again until the next cycle, and the cycle
+  counter stayed consumed. Voiding now hands the period back.
+
+- **The invoice form's "Add Line" button had never worked.**
+  The two invoice forms pushed their script to a `scripts` stack the theme
+  never renders (the layout renders `js`), so the browser silently dropped it:
+  an invoice could only ever carry the one line the server rendered, and the
+  per-line remove button did nothing. Both forms now push to the stack the
+  layout actually outputs.
+
+- **A discount larger than the invoice wrote a negative total.**
+  The discount was only checked for being non-negative, so `total = amount +
+  tax - discount` could go below zero and be stored, printed and reported.
+  The discount is now refused when it exceeds the amount, and the service
+  clamps it as well.
+
+- **A cleared due date was a 500.**
+  `invoices.due_date` is `NOT NULL`, but the form left it optional and the
+  update wrote the empty value straight through, so clearing the date failed
+  the query instead of keeping the date it already had.
+
+- **The invoice header could disagree with its own line items.**
+  The create form posted a "Subtotal" that was stored as the invoice amount
+  while the tax was computed from the lines, so a stored invoice could total
+  more than its lines were worth — and the first edit silently corrected it.
+  The amount is now derived from the line items on create as well as on
+  update.
+
+- **An invoice edit could reassign the customer.**
+  The edit form offered the full customer list, so an invoice could be moved
+  to another customer (including on an order-linked invoice, where the order
+  kept its own customer). The customer is now shown, not offered.
+
 - **Product default-template save looked like a 405 even though it worked.**
   The compute default-template card saved over fetch, and the endpoint answered
   with a redirect. Fetch follows a 302 with the *same* method (only POST is
@@ -133,6 +186,20 @@ All notable user-facing changes to this project are documented in this file.
   appears for Auto only — a Manual build picks its template at build time.
 
 ### Changed
+
+- **Tax is computed on the discounted value.**
+  A discount shown on the invoice reduces the taxable value: it is split
+  across the lines pro-rata and every line is taxed on what it bills after
+  its share, so the GST on the document matches the discounted amount. The
+  line totals still read gross, and `invoices.tax_rate` now carries the
+  effective rate instead of staying at zero.
+
+- **A service can be suspended for non-payment.**
+  `hosting_suspend_on_overdue` (declared but never read) now switches the
+  behaviour on, `hosting_suspend_after_days` sets the grace period (default
+  7 days) and the customer is told with the `service_suspended` template.
+  Both live in Settings → Hosting, and the suspension is off until the
+  switch is turned on.
 
 - **Quantity & Service Behaviour is the single switch.** `products.quantity_behaviour`
   (`none` / `multiple_services` / `scaling`) now controls how an ordered quantity

@@ -19,6 +19,13 @@ class HostingSettings extends Settings
 
     public bool $hosting_suspend_on_overdue = false;
 
+    /**
+     * Days a service may stay unpaid before it is suspended for non-payment.
+     * Read with hosting_suspend_on_overdue, which switches the whole
+     * behaviour off.
+     */
+    public int $hosting_suspend_after_days = 7;
+
     public bool $hosting_unsuspend_on_payment = true;
 
     public bool $hosting_allow_account_creation = true;
@@ -46,6 +53,7 @@ class HostingSettings extends Settings
             'hosting_auto_provision' => ['nullable', 'in:1,0,yes,no,true,false'],
             'hosting_provision_retries' => ['nullable', 'integer', 'min:0'],
             'hosting_suspend_on_overdue' => ['nullable', 'in:1,0,yes,no,true,false'],
+            'hosting_suspend_after_days' => ['nullable', 'integer', 'min:0'],
             'hosting_unsuspend_on_payment' => ['nullable', 'in:1,0,yes,no,true,false'],
             'hosting_allow_account_creation' => ['nullable', 'in:1,0,yes,no,true,false'],
             'hosting_max_accounts_per_server' => ['nullable', 'integer', 'min:0'],

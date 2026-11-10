@@ -9,11 +9,13 @@ use App\Services\Billing\BillingService;
 use App\Services\Exports\CsvStreamService;
 use App\Services\InvoiceEmailService;
 use App\Services\PdfLogService;
+use App\Support\AppSettings;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -116,7 +118,7 @@ class InvoiceController extends Controller
     {
         $validated = $request->validate([
             'customer_id' => ['required', 'integer', 'exists:customers,id'],
-            'amount' => ['required', 'numeric', 'min:0.01'],
+            'discount' => ['nullable', 'numeric', 'min:0'],
             'status' => ['required', 'in:draft,sent'],
             'due_date' => ['nullable', 'date'],
             'notes' => ['nullable', 'string', 'max:1000'],
@@ -133,11 +135,20 @@ class InvoiceController extends Controller
             'total' => (float) $item['quantity'] * (float) $item['unit_price'],
         ])->toArray();
 
+        // The header amount is derived from the line items, never posted by
+        // the browser: two sources of truth let a stored invoice disagree with
+        // its own lines, and the first edit then changed the total silently.
+        $amount = round(array_sum(array_column($items, 'total')), 2);
+        $discount = (float) ($validated['discount'] ?? 0);
+
+        $this->guardDiscountCeiling($discount, $amount);
+
         $invoice = $this->billing->createWithItems([
             'customer_id' => $validated['customer_id'],
-            'amount' => $validated['amount'],
+            'amount' => $amount,
+            'discount' => $discount,
             'status' => $validated['status'],
-            'due_date' => $validated['due_date'] ?? null,
+            'due_date' => $validated['due_date'] ?? $this->defaultDueDate(),
             'notes' => $validated['notes'] ?? null,
         ], $items, $this->billing->resolvePlaceOfSupply((int) $validated['customer_id']));
 
@@ -156,29 +167,48 @@ class InvoiceController extends Controller
 
     public function edit(Invoice $invoice): View
     {
-        $invoice->load('items');
-        $customers = Customer::with('user')->orderBy('id')->get();
+        $invoice->load('items', 'customer.user');
 
         return view('admin.invoices.edit', [
             'invoice' => $invoice,
-            'customers' => $customers,
             'locked' => $invoice->isAmountLocked(),
-            'allowedStatuses' => $invoice->allowedStatusTransitions(),
+            'editableStatuses' => $invoice->editableStatusTransitions(),
         ]);
     }
 
     public function update(Request $request, Invoice $invoice): RedirectResponse
     {
+        $previousStatus = $invoice->status;
+
         // Amounts are frozen once money moved (payments recorded or a settled/
         // terminal status): only status/due_date/notes remain editable.
         if ($invoice->isAmountLocked()) {
             $validated = $request->validate([
-                'status' => ['sometimes', 'string', Rule::in(array_keys($invoice->allowedStatusTransitions()))],
+                'status' => ['sometimes', 'string', Rule::in(array_keys($invoice->editableStatusTransitions()))],
                 'due_date' => ['nullable', 'date'],
                 'notes' => ['nullable', 'string', 'max:1000'],
             ]);
 
-            $invoice->update($validated);
+            $payload = [];
+
+            if (array_key_exists('status', $validated)) {
+                $payload['status'] = $validated['status'];
+            }
+
+            if (array_key_exists('notes', $validated)) {
+                $payload['notes'] = $validated['notes'];
+            }
+
+            // A blank due date must never be written: the column is NOT NULL.
+            // An absent field keeps the stored date; a cleared one falls back
+            // to the payment term.
+            $payload['due_date'] = $validated['due_date']
+                ?? $invoice->due_date?->toDateString()
+                ?? $this->defaultDueDate();
+
+            $invoice->update($payload);
+
+            $this->rewindScheduleIfVoided($invoice, $previousStatus);
 
             return redirect()
                 ->route('admin.invoices.show', $invoice)
@@ -186,9 +216,10 @@ class InvoiceController extends Controller
         }
 
         $validated = $request->validate([
-            'customer_id' => ['required', 'integer', 'exists:customers,id'],
-            'discount' => ['nullable', 'numeric', 'min:0'],
-            'status' => ['required', 'string', Rule::in(array_keys($invoice->allowedStatusTransitions()))],
+            // The customer is NOT reassignable here: an invoice belongs to the
+            // customer it was raised for. A posted customer_id is ignored.
+            'discount' => ['sometimes', 'numeric', 'min:0'],
+            'status' => ['required', 'string', Rule::in(array_keys($invoice->editableStatusTransitions()))],
             'due_date' => ['nullable', 'date'],
             'notes' => ['nullable', 'string', 'max:1000'],
             'items' => ['required', 'array', 'min:1'],
@@ -229,18 +260,75 @@ class InvoiceController extends Controller
 
         $amount = round(array_sum(array_column($items, 'total')), 2);
 
+        // An absent discount field keeps the stored one; a posted one (even a
+        // cleared one) replaces it.
+        $discount = array_key_exists('discount', $validated)
+            ? (float) $validated['discount']
+            : (float) $invoice->discount;
+
+        $this->guardDiscountCeiling($discount, $amount);
+
         $this->billing->updateWithItems($invoice, [
-            'customer_id' => $validated['customer_id'],
             'amount' => $amount,
-            'discount' => $validated['discount'] ?? 0,
+            'discount' => $discount,
             'status' => $validated['status'],
-            'due_date' => $validated['due_date'] ?? null,
-            'notes' => $validated['notes'] ?? null,
-        ], $items, $this->billing->resolvePlaceOfSupply((int) $validated['customer_id']));
+            'due_date' => $validated['due_date']
+                ?? $invoice->due_date?->toDateString()
+                ?? $this->defaultDueDate(),
+            'notes' => array_key_exists('notes', $validated) ? $validated['notes'] : $invoice->notes,
+        ], $items, $this->billing->resolvePlaceOfSupply((int) $invoice->customer_id));
+
+        $this->rewindScheduleIfVoided($invoice, $previousStatus);
 
         return redirect()
             ->route('admin.invoices.show', $invoice)
             ->with('success', "Invoice {$invoice->invoice_no} updated.");
+    }
+
+    /**
+     * A void or a cancellation hands the billed period back: the renewal
+     * engine advanced the service's billing schedule when it issued the
+     * invoice, and an invoice that never stands should not keep the period.
+     */
+    private function rewindScheduleIfVoided(Invoice $invoice, string $previousStatus): void
+    {
+        if ($invoice->status === $previousStatus) {
+            return;
+        }
+
+        if (! in_array($invoice->status, [Invoice::STATUS_VOID, Invoice::STATUS_CANCELLED], true)) {
+            return;
+        }
+
+        $this->billing->rewindBillingSchedule($invoice);
+    }
+
+    /**
+     * The due date a new invoice gets when the form leaves it blank: the
+     * configured payment term. The column is NOT NULL, so an invoice without
+     * a due date cannot exist.
+     */
+    private function defaultDueDate(): string
+    {
+        $days = max(0, (int) AppSettings::get('due_days', '7'));
+
+        return now()->addDays($days)->toDateString();
+    }
+
+    /**
+     * A discount larger than the invoice amount would write a negative total
+     * (total = amount + tax - discount), so it is refused before anything is
+     * written.
+     */
+    private function guardDiscountCeiling(float $discount, float $amount): void
+    {
+        if ($discount <= $amount) {
+            return;
+        }
+
+        throw ValidationException::withMessages([
+            'discount' => 'The discount cannot be larger than the invoice amount ('.number_format($amount, 2).').',
+        ]);
     }
 
     /**
