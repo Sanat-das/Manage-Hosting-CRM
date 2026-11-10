@@ -32,7 +32,11 @@ cleanup() {
 }
 trap cleanup EXIT
 mkdir -p "$SCRATCH"
-FAIL=0; pass(){ echo "PASS: $1"; }; fail(){ echo "FAIL: $1"; FAIL=1; }
+FAIL=0
+# Every check is also written to the job summary, so a failure on the runner
+# says WHICH check failed without anyone having to open the raw log.
+pass(){ echo "PASS: $1"; [ -n "${GITHUB_STEP_SUMMARY:-}" ] && echo "- PASS: $1" >> "$GITHUB_STEP_SUMMARY"; return 0; }
+fail(){ echo "FAIL: $1"; [ -n "${GITHUB_STEP_SUMMARY:-}" ] && echo "- **FAIL: $1**" >> "$GITHUB_STEP_SUMMARY"; FAIL=1; return 0; }
 echo "== fresh-clone-smoke: clone $REPO into $SCRATCH =="
 
 # port_free: probe a candidate port by binding it, with PHP only.
