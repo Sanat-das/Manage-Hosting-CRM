@@ -6,6 +6,15 @@ All notable user-facing changes to this project are documented in this file.
 
 ### Fixed
 
+- **A fresh checkout ran the suite in a different timezone than the application.**
+  There was no `.env` outside a working copy (it holds the real credentials
+  and is ignored), so the suite fell back to UTC while the application runs
+  on Asia/Kolkata. A one-day difference moves a billing anchor by a day, and
+  the once-per-cycle guard then skips a renewal that should have billed —
+  three tests failed on a fresh checkout for that reason alone. `.env.testing`
+  is now committed: a fixed test key, no real host, and the same timezone the
+  application runs on.
+
 - **The installer guard cached its answer for the whole process.**
   The "is this app installed?" probe was memoized in a static, so its answer
   from the first request of a process was reused forever: a long-lived worker
