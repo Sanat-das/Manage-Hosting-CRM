@@ -33,10 +33,23 @@ cleanup() {
 trap cleanup EXIT
 mkdir -p "$SCRATCH"
 FAIL=0
+FAIL_LINE=0
 # Every check is also written to the job summary, so a failure on the runner
 # says WHICH check failed without anyone having to open the raw log.
+#
+# The exit code carries the same information: it is the LINE NUMBER of the
+# first failing check in this script. A runner reports "Process completed with
+# exit code N" in the job's annotations, so the failing check can be named
+# from the annotations alone — no log access needed.
 pass(){ echo "PASS: $1"; [ -n "${GITHUB_STEP_SUMMARY:-}" ] && echo "- PASS: $1" >> "$GITHUB_STEP_SUMMARY"; return 0; }
-fail(){ echo "FAIL: $1"; [ -n "${GITHUB_STEP_SUMMARY:-}" ] && echo "- **FAIL: $1**" >> "$GITHUB_STEP_SUMMARY"; FAIL=1; return 0; }
+fail(){
+  local line=${BASH_LINENO[0]}
+  echo "FAIL: $1 (script line $line)"
+  [ -n "${GITHUB_STEP_SUMMARY:-}" ] && echo "- **FAIL: $1** (script line $line)" >> "$GITHUB_STEP_SUMMARY"
+  FAIL=1
+  [ "$FAIL_LINE" -eq 0 ] && FAIL_LINE=$line
+  return 0
+}
 echo "== fresh-clone-smoke: clone $REPO into $SCRATCH =="
 
 # port_free: probe a candidate port by binding it, with PHP only.
@@ -252,4 +265,12 @@ for f in vendor/autoload.php public/build/manifest.json public/storage; do
 done
 stop_server
 echo ""; echo "fresh-clone-smoke: $FAIL failure(s)"
-[ "$FAIL" -eq 0 ]
+if [ "$FAIL" -eq 0 ]; then
+  exit 0
+fi
+# The exit code is the line number of the first failing check, so the runner's
+# "Process completed with exit code N" annotation names the failing check.
+EXIT=$(( FAIL_LINE % 250 ))
+[ "$EXIT" -eq 0 ] && EXIT=1
+echo "fresh-clone-smoke: failing check is at script line $FAIL_LINE"
+exit "$EXIT"
