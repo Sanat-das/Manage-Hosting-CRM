@@ -94,7 +94,7 @@ class Invoice extends Model
         self::STATUS_DRAFT => [self::STATUS_SENT, self::STATUS_CANCELLED, self::STATUS_VOID],
         self::STATUS_SENT => [self::STATUS_DRAFT, self::STATUS_OVERDUE, self::STATUS_PAID, self::STATUS_CANCELLED, self::STATUS_VOID],
         self::STATUS_OVERDUE => [self::STATUS_SENT, self::STATUS_PAID, self::STATUS_CANCELLED, self::STATUS_VOID],
-        self::STATUS_PARTIAL => [self::STATUS_PAID, self::STATUS_VOID, self::STATUS_REFUNDED],
+        self::STATUS_PARTIAL => [self::STATUS_PAID, self::STATUS_VOID, self::STATUS_REFUNDED, self::STATUS_OVERDUE],
         self::STATUS_PAID => [self::STATUS_REFUNDED],
         self::STATUS_VOID => [self::STATUS_DRAFT],
         self::STATUS_CANCELLED => [self::STATUS_DRAFT],

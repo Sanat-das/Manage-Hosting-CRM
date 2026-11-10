@@ -6,6 +6,13 @@ All notable user-facing changes to this project are documented in this file.
 
 ### Fixed
 
+- **The overdue check flipped drafts to overdue.**
+  A draft invoice was never sent, so its due date means nothing to the
+  customer — but the check marked it overdue anyway, which then showed up in
+  the staff digest and the customer's notifications. It now only touches
+  invoices the customer has actually seen, and a partly paid invoice may
+  legitimately become overdue (its transition map said it could not).
+
 - **Editing one service's billing date moved every other service on the order.**
   The form wrote its date to the ORDER, and the order's date is what the
   billing engine reads when it picks the order's items — so moving a hosting

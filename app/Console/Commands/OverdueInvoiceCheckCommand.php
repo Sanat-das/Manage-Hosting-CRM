@@ -30,7 +30,10 @@ class OverdueInvoiceCheckCommand extends Command
         $now = now()->startOfDay();
 
         $transitioned = DB::transaction(function () use ($now) {
-            $invoices = Invoice::whereIn('status', [Invoice::STATUS_DRAFT, Invoice::STATUS_SENT, Invoice::STATUS_PARTIAL])
+            // A DRAFT was never sent, so its due date means nothing: the
+            // customer has not seen it. A partly paid invoice IS overdue — the
+            // balance is late.
+            $invoices = Invoice::whereIn('status', [Invoice::STATUS_SENT, Invoice::STATUS_PARTIAL])
                 ->whereNotNull('due_date')
                 ->where('due_date', '<', $now)
                 ->lockForUpdate()
