@@ -6,6 +6,29 @@ All notable user-facing changes to this project are documented in this file.
 
 ### Fixed
 
+- **The billing anniversary followed the activation date, not the purchase date.**
+  An order bought on the 1st and activated on the 20th renewed on the 20th:
+  the customer was handed a free period every time activation slipped, and the
+  renewal could land weeks after the first year had been paid. The schedule
+  is now anchored on the order's start date.
+
+- **The admin billing edit wiped the fields it was not asked to change.**
+  A partial request (an API call, a script) nulled the billing cycle, the
+  payment method, the subscription and the schedule — and because the cycle
+  column is NOT NULL, the whole update rolled back with "Could not update
+  billing info". A field that is not posted now keeps its stored value; a
+  field posted empty still clears it. The schedule may also no longer run
+  backwards.
+
+- **The test suite never seeded the panel RBAC, so every panel route
+  answered 403.**
+  Four migrations create a few roles and ~35 permissions of their own, and
+  the bootstrap seeded the full graph only "when the roles table was empty" —
+  which it never was. The admin, support, sales and marketing roles were
+  missing and the permission inventory unseeded, so 109 tests failed on a 403
+  and the pipeline had been red on `main` since before this work. The
+  seeder is idempotent and now runs for every test.
+
 - **Editing an invoice could mark it paid or refunded.**
   The status dropdown offered `paid` and `refunded` on an invoice that had
   moved no money: the invoice was marked paid with `paid_amount = 0`, no
@@ -186,6 +209,20 @@ All notable user-facing changes to this project are documented in this file.
   appears for Auto only — a Manual build picks its template at build time.
 
 ### Changed
+
+- **The invoice edit is now a contract.**
+  Store and update share one request class, so their rules cannot drift
+  apart; an `InvoicePolicy` is the authority the controller asks on every
+  write; every edit writes an `activity_log` row with the money fields before
+  and after; and a form that was opened before someone else changed the
+  invoice is refused with a clear message instead of failing every line id it
+  posts.
+
+- **The invoice form shows what it is about to save.**
+  The line totals, the subtotal, the discount and the total before tax are
+  live, a line the admin added survives a failed save, the last line cannot
+  be removed, the locked banner now names every status that locks the
+  amounts, and the form says who last edited the invoice.
 
 - **Tax is computed on the discounted value.**
   A discount shown on the invoice reduces the taxable value: it is split

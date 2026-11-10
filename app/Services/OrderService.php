@@ -122,7 +122,7 @@ class OrderService
                 $nextDates = [];
                 foreach ($order->items as $item) {
                     $cycle = $item->billing_cycle ?? $order->billing_cycle;
-                    $next = $this->nextBillingDate($cycle);
+                    $next = $this->nextBillingDate($cycle, $order);
 
                     if ($next !== null) {
                         $item->update([
@@ -136,7 +136,7 @@ class OrderService
                 if ($order->items->isEmpty()) {
                     // Legacy order-level activation (orders created before the
                     // per-item billing columns): keep the order's own schedule.
-                    $order->next_billing_date = $this->nextBillingDate($order->billing_cycle);
+                    $order->next_billing_date = $this->nextBillingDate($order->billing_cycle, $order);
                 } else {
                     $order->next_billing_date = $nextDates !== [] ? min($nextDates) : null;
                 }
@@ -399,12 +399,25 @@ class OrderService
 
     /**
      * Next billing date for a cycle; null for one-time orders (never re-billed).
+     *
+     * The anniversary is anchored on the order's START — the day it was
+     * bought — plus the cycle. It is NOT the day the order happened to be
+     * activated: an order bought on the 1st and activated on the 20th would
+     * otherwise renew on the 20th, handing the customer a free period every
+     * time activation slips, and the service's billing anniversary would
+     * drift away from the purchase date.
      */
-    private function nextBillingDate(string $cycle): ?string
+    private function nextBillingDate(string $cycle, ?Order $order = null): ?string
     {
         $months = Order::CYCLE_MONTHS[$cycle] ?? 1;
 
-        return $months > 0 ? now()->addMonths($months)->toDateString() : null;
+        if ($months <= 0) {
+            return null;
+        }
+
+        $anchor = $order?->created_at?->copy()->startOfDay() ?? now()->startOfDay();
+
+        return $anchor->addMonths($months)->toDateString();
     }
 
     /**

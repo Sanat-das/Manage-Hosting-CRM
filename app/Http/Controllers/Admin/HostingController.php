@@ -48,10 +48,12 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 use RuntimeException;
 
@@ -1761,6 +1763,23 @@ class HostingController extends Controller
     }
 
     /**
+     * A field the request did not post keeps its stored value; a field the
+     * request posted empty is cleared.
+     *
+     * The billing form posts every field, so this only matters for a partial
+     * request — and there it is the difference between "change the payment
+     * method" and "wipe the payment method, the cycle and the schedule".
+     */
+    private function keptOrPosted(array $validated, string $key, mixed $current): mixed
+    {
+        if (! array_key_exists($key, $validated)) {
+            return $current;
+        }
+
+        return $validated[$key];
+    }
+
+    /**
      * Update billing info (Billing tab on the edit page).
      *
      * Persists the account's next due date plus the linked order's billing
@@ -1780,20 +1799,44 @@ class HostingController extends Controller
             'subscription_id' => ['nullable', 'string', 'max:255'],
         ]);
 
+        $order = $hostingAccount->order;
+
+        // The schedule may not run backwards. A next billing date before the
+        // last billing date would re-bill a period the customer has already
+        // paid for — which is exactly how a renewal landed eleven days after
+        // the first year was paid.
+        if ($order !== null
+            && array_key_exists('next_billing_date', $validated)
+            && $validated['next_billing_date'] !== null
+            && $order->last_billing_date !== null
+            && Carbon::parse($validated['next_billing_date'])->startOfDay()->lt($order->last_billing_date->copy()->startOfDay())) {
+            throw ValidationException::withMessages([
+                'next_billing_date' => 'The next billing date cannot be before the last billing date ('.$order->last_billing_date->toDateString().').',
+            ]);
+        }
+
         try {
-            DB::transaction(function () use ($hostingAccount, $validated, $request) {
+            DB::transaction(function () use ($hostingAccount, $validated, $request, $order) {
                 $hostingAccount->update([
-                    'next_due_date' => $validated['next_due_date'] ?? null,
+                    'next_due_date' => $this->keptOrPosted($validated, 'next_due_date', $hostingAccount->next_due_date?->toDateString()),
                 ]);
 
-                $order = $hostingAccount->order;
-
                 if ($order !== null) {
+                    // A posted-but-empty date clears the schedule on purpose
+                    // (that is how an admin ends a subscription). An ABSENT
+                    // date must not wipe it: the admin may be changing the
+                    // payment method only.
+                    $nextBillingDate = array_key_exists('next_billing_date', $validated)
+                        ? $validated['next_billing_date']
+                        : $order->next_billing_date?->toDateString();
+
                     $order->update([
-                        'billing_cycle' => $validated['billing_cycle'] ?? null,
-                        'next_billing_date' => $validated['next_billing_date'] ?? null,
-                        'payment_method' => $validated['payment_method'] ?? null,
-                        'subscription_id' => $validated['subscription_id'] ?? null,
+                        // billing_cycle is NOT NULL: an absent (or empty) value
+                        // means "not specified", so the stored cycle stands.
+                        'billing_cycle' => $validated['billing_cycle'] ?? $order->billing_cycle,
+                        'next_billing_date' => $nextBillingDate,
+                        'payment_method' => $this->keptOrPosted($validated, 'payment_method', $order->payment_method),
+                        'subscription_id' => $this->keptOrPosted($validated, 'subscription_id', $order->subscription_id),
                     ]);
 
                     // Keep the authoritative per-item schedule in sync so the
@@ -1803,8 +1846,8 @@ class HostingController extends Controller
 
                     if ($item !== null) {
                         $item->update([
-                            'billing_cycle' => $validated['billing_cycle'] ?? null,
-                            'next_billing_date' => $validated['next_billing_date'] ?? null,
+                            'billing_cycle' => $validated['billing_cycle'] ?? $item->billing_cycle,
+                            'next_billing_date' => $nextBillingDate,
                         ]);
                     }
                 }

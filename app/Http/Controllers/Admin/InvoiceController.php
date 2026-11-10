@@ -3,19 +3,21 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Admin\InvoiceRequest;
+use App\Models\ActivityLog;
 use App\Models\Customer;
 use App\Models\Invoice;
+use App\Models\User;
 use App\Services\Billing\BillingService;
 use App\Services\Exports\CsvStreamService;
 use App\Services\InvoiceEmailService;
 use App\Services\PdfLogService;
 use App\Support\AppSettings;
+use App\Support\Audit\AuditRecorder;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Validation\Rule;
-use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -34,6 +36,7 @@ class InvoiceController extends Controller
         private readonly BillingService $billing,
         private readonly PdfLogService $pdfLog,
         private readonly InvoiceEmailService $invoiceEmails,
+        private readonly AuditRecorder $audit,
     ) {}
 
     public function index(Request $request): View|StreamedResponse
@@ -114,19 +117,11 @@ class InvoiceController extends Controller
         return view('admin.invoices.create', compact('customers'));
     }
 
-    public function store(Request $request): RedirectResponse
+    public function store(InvoiceRequest $request): RedirectResponse
     {
-        $validated = $request->validate([
-            'customer_id' => ['required', 'integer', 'exists:customers,id'],
-            'discount' => ['nullable', 'numeric', 'min:0'],
-            'status' => ['required', 'in:draft,sent'],
-            'due_date' => ['nullable', 'date'],
-            'notes' => ['nullable', 'string', 'max:1000'],
-            'items' => ['required', 'array', 'min:1'],
-            'items.*.description' => ['required', 'string', 'max:255'],
-            'items.*.quantity' => ['required', 'integer', 'min:1'],
-            'items.*.unit_price' => ['required', 'numeric', 'min:0'],
-        ]);
+        $this->authorize('create', Invoice::class);
+
+        $validated = $request->validated();
 
         $items = collect($validated['items'])->map(fn ($item) => [
             'description' => $item['description'],
@@ -141,8 +136,6 @@ class InvoiceController extends Controller
         $amount = round(array_sum(array_column($items, 'total')), 2);
         $discount = (float) ($validated['discount'] ?? 0);
 
-        $this->guardDiscountCeiling($discount, $amount);
-
         $invoice = $this->billing->createWithItems([
             'customer_id' => $validated['customer_id'],
             'amount' => $amount,
@@ -151,6 +144,14 @@ class InvoiceController extends Controller
             'due_date' => $validated['due_date'] ?? $this->defaultDueDate(),
             'notes' => $validated['notes'] ?? null,
         ], $items, $this->billing->resolvePlaceOfSupply((int) $validated['customer_id']));
+
+        $this->audit->activity(
+            'invoice.created',
+            customer: $invoice->customer,
+            metadata: ['invoice' => $this->auditSnapshot($invoice)],
+            description: "Invoice {$invoice->invoice_no} created",
+            subject: $invoice,
+        );
 
         return redirect()
             ->route('admin.invoices.show', $invoice)
@@ -173,21 +174,62 @@ class InvoiceController extends Controller
             'invoice' => $invoice,
             'locked' => $invoice->isAmountLocked(),
             'editableStatuses' => $invoice->editableStatusTransitions(),
+            'submittedItems' => $this->submittedItems(),
+            'lastEdit' => $this->lastEdit($invoice),
         ]);
     }
 
-    public function update(Request $request, Invoice $invoice): RedirectResponse
+    /**
+     * The line rows the form shows after a failed validation: what was
+     * submitted, so a line the admin added is not silently dropped on the
+     * way back.
+     *
+     * @return array<int, array<string, mixed>>|null
+     */
+    private function submittedItems(): ?array
     {
+        $items = session()->getOldInput('items');
+
+        if (! is_array($items) || $items === []) {
+            return null;
+        }
+
+        return array_values($items);
+    }
+
+    /**
+     * Who last touched this invoice, and when — the audit trail read back.
+     */
+    private function lastEdit(Invoice $invoice): ?string
+    {
+        $log = ActivityLog::query()
+            ->where('subject_type', $invoice->getMorphClass())
+            ->where('subject_id', $invoice->id)
+            ->whereIn('action', ['invoice.updated', 'invoice.created'])
+            ->latest('id')
+            ->first();
+
+        if ($log === null) {
+            return null;
+        }
+
+        $actor = $log->user_id !== null ? User::find($log->user_id) : null;
+        $name = $actor?->name ?? 'Someone';
+
+        return trim($name.' · '.$log->created_at?->format('j M Y, H:i'));
+    }
+
+    public function update(InvoiceRequest $request, Invoice $invoice): RedirectResponse
+    {
+        $this->authorize('update', $invoice);
+
         $previousStatus = $invoice->status;
+        $before = $this->auditSnapshot($invoice);
 
         // Amounts are frozen once money moved (payments recorded or a settled/
         // terminal status): only status/due_date/notes remain editable.
         if ($invoice->isAmountLocked()) {
-            $validated = $request->validate([
-                'status' => ['sometimes', 'string', Rule::in(array_keys($invoice->editableStatusTransitions()))],
-                'due_date' => ['nullable', 'date'],
-                'notes' => ['nullable', 'string', 'max:1000'],
-            ]);
+            $validated = $request->validated();
 
             $payload = [];
 
@@ -209,39 +251,14 @@ class InvoiceController extends Controller
             $invoice->update($payload);
 
             $this->rewindScheduleIfVoided($invoice, $previousStatus);
+            $this->auditEdit($invoice, $before);
 
             return redirect()
                 ->route('admin.invoices.show', $invoice)
                 ->with('success', 'Invoice updated.');
         }
 
-        $validated = $request->validate([
-            // The customer is NOT reassignable here: an invoice belongs to the
-            // customer it was raised for. A posted customer_id is ignored.
-            'discount' => ['sometimes', 'numeric', 'min:0'],
-            'status' => ['required', 'string', Rule::in(array_keys($invoice->editableStatusTransitions()))],
-            'due_date' => ['nullable', 'date'],
-            'notes' => ['nullable', 'string', 'max:1000'],
-            'items' => ['required', 'array', 'min:1'],
-            // Existing lines identify themselves so the save can restore what
-            // the form cannot post back: the product link (which also drives
-            // per-product GST) and the options the line bills for. Absent on a
-            // line the admin just added. Scoped to THIS invoice — the id comes
-            // from the browser, and one belonging to another invoice must not
-            // be able to pull that invoice's product and configuration here.
-            'items.*.id' => [
-                'nullable',
-                'integer',
-                // One stored line cannot be two submitted lines. Without this,
-                // a duplicated row would hand its product — and therefore its
-                // per-product GST treatment — to a line that is not it.
-                'distinct',
-                Rule::exists('invoice_items', 'id')->where('invoice_id', $invoice->id),
-            ],
-            'items.*.description' => ['required', 'string', 'max:255'],
-            'items.*.quantity' => ['required', 'integer', 'min:1'],
-            'items.*.unit_price' => ['required', 'numeric', 'min:0'],
-        ]);
+        $validated = $request->validated();
 
         $items = collect($validated['items'])->map(function (array $item) {
             $line = [
@@ -266,8 +283,6 @@ class InvoiceController extends Controller
             ? (float) $validated['discount']
             : (float) $invoice->discount;
 
-        $this->guardDiscountCeiling($discount, $amount);
-
         $this->billing->updateWithItems($invoice, [
             'amount' => $amount,
             'discount' => $discount,
@@ -279,10 +294,47 @@ class InvoiceController extends Controller
         ], $items, $this->billing->resolvePlaceOfSupply((int) $invoice->customer_id));
 
         $this->rewindScheduleIfVoided($invoice, $previousStatus);
+        $this->auditEdit($invoice, $before);
 
         return redirect()
             ->route('admin.invoices.show', $invoice)
             ->with('success', "Invoice {$invoice->invoice_no} updated.");
+    }
+
+    /**
+     * Write the audit row for an invoice edit: who changed it, and what the
+     * money fields were before and after.
+     */
+    private function auditEdit(Invoice $invoice, array $before): void
+    {
+        $this->audit->activity(
+            'invoice.updated',
+            customer: $invoice->customer,
+            metadata: [
+                'before' => $before,
+                'after' => $this->auditSnapshot($invoice->fresh()),
+            ],
+            description: "Invoice {$invoice->invoice_no} updated",
+            subject: $invoice,
+        );
+    }
+
+    /**
+     * The money fields of an invoice, for the audit trail.
+     *
+     * @return array<string, mixed>
+     */
+    private function auditSnapshot(Invoice $invoice): array
+    {
+        return [
+            'status' => $invoice->status,
+            'amount' => (float) $invoice->amount,
+            'tax' => (float) $invoice->tax,
+            'discount' => (float) $invoice->discount,
+            'total' => (float) $invoice->total,
+            'due_date' => $invoice->due_date?->toDateString(),
+            'lines' => $invoice->items()->count(),
+        ];
     }
 
     /**
@@ -313,22 +365,6 @@ class InvoiceController extends Controller
         $days = max(0, (int) AppSettings::get('due_days', '7'));
 
         return now()->addDays($days)->toDateString();
-    }
-
-    /**
-     * A discount larger than the invoice amount would write a negative total
-     * (total = amount + tax - discount), so it is refused before anything is
-     * written.
-     */
-    private function guardDiscountCeiling(float $discount, float $amount): void
-    {
-        if ($discount <= $amount) {
-            return;
-        }
-
-        throw ValidationException::withMessages([
-            'discount' => 'The discount cannot be larger than the invoice amount ('.number_format($amount, 2).').',
-        ]);
     }
 
     /**
