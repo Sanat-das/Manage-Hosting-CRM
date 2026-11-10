@@ -15,7 +15,9 @@
 /.zed
 /auth.json
 /node_modules
-/public/build
+# The compiled Vite assets ARE tracked on purpose: a fresh clone (CI, a new
+# server, a colleague's checkout) has no Node toolchain, and every page that
+# renders the AdminLTE head would die on a missing Vite manifest.
 /public/fonts-manifest.dev.json
 /public/hot
 /.codegraph/
