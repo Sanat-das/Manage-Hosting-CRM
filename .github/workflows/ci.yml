@@ -66,6 +66,10 @@ jobs:
           # hidden refs/pull/N/merge refs only when authenticated. Inject auth
           # through the git environment instead of the URL, because the script
           # echoes $SMOKE_REPO_URL into the log on every run.
-          GIT_CONFIG_COUNT: 1
+          #
+          # Only for pull requests: a pushed ref is an ordinary branch that an
+          # anonymous clone reaches, and a token the runner cannot use made the
+          # clone fail outright.
+          GIT_CONFIG_COUNT: ${{ github.event_name == 'pull_request' && '1' || '0' }}
           GIT_CONFIG_KEY_0: http.https://github.com/.extraheader
           GIT_CONFIG_VALUE_0: "AUTHORIZATION: bearer ${{ github.token }}"

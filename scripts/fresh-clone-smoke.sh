@@ -110,7 +110,21 @@ stop_server() {
 }
 
 REF_RESOLVED=1
+CLONED=0
 if git clone --depth 1 "$REPO" "$CLONE" >"$SCRATCH/clone.log" 2>&1; then
+  CLONED=1
+elif [ -n "${GIT_CONFIG_COUNT:-}" ]; then
+  # The runner injects a token through the git environment so the hidden
+  # refs/pull/N/merge refs can be fetched. A token the runner cannot use must
+  # not stop the gate on a PUBLIC repository: retry the clone anonymously.
+  unset GIT_CONFIG_COUNT GIT_CONFIG_KEY_0 GIT_CONFIG_VALUE_0
+  if git clone --depth 1 "$REPO" "$CLONE" >"$SCRATCH/clone.log" 2>&1; then
+    CLONED=1
+    pass "cloned $REPO anonymously after the authenticated clone failed"
+  fi
+fi
+
+if [ "$CLONED" -eq 1 ]; then
   if [ -n "$REF" ]; then
     # Detach onto the requested ref, so a pull_request merge ref or a pushed
     # branch is what gets certified - not the remote's default branch.
@@ -126,6 +140,7 @@ if git clone --depth 1 "$REPO" "$CLONE" >"$SCRATCH/clone.log" 2>&1; then
   fi
 else
   fail "git clone $REPO failed - see $SCRATCH/clone.log"
+  tail -n 15 "$SCRATCH/clone.log" 2>/dev/null || true
 fi
 if [ "$REF_RESOLVED" -eq 0 ]; then
   # Certifying the wrong commit is the failure mode this ref plumbing exists
