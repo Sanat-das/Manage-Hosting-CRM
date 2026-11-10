@@ -43,6 +43,9 @@ test_login.php
 verify_auth.php
 
 # Local environment variants
+# .env.testing is deliberately NOT ignored: it holds no secret (a fixed test
+# key) and a fresh checkout needs it, or the suite runs in a different
+# timezone than the application it tests.
 .env.docker
 .env.dusk
 .env.dusk.local
