@@ -6,6 +6,14 @@ All notable user-facing changes to this project are documented in this file.
 
 ### Fixed
 
+- **A fresh install could not build its assets on Linux.**
+  `composer run setup` installed the npm packages with `--ignore-scripts` and
+  then built — but the bundler's native binaries (rolldown, the Tailwind oxide
+  engine) are fetched by a postinstall script, so the build ran without them
+  and failed. The compiled assets are committed anyway, so the setup now
+  builds them only when they are genuinely missing, and installs with scripts
+  enabled when it has to.
+
 - **A fresh checkout ran the suite in a different timezone than the application.**
   There was no `.env` outside a working copy (it holds the real credentials
   and is ignored), so the suite fell back to UTC while the application runs
