@@ -119,7 +119,13 @@
                     <div class="row">
                         <div class="col-md-6">
                             <x-adminlte-input name="next_billing_date" type="date" label="Next billing date"
-                                              value="{{ old('next_billing_date', $order?->next_billing_date?->format('Y-m-d')) }}" />
+                                              value="{{ old('next_billing_date', $billingItem?->next_billing_date?->format('Y-m-d') ?? $order?->next_billing_date?->format('Y-m-d')) }}" />
+                            <div class="form-text">
+                                This service's own renewal date — the one the billing engine bills on.
+                                @if ($order?->next_billing_date)
+                                    The order summary is {{ $order->next_billing_date->format('M j, Y') }} (the earliest date on it) and follows this field.
+                                @endif
+                            </div>
                         </div>
                         <div class="col-md-6">
                             <x-adminlte-input name="payment_method" label="Payment method" placeholder="e.g. credit_card, paypal"

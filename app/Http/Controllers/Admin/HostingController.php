@@ -28,6 +28,7 @@ use App\Models\Server;
 use App\Models\ServiceInstance;
 use App\Models\SslCertificate;
 use App\Models\Vlan;
+use App\Services\Billing\BillingService;
 use App\Services\HostingService;
 use App\Services\Integrations\IntegrationRegistry;
 use App\Services\IpAssignmentService;
@@ -609,6 +610,7 @@ class HostingController extends Controller
             'assetKinds' => AssetRelationship::ASSET_KINDS,
             'relationshipTypes' => AssetRelationship::RELATIONSHIP_TYPES,
             'order' => $order,
+            'billingItem' => $order?->items()->where('product_id', $hostingAccount->product_id)->first(),
             'recurringAmount' => $recurringAmount,
         ]);
     }
@@ -1822,34 +1824,52 @@ class HostingController extends Controller
                 ]);
 
                 if ($order !== null) {
+                    // The recurring engine reads the ITEM's schedule, so that
+                    // is what this form edits. The order's date is a summary
+                    // of its items and is re-derived, never written from a
+                    // form: writing one service's date onto the order moved
+                    // every other service on it.
+                    $item = $order->items()->where('product_id', $hostingAccount->product_id)->first();
+
                     // A posted-but-empty date clears the schedule on purpose
                     // (that is how an admin ends a subscription). An ABSENT
-                    // date must not wipe it: the admin may be changing the
-                    // payment method only.
+                    // date must not wipe it — and it must not fall back to
+                    // the order's summary either, or an unrelated save would
+                    // push the summary onto the item.
                     $nextBillingDate = array_key_exists('next_billing_date', $validated)
                         ? $validated['next_billing_date']
-                        : $order->next_billing_date?->toDateString();
+                        : ($item?->next_billing_date?->toDateString() ?? $order->next_billing_date?->toDateString());
+
+                    $cycle = $validated['billing_cycle'] ?? null;
+
+                    if ($item !== null) {
+                        $item->update([
+                            'billing_cycle' => $cycle ?? $item->billing_cycle,
+                            'next_billing_date' => $nextBillingDate,
+                        ]);
+                    }
+
+                    // The order's cycle is a summary of its items, the same
+                    // way its date is: when the items agree on one cycle, that
+                    // is the order's cycle. It is only a fallback for items
+                    // that carry none of their own (legacy rows), and then the
+                    // form's cycle is the right value.
+                    $itemCycles = $order->items()->whereNotNull('billing_cycle')->distinct()->pluck('billing_cycle');
+
+                    $orderCycle = match (true) {
+                        $itemCycles->count() === 1 => $itemCycles->first(),
+                        $itemCycles->isEmpty() => $cycle ?? $order->billing_cycle,
+                        default => $order->billing_cycle,
+                    };
 
                     $order->update([
-                        // billing_cycle is NOT NULL: an absent (or empty) value
-                        // means "not specified", so the stored cycle stands.
-                        'billing_cycle' => $validated['billing_cycle'] ?? $order->billing_cycle,
-                        'next_billing_date' => $nextBillingDate,
+                        'billing_cycle' => $orderCycle,
                         'payment_method' => $this->keptOrPosted($validated, 'payment_method', $order->payment_method),
                         'subscription_id' => $this->keptOrPosted($validated, 'subscription_id', $order->subscription_id),
                     ]);
 
-                    // Keep the authoritative per-item schedule in sync so the
-                    // recurring billing engine (which reads order_items) picks
-                    // up the change.
-                    $item = $order->items()->where('product_id', $hostingAccount->product_id)->first();
-
-                    if ($item !== null) {
-                        $item->update([
-                            'billing_cycle' => $validated['billing_cycle'] ?? $item->billing_cycle,
-                            'next_billing_date' => $nextBillingDate,
-                        ]);
-                    }
+                    // The order's summary follows its items (the earliest one).
+                    app(BillingService::class)->syncOrderSummary($order);
                 }
 
                 $this->hostingService->audit(

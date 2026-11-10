@@ -542,9 +542,26 @@ class CustomerController extends Controller
             'tickets' => $customer->tickets()->count(),
         ];
 
+        // The truth about each service's cycle: the newest invoice on its
+        // order. A next billing date on its own reads as settled — a period
+        // that was never invoiced, or one that was invoiced and voided, has
+        // to say so next to the date.
+        $serviceOrderIds = $hostingAccounts->pluck('order_id')->filter()->unique()->values()->all();
+
+        $latestInvoiceByOrder = $serviceOrderIds === []
+            ? []
+            : Invoice::query()
+                ->whereIn('order_id', $serviceOrderIds)
+                ->orderByDesc('id')
+                ->get(['id', 'order_id', 'invoice_no', 'status', 'total', 'paid_amount', 'due_date'])
+                ->groupBy('order_id')
+                ->map(fn ($invoices) => $invoices->first())
+                ->all();
+
         return view('admin.customers.show', compact(
             'customer', 'hostingAccounts', 'orders', 'invoices', 'tickets', 'domains',
-            'customerDomains', 'addonItems', 'contacts', 'walletTransactions', 'activity', 'filters', 'statusOptions', 'counts', 'search'
+            'customerDomains', 'addonItems', 'contacts', 'walletTransactions', 'activity', 'filters', 'statusOptions', 'counts', 'search',
+            'latestInvoiceByOrder'
         ));
     }
 

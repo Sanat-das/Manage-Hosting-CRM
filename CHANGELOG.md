@@ -6,6 +6,18 @@ All notable user-facing changes to this project are documented in this file.
 
 ### Fixed
 
+- **Editing one service's billing date moved every other service on the order.**
+  The form wrote its date to the ORDER, and the order's date is what the
+  billing engine reads when it picks the order's items — so moving a hosting
+  service's renewal date also moved an add-on's, and the order's summary
+  stopped being the earliest of its items. The form now edits the service's
+  own schedule, and the order's summary and cycle are derived from its items.
+
+- **A customer profile showed a next-billing date with nothing next to it.**
+  A cycle that was never invoiced, or one that was invoiced and voided, read
+  exactly like a settled one. The profile now names the invoice for the
+  cycle and says whether it is paid.
+
 - **A fresh install could not build its assets on Linux.**
   `composer run setup` installed the npm packages with `--ignore-scripts` and
   then built — but the bundler's native binaries (rolldown, the Tailwind oxide

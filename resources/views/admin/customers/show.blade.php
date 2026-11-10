@@ -244,6 +244,20 @@
                                     <td class="text-end">{{ $recurringAmount !== null ? '₹'.number_format((float) $recurringAmount, 2) : '—' }}</td>
                                     <td class="{{ $nextBilling && $nextBilling->isPast() ? 'text-danger fw-bold' : 'text-muted' }}">
                                         {{ $nextBilling?->format('M j, Y') ?? '—' }}
+                                        @php $cycleInvoice = $serviceOrder ? ($latestInvoiceByOrder[$serviceOrder->id] ?? null) : null; @endphp
+                                        @if ($cycleInvoice)
+                                            {{-- The date alone reads as settled. Say what was invoiced
+                                                 for this cycle and whether it was paid. --}}
+                                            <div class="small">
+                                                <a href="{{ route('admin.invoices.show', $cycleInvoice) }}">{{ $cycleInvoice->invoice_no }}</a>
+                                                <x-adminlte.partials.status-badge :status="$cycleInvoice->status" />
+                                                @if ($cycleInvoice->status !== 'paid')
+                                                    <span class="text-danger">unpaid</span>
+                                                @endif
+                                            </div>
+                                        @else
+                                            <div class="small text-muted">not invoiced yet</div>
+                                        @endif
                                     </td>
                                     <td><x-adminlte.partials.status-badge :status="$account->status" /></td>
                                     <td class="text-end">
