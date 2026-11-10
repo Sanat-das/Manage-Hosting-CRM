@@ -6,6 +6,14 @@ All notable user-facing changes to this project are documented in this file.
 
 ### Fixed
 
+- **A fresh clone could not render a single page.**
+  `public/build` was gitignored, so a new checkout (CI, a new server, a
+  colleague) had no Vite manifest and every page that renders the AdminLTE
+  head died on it — and the pipeline's test job has no Node step, so the HTTP
+  tests failed on the missing manifest before they reached a single
+  assertion. The compiled assets are tracked again, as the "Compiled Vite
+  assets committed" note above already promised.
+
 - **The billing anniversary followed the activation date, not the purchase date.**
   An order bought on the 1st and activated on the 20th renewed on the 20th:
   the customer was handed a free period every time activation slipped, and the
