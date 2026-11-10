@@ -57,6 +57,18 @@ class InstallerService
      */
     private static ?bool $provisioned = null;
 
+    /**
+     * The request the memoized answer belongs to.
+     *
+     * The answer is cached for the CURRENT request only. A process-lifetime
+     * cache is wrong twice over: a long-lived worker (Octane, a queue worker)
+     * would keep the answer from its first request forever, and a test
+     * process would fix the answer for the whole suite — the first request
+     * that happened to run before any user existed would answer "not
+     * installed" and redirect every later request to the installer.
+     */
+    private static ?int $provisionedFor = null;
+
     public function envPath(): string
     {
         return base_path('.env');
@@ -125,7 +137,9 @@ class InstallerService
      */
     public static function databaseProvisioned(): bool
     {
-        if (self::$provisioned !== null) {
+        $key = spl_object_id(request());
+
+        if (self::$provisioned !== null && self::$provisionedFor === $key) {
             return self::$provisioned;
         }
 
@@ -142,6 +156,8 @@ class InstallerService
             self::$provisioned = false;
         }
 
+        self::$provisionedFor = $key;
+
         return self::$provisioned;
     }
 
@@ -152,6 +168,7 @@ class InstallerService
     public static function forgetProvisionedCache(): void
     {
         self::$provisioned = null;
+        self::$provisionedFor = null;
     }
 
     /**

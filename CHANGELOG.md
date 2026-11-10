@@ -6,6 +6,15 @@ All notable user-facing changes to this project are documented in this file.
 
 ### Fixed
 
+- **The installer guard cached its answer for the whole process.**
+  The "is this app installed?" probe was memoized in a static, so its answer
+  from the first request of a process was reused forever: a long-lived worker
+  (Octane, a queue worker) would keep answering "not installed" after the app
+  was installed, and a test process would fix the answer for the whole suite —
+  the first request that ran before any user existed sent every later request
+  to the installer wizard. The answer is now cached for the current request
+  only.
+
 - **A fresh clone could not render a single page.**
   `public/build` was gitignored, so a new checkout (CI, a new server, a
   colleague) had no Vite manifest and every page that renders the AdminLTE
