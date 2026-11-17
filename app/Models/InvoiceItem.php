@@ -6,12 +6,15 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-#[Fillable(['invoice_id', 'product_id', 'description', 'quantity', 'unit_price', 'total', 'billed_due_date', 'billed_cycle_months', 'config_options', 'gst_enabled', 'gst_rate', 'gst_type', 'cgst_rate', 'cgst_amount', 'sgst_rate', 'sgst_amount', 'igst_rate', 'igst_amount'])]
+#[Fillable(['invoice_id', 'product_id', 'order_item_id', 'description', 'quantity', 'unit_price', 'total', 'billed_due_date', 'billed_cycle_months', 'config_options', 'gst_enabled', 'gst_rate', 'gst_type', 'cgst_rate', 'cgst_amount', 'sgst_rate', 'sgst_amount', 'igst_rate', 'igst_amount'])]
 class InvoiceItem extends Model
 {
     protected $casts = [
         'unit_price' => 'decimal:2',
         'total' => 'decimal:2',
+        // The order line this billed period belongs to (null on hand-written
+        // lines and on rows created before the link existed).
+        'order_item_id' => 'integer',
         // The billing period this line billed, when it advanced a schedule:
         // the due date it covered and the cycle that was applied. Null on
         // lines that never moved a schedule.

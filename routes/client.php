@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Client\AddonController;
 use App\Http\Controllers\Client\DashboardController;
 use App\Http\Controllers\Client\DomainController;
 use App\Http\Controllers\Client\HostingController;
@@ -51,6 +52,7 @@ Route::middleware(['web', 'auth', 'client', 'customer.record'])->prefix('client'
     Route::get('hosting/{hostingAccount}/vm-status', [HostingController::class, 'vmStatus'])->name('hosting.vm-status');
     Route::post('hosting/{hostingAccount}/reset-vm-password', [HostingController::class, 'resetVmPassword'])->middleware('throttle:10,1')->name('hosting.reset-vm-password');
     Route::post('hosting/{hostingAccount}/vm-power', [HostingController::class, 'vmPower'])->middleware('throttle:10,1')->name('hosting.vm-power');
+    Route::post('hosting/{hostingAccount}/addons', [AddonController::class, 'store'])->middleware('throttle:10,1')->whereNumber('hostingAccount')->name('hosting.addons.store');
 
     // Upgrade / downgrade (per active service)
     Route::get('hosting/{order}/upgrade', [UpgradeController::class, 'index'])->name('hosting.upgrade');

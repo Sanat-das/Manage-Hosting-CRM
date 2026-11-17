@@ -109,6 +109,9 @@ class BillingService
                 InvoiceItem::create([
                     'invoice_id' => $invoice->id,
                     'product_id' => $item['product_id'] ?? null,
+                    // The order line this period bills, when the caller built
+                    // the line from one (renewal, order and add-on lines).
+                    'order_item_id' => $item['order_item_id'] ?? null,
                     'description' => $item['description'],
                     'quantity' => $item['quantity'] ?? 1,
                     'unit_price' => $item['unit_price'],
@@ -202,6 +205,7 @@ class BillingService
                 InvoiceItem::create([
                     'invoice_id' => $invoice->id,
                     'product_id' => $item['product_id'] ?? null,
+                    'order_item_id' => $item['order_item_id'] ?? null,
                     'description' => $item['description'],
                     'quantity' => $item['quantity'] ?? 1,
                     'unit_price' => $item['unit_price'],
@@ -385,6 +389,7 @@ class BillingService
                 // schedule its lines advanced.
                 $item = array_merge($item, [
                     'product_id' => $item['product_id'] ?? $match->product_id,
+                    'order_item_id' => $item['order_item_id'] ?? $match->order_item_id,
                     'config_options' => $item['config_options'] ?? $match->config_options,
                     'billed_due_date' => $item['billed_due_date'] ?? $match->billed_due_date?->toDateString(),
                     'billed_cycle_months' => $item['billed_cycle_months'] ?? $match->billed_cycle_months,
@@ -417,6 +422,11 @@ class BillingService
      * GST engine runs with the customer's state code (intra-state fallback),
      * the due date follows the same 7-day convention as the recurring job.
      *
+     * This is the ORDER-TIME path: the order is still pending and its items
+     * carry no schedule yet, so every line is billed without a billing period
+     * and no pointer moves. A manually raised invoice against a live service
+     * is a different thing and goes through createInvoiceForNextPeriod().
+     *
      * @param  string|null  $notes  Invoice note override; defaults to the
      *                              standard "Invoice for order …" convention.
      */
@@ -443,6 +453,79 @@ class BillingService
     }
 
     /**
+     * Create the invoice for a manually raised billing of an order's NEXT
+     * recurring period — the admin "Invoice Selected Items" flow.
+     *
+     * createInvoiceForOrder() is the other path: the order-time draft, raised
+     * while the order is still pending and its items carry no schedule yet.
+     * That invoice bills every item without a period and moves nothing.
+     *
+     * This one bills a LIVE schedule, so it behaves like a hand-raised
+     * renewal: every live-recurring line carries the period it bills
+     * (billed_due_date = the item's next_invoice_date, billed_cycle_months =
+     * the item's cycle months) and the generation pointer advances past that
+     * period, exactly as processRecurringBilling() does. The pay-by date
+     * (next_billing_date) does NOT move here — only the money moves it,
+     * through advanceBillingSchedule() once the invoice is settled.
+     *
+     * An item that is not live-recurring (no next_invoice_date, or a one-time
+     * cycle) is billed exactly as it is today: no period on its line, and no
+     * pointer moved.
+     *
+     * @param  string|null  $notes  Invoice note override; defaults to the
+     *                              standard "Invoice for order …" convention.
+     */
+    public function createInvoiceForNextPeriod(Order $order, ?string $notes = null): Invoice
+    {
+        $productName = $order->product?->name ?? 'Order';
+
+        $items = $order->items
+            ->map(fn (OrderItem $item) => $this->linePayload($item, (string) $order->billing_cycle))
+            ->all();
+
+        return $this->createPeriodInvoice($order, $items, [
+            'customer_id' => $order->customer_id,
+            'order_id' => $order->id,
+            'amount' => (float) $order->total,
+            'status' => Invoice::STATUS_DRAFT,
+            'due_date' => now()->addDays(7)->toDateString(),
+            'notes' => $notes ?? "Invoice for order {$order->order_number} — {$productName} ({$order->billing_cycle})",
+        ], $this->resolveCustomerStateCode((int) $order->customer_id));
+    }
+
+    /**
+     * Create the invoice for a manually raised billing of selected add-on
+     * lines — the admin "Invoice Selected Items" flow, add-on branch.
+     *
+     * The period semantics are the ones of createInvoiceForNextPeriod(): each
+     * live-recurring add-on line carries the period it bills and its
+     * generation pointer advances past that period, while the pay-by date
+     * waits for the money.
+     *
+     * @param  iterable<int, OrderItem>  $addonItems  The add-on lines to bill.
+     * @param  string|null  $notes  Invoice note override.
+     */
+    public function createAddonInvoiceForNextPeriod(Order $order, iterable $addonItems, ?string $notes = null): Invoice
+    {
+        $fallbackCycle = (string) $order->billing_cycle;
+
+        $items = [];
+
+        foreach ($addonItems as $addonItem) {
+            $items[] = $this->linePayload($addonItem, $fallbackCycle);
+        }
+
+        return $this->createPeriodInvoice($order, $items, [
+            'customer_id' => $order->customer_id,
+            'order_id' => $order->id,
+            'amount' => round(array_sum(array_column($items, 'total')), 2),
+            'status' => Invoice::STATUS_DRAFT,
+            'due_date' => now()->addDays(7)->toDateString(),
+            'notes' => $notes ?? "Add-on invoice for order {$order->order_number}",
+        ], $this->resolveCustomerStateCode((int) $order->customer_id));
+    }
+
+    /**
      * Create the immediate charge invoice for an add-on attached to a live
      * order (WHMCS-style post-signup attach, no proration).
      *
@@ -450,6 +533,16 @@ class BillingService
      * when one exists. Lines reuse the order-invoice description convention;
      * the invoice is issued immediately (status sent, due in seven days) with
      * the customer's place of supply resolved for GST.
+     *
+     * The recurring line carries the add-on's FIRST period — the one the
+     * attach starts — so the charge is a period like any other and the
+     * duplicate-billing net can see it. The setup fee is a one-time line with
+     * no period behind it and stays period-less.
+     *
+     * Nothing moves here: the add-on's schedule is already seeded at attach
+     * (today + cycle), so paying the charge leaves both pointers where they
+     * are — advanceBillingSchedule() finds the pay-by date already at the end
+     * of the period it bills.
      *
      * @param  OrderItem  $addonItem  The add-on's recurring order_items row.
      * @param  OrderItem|null  $setupFeeItem  The one-time setup row, when one was created.
@@ -468,6 +561,15 @@ class BillingService
 
         $items = array_map(fn (OrderItem $item) => $this->linePayload($item, $fallbackCycle), $chargeItems);
 
+        $period = $this->addonFirstPeriod($addonItem);
+
+        if ($period !== null) {
+            $items[0] = array_merge($items[0], [
+                'billed_due_date' => $period['start'],
+                'billed_cycle_months' => $period['months'],
+            ]);
+        }
+
         return $this->createWithItems([
             'customer_id' => $order->customer_id,
             'order_id' => $addonItem->order_id,
@@ -483,7 +585,7 @@ class BillingService
      * "{product_name} — {Cycle label}" description convention everywhere a
      * line is built (order invoice, add-on charge).
      *
-     * @return array{description:string,quantity:int,unit_price:float,total:float,product_id:?int,config_options:?array}
+     * @return array{description:string,quantity:int,unit_price:float,total:float,product_id:?int,order_item_id:int,config_options:?array}
      */
     private function linePayload(OrderItem $item, string $fallbackCycle): array
     {
@@ -495,10 +597,192 @@ class BillingService
             'unit_price' => (float) $item->unit_price,
             'total' => (float) $item->total,
             'product_id' => $item->product_id,
+            // The order line this invoice bills; the schedule rewind and the
+            // paid-invoice advance both resolve lines back through it.
+            'order_item_id' => (int) $item->id,
             // The configuration travels with the line, so the invoice can
             // show the RAM / storage / support it is charging for.
             'config_options' => $item->config_options,
         ];
+    }
+
+    /**
+     * Create an invoice that bills the next recurring period of the given
+     * order lines, and consume that period in the generation pointer.
+     *
+     * The invoice and the pointer advance are one unit of money-truth: they
+     * are committed together, so a crash can never leave an issued invoice
+     * whose service is still due — which would bill the same period again on
+     * the next renewal run.
+     *
+     * @param  array<int, array>  $items  Line payloads; each carries the
+     *                                    'order_item_id' it bills.
+     * @param  array<string, mixed>  $invoiceData  The invoice header.
+     */
+    private function createPeriodInvoice(Order $order, array $items, array $invoiceData, ?string $customerStateCode): Invoice
+    {
+        $periods = $this->periodsFor($order, $items);
+
+        $items = array_map(static function (array $item) use ($periods): array {
+            $period = $periods[(int) ($item['order_item_id'] ?? 0)] ?? null;
+
+            if ($period === null) {
+                return $item;
+            }
+
+            return array_merge($item, [
+                'billed_due_date' => $period['start'],
+                'billed_cycle_months' => $period['months'],
+            ]);
+        }, $items);
+
+        return DB::transaction(function () use ($order, $items, $invoiceData, $customerStateCode, $periods): Invoice {
+            $invoice = $this->createWithItems($invoiceData, $items, $customerStateCode);
+
+            foreach ($periods as $orderItemId => $period) {
+                $this->consumeBilledPeriod($order, (int) $orderItemId, $period);
+            }
+
+            $order->refresh();
+
+            $this->syncOrderSummary($order);
+
+            return $invoice;
+        });
+    }
+
+    /**
+     * The billing period each line of a manual invoice bills, keyed by the
+     * order line it bills.
+     *
+     * Only a live-recurring item has a period: one that still has a
+     * generation date (its schedule has not ended) and a cycle longer than
+     * zero months. Every other item — a pending order's line, a one-time
+     * charge, an add-on whose schedule ended — is billed without a period
+     * and moves no pointer.
+     *
+     * @param  array<int, array>  $items
+     * @return array<int, array{start:string,months:int}>
+     */
+    private function periodsFor(Order $order, array $items): array
+    {
+        $periods = [];
+
+        foreach ($items as $item) {
+            $orderItemId = (int) ($item['order_item_id'] ?? 0);
+
+            if ($orderItemId <= 0 || isset($periods[$orderItemId])) {
+                continue;
+            }
+
+            $orderItem = $order->items()->whereKey($orderItemId)->first();
+
+            if ($orderItem === null) {
+                continue;
+            }
+
+            $period = $this->nextPeriodFor($order, $orderItem);
+
+            if ($period !== null) {
+                $periods[$orderItemId] = $period;
+            }
+        }
+
+        return $periods;
+    }
+
+    /**
+     * The period a live-recurring item's next invoice covers: the item's own
+     * generation date and the cycle that period advances by.
+     *
+     * @return array{start:string,months:int}|null Null when the item does not
+     *                                             renew (no schedule, or a
+     *                                             one-time cycle).
+     */
+    private function nextPeriodFor(Order $order, OrderItem $item): ?array
+    {
+        if ($item->next_invoice_date === null) {
+            return null;
+        }
+
+        $months = Order::CYCLE_MONTHS[$item->billing_cycle ?? $order->billing_cycle] ?? 1;
+
+        if ($months <= 0) {
+            return null;
+        }
+
+        return [
+            'start' => $item->next_invoice_date->toDateString(),
+            'months' => $months,
+        ];
+    }
+
+    /**
+     * Move a billed item's generation pointer past the period it billed.
+     *
+     * The pointer advances from the period's own start by the item's own
+     * cycle, so raising the invoice late never drifts the billing
+     * anniversary. The pay-by date (next_billing_date) is NOT touched here:
+     * it moves when the money arrives, through advanceBillingSchedule().
+     *
+     * The cycle counter follows the pointer, because the period is consumed:
+     * a void hands it back (rewindBillingSchedule), so the two must move
+     * together. The advance is max-style — a pointer that already moved
+     * further on is never pulled back, so raising the same period twice can
+     * never rewind a schedule.
+     *
+     * @param  array{start:string,months:int}  $period
+     */
+    private function consumeBilledPeriod(Order $order, int $orderItemId, array $period): void
+    {
+        $item = $order->items()->whereKey($orderItemId)->first();
+
+        if ($item === null) {
+            return;
+        }
+
+        $advancedTo = CarbonImmutable::parse($period['start'])->addMonths($period['months'])->toDateString();
+        $current = $item->next_invoice_date?->toDateString();
+
+        $next = $current === null ? $advancedTo : max($current, $advancedTo);
+
+        if ($next === $current) {
+            return;
+        }
+
+        $item->update([
+            'next_invoice_date' => $next,
+            'billing_cycles_count' => $item->billing_cycles_count !== null
+                ? (int) $item->billing_cycles_count + 1
+                : null,
+        ]);
+    }
+
+    /**
+     * The period an add-on charge invoice bills: the add-on's FIRST period.
+     *
+     * The add-on's schedule is seeded at attach to the start of the period
+     * AFTER the one the charge bills (today + cycle), so the billed period
+     * started one cycle earlier — at the attach itself. A one-time add-on
+     * has no period at all.
+     *
+     * @return array{start:string,months:int}|null
+     */
+    private function addonFirstPeriod(OrderItem $addonItem): ?array
+    {
+        $months = Order::CYCLE_MONTHS[$addonItem->billing_cycle] ?? 1;
+
+        if ($months <= 0) {
+            return null;
+        }
+
+        $scheduleStart = $addonItem->next_invoice_date ?? $addonItem->next_billing_date;
+
+        $start = $scheduleStart !== null
+            ? CarbonImmutable::parse($scheduleStart)->subMonths($months)->toDateString()
+            : CarbonImmutable::today('Asia/Kolkata')->toDateString();
+
+        return ['start' => $start, 'months' => $months];
     }
 
     /**
@@ -706,26 +990,38 @@ class BillingService
      *
      * WHMCS-style per-service billing: an order is a one-time transaction, and
      * each order item (the purchased product/service) renews on its OWN
-     * billing cycle with its own amount and next-due date. The renewal pass:
+     * billing cycle with its own amount and next-due date.
      *
-     *  - fetches active orders whose summary next_billing_date is due — where
+     * Two pointers drive each service. `next_invoice_date` is the date the next
+     * invoice is generated for: it advances here, at generation, so the same
+     * period is never billed twice. `next_billing_date` is the date the
+     * customer must pay by: it does NOT move here — only a settled invoice
+     * advances it (see advanceBillingSchedule), so an unpaid period never reads
+     * as collected.
+     *
+     * The renewal pass:
+     *
+     *  - fetches active orders whose summary next_invoice_date is due — where
      *    "due" means on or before today + the `renewal_invoice_days` window,
      *    boundary inclusive (0 = on the due date, the historical behaviour;
      *    up to 90 days early);
      *  - within each order, bills ONLY the items that are actually due (item
-     *    cycle consumes months, item next_billing_date <= today + window, not
-     *    already billed within its current cycle, total > 0, and the item's
-     *    recurring-cycles limit is not exhausted) —
+     *    cycle consumes months, item next_invoice_date <= today + window, no
+     *    open invoice for the same period, not already billed within its
+     *    current cycle, total > 0, and the item's recurring-cycles limit is
+     *    not exhausted) —
      *    one invoice per order with one line per due item; a due item with
      *    total <= 0 is never invoiced but still advances on its own schedule;
-     *  - issues the invoice due on the EARLIEST due item's own next_billing_date
+     *  - issues the invoice due on the EARLIEST due item's own next_invoice_date
      *    (not today + 7), so generating early does not shift the due date;
-     *  - advances each billed item's next_billing_date by ITS cycle months FROM
+     *  - advances each billed item's next_invoice_date by ITS cycle months FROM
      *    ITS OWN due date (not from the run date) and bumps its
      *    billing_cycles_count, so an early-generation window never drifts the
-     *    billing anniversary;
-     *  - recomputes the order-level next_billing_date as the earliest
-     *    remaining item date (null when no item is still recurring);
+     *    billing anniversary; next_billing_date stays where it is until the
+     *    invoice is paid;
+     *  - recomputes the order summary: next_invoice_date as the earliest
+     *    remaining item invoice date and next_billing_date as the earliest
+     *    item pay-by date (null when no item is still recurring);
      *  - commits the invoice and the schedule advance in ONE transaction, so a
      *    crash can never leave an issued renewal invoice whose items are still
      *    due — which would bill the same period again on the next run;
@@ -742,7 +1038,7 @@ class BillingService
      *    back the invoice, alters its status, rewinds the schedule, or aborts
      *    the run.
      *
-     * A null item next_billing_date means "intentionally ended" (cancelled
+     * A null item next_invoice_date means "intentionally ended" (cancelled
      * add-on, exhausted cycle limit, elapsed fixed term) — such items are
      * never re-armed from the order summary. Only legacy items (created before
      * the per-item billing columns, billing_cycles_count NULL) fall back to
@@ -750,8 +1046,9 @@ class BillingService
      *
      * Legacy items created before the per-item billing columns existed have
      * NULL billing state and fall back to the order's billing_cycle and
-     * next_billing_date (preserving the old order-level behaviour); once
-     * billed they adopt their own schedule.
+     * next_invoice_date (its next_billing_date when that is null too),
+     * preserving the old order-level behaviour; once billed they adopt their
+     * own schedule.
      *
      * @param  DateTimeInterface|null  $asOf  Reference date (defaults to today,
      *                                        Asia/Kolkata); the generation window
@@ -772,8 +1069,8 @@ class BillingService
 
         $orders = Order::query()
             ->where('status', 'active')
-            ->whereNotNull('next_billing_date')
-            ->whereDate('next_billing_date', '<=', $windowEnd->toDateString())
+            ->whereNotNull('next_invoice_date')
+            ->whereDate('next_invoice_date', '<=', $windowEnd->toDateString())
             ->with(['items.product', 'product', 'customer'])
             ->get();
 
@@ -795,14 +1092,18 @@ class BillingService
                         continue;
                     }
 
-                    // The item's own due date; legacy items (created before the
-                    // per-item billing columns, counter NULL) fall back to the
-                    // order's summary date. A null date on a NON-legacy item
-                    // means the schedule was intentionally ended (cancel /
-                    // cycle limit / fixed term) — never re-arm it from the
-                    // order summary, or a cancelled add-on gets re-billed.
-                    $dueDate = $item->next_billing_date
-                        ?? ($item->billing_cycles_count === null ? $order->next_billing_date : null);
+                    // The item's own generation date; legacy items (created
+                    // before the per-item billing columns, counter NULL) fall
+                    // back to the order's summary date, which on a legacy row
+                    // may only ever have had next_billing_date. A null date on
+                    // a NON-legacy item means the schedule was intentionally
+                    // ended (cancel / cycle limit / fixed term) — never re-arm
+                    // it from the order summary, or a cancelled add-on gets
+                    // re-billed.
+                    $dueDate = $item->next_invoice_date
+                        ?? ($item->billing_cycles_count === null
+                            ? ($order->next_invoice_date ?? $order->next_billing_date)
+                            : null);
 
                     // Date-string comparison: a date-cast value is stored with a
                     // time component on SQLite, and a timezone-aware Carbon
@@ -810,6 +1111,28 @@ class BillingService
                     // strings makes "due exactly N days early" inclusive on
                     // every driver.
                     if ($dueDate === null || CarbonImmutable::parse($dueDate)->toDateString() > $windowEnd->toDateString()) {
+                        continue;
+                    }
+
+                    // Duplicate-billing net: a period that already has an open
+                    // invoice must not be billed again, whatever re-armed the
+                    // item's pointer. The invoice line records the period it
+                    // bills in billed_due_date, and — for lines created since
+                    // lines carry their own order_item_id — which line it belongs
+                    // to. A legacy line carries no order_item_id, so it still
+                    // answers for the whole order on that date; a linked line only
+                    // blocks its own item.
+                    $periodDue = CarbonImmutable::parse($dueDate)->toDateString();
+                    $periodAlreadyOpen = $order->invoices()
+                        ->whereIn('status', [Invoice::STATUS_SENT, Invoice::STATUS_OVERDUE, Invoice::STATUS_PARTIAL])
+                        ->whereHas('items', fn ($query) => $query
+                            ->whereDate('billed_due_date', $periodDue)
+                            ->where(fn ($line) => $line
+                                ->where('order_item_id', $item->id)
+                                ->orWhereNull('order_item_id')))
+                        ->exists();
+
+                    if ($periodAlreadyOpen) {
                         continue;
                     }
 
@@ -845,7 +1168,7 @@ class BillingService
                             : (int) $item->billing_cycles_count;
 
                         if ($cyclesBilled >= $cycleLimit) {
-                            $item->update(['next_billing_date' => null]);
+                            $item->update(['next_invoice_date' => null]);
 
                             continue;
                         }
@@ -874,8 +1197,10 @@ class BillingService
                 // invoice and without an error.
                 foreach ($zeroDueItems as $due) {
                     $item = $due['item'];
+                    $advancedTo = CarbonImmutable::parse($due['advanceFrom'])->addMonths($due['cycleMonths'])->toDateString();
                     $item->update([
-                        'next_billing_date' => CarbonImmutable::parse($due['advanceFrom'])->addMonths($due['cycleMonths'])->toDateString(),
+                        'next_billing_date' => $advancedTo,
+                        'next_invoice_date' => $advancedTo,
                         'last_billing_date' => $today->toDateString(),
                         'billing_cycles_count' => $item->billing_cycles_count !== null
                             ? (int) $item->billing_cycles_count + 1
@@ -901,6 +1226,9 @@ class BillingService
                     // The product link drives per-product GST; without it a
                     // per_product-mode line would silently bill tax-free.
                     'product_id' => $due['item']->product_id,
+                    // The order line this period bills — the rewind and the
+                    // paid-invoice advance resolve the item through it.
+                    'order_item_id' => (int) $due['item']->id,
                     // The period this line bills, and the cycle the advance
                     // applies — what a void has to give back.
                     'billed_due_date' => CarbonImmutable::parse($due['dueDate'])->toDateString(),
@@ -952,7 +1280,7 @@ class BillingService
                     foreach ($dueItems as $due) {
                         $item = $due['item'];
                         $item->update([
-                            'next_billing_date' => CarbonImmutable::parse($due['dueDate'])->addMonths($due['cycleMonths'])->toDateString(),
+                            'next_invoice_date' => CarbonImmutable::parse($due['dueDate'])->addMonths($due['cycleMonths'])->toDateString(),
                             'last_billing_date' => $today->toDateString(),
                             'billing_cycles_count' => $item->billing_cycles_count !== null
                                 ? (int) $item->billing_cycles_count + 1
@@ -1016,16 +1344,89 @@ class BillingService
     }
 
     /**
+     * Advance each billed order line to the period its paid invoice covers.
+     *
+     * Generation moves only `next_invoice_date`; `next_billing_date` is the
+     * pay-by date and must not move until the money arrives. This is where it
+     * moves: for every line of a fully settled invoice the item's pay-by date
+     * becomes max(current, billed_due_date + cycle), so a webhook retry or a
+     * double settle cannot advance the schedule twice. When the item's
+     * next_invoice_date is null the schedule has ended (cycle limit, fixed
+     * term, cancellation), and its pay-by date is cleared with it.
+     *
+     * Lines resolve to items by order_item_id; only legacy rows without one
+     * fall back to the product_id + date heuristic. Idempotent.
+     *
+     * @return array<int, array{order_item_id:int, advanced_to:string}> The order lines advanced.
+     */
+    public function advanceBillingSchedule(Invoice $invoice): array
+    {
+        if ($invoice->order_id === null || ! $invoice->isFullyPaid()) {
+            return [];
+        }
+
+        if (in_array($invoice->status, [Invoice::STATUS_VOID, Invoice::STATUS_CANCELLED, Invoice::STATUS_REFUNDED], true)) {
+            return [];
+        }
+
+        $order = Order::find($invoice->order_id);
+
+        if ($order === null) {
+            return [];
+        }
+
+        $advanced = [];
+
+        DB::transaction(function () use ($invoice, $order, &$advanced) {
+            foreach ($invoice->items()->get() as $line) {
+                if ($line->billed_due_date === null || $line->billed_cycle_months === null) {
+                    continue;
+                }
+
+                $billedDue = $line->billed_due_date->toDateString();
+                $advancedTo = CarbonImmutable::parse($billedDue)->addMonths((int) $line->billed_cycle_months)->toDateString();
+
+                $item = $this->resolveBilledOrderItem($order, $line, [$billedDue, $advancedTo]);
+
+                if ($item === null) {
+                    continue;
+                }
+
+                $currentDueDate = $item->next_billing_date?->toDateString();
+
+                // A null generation pointer means the schedule ended; the
+                // pay-by date ends with it rather than chasing a dead clock.
+                $newDueDate = $item->next_invoice_date === null
+                    ? null
+                    : ($currentDueDate === null ? $advancedTo : max($currentDueDate, $advancedTo));
+
+                if ($newDueDate === $currentDueDate) {
+                    continue;
+                }
+
+                $item->update(['next_billing_date' => $newDueDate]);
+
+                $advanced[] = ['order_item_id' => (int) $item->id, 'advanced_to' => $advancedTo];
+            }
+
+            $this->syncOrderSummary($order);
+        });
+
+        return $advanced;
+    }
+
+    /**
      * Give a billing period back when the invoice that billed it dies.
      *
-     * The renewal engine issues an invoice and advances the service's next
-     * billing date in the same transaction, so a voided or cancelled renewal
-     * invoice must hand the period back — otherwise the service silently
-     * stops billing for it until the next cycle.
+     * Generation advanced the item's next_invoice_date and, once the invoice
+     * was paid, advanceBillingSchedule moved its next_billing_date. A voided or
+     * cancelled invoice must hand the period back on both pointers — otherwise
+     * the service silently stops billing for it until the next cycle.
      *
-     * Only the period the line itself billed is restored, and only while the
-     * schedule still sits where that advance put it: a line that has since
-     * been billed again is left alone.
+     * next_invoice_date returns to the billed period; next_billing_date goes
+     * back to it only if it had already been advanced past it (min()), so
+     * voiding an unpaid renewal only re-arms the generation pointer. A line
+     * that has since been billed again is left alone.
      *
      * @return array<int, array{order_item_id:int, restored_to:string}> The order lines rewound.
      */
@@ -1045,24 +1446,32 @@ class BillingService
 
         DB::transaction(function () use ($invoice, $order, &$restored) {
             foreach ($invoice->items()->get() as $line) {
-                if ($line->billed_due_date === null || $line->billed_cycle_months === null || $line->product_id === null) {
+                if ($line->billed_due_date === null || $line->billed_cycle_months === null) {
                     continue;
                 }
 
                 $billedDue = $line->billed_due_date->toDateString();
                 $advancedTo = CarbonImmutable::parse($billedDue)->addMonths((int) $line->billed_cycle_months)->toDateString();
 
-                $item = $order->items()
-                    ->where('product_id', $line->product_id)
-                    ->get()
-                    ->first(fn ($candidate) => $candidate->next_billing_date?->toDateString() === $advancedTo);
+                $item = $this->resolveBilledOrderItem($order, $line, [$advancedTo, $billedDue]);
 
                 if ($item === null) {
                     continue;
                 }
 
+                // The period must still be the item's current one: a service
+                // billed again since then keeps the newer schedule.
+                $currentInvoiceDate = $item->next_invoice_date?->toDateString();
+
+                if ($currentInvoiceDate !== null && $currentInvoiceDate !== $advancedTo) {
+                    continue;
+                }
+
+                $currentDueDate = $item->next_billing_date?->toDateString();
+
                 $item->update([
-                    'next_billing_date' => $billedDue,
+                    'next_invoice_date' => $billedDue,
+                    'next_billing_date' => $currentDueDate === null ? $billedDue : min($currentDueDate, $billedDue),
                     'last_billing_date' => null,
                     'billing_cycles_count' => $item->billing_cycles_count !== null
                         ? max(0, (int) $item->billing_cycles_count - 1)
@@ -1079,24 +1488,71 @@ class BillingService
     }
 
     /**
+     * The order item an invoice line bills: by order_item_id when recorded,
+     * else the historical product_id + next_billing_date heuristic for lines
+     * created before the column existed.
+     *
+     * @param  array<int, string>  $acceptableDates  next_billing_date values the
+     *                                               legacy match may carry.
+     */
+    private function resolveBilledOrderItem(Order $order, InvoiceItem $line, array $acceptableDates): ?OrderItem
+    {
+        if ($line->order_item_id !== null) {
+            $item = $order->items()->whereKey($line->order_item_id)->first();
+
+            if ($item !== null) {
+                return $item;
+            }
+        }
+
+        if ($line->product_id === null) {
+            return null;
+        }
+
+        return $order->items()
+            ->where('product_id', $line->product_id)
+            ->get()
+            ->first(fn (OrderItem $candidate) => in_array($candidate->next_billing_date?->toDateString(), $acceptableDates, true));
+    }
+
+    /**
      * Keep the order-level billing summary in sync with its items: the order's
-     * next_billing_date is the earliest item next date (null when no item is
-     * still recurring), and last_billing_date records the most recent billing.
+     * next_billing_date is the earliest item pay-by date and its
+     * next_invoice_date the earliest item generation date (null when no item
+     * is still recurring), and last_billing_date records the most recent
+     * billing.
+     *
+     * An order WITHOUT items is the exception: it carries its own schedule
+     * (activation seeds it for legacy order-level orders — OrderService
+     * ::transition), and there is no item to derive a summary from. Writing
+     * null over it would wipe a schedule that is still live, so its
+     * next_billing_date / next_invoice_date are left untouched; only
+     * last_billing_date is applied.
      */
     public function syncOrderSummary(Order $order, ?string $lastBillingDate = null): void
     {
-        $nextDates = $order->items()
-            ->whereNotNull('next_billing_date')
-            ->pluck('next_billing_date');
+        $items = $order->items()->get();
 
-        $attributes = [
-            'next_billing_date' => $nextDates->isNotEmpty()
-                ? $nextDates->min()->format('Y-m-d')
-                : null,
-        ];
+        $attributes = [];
+
+        if ($items->isNotEmpty()) {
+            $nextBillingDates = $items->whereNotNull('next_billing_date')->pluck('next_billing_date');
+            $nextInvoiceDates = $items->whereNotNull('next_invoice_date')->pluck('next_invoice_date');
+
+            $attributes['next_billing_date'] = $nextBillingDates->isNotEmpty()
+                ? $nextBillingDates->min()->format('Y-m-d')
+                : null;
+            $attributes['next_invoice_date'] = $nextInvoiceDates->isNotEmpty()
+                ? $nextInvoiceDates->min()->format('Y-m-d')
+                : null;
+        }
 
         if ($lastBillingDate !== null) {
             $attributes['last_billing_date'] = $lastBillingDate;
+        }
+
+        if ($attributes === []) {
+            return;
         }
 
         $order->update($attributes);
@@ -1149,8 +1605,8 @@ class BillingService
      * order's activation — the earliest order_status_history row that moved
      * the order to 'active' (all services on the order activate together).
      *
-     * When an item's term elapses, THAT item's recurring billing ends (its
-     * next_billing_date is cleared — the same end-state the recurring-cycles
+     * When an item's term elapses, THAT item's recurring billing ends (both
+     * pointer columns are cleared — the same end-state the recurring-cycles
      * limit produces), independent of its siblings. The order itself is
      * terminated through the guarded state machine only when nothing remains
      * on a recurring schedule — i.e. single-service orders (and orders whose
@@ -1204,7 +1660,7 @@ class BillingService
                     };
 
                     if ($termEnd->startOfDay()->lte($today)) {
-                        $item->update(['next_billing_date' => null]);
+                        $item->update(['next_billing_date' => null, 'next_invoice_date' => null]);
                         $endedItem = true;
                     }
                 }

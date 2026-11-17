@@ -14,7 +14,9 @@ use App\Models\Server;
 use App\Models\ServiceInstance;
 use App\Models\User;
 use App\Modules\HyperV\HyperV;
+use App\Services\Integrations\IntegrationRegistry;
 use App\Services\Provisioning\HypervTemplateCatalog;
+use App\Services\Provisioning\ManualProvisioner;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
@@ -33,6 +35,7 @@ class ProductHypervTemplateRestrictionTest extends TestCase
         }
         $role->permissions()->sync($ids);
         $user->assignRole('admin');
+
         return $user;
     }
 
@@ -67,6 +70,7 @@ class ProductHypervTemplateRestrictionTest extends TestCase
             'provisioning_mode' => ProductModule::PROVISIONING_MODE_MANUAL,
             'config' => $config,
         ]);
+
         return $product;
     }
 
@@ -111,6 +115,7 @@ class ProductHypervTemplateRestrictionTest extends TestCase
             if (str_contains($body, 'Get-VM')) {
                 return Http::response(['exists' => false]);
             }
+
             return Http::response(['error' => 'unexpected'], 500);
         };
     }
@@ -128,7 +133,7 @@ class ProductHypervTemplateRestrictionTest extends TestCase
             ->assertRedirect(route('admin.products.edit', [$product, 'tab' => 'modules']));
 
         $pivot = ProductModule::where('product_id', $product->id)->where('module_slug', 'hyperv')->firstOrFail();
-        $dec = app(\App\Services\Integrations\IntegrationRegistry::class)->decryptConfigFor('hyperv', $pivot->config);
+        $dec = app(IntegrationRegistry::class)->decryptConfigFor('hyperv', $pivot->config);
         $this->assertSame(['gold-win01'], $dec['allowed_templates']);
         $this->assertSame(2, $dec['cpu']);
         $this->assertSame(2048, $dec['ram']);
@@ -159,14 +164,14 @@ class ProductHypervTemplateRestrictionTest extends TestCase
         $srv = $this->hypervServer(['template_vms' => ['gold-win01']]);
         $product = $this->productWithHypervLink(['cpu' => 2, 'ram' => 2048, 'disk' => 50, 'switch' => 'Default Switch', 'generation' => 2, 'delete_vhd_on_terminate' => true, 'allowed_templates' => ['gold-win01']]);
         // ensure union contains gold-win01
-        $this->assertArrayHasKey('allowed_templates', app(\App\Services\Integrations\IntegrationRegistry::class)->decryptConfigFor('hyperv', ProductModule::where('product_id', $product->id)->where('module_slug', 'hyperv')->firstOrFail()->config));
+        $this->assertArrayHasKey('allowed_templates', app(IntegrationRegistry::class)->decryptConfigFor('hyperv', ProductModule::where('product_id', $product->id)->where('module_slug', 'hyperv')->firstOrFail()->config));
 
         $this->actingAs($this->adminWith(['products.edit']))
             ->put(route('admin.products.modules.templates', [$product, 'hyperv']), ['allowed_templates' => []])
             ->assertRedirect();
 
         $pivot = ProductModule::where('product_id', $product->id)->where('module_slug', 'hyperv')->firstOrFail();
-        $dec = app(\App\Services\Integrations\IntegrationRegistry::class)->decryptConfigFor('hyperv', $pivot->config);
+        $dec = app(IntegrationRegistry::class)->decryptConfigFor('hyperv', $pivot->config);
         $this->assertArrayNotHasKey('allowed_templates', $dec);
         $this->assertSame(2, $dec['cpu']);
         $this->assertSame('Default Switch', $dec['switch']);
@@ -240,7 +245,7 @@ class ProductHypervTemplateRestrictionTest extends TestCase
         $product = $this->productWithHypervLink(['cpu' => 2, 'ram' => 2048, 'disk' => 50, 'switch' => 'Default Switch', 'generation' => 2, 'allowed_templates' => ['gold-win01']]);
         $account = HostingAccount::create(['customer_id' => $this->customer()->id, 'product_id' => $product->id, 'server_id' => $server->id, 'status' => 'pending', 'host_name' => 'testvm1']);
         Http::fake();
-        $result = app(\App\Services\Provisioning\ManualProvisioner::class)->provision($account, 'hyperv', 'other-tpl');
+        $result = app(ManualProvisioner::class)->provision($account, 'hyperv', 'other-tpl');
         $this->assertFalse($result->success);
         Http::assertNothingSent();
     }
@@ -252,9 +257,11 @@ class ProductHypervTemplateRestrictionTest extends TestCase
         $product = $this->productWithHypervLink(['cpu' => 2, 'ram' => 2048, 'disk' => 50, 'switch' => 'Default Switch', 'generation' => 2, 'allowed_templates' => ['gold-win01']]);
         $account = HostingAccount::create(['customer_id' => $this->customer()->id, 'product_id' => $product->id, 'server_id' => $server->id, 'status' => 'pending', 'host_name' => 'testvm1']);
         Http::fake($this->fakeCloneSuccess('gold-win01'));
-        $result = app(\App\Services\Provisioning\ManualProvisioner::class)->provision($account, 'hyperv', 'gold-win01');
+        $result = app(ManualProvisioner::class)->provision($account, 'hyperv', 'gold-win01');
         $this->assertTrue($result->success);
-        Http::assertSent(function ($req) { return str_contains((string) $req->body(), 'Copy-Item'); });
+        Http::assertSent(function ($req) {
+            return str_contains((string) $req->body(), 'Copy-Item');
+        });
     }
 
     public function test_manual_provisioner_fails_when_restriction_excludes_all_curated(): void
@@ -265,7 +272,7 @@ class ProductHypervTemplateRestrictionTest extends TestCase
         $product = $this->productWithHypervLink(['cpu' => 2, 'ram' => 2048, 'disk' => 50, 'switch' => 'Default Switch', 'generation' => 2, 'allowed_templates' => ['third-tpl']]);
         $account = HostingAccount::create(['customer_id' => $this->customer()->id, 'product_id' => $product->id, 'server_id' => $server->id, 'status' => 'pending', 'host_name' => 'testvm1']);
         Http::fake();
-        $result = app(\App\Services\Provisioning\ManualProvisioner::class)->provision($account, 'hyperv', null);
+        $result = app(ManualProvisioner::class)->provision($account, 'hyperv', null);
         $this->assertFalse($result->success);
         $this->assertStringContainsString('no template is allowed for this product', strtolower($result->message));
         Http::assertNothingSent();
@@ -277,7 +284,7 @@ class ProductHypervTemplateRestrictionTest extends TestCase
         $product = $this->productWithHypervLink(['cpu' => 2, 'ram' => 2048, 'disk' => 50, 'switch' => 'Default Switch', 'generation' => 2]);
         $account = HostingAccount::create(['customer_id' => $this->customer()->id, 'product_id' => $product->id, 'server_id' => $server->id, 'status' => 'pending', 'host_name' => 'testvm1']);
         Http::fake($this->fakeCloneSuccess('other-tpl'));
-        $result = app(\App\Services\Provisioning\ManualProvisioner::class)->provision($account, 'hyperv', 'other-tpl');
+        $result = app(ManualProvisioner::class)->provision($account, 'hyperv', 'other-tpl');
         $this->assertTrue($result->success);
     }
 
@@ -343,11 +350,12 @@ class ProductHypervTemplateRestrictionTest extends TestCase
         $account = HostingAccount::create(['customer_id' => $customer->id, 'product_id' => $product->id, 'server_id' => $server->id, 'status' => 'pending', 'host_name' => 'host-client1']);
         $this->actingAs($custUser)->get(route('client.hosting.show', $account->id))->assertOk()->assertSee('Gold', false)->assertDontSee('Other', false);
 
-        // excludes everything
+        // excludes everything — the card names the reason instead of offering a
+        // template the plan does not allow.
         $product2 = $this->productWithHypervLink(['cpu' => 2, 'allowed_templates' => ['third-tpl']]);
         $this->hypervServer(['template_vms' => ['third-tpl']], 'hv-third-client');
         $account2 = HostingAccount::create(['customer_id' => $customer->id, 'product_id' => $product2->id, 'server_id' => $server->id, 'status' => 'pending', 'host_name' => 'host-client2']);
-        $this->actingAs($custUser)->get(route('client.hosting.show', $account2->id))->assertOk()->assertSee('This service has no template available', false)->assertDontSee('Provision VM', false);
+        $this->actingAs($custUser)->get(route('client.hosting.show', $account2->id))->assertOk()->assertSee('This template is not available for your plan', false)->assertDontSee('Provision VM', false);
     }
 
     // ── i. catalog sanity ──
@@ -367,7 +375,7 @@ class ProductHypervTemplateRestrictionTest extends TestCase
         $san = HypervTemplateCatalog::sanitizeAllowed([' a ', '', 'a', 'b', str_repeat('x', 70), 'b']);
         $this->assertSame(['a', 'b', str_repeat('x', 64)], $san);
         $this->assertCount(1, HypervTemplateCatalog::sanitizeAllowed(array_fill(0, 60, 'tpl')));
-        $many = array_map(fn($i) => "tpl-$i", range(0, 60));
+        $many = array_map(fn ($i) => "tpl-$i", range(0, 60));
         $this->assertCount(50, HypervTemplateCatalog::sanitizeAllowed($many));
     }
 }

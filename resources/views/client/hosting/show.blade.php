@@ -11,22 +11,97 @@
 @stop
 
 @section('content')
-    <div class="row">
-        <div class="col-lg-8">
+    <x-adminlte.partials.flash-alert />
+
+    <div class="row" style="row-gap: var(--space-4);">
+        <div class="col-lg-8 d-flex flex-column" style="gap: var(--space-4);">
             <x-adminlte-card icon="bi bi-hdd-stack" title="Account Details">
                 <table class="table table-sm table-borderless">
-                    <tr><th class="w-25 text-muted">Host name</th><td>{{ $account->host_name }}</td></tr>
-                    <tr><th class="text-muted">Product</th><td>{{ $account->product?->name ?? '—' }}</td></tr>
-                    <tr><th class="text-muted">Domain</th><td>{{ $account->domain ?? '—' }}</td></tr>
-                    <tr><th class="text-muted">Server</th><td>{{ $account->server?->name ?? '—' }}</td></tr>
-                    <tr>
-                        <th class="text-muted">Status</th>
-                        <td>
-                            <x-adminlte.partials.status-badge :status="$account->status" />
-                        </td>
-                    </tr>
+                    <tbody>
+                        <tr>
+                            <th scope="row" class="w-25 text-muted" style="white-space: nowrap;">Service</th>
+                            <td>#{{ $account->id }}</td>
+                        </tr>
+                        <tr>
+                            <th scope="row" class="text-muted" style="white-space: nowrap;">Host name</th>
+                            <td>{{ $account->host_name }}</td>
+                        </tr>
+                        <tr>
+                            <th scope="row" class="text-muted" style="white-space: nowrap;">Product</th>
+                            <td>{{ $account->product?->name ?? '—' }}</td>
+                        </tr>
+                        <tr>
+                            <th scope="row" class="text-muted" style="white-space: nowrap;">Domain</th>
+                            <td>
+                                @if ($domainModel ?? null)
+                                    <a href="{{ route('client.domains.show', $domainModel->id) }}">{{ $account->domain }}</a>
+                                @else
+                                    {{ $account->domain ?? '—' }}
+                                @endif
+                            </td>
+                        </tr>
+                        <tr>
+                            <th scope="row" class="text-muted" style="white-space: nowrap;">Server</th>
+                            <td>{{ $account->server?->name ?? '—' }}</td>
+                        </tr>
+                        <tr>
+                            <th scope="row" class="text-muted" style="white-space: nowrap;">Status</th>
+                            <td>
+                                <x-adminlte.partials.status-badge :status="$account->status" />
+                                @if ($account->server === null)
+                                    <div class="text-muted" style="font-size: var(--text-xs);">No dedicated server is assigned to this service.</div>
+                                @endif
+                                @if (filled($account->suspended_reason))
+                                    <div class="text-muted" style="font-size: var(--text-xs);">{{ $account->suspended_reason }}</div>
+                                @endif
+                            </td>
+                        </tr>
+                    </tbody>
                 </table>
             </x-adminlte-card>
+
+            {{-- The money trail: what this service costs and the documents
+                 behind it — the order it was bought on and the newest invoice
+                 raised on that order. --}}
+            @if ($billing !== null)
+                @php
+                    $cycleLabels = ['monthly' => 'Monthly', 'quarterly' => 'Quarterly', 'semi_annual' => 'Semi-Annual',
+                        'annual' => 'Annual', 'biennial' => 'Biennial', 'one_time' => 'One-Time'];
+                @endphp
+                <x-adminlte-card icon="bi bi-receipt" title="Billing">
+                    <table class="table table-sm table-borderless mb-0">
+                        <tr>
+                            <th class="text-muted">Amount</th>
+                            <td class="text-end"><strong><x-adminlte.partials.currency :value="$billing['amount'] ?? 0" /></strong></td>
+                        </tr>
+                        <tr>
+                            <th class="text-muted">Cycle</th>
+                            <td class="text-end">{{ $cycleLabels[$billing['cycle'] ?? ''] ?? ($billing['cycle'] ?? '—') }}</td>
+                        </tr>
+                        <tr>
+                            <th class="text-muted">Next Due</th>
+                            <td class="text-end">{{ $billing['next_billing_date']?->format('M j, Y') ?? '—' }}</td>
+                        </tr>
+                        @if ($account->order)
+                            <tr>
+                                <th class="text-muted">Order</th>
+                                <td class="text-end"><a href="{{ route('client.orders.show', $account->order) }}">{{ $account->order->order_no }}</a></td>
+                            </tr>
+                        @endif
+                        <tr>
+                            <th class="text-muted">Invoice</th>
+                            <td class="text-end">
+                                @if ($orderInvoice ?? null)
+                                    <a href="{{ route('client.invoices.show', $orderInvoice->id) }}">{{ $orderInvoice->invoice_no }}</a>
+                                    <x-adminlte.partials.status-badge :status="$orderInvoice->status" />
+                                @else
+                                    <span class="text-muted">—</span>
+                                @endif
+                            </td>
+                        </tr>
+                    </table>
+                </x-adminlte-card>
+            @endif
 
             {{-- Manual VM Provisioning (compute modules with curated templates) --}}
             @php
@@ -38,7 +113,9 @@
                 $clientTemplates = $provisionCard['templates'] ?? [];
                 $clientDefault = $provisionCard['default'] ?? null;
                 $clientCuratedCount = $provisionCard['curatedCount'] ?? 0;
-                $clientNoEffective = $provisionCard['noEffective'] ?? false;
+                // WHY the card has nothing to offer: 'ok', 'not-compute',
+                // 'no-server', 'no-template' or 'no-effective'.
+                $clientProvisionReason = (string) ($provisionCard['reason'] ?? 'not-compute');
             @endphp
             @php
                 // Frozen vm-status contract shared with the admin page (passed
@@ -83,6 +160,7 @@
                         <div class="progress" style="height: 8px; border-radius: var(--radius-md); background: var(--bs-tertiary-bg);">
                             <div id="client-vm-progress-bar" class="progress-bar progress-bar-striped progress-bar-animated"
                                  role="progressbar"
+                                 aria-labelledby="client-vm-progress-label"
                                  aria-valuenow="{{ $clientProgress }}" aria-valuemin="0" aria-valuemax="100"
                                  style="width: {{ $clientProgress }}%; background-color: var(--color-primary); transition: width var(--duration-base) var(--ease-default);"></div>
                         </div>
@@ -97,16 +175,28 @@
                     <div class="mb-2">
                         <span id="client-vm-state" class="badge text-bg-{{ $clientVmStateTheme }}" style="font-size: var(--text-xs); font-weight: 500;" title="Live VM state on the host">{{ $clientVmStateLabel }}</span>
                     </div>
-                    @if (empty($clientTemplates) && $clientNoEffective)
-                        <p class="text-muted mb-0">This service has no template available — contact support.</p>
-                    @elseif (empty($clientTemplates))
-                        <p class="text-muted mb-0">This service requires manual setup. Please contact support to provision your VM.</p>
+                    @if ($clientProvisionReason === 'no-template')
+                        <x-adminlte.partials.empty-state
+                            icon="bi bi-hdd"
+                            title="No template available yet"
+                            message="No template is available on your host yet — our team is setting it up."
+                            actionLabel="Contact support"
+                            :actionUrl="route('client.tickets.create')"
+                            size="sm" />
+                    @elseif ($clientProvisionReason === 'no-effective')
+                        <x-adminlte.partials.empty-state
+                            icon="bi bi-hdd"
+                            title="Template not available for your plan"
+                            message="This template is not available for your plan — contact support."
+                            actionLabel="Contact support"
+                            :actionUrl="route('client.tickets.create')"
+                            size="sm" />
                     @else
                         <form id="client-provision-form" method="POST" action="{{ route('client.hosting.provision', $account) }}">
                             @csrf
                             <div style="margin-bottom: 8px;">
-                                <label for="client-template-vm" class="form-label small mb-1">{{ $provisionTemplateLabel }}</label>
-                                <select id="client-template-vm" name="{{ $provisionTemplateKey }}" class="form-select form-select-sm" required aria-label="{{ $provisionTemplateLabel }}">
+                                <label for="client-template-vm" class="form-label small mb-1">{{ $provisionTemplateLabel }} <span class="text-danger" aria-hidden="true">*</span></label>
+                                <select id="client-template-vm" name="{{ $provisionTemplateKey }}" class="form-select form-select-sm" required aria-required="true" aria-label="{{ $provisionTemplateLabel }}">
                                     @foreach ($clientTemplates as $opt)
                                         @php
                                             $optId = is_array($opt) ? (string) ($opt['id'] ?? '') : (string) $opt;
@@ -115,7 +205,7 @@
                                         <option value="{{ $optId }}" @selected($optId === (string) $clientDefault)>{{ $optLabel }}</option>
                                     @endforeach
                                 </select>
-                                <div class="form-text small">{{ $provisionTemplateKey === 'template_vm' ? 'Template must be shut down (Off)' : 'The VM is cloned from this template' }}</div>
+                                <div class="form-text small">Pick the template to clone from — it must be powered off.</div>
                                 @error('template_vm')
                                     <div class="invalid-feedback d-block">{{ $message }}</div>
                                 @enderror
@@ -131,32 +221,9 @@
                 </x-adminlte-card>
             @endif
 
-            {{-- Module capability panels (cache-only, client-safe) --}}
-            @if (! empty($modulePanels))
-                @foreach ($modulePanels as $panel)
-                    <div class="mt-3">
-                        @include($panel['view'], $panel['data'])
-                    </div>
-                @endforeach
-            @endif
-
-            {{-- The features this service has, resolved by the controller from
-                 the order-time snapshot (or the product's option links for
-                 services predating it). Only options with an actual value
-                 appear — never the full list of values a group offers. --}}
-            @if ($configOptions !== [])
-                <x-adminlte-card icon="bi bi-sliders" title="Product Configuration">
-                    @include('partials._selected_options', [
-                        'entries' => $configOptions,
-                        'modifiersByLink' => [],
-                        'cycle' => $configCycle,
-                        'includeUnselected' => false,
-                    ])
-                </x-adminlte-card>
-            @endif
-        </div>
-
-        <div class="col-lg-4">
+            {{-- Quick actions for a compute service. Every other service gets a
+                 plain next step instead: a shared-hosting customer must never
+                 be offered VM controls they do not have. --}}
             @php
                 $clientCan = is_array(($vmStatus ?? null)['can'] ?? null) ? $vmStatus['can'] : [];
                 $clientReasons = is_array(($vmStatus ?? null)['reasons'] ?? null) ? $vmStatus['reasons'] : [];
@@ -182,6 +249,19 @@
                 if (! $clientPowerAllowed) {
                     $clientStartReason = $clientStopReason = $clientRestartReason = 'This service is not active.';
                 }
+                // WHY a control is disabled must be visible on the page, not
+                // only in a title attribute: the first disabled control in
+                // visual order carries the reason.
+                $clientActionReason = '';
+                foreach ([$clientStartReason, $clientStopReason, $clientRestartReason, $clientResetReason] as $clientControlReason) {
+                    if ($clientControlReason !== '') {
+                        $clientActionReason = $clientControlReason;
+                        break;
+                    }
+                }
+                if ($clientActionReason === '') {
+                    $clientActionReason = 'Every VM control is available for this service.';
+                }
                 $clientPowerAction = is_array(($vmStatus ?? null)['action'] ?? null) ? $vmStatus['action'] : null;
                 $clientPowerRunning = (bool) ($clientPowerAction['running'] ?? false);
                 $clientPowerProgress = max(0, min(100, (int) ($clientPowerAction['progress'] ?? 0)));
@@ -200,81 +280,6 @@
                 }
                 $clientShowReset = $isCompute || $clientCanReset;
             @endphp
-            <x-adminlte-card icon="bi bi-tools" title="Quick Actions">
-                @php
-                    // Upgrade/Downgrade: only for an active recurring order on a
-                    // product with enabled upgrade paths (mirrors the controller's
-                    // eligibility — the upgrade page itself 404s otherwise).
-                    $upgradeOrder = $account->order ?? null;
-                    $upgradeEligible = $upgradeOrder !== null
-                        && $upgradeOrder->status === \App\Models\Order::STATUS_ACTIVE
-                        && (\App\Models\Order::CYCLE_MONTHS[(string) $upgradeOrder->billing_cycle] ?? 0) > 0
-                        && (bool) \App\Support\AppSettings::get('product_enable_upgrades', '1')
-                        && $account->product !== null
-                        && $account->product->upgradeableTo()->whereHas('toProduct', fn ($q) => $q->where('status', 'active'))->exists();
-                @endphp
-                @if ($isCompute)
-                    {{-- Standalone progress panel for queued power/reset actions.
-                         The provisioning-card panel only exists while no VM is
-                         on the host, so queued verbs need a home that is always
-                         present for a compute service. Same markup as the card
-                         panel; driven by the same poller below. --}}
-                    <div id="client-action-progress" class="{{ $clientPowerRunning ? '' : 'd-none' }}"
-                         style="border: 1px solid var(--bs-border-color); border-radius: var(--radius-md); padding: var(--space-2) var(--space-3); margin-bottom: var(--space-2); background: var(--bs-body-bg);">
-                        <div class="d-flex align-items-center justify-content-between gap-2 flex-wrap mb-1">
-                            <span id="client-action-progress-label" aria-live="polite" style="font-size: var(--text-sm); font-weight: 600;">{{ $clientPowerRunning ? $clientPowerStageLabel : 'Working…' }}</span>
-                            <span id="client-action-progress-elapsed" class="text-muted" style="font-size: var(--text-xs); font-variant-numeric: tabular-nums;">{{ $clientPowerElapsedFmt }}</span>
-                        </div>
-                        <div class="progress" style="height: 8px; border-radius: var(--radius-md); background: var(--bs-tertiary-bg);">
-                            <div id="client-action-progress-bar" class="progress-bar progress-bar-striped progress-bar-animated"
-                                 role="progressbar"
-                                 aria-valuenow="{{ $clientPowerProgress }}" aria-valuemin="0" aria-valuemax="100"
-                                 style="width: {{ $clientPowerProgress }}%; background-color: var(--color-primary); transition: width var(--duration-base) var(--ease-default);"></div>
-                        </div>
-                    </div>
-                    <div class="mb-2" style="font-size: var(--text-xs);">
-                        <span id="client-action-hint" class="text-muted" aria-live="polite">{{ $clientActionHint }}</span>
-                    </div>
-                @endif
-                @if (($clientVm['probe_error'] ?? '') !== '')
-                    <div class="d-flex align-items-center justify-content-between gap-2 mb-2" style="font-size: var(--text-xs);">
-                        <span class="text-muted">Host unreachable — {{ $clientVm['probe_error'] }}</span>
-                        <button type="button" id="client-retry-status" class="btn btn-sm btn-outline-secondary"><i class="bi bi-arrow-clockwise me-1"></i> Retry</button>
-                    </div>
-                @endif
-                @if ($isCompute)
-                    <button type="button" class="btn btn-outline-success w-100 mb-2" data-client-hv-action="start"
-                            @if(! $clientCanStart || $clientPowerRunning) disabled title="{{ $clientStartReason !== '' ? $clientStartReason : 'Start is not available right now.' }}" @endif
-                    ><i class="bi bi-play-circle me-1"></i> Start VM</button>
-                    <button type="button" class="btn btn-outline-warning w-100 mb-2" data-client-hv-action="stop"
-                            data-bs-toggle="modal" data-bs-target="#client-vm-stop-modal"
-                            @if(! $clientCanStop || $clientPowerRunning) disabled title="{{ $clientStopReason !== '' ? $clientStopReason : 'Stop is not available right now.' }}" @endif
-                    ><i class="bi bi-stop-circle me-1"></i> Stop VM</button>
-                    <button type="button" class="btn btn-outline-warning w-100 mb-2" data-client-hv-action="restart"
-                            data-bs-toggle="modal" data-bs-target="#client-vm-restart-modal"
-                            @if(! $clientCanRestart || $clientPowerRunning) disabled title="{{ $clientRestartReason !== '' ? $clientRestartReason : 'Restart is not available right now.' }}" @endif
-                    ><i class="bi bi-arrow-clockwise me-1"></i> Restart VM</button>
-                    {{-- Start posts directly (safe): no confirm needed, the form
-                         below only carries the action + CSRF for postForm(). --}}
-                    <form id="client-vm-start-form" method="POST" action="{{ route('client.hosting.vm-power', $account) }}" class="d-none" aria-hidden="true">
-                        @csrf
-                        <input type="hidden" name="action" value="start">
-                    </form>
-                @endif
-                @if ($clientShowReset)
-                    <button type="button" class="btn btn-outline-info w-100 mb-2" data-client-hv-action="reset_password"
-                            data-bs-toggle="modal" data-bs-target="#client-reset-password-modal"
-                            @if(! $clientCanReset || $clientPowerRunning) disabled title="{{ $clientResetReason !== '' ? $clientResetReason : 'Password reset is not available right now.' }}" @endif
-                    ><i class="bi bi-key me-1"></i> Reset Administrator password</button>
-                @elseif (! $isCompute)
-                    <button type="button" class="btn btn-outline-info w-100 mb-2" disabled aria-disabled="true" title="Coming soon"><i class="bi bi-key me-1" aria-hidden="true"></i> Change Password</button>
-                @endif
-                @if ($upgradeEligible)
-                    <a href="{{ route('client.hosting.upgrade', $upgradeOrder) }}" class="btn btn-outline-primary w-100">
-                        <i class="bi bi-arrow-up-circle me-1"></i> Upgrade/Downgrade
-                    </a>
-                @endif
-            </x-adminlte-card>
 
             @if ($clientShowReset)
                 <x-adminlte.partials.confirm-modal id="client-reset-password-modal" title="Reset Administrator password"
@@ -328,37 +333,136 @@
                 </x-adminlte.partials.confirm-modal>
             @endif
 
-            @if ($billing !== null)
-                @php
-                    $cycleLabels = ['monthly' => 'Monthly', 'quarterly' => 'Quarterly', 'semi_annual' => 'Semi-Annual',
-                        'annual' => 'Annual', 'biennial' => 'Biennial', 'one_time' => 'One-Time'];
-                @endphp
-                <x-adminlte-card icon="bi bi-receipt" title="Billing">
-                    <table class="table table-sm table-borderless mb-0">
-                        <tr>
-                            <th class="text-muted">Amount</th>
-                            <td class="text-end"><strong><x-adminlte.partials.currency :value="$billing['amount'] ?? 0" /></strong></td>
-                        </tr>
-                        <tr>
-                            <th class="text-muted">Cycle</th>
-                            <td class="text-end">{{ $cycleLabels[$billing['cycle'] ?? ''] ?? ($billing['cycle'] ?? '—') }}</td>
-                        </tr>
-                        <tr>
-                            <th class="text-muted">Next Due</th>
-                            <td class="text-end">{{ $billing['next_billing_date']?->format('M j, Y') ?? '—' }}</td>
-                        </tr>
-                        @if ($account->order)
-                            <tr>
-                                <th class="text-muted">Order</th>
-                                <td class="text-end">{{ $account->order->order_no }}</td>
-                            </tr>
-                        @endif
-                    </table>
-                </x-adminlte-card>
+            {{-- Module capability panels (cache-only, client-safe) --}}
+            @if (! empty($modulePanels))
+                @foreach ($modulePanels as $panel)
+                    <div>
+                        @include($panel['view'], $panel['data'])
+                    </div>
+                @endforeach
             @endif
 
-            @if ($account->ipAddresses->isNotEmpty())
-                <x-adminlte-card icon="bi bi-globe2" title="IP Addresses">
+            {{-- The features this service has, resolved by the controller from
+                 the order-time snapshot (or the product's option links for
+                 services predating it). Only options with an actual value
+                 appear — never the full list of values a group offers. --}}
+            @if ($configOptions !== [])
+                <x-adminlte-card icon="bi bi-sliders" title="Product Configuration">
+                    @include('partials._selected_options', [
+                        'entries' => $configOptions,
+                        'modifiersByLink' => [],
+                        'cycle' => $configCycle,
+                        'includeUnselected' => false,
+                    ])
+                </x-adminlte-card>
+            @endif
+        </div>
+
+        <div class="col-lg-4 d-flex flex-column" style="gap: var(--space-4);">
+            <x-adminlte-card icon="{{ $isCompute ? 'bi bi-tools' : 'bi bi-life-preserver' }}" title="{{ $isCompute ? 'Quick Actions' : 'Next steps' }}">
+                @php
+                    // Upgrade/Downgrade: only for an active recurring order on a
+                    // product with enabled upgrade paths (mirrors the controller's
+                    // eligibility — the upgrade page itself 404s otherwise).
+                    $upgradeOrder = $account->order ?? null;
+                    $upgradeEligible = $upgradeOrder !== null
+                        && $upgradeOrder->status === \App\Models\Order::STATUS_ACTIVE
+                        && (\App\Models\Order::CYCLE_MONTHS[(string) $upgradeOrder->billing_cycle] ?? 0) > 0
+                        && (bool) \App\Support\AppSettings::get('product_enable_upgrades', '1')
+                        && $account->product !== null
+                        && $account->product->upgradeableTo()->whereHas('toProduct', fn ($q) => $q->where('status', 'active'))->exists();
+                @endphp
+                @if ($isCompute)
+                    {{-- Standalone progress panel for queued power/reset actions.
+                         The provisioning-card panel only exists while no VM is
+                         on the host, so queued verbs need a home that is always
+                         present for a compute service. Same markup as the card
+                         panel; driven by the same poller below. --}}
+                    <div id="client-action-progress" class="{{ $clientPowerRunning ? '' : 'd-none' }}"
+                         style="border: 1px solid var(--bs-border-color); border-radius: var(--radius-md); padding: var(--space-2) var(--space-3); margin-bottom: var(--space-2); background: var(--bs-body-bg);">
+                        <div class="d-flex align-items-center justify-content-between gap-2 flex-wrap mb-1">
+                            <span id="client-action-progress-label" aria-live="polite" style="font-size: var(--text-sm); font-weight: 600;">{{ $clientPowerRunning ? $clientPowerStageLabel : 'Working…' }}</span>
+                            <span id="client-action-progress-elapsed" class="text-muted" style="font-size: var(--text-xs); font-variant-numeric: tabular-nums;">{{ $clientPowerElapsedFmt }}</span>
+                        </div>
+                        <div class="progress" style="height: 8px; border-radius: var(--radius-md); background: var(--bs-tertiary-bg);">
+                            <div id="client-action-progress-bar" class="progress-bar progress-bar-striped progress-bar-animated"
+                                 role="progressbar"
+                                 aria-labelledby="client-action-progress-label"
+                                 aria-valuenow="{{ $clientPowerProgress }}" aria-valuemin="0" aria-valuemax="100"
+                                 style="width: {{ $clientPowerProgress }}%; background-color: var(--color-primary); transition: width var(--duration-base) var(--ease-default);"></div>
+                        </div>
+                    </div>
+                    <div class="mb-2" style="font-size: var(--text-xs);">
+                        <span id="client-action-hint" class="text-muted" aria-live="polite">{{ $clientActionHint }}</span>
+                    </div>
+                    @if (($clientVm['probe_error'] ?? '') !== '')
+                        <div class="d-flex align-items-center justify-content-between gap-2 mb-2" style="font-size: var(--text-xs);">
+                            <span class="text-muted">Host unreachable — {{ $clientVm['probe_error'] }}</span>
+                            <button type="button" id="client-retry-status" class="btn btn-sm btn-outline-secondary"><i class="bi bi-arrow-clockwise me-1"></i> Retry</button>
+                        </div>
+                    @endif
+                    <button type="button" class="btn btn-outline-success w-100 mb-2" data-client-hv-action="start"
+                            aria-describedby="client-action-reason"
+                            @if(! $clientCanStart || $clientPowerRunning) disabled title="{{ $clientStartReason !== '' ? $clientStartReason : 'Start is not available right now.' }}" aria-disabled="true" @endif
+                    ><i class="bi bi-play-circle me-1" aria-hidden="true"></i> Start VM</button>
+                    <button type="button" class="btn btn-outline-warning w-100 mb-2" data-client-hv-action="stop"
+                            data-bs-toggle="modal" data-bs-target="#client-vm-stop-modal"
+                            aria-describedby="client-action-reason"
+                            @if(! $clientCanStop || $clientPowerRunning) disabled title="{{ $clientStopReason !== '' ? $clientStopReason : 'Stop is not available right now.' }}" aria-disabled="true" @endif
+                    ><i class="bi bi-stop-circle me-1" aria-hidden="true"></i> Stop VM</button>
+                    <button type="button" class="btn btn-outline-warning w-100 mb-2" data-client-hv-action="restart"
+                            data-bs-toggle="modal" data-bs-target="#client-vm-restart-modal"
+                            aria-describedby="client-action-reason"
+                            @if(! $clientCanRestart || $clientPowerRunning) disabled title="{{ $clientRestartReason !== '' ? $clientRestartReason : 'Restart is not available right now.' }}" aria-disabled="true" @endif
+                    ><i class="bi bi-arrow-clockwise me-1" aria-hidden="true"></i> Restart VM</button>
+                    {{-- Start posts directly (safe): no confirm needed, the form
+                         below only carries the action + CSRF for postForm(). --}}
+                    <form id="client-vm-start-form" method="POST" action="{{ route('client.hosting.vm-power', $account) }}" class="d-none" aria-hidden="true">
+                        @csrf
+                        <input type="hidden" name="action" value="start">
+                    </form>
+                    @if ($clientShowReset)
+                        <button type="button" class="btn btn-outline-info w-100 mb-2" data-client-hv-action="reset_password"
+                                data-bs-toggle="modal" data-bs-target="#client-reset-password-modal"
+                                aria-describedby="client-action-reason"
+                                @if(! $clientCanReset || $clientPowerRunning) disabled title="{{ $clientResetReason !== '' ? $clientResetReason : 'Password reset is not available right now.' }}" aria-disabled="true" @endif
+                        ><i class="bi bi-key me-1" aria-hidden="true"></i> Reset Administrator password</button>
+                    @endif
+                    {{-- The reason the controls are unavailable, stated on the
+                         page — a title attribute alone is never seen. --}}
+                    <div class="mb-2" style="font-size: var(--text-xs);">
+                        <span id="client-action-reason" class="text-muted">{{ $clientActionReason }}</span>
+                    </div>
+                @else
+                    @php
+                        // Readable, never an internal token.
+                        $clientStatusPhrase = [
+                            'active' => 'active',
+                            'suspended' => 'suspended',
+                            'pending' => 'being set up',
+                            'terminated' => 'no longer active',
+                            'cancelled' => 'cancelled',
+                        ][$account->status] ?? $account->status;
+                    @endphp
+                    @if ($clientProvisionReason === 'no-server')
+                        <p class="text-muted small mb-2">Your service is waiting for a server to be assigned. If you need to know when it will be ready, our team can check.</p>
+                    @else
+                        <p class="text-muted small mb-2">Your service is {{ $clientStatusPhrase }}. If something is not working, our team can take a look.</p>
+                    @endif
+                    <a href="{{ route('client.tickets.create') }}" class="btn btn-primary w-100">
+                        <i class="bi bi-life-preserver me-1" aria-hidden="true"></i> Contact support
+                    </a>
+                @endif
+                @if ($upgradeEligible)
+                    <a href="{{ route('client.hosting.upgrade', $upgradeOrder) }}" class="btn btn-outline-primary w-100">
+                        <i class="bi bi-arrow-up-circle me-1"></i> Upgrade/Downgrade
+                    </a>
+                @endif
+            </x-adminlte-card>
+            <x-adminlte-card icon="bi bi-globe2" title="IP Addresses">
+                @if ($account->ipAddresses->isEmpty())
+                    <p class="text-muted small mb-0">No IP addresses are assigned to this service yet.</p>
+                @else
                     <ul class="list-unstyled mb-0">
                         @foreach ($account->ipAddresses as $ip)
                             <li class="d-flex justify-content-between align-items-center py-1">
@@ -369,8 +473,8 @@
                             </li>
                         @endforeach
                     </ul>
-                </x-adminlte-card>
-            @endif
+                @endif
+            </x-adminlte-card>
         </div>
     </div>
 @stop

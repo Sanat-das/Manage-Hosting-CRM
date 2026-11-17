@@ -83,7 +83,7 @@ class UpgradeBillingBridgeTest extends TestCase
             'status' => 'active',
         ]);
 
-        $order = Order::create(array_merge([
+        $attributes = array_merge([
             'customer_id' => $customer->id,
             'product_id' => $from->id,
             'order_number' => 'ORD-'.date('Y').'-'.str_pad((string) random_int(1, 99999), 5, '0', STR_PAD_LEFT),
@@ -93,9 +93,15 @@ class UpgradeBillingBridgeTest extends TestCase
             'status' => Order::STATUS_ACTIVE,
             'next_billing_date' => '2026-02-15',
             'last_billing_date' => '2026-01-16',
-        ], $overrides));
+        ], $overrides);
 
-        OrderItem::create(array_merge([
+        // The engine reads the generation pointer; a live fixture seeds both
+        // pointers to the same date.
+        $attributes['next_invoice_date'] ??= $attributes['next_billing_date'] ?? null;
+
+        $order = Order::create($attributes);
+
+        $itemAttributes = array_merge([
             'order_id' => $order->id,
             'product_id' => $from->id,
             'product_name' => $from->name,
@@ -104,7 +110,11 @@ class UpgradeBillingBridgeTest extends TestCase
             'unit_price' => $unitPrice,
             'total' => $unitPrice,
             'next_billing_date' => $order->next_billing_date?->toDateString(),
-        ], $itemOverrides));
+        ], $itemOverrides);
+
+        $itemAttributes['next_invoice_date'] ??= $itemAttributes['next_billing_date'] ?? null;
+
+        OrderItem::create($itemAttributes);
 
         return $order;
     }

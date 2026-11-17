@@ -69,10 +69,12 @@ class ClientHostingPageTest extends TestCase
         $response->assertSee('Products/Services');
         $response->assertSee('Shared Hosting Basic');
         $response->assertSee('example.com');
-        // The shipped client listing has no Server column (Product / Domain /
-        // IP / Billing / Next Due / Status / Details); the row's Details
-        // action proves the account rendered.
         $response->assertSee('Details');
+        $response->assertSee('Server 1');
+        $response->assertSee('Next billing');
+        $response->assertSeeText('No domains yet.');
+        $response->assertSeeText('Domains you register or add appear here.');
+        $response->assertSeeText('No add-ons on your services yet.');
     }
 
     public function test_customer_with_no_hosting_sees_empty_state(): void
@@ -91,5 +93,33 @@ class ClientHostingPageTest extends TestCase
         // rather than a component prop escaped by Blade (ENT_QUOTES).
         $response->assertSeeText("You don't have any products or services yet.");
         $response->assertSee('Browse the Store');
+    }
+
+    public function test_a_shared_hosting_service_on_a_plain_server_shows_no_vm_surface(): void
+    {
+        $customer = $this->makeCustomerUser();
+        $product = $this->makeProduct('Shared Hosting Basic');
+        $server = $this->makeServer('Server 1');
+
+        $account = HostingAccount::create([
+            'customer_id' => $customer->id,
+            'product_id' => $product->id,
+            'server_id' => $server->id,
+            'username' => 'hostuser',
+            'domain' => 'example.com',
+            'status' => 'active',
+        ]);
+
+        $response = $this->actingAs($customer->user)
+            ->get(route('client.hosting.show', $account->id))
+            ->assertOk();
+
+        // The host is a plain shared server, not a compute host — the detail
+        // page must not offer VM controls the service cannot use.
+        $response->assertDontSee('Start VM');
+        $response->assertDontSee('Provision VM');
+        $response->assertDontSee('Reset Administrator password');
+        $response->assertSee('Next steps');
+        $response->assertSee('Contact support');
     }
 }

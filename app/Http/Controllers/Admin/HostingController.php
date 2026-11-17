@@ -287,8 +287,11 @@ class HostingController extends Controller
         // JSON on the order item matching this account's product. Null when the
         // account has no order / no matching item / no snapshot — the view then
         // falls back to the live product option links.
+        // Add-on lines carry the parent service's product_id, so only the
+        // service line itself may answer for this account's product.
         $packageSnapshot = $hostingAccount->order?->items
-            ->firstWhere('product_id', $hostingAccount->product_id)?->config_options
+            ->first(fn ($item) => $item->product_addon_id === null && (int) $item->product_id === (int) $hostingAccount->product_id)
+            ?->config_options
             ?? null;
 
         // Module data for the Info tab: every active module plus this account's
@@ -610,7 +613,8 @@ class HostingController extends Controller
             'assetKinds' => AssetRelationship::ASSET_KINDS,
             'relationshipTypes' => AssetRelationship::RELATIONSHIP_TYPES,
             'order' => $order,
-            'billingItem' => $order?->items()->where('product_id', $hostingAccount->product_id)->first(),
+            'billingItem' => $order?->items()->whereNull('product_addon_id')->where('product_id', $hostingAccount->product_id)->first()
+                ?? $order?->items()->whereNull('product_addon_id')->orderBy('id')->first(),
             'recurringAmount' => $recurringAmount,
         ]);
     }
@@ -1803,6 +1807,14 @@ class HostingController extends Controller
 
         $order = $hostingAccount->order;
 
+        // The recurring engine reads the ITEM's schedule, so its row is the one
+        // that may answer for the account — the same line the transaction writes.
+        $item = null;
+        if ($order !== null) {
+            $item = $order->items()->whereNull('product_addon_id')->where('product_id', $hostingAccount->product_id)->first()
+                ?? $order->items()->whereNull('product_addon_id')->orderBy('id')->first();
+        }
+
         // The schedule may not run backwards. A next billing date before the
         // last billing date would re-bill a period the customer has already
         // paid for — which is exactly how a renewal landed eleven days after
@@ -1817,8 +1829,21 @@ class HostingController extends Controller
             ]);
         }
 
+        // The generation pointer is armed at most forwards, too: posting a date
+        // earlier than the item's next invoice date would re-generate an
+        // unbilled — or worse, an already-advanced — period.
+        if ($item !== null
+            && array_key_exists('next_billing_date', $validated)
+            && $validated['next_billing_date'] !== null
+            && $item->next_invoice_date !== null
+            && Carbon::parse($validated['next_billing_date'])->startOfDay()->lt($item->next_invoice_date->copy()->startOfDay())) {
+            throw ValidationException::withMessages([
+                'next_billing_date' => 'The next billing date cannot be before the next invoice date ('.$item->next_invoice_date->toDateString().').',
+            ]);
+        }
+
         try {
-            DB::transaction(function () use ($hostingAccount, $validated, $request, $order) {
+            DB::transaction(function () use ($hostingAccount, $validated, $request, $order, $item) {
                 $hostingAccount->update([
                     'next_due_date' => $this->keptOrPosted($validated, 'next_due_date', $hostingAccount->next_due_date?->toDateString()),
                 ]);
@@ -1828,8 +1853,13 @@ class HostingController extends Controller
                     // is what this form edits. The order's date is a summary
                     // of its items and is re-derived, never written from a
                     // form: writing one service's date onto the order moved
-                    // every other service on it.
-                    $item = $order->items()->where('product_id', $hostingAccount->product_id)->first();
+                    // every other service on it. Add-on lines carry the
+                    // parent service's product_id, so the service line is the
+                    // only row that may hold this account's schedule — and
+                    // when the account's product no longer matches it (an
+                    // upgrade moved the served item to the new product), the
+                    // earliest service line on the order answers instead.
+                    // ($item is the same line resolved above the guard.)
 
                     // A posted-but-empty date clears the schedule on purpose
                     // (that is how an admin ends a subscription). An ABSENT
@@ -1840,12 +1870,17 @@ class HostingController extends Controller
                         ? $validated['next_billing_date']
                         : ($item?->next_billing_date?->toDateString() ?? $order->next_billing_date?->toDateString());
 
+                    $nextInvoiceDate = array_key_exists('next_billing_date', $validated)
+                        ? $validated['next_billing_date']
+                        : ($item?->next_invoice_date?->toDateString() ?? $order->next_invoice_date?->toDateString());
+
                     $cycle = $validated['billing_cycle'] ?? null;
 
                     if ($item !== null) {
                         $item->update([
                             'billing_cycle' => $cycle ?? $item->billing_cycle,
                             'next_billing_date' => $nextBillingDate,
+                            'next_invoice_date' => $nextInvoiceDate,
                         ]);
                     }
 

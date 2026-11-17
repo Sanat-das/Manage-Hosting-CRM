@@ -87,8 +87,11 @@ class RenewalBillingResilienceTest extends TestCase
         $this->assertSame(Invoice::STATUS_SENT, $invoice->status);
 
         // The schedule advanced with the commit: no re-bill of the same period.
-        $this->assertSame($asOf->addMonth()->toDateString(), $item->fresh()->next_billing_date->toDateString());
+        $this->assertSame($asOf->addMonth()->toDateString(), $item->fresh()->next_invoice_date->toDateString());
         $this->assertSame(2, $item->fresh()->billing_cycles_count);
+
+        // The pay-by date has NOT moved: the renewal invoice is still unpaid.
+        $this->assertSame($asOf->toDateString(), $item->fresh()->next_billing_date->toDateString());
 
         $second = $service->processRecurringBilling($asOf);
 
@@ -130,7 +133,7 @@ class RenewalBillingResilienceTest extends TestCase
 
         $invoice = Invoice::where('order_id', $order->id)->sole();
         $this->assertSame(Invoice::STATUS_SENT, $invoice->status);
-        $this->assertSame($asOf->addMonth()->toDateString(), $item->fresh()->next_billing_date->toDateString());
+        $this->assertSame($asOf->addMonth()->toDateString(), $item->fresh()->next_invoice_date->toDateString());
         $this->assertSame(2, $item->fresh()->billing_cycles_count);
     }
 
@@ -161,7 +164,7 @@ class RenewalBillingResilienceTest extends TestCase
         $this->assertSame(Invoice::STATUS_SENT, $invoice->status);
 
         // The schedule advanced with the commit: no re-bill of the same period.
-        $this->assertSame($asOf->addMonth()->toDateString(), $item->fresh()->next_billing_date->toDateString());
+        $this->assertSame($asOf->addMonth()->toDateString(), $item->fresh()->next_invoice_date->toDateString());
         $this->assertSame(2, $item->fresh()->billing_cycles_count);
     }
 
@@ -220,7 +223,7 @@ class RenewalBillingResilienceTest extends TestCase
         $invoice = Invoice::where('order_id', $order->id)->sole();
         $this->assertSame(Invoice::STATUS_SENT, $invoice->status);
 
-        $this->assertSame($asOf->addMonth()->toDateString(), $item->fresh()->next_billing_date->toDateString());
+        $this->assertSame($asOf->addMonth()->toDateString(), $item->fresh()->next_invoice_date->toDateString());
         $this->assertSame(2, $item->fresh()->billing_cycles_count);
 
         $second = $service->processRecurringBilling($asOf);
@@ -241,7 +244,7 @@ class RenewalBillingResilienceTest extends TestCase
         // Due today with the default zero-day window: billed on this run.
         $due = $asOf->toDateString();
 
-        $order = Order::create([
+        $attributes = [
             'customer_id' => $customer->id,
             'product_id' => $product->id,
             'order_number' => 'ORD-'.date('Y').'-'.str_pad((string) random_int(1, 99999), 5, '0', STR_PAD_LEFT),
@@ -250,9 +253,15 @@ class RenewalBillingResilienceTest extends TestCase
             'total' => (float) $product->price,
             'status' => Order::STATUS_ACTIVE,
             'next_billing_date' => $due,
-        ]);
+        ];
 
-        OrderItem::create([
+        // The engine reads the generation pointer; a fixture modelling a live
+        // schedule seeds both pointers to the same date.
+        $attributes['next_invoice_date'] ??= $attributes['next_billing_date'] ?? null;
+
+        $order = Order::create($attributes);
+
+        $itemAttributes = [
             'order_id' => $order->id,
             'product_id' => $product->id,
             'product_name' => $product->name,
@@ -262,7 +271,11 @@ class RenewalBillingResilienceTest extends TestCase
             'total' => (float) $product->price,
             'next_billing_date' => $due,
             'billing_cycles_count' => 1,
-        ]);
+        ];
+
+        $itemAttributes['next_invoice_date'] ??= $itemAttributes['next_billing_date'] ?? null;
+
+        OrderItem::create($itemAttributes);
 
         return $order;
     }

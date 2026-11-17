@@ -71,6 +71,9 @@
                             <tr>
                                 <td>
                                     <strong>{{ $item->product_name ?? $item->product?->name ?? '—' }}</strong>
+                                    @if ($item->product_addon_id)
+                                        <span class="badge text-bg-warning ms-1">Add-on</span>
+                                    @endif
                                     @if ($item->domain_name)
                                         <div class="text-muted small">{{ $item->domain_name }}</div>
                                     @endif

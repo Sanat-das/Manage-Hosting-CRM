@@ -88,6 +88,15 @@ Schedule::command('invoices:remind')
     ->withoutOverlapping()
     ->runInBackground();
 
+// Invoices whose lines carry no billing period are invisible to the renewal
+// schedule: they neither block a renewal nor advance the schedule when they
+// are paid. The check finds them and tells the staff pool; it only repairs
+// with --fix, which the scheduled run does not pass.
+Schedule::command('invoices:period-check')
+    ->dailyAt('05:00')
+    ->withoutOverlapping()
+    ->runInBackground();
+
 Schedule::command('reports:send-scheduled --days=7')
     ->weeklyOn(1, '06:00')
     ->withoutOverlapping()

@@ -119,6 +119,7 @@ class OrderAddonController extends Controller
         }
         if (array_key_exists('next_billing_date', $validated)) {
             $updates['next_billing_date'] = $validated['next_billing_date'];
+            $updates['next_invoice_date'] = $validated['next_billing_date'];
         }
         if (isset($validated['unit_price'])) {
             $updates['unit_price'] = $validated['unit_price'];

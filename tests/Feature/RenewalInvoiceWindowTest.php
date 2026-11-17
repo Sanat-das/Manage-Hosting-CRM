@@ -78,10 +78,12 @@ class RenewalInvoiceWindowTest extends TestCase
             'The invoice is due on the item\'s own date, not today + 7.'
         );
 
-        // The cycle advanced from the item's OWN due date, not the run date.
-        $this->assertSame($due->addMonth()->toDateString(), $item->fresh()->next_billing_date->toDateString());
+        // The cycle advanced from the item's OWN due date, not the run date;
+        // the pay-by date waits for payment.
+        $this->assertSame($due->toDateString(), $item->fresh()->next_billing_date->toDateString());
+        $this->assertSame($due->addMonth()->toDateString(), $item->fresh()->next_invoice_date->toDateString());
         $this->assertSame(2, $item->fresh()->billing_cycles_count);
-        $this->assertSame($due->addMonth()->toDateString(), $order->fresh()->next_billing_date->toDateString());
+        $this->assertSame($due->addMonth()->toDateString(), $order->fresh()->next_invoice_date->toDateString());
     }
 
     public function test_an_item_outside_the_window_is_not_billed(): void
@@ -133,7 +135,7 @@ class RenewalInvoiceWindowTest extends TestCase
         $this->assertSame(1, Invoice::where('order_id', $order->id)->count());
 
         // The advanced date is still the next anniversary.
-        $this->assertSame($due->addMonth()->toDateString(), $item->fresh()->next_billing_date->toDateString());
+        $this->assertSame($due->addMonth()->toDateString(), $item->fresh()->next_invoice_date->toDateString());
         $this->assertSame(2, $item->fresh()->billing_cycles_count);
     }
 
@@ -168,7 +170,7 @@ class RenewalInvoiceWindowTest extends TestCase
 
         $invoice = Invoice::where('order_id', $dueOrder->id)->sole();
         $this->assertSame($asOf->subDay()->toDateString(), $invoice->due_date->toDateString());
-        $this->assertSame($asOf->subDay()->addMonth()->toDateString(), $dueItem->fresh()->next_billing_date->toDateString());
+        $this->assertSame($asOf->subDay()->addMonth()->toDateString(), $dueItem->fresh()->next_invoice_date->toDateString());
 
         // The not-yet-due item kept its schedule untouched.
         $this->assertSame($asOf->addDays(3)->toDateString(), $notDueItem->fresh()->next_billing_date->toDateString());
@@ -207,7 +209,7 @@ class RenewalInvoiceWindowTest extends TestCase
         $this->assertSame(1, Invoice::where('order_id', $order->id)->count());
 
         // Advanced exactly one cycle, not once per run.
-        $this->assertSame($asOf->addMonth()->toDateString(), $item->fresh()->next_billing_date->toDateString());
+        $this->assertSame($asOf->addMonth()->toDateString(), $item->fresh()->next_invoice_date->toDateString());
         $this->assertSame(2, $item->fresh()->billing_cycles_count);
     }
 
@@ -238,7 +240,7 @@ class RenewalInvoiceWindowTest extends TestCase
 
         $invoice = Invoice::where('order_id', $order->id)->sole();
         $this->assertSame($due->toDateString(), $invoice->due_date->toDateString());
-        $this->assertSame($due->addMonth()->toDateString(), $item->fresh()->next_billing_date->toDateString());
+        $this->assertSame($due->addMonth()->toDateString(), $item->fresh()->next_invoice_date->toDateString());
     }
 
     private function setWindow(int $days): void
@@ -346,7 +348,7 @@ class RenewalInvoiceWindowTest extends TestCase
 
     private function makeOrder(Customer $customer, Product $product, array $overrides = []): Order
     {
-        return Order::create(array_merge([
+        $attributes = array_merge([
             'customer_id' => $customer->id,
             'product_id' => $product->id,
             'order_number' => 'ORD-'.date('Y').'-'.str_pad((string) random_int(1, 99999), 5, '0', STR_PAD_LEFT),
@@ -354,12 +356,18 @@ class RenewalInvoiceWindowTest extends TestCase
             'quantity' => 1,
             'total' => (float) $product->price,
             'status' => Order::STATUS_ACTIVE,
-        ], $overrides));
+        ], $overrides);
+
+        // The engine reads the generation pointer; a fixture modelling a live
+        // schedule seeds both pointers to the same date.
+        $attributes['next_invoice_date'] ??= $attributes['next_billing_date'] ?? null;
+
+        return Order::create($attributes);
     }
 
     private function makeItem(Order $order, Product $product, array $overrides = []): OrderItem
     {
-        return OrderItem::create(array_merge([
+        $attributes = array_merge([
             'order_id' => $order->id,
             'product_id' => $product->id,
             'product_name' => $product->name,
@@ -367,7 +375,11 @@ class RenewalInvoiceWindowTest extends TestCase
             'quantity' => 1,
             'unit_price' => (float) $product->price,
             'total' => (float) $product->price,
-        ], $overrides));
+        ], $overrides);
+
+        $attributes['next_invoice_date'] ??= $attributes['next_billing_date'] ?? null;
+
+        return OrderItem::create($attributes);
     }
 
     private function makeTemplate(string $name, string $subject, string $body): EmailTemplate

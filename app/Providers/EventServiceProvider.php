@@ -13,6 +13,7 @@ use App\Events\OrderPaid;
 use App\Events\TicketCreated;
 use App\Events\TicketReply;
 use App\Events\TicketTransferred;
+use App\Listeners\AdvanceBillingOnPayment;
 use App\Listeners\AdvanceOrderOnPayment;
 use App\Listeners\ApplyUpgradeOnInvoicePaid;
 use App\Listeners\LogCustomerLifecycle;
@@ -59,6 +60,7 @@ class EventServiceProvider extends ServiceProvider
         ],
         InvoicePaid::class => [
             AdvanceOrderOnPayment::class,
+            AdvanceBillingOnPayment::class,
             ApplyUpgradeOnInvoicePaid::class,
             SendPaymentReceivedNotification::class,
         ],

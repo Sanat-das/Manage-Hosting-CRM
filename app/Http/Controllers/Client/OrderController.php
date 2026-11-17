@@ -34,7 +34,7 @@ class OrderController extends Controller
         $status = $request->query('status');
 
         $orders = $customer->orders()
-            ->with(['product:id,name', 'items:id,order_id,product_name,quantity,total'])
+            ->with(['product:id,name', 'items:id,order_id,product_name,quantity,total,product_addon_id'])
             ->when($search !== '', function ($query) use ($search) {
                 $query->where(function ($q) use ($search) {
                     // Item product names are searched as well as the order's own

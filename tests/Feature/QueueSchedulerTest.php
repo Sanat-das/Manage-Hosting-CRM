@@ -162,7 +162,7 @@ class QueueSchedulerTest extends TestCase
 
     private function makeActiveOrder(Customer $customer, Product $product, array $overrides = []): Order
     {
-        $order = Order::create(array_merge([
+        $attributes = array_merge([
             'customer_id' => $customer->id,
             'product_id' => $product->id,
             'order_number' => 'ORD-'.date('Y').'-'.str_pad((string) random_int(1, 99999), 5, '0', STR_PAD_LEFT),
@@ -171,8 +171,16 @@ class QueueSchedulerTest extends TestCase
             'total' => (float) $product->price,
             'status' => Order::STATUS_ACTIVE,
             'next_billing_date' => now()->subDay()->toDateString(),
-        ], $overrides));
+        ], $overrides);
 
+        // The engine reads the generation pointer; a fixture modelling a live
+        // schedule seeds both pointers to the same date.
+        $attributes['next_invoice_date'] ??= $attributes['next_billing_date'] ?? null;
+
+        $order = Order::create($attributes);
+
+        // The service renews on its own schedule, so the item carries both
+        // pointers too — to the same date as the order it belongs to.
         OrderItem::create([
             'order_id' => $order->id,
             'product_id' => $product->id,
@@ -180,6 +188,8 @@ class QueueSchedulerTest extends TestCase
             'quantity' => $order->quantity,
             'unit_price' => (float) $product->price,
             'total' => (float) $order->total,
+            'next_billing_date' => $attributes['next_billing_date'],
+            'next_invoice_date' => $attributes['next_invoice_date'],
         ]);
 
         return $order;
@@ -214,9 +224,16 @@ class QueueSchedulerTest extends TestCase
             'amount' => 499.00,
         ]);
 
-        // The cycle advanced by one month from the item's own due date.
+        // Generation advanced the schedule by one month from the item's own
+        // due date — that is the next_invoice_date pointer.
         $this->assertSame(
             now()->subDay()->addMonth()->toDateString(),
+            $order->fresh()->next_invoice_date->toDateString()
+        );
+
+        // The pay-by date has NOT moved: the renewal invoice is still unpaid.
+        $this->assertSame(
+            now()->subDay()->toDateString(),
             $order->fresh()->next_billing_date->toDateString()
         );
     }

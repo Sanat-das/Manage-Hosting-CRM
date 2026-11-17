@@ -141,6 +141,7 @@ class NotificationPreferencesUiTest extends TestCase
                 'ticket.transfer' => ['database' => '1'],
                 'renewal.upcoming' => ['mail' => '1'],
                 'service.overdue' => ['database' => '1', 'mail' => '1'],
+                'invoice.period_untracked' => ['database' => '1'],
                 'chat.mention' => ['database' => '1'],
                 'chat.reply' => ['database' => '1'],
                 'chat.assign' => ['database' => '1'],
@@ -153,12 +154,13 @@ class NotificationPreferencesUiTest extends TestCase
 
         $this->assertPreference($user, 'order.created', 'database', true);
         $this->assertPreference($user, 'service.overdue', 'mail', true);
+        $this->assertPreference($user, 'invoice.period_untracked', 'database', true);
         $this->assertPreference($user, 'chat.assign', 'database', true);
 
         // scheduled.report is restricted to admin|staff|support; sales must not get a row.
         $this->assertNoPreference($user, 'scheduled.report', 'mail');
 
-        $this->assertDatabaseCount('notification_preferences', 11);
+        $this->assertDatabaseCount('notification_preferences', 12);
     }
 
     public function test_profile_pages_render_the_preferences_card(): void
@@ -175,7 +177,8 @@ class NotificationPreferencesUiTest extends TestCase
             ->get(route('admin.profile'))
             ->assertOk()
             ->assertSee('My Notification Preferences')
-            ->assertSee('name="notification_preferences[scheduled.report][mail]"', false);
+            ->assertSee('name="notification_preferences[scheduled.report][mail]"', false)
+            ->assertSee('name="notification_preferences[invoice.period_untracked][database]"', false);
 
         $sales = $this->makeStaff('sales');
         $this->actingAs($sales)

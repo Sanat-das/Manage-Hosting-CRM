@@ -576,8 +576,10 @@ class CustomerController extends Controller
                     $query->chunk(500, function ($accounts) use ($handle): void {
                         foreach ($accounts as $account) {
                             $serviceOrder = $account->order;
-                            $serviceItem = $serviceOrder?->items?->first(fn ($item) => $item->product_id === $account->product_id)
-                                ?? $serviceOrder?->items?->first();
+                            // Add-on lines carry the parent service's product_id,
+                            // so the service line is the one that answers for it.
+                            $serviceItem = $serviceOrder?->items?->first(fn ($item) => $item->product_addon_id === null && (int) $item->product_id === (int) $account->product_id)
+                                ?? $serviceOrder?->items?->first(fn ($item) => $item->product_addon_id === null);
                             $cycle = $serviceItem?->billing_cycle ?? $serviceOrder?->billing_cycle ?? $account->product?->billing_cycle;
                             $amount = $serviceItem?->total ?? $serviceOrder?->total;
                             $nextBilling = $serviceItem?->next_billing_date ?? $serviceOrder?->next_billing_date ?? $account->next_due_date;
@@ -1221,7 +1223,7 @@ class CustomerController extends Controller
                     $q->whereNull('billing_cycle')
                         ->orWhere('billing_cycle', '!=', 'one_time');
                 })
-                ->whereNotNull('next_billing_date')
+                ->whereNotNull('next_invoice_date')
                 ->whereHas('order', fn ($q) => $q->where('customer_id', $customer->id))
                 ->with('order')
                 ->get()
@@ -1288,7 +1290,11 @@ class CustomerController extends Controller
             }
 
             try {
-                $this->billing->createInvoiceForOrder($order);
+                // The invoice bills the order's NEXT recurring period: each
+                // live-recurring line carries the period it bills and the
+                // generation pointer advances past it, exactly as a renewal
+                // does. The pay-by date still waits for the money.
+                $this->billing->createInvoiceForNextPeriod($order);
                 $created++;
                 $serviceCreatedOrderIds[] = $orderId;
             } catch (\Throwable $e) {
@@ -1349,27 +1355,11 @@ class CustomerController extends Controller
             }
 
             try {
-                $lines = $items->map(function (OrderItem $item) use ($order) {
-                    $lineCycle = $item->billing_cycle ?? $order->billing_cycle;
-
-                    return [
-                        'description' => $item->product_name.' — '.ucfirst(str_replace('_', ' ', (string) $lineCycle)),
-                        'quantity' => (int) $item->quantity,
-                        'unit_price' => (float) $item->unit_price,
-                        'total' => (float) $item->total,
-                        'product_id' => $item->product_id,
-                        'config_options' => $item->config_options,
-                    ];
-                })->all();
-
-                $this->billing->createWithItems([
-                    'customer_id' => $customer->id,
-                    'order_id' => $order->id,
-                    'amount' => round(array_sum(array_column($lines, 'total')), 2),
-                    'status' => Invoice::STATUS_DRAFT,
-                    'due_date' => now()->addDays(7)->toDateString(),
-                    'notes' => "Add-on invoice for order {$order->order_number}",
-                ], $lines, $this->billing->resolveCustomerStateCode((int) $customer->id));
+                // The add-on lines bill their next recurring period: each line
+                // carries the period it bills and the generation pointer
+                // advances past it, exactly as a renewal does. The pay-by date
+                // still waits for the money.
+                $this->billing->createAddonInvoiceForNextPeriod($order, $items);
                 $created++;
             } catch (\Throwable $e) {
                 $failed++;

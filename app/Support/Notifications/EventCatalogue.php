@@ -140,6 +140,22 @@ final class EventCatalogue
                 ],
             ],
             [
+                'key' => 'invoice.period_untracked',
+                'label' => 'Invoice billing period missing',
+                'description' => 'invoices:period-check finds open invoices whose lines carry no billing period, so the renewal schedule cannot see them. Staff members enabled here receive the in-app alert.',
+                'category' => 'Orders & Billing',
+                'staff_broadcast' => true,
+                'audiences' => self::STAFF_ROLES,
+                'channels' => [self::CHANNEL_DATABASE],
+                'defaults' => [
+                    'database.admin' => true,
+                    'database.staff' => true,
+                    'database.support' => true,
+                    'database.sales' => false,
+                    'database.marketing' => false,
+                ],
+            ],
+            [
                 'key' => 'upgrade.requested',
                 'label' => 'Upgrade requested',
                 'description' => 'A customer (or staff on their behalf) requested a service upgrade.',

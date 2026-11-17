@@ -248,9 +248,10 @@ class UpgradeRequestService
     /**
      * Materialize the request: switch the order's served item to the target
      * product at its price for the request's cycle. The item's config_options,
-     * billing_cycle and next_billing_date are preserved; a free service (null
-     * next_billing_date) gains its first due date = today + cycle. Idempotent:
-     * a non-pending request is returned unchanged.
+     * billing_cycle and billing schedule (next_billing_date / next_invoice_date)
+     * are preserved; a free service (no schedule at all) gains its first due
+     * date = today + cycle. Idempotent: a non-pending request is returned
+     * unchanged.
      *
      * @throws DomainException when the served item or the target pricing is missing.
      */
@@ -324,23 +325,46 @@ class UpgradeRequestService
                 // e.g. a monthly→annual change with next_due 2026-05-01 and
                 // last_billing_date 2026-04-06 would not bill the year until
                 // 2027-04-06. The anchor makes the guard evaluate to the due
-                // date itself, so the preserved next_billing_date bills on
-                // schedule. Only when a schedule already exists: a free→paid
-                // upgrade leaves last_billing_date null (never billed).
-                if ($item->next_billing_date !== null) {
-                    $itemData['last_billing_date'] = CarbonImmutable::parse($item->next_billing_date)
+                // date itself, so the preserved next_invoice_date bills on
+                // schedule.
+                //
+                // The anchor is the GENERATION pointer (next_invoice_date) —
+                // the date the engine bills off — falling back to the pay-by
+                // pointer for a legacy item. While a period is unpaid the
+                // pay-by date sits BEHIND the generation date, so anchoring
+                // on it would push the billing history backwards.
+                //
+                // Only when a schedule already exists: a free→paid upgrade
+                // leaves last_billing_date null (never billed).
+                $anchor = $item->next_invoice_date ?? $item->next_billing_date;
+                if ($anchor !== null) {
+                    $itemData['last_billing_date'] = CarbonImmutable::parse($anchor)
                         ->subMonths(Order::CYCLE_MONTHS[$request->to_billing_cycle] ?? 1)
                         ->toDateString();
                 }
             }
 
-            if ($order->next_billing_date === null) {
+            // A free service has no billing schedule at all and gains its
+            // first due date = today + cycle. The schedule belongs to the
+            // ITEM, but a legacy item carries no per-item dates and inherits
+            // the order's — so both are consulted before seeding. Only a
+            // service with NO schedule anywhere is seeded: an item whose
+            // schedule ENDED (cycle limit → null next_invoice_date) must not
+            // have it resurrected by an upgrade.
+            $hasSchedule = $item->next_invoice_date !== null
+                || $item->next_billing_date !== null
+                || $order->next_invoice_date !== null
+                || $order->next_billing_date !== null;
+
+            if (! $hasSchedule) {
                 $dueDate = CarbonImmutable::today('Asia/Kolkata')
                     ->addMonths(Order::CYCLE_MONTHS[$cycle] ?? 1)
                     ->toDateString();
 
                 $itemData['next_billing_date'] = $dueDate;
+                $itemData['next_invoice_date'] = $dueDate;
                 $orderData['next_billing_date'] = $dueDate;
+                $orderData['next_invoice_date'] = $dueDate;
             }
 
             $item->update($itemData);

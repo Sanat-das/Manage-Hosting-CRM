@@ -127,6 +127,7 @@ class OrderService
                     if ($next !== null) {
                         $item->update([
                             'next_billing_date' => $next,
+                            'next_invoice_date' => $next,
                             'billing_cycles_count' => $item->billing_cycles_count ?? 1,
                         ]);
                         $nextDates[] = $next;
@@ -137,8 +138,10 @@ class OrderService
                     // Legacy order-level activation (orders created before the
                     // per-item billing columns): keep the order's own schedule.
                     $order->next_billing_date = $this->nextBillingDate($order->billing_cycle, $order);
+                    $order->next_invoice_date = $order->next_billing_date;
                 } else {
                     $order->next_billing_date = $nextDates !== [] ? min($nextDates) : null;
+                    $order->next_invoice_date = $order->next_billing_date;
                 }
 
                 // Provision: create the hosting account (when the product

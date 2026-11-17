@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 
-#[Fillable(['customer_id', 'product_id', 'order_number', 'billing_cycle', 'quantity', 'total', 'status', 'domain_name', 'notes', 'payment_method', 'subscription_id', 'next_billing_date', 'last_billing_date', 'renewal_reminder_for', 'renewal_reminder_sent_at'])]
+#[Fillable(['customer_id', 'product_id', 'order_number', 'billing_cycle', 'quantity', 'total', 'status', 'domain_name', 'notes', 'payment_method', 'subscription_id', 'next_billing_date', 'next_invoice_date', 'last_billing_date', 'renewal_reminder_for', 'renewal_reminder_sent_at'])]
 class Order extends Model
 {
     /**
@@ -20,6 +20,7 @@ class Order extends Model
     protected $casts = [
         'total' => 'decimal:2',
         'next_billing_date' => 'date',
+        'next_invoice_date' => 'date',
         'last_billing_date' => 'date',
         'renewal_reminder_for' => 'date',
         'renewal_reminder_sent_at' => 'datetime',

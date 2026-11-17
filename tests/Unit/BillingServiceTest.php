@@ -109,11 +109,13 @@ class BillingServiceTest extends TestCase
             'amount' => 499.00,
         ]);
 
-        // next_billing_date advanced by one month from the item's OWN due
-        // date (the legacy item's fallback: the order's summary date).
+        // next_invoice_date advanced by one month from the item's OWN due
+        // date (the legacy item's fallback: the order's summary date); the
+        // pay-by date waits for payment, and this fixture's item has none.
+        $this->assertNull($order->fresh()->next_billing_date);
         $this->assertSame(
             now()->subDay()->addMonth()->toDateString(),
-            $order->fresh()->next_billing_date->toDateString()
+            $order->fresh()->next_invoice_date->toDateString()
         );
     }
 
@@ -130,6 +132,7 @@ class BillingServiceTest extends TestCase
             'total' => 100.00,
             'status' => Order::STATUS_ACTIVE,
             'next_billing_date' => now()->subDay()->toDateString(),
+            'next_invoice_date' => now()->subDay()->toDateString(),
         ]);
         OrderItem::create([
             'order_id' => $order->id,
@@ -138,6 +141,7 @@ class BillingServiceTest extends TestCase
             'quantity' => 4,
             'unit_price' => 25.00,
             'total' => 100.00,
+            'next_invoice_date' => now()->subDay()->toDateString(),
         ]);
 
         $result = app(BillingService::class)->processRecurringBilling();
@@ -188,6 +192,7 @@ class BillingServiceTest extends TestCase
             'total' => 0.00,
             'status' => Order::STATUS_ACTIVE,
             'next_billing_date' => $asOf->subDay()->toDateString(),
+            'next_invoice_date' => $asOf->subDay()->toDateString(),
         ]);
 
         $item = OrderItem::create([
@@ -199,6 +204,7 @@ class BillingServiceTest extends TestCase
             'unit_price' => 0.00,
             'total' => 0.00,
             'next_billing_date' => $asOf->subDay()->toDateString(),
+            'next_invoice_date' => $asOf->subDay()->toDateString(),
             'billing_cycles_count' => 1,
         ]);
 
@@ -236,6 +242,7 @@ class BillingServiceTest extends TestCase
             'total' => 100.00,
             'status' => Order::STATUS_ACTIVE,
             'next_billing_date' => $asOf->subDay()->toDateString(),
+            'next_invoice_date' => $asOf->subDay()->toDateString(),
         ]);
 
         OrderItem::create([
@@ -247,6 +254,7 @@ class BillingServiceTest extends TestCase
             'unit_price' => 100.00,
             'total' => 100.00,
             'next_billing_date' => $asOf->subDay()->toDateString(),
+            'next_invoice_date' => $asOf->subDay()->toDateString(),
             'billing_cycles_count' => 1,
         ]);
 
@@ -259,6 +267,7 @@ class BillingServiceTest extends TestCase
             'unit_price' => 0.00,
             'total' => 0.00,
             'next_billing_date' => $asOf->subDay()->toDateString(),
+            'next_invoice_date' => $asOf->subDay()->toDateString(),
             'billing_cycles_count' => 1,
         ]);
 
@@ -298,6 +307,7 @@ class BillingServiceTest extends TestCase
             'total' => 0.00,
             'status' => Order::STATUS_ACTIVE,
             'next_billing_date' => $asOf->subMonths(3)->toDateString(),
+            'next_invoice_date' => $asOf->subMonths(3)->toDateString(),
         ]);
 
         $item = OrderItem::create([
@@ -309,6 +319,7 @@ class BillingServiceTest extends TestCase
             'unit_price' => 0.00,
             'total' => 0.00,
             'next_billing_date' => $asOf->subMonths(3)->toDateString(),
+            'next_invoice_date' => $asOf->subMonths(3)->toDateString(),
             'billing_cycles_count' => 1,
         ]);
 
@@ -348,6 +359,7 @@ class BillingServiceTest extends TestCase
             'total' => 100.00,
             'status' => Order::STATUS_ACTIVE,
             'next_billing_date' => $asOf->subDay()->toDateString(),
+            'next_invoice_date' => $asOf->subDay()->toDateString(),
         ]);
 
         $parent = OrderItem::create([
@@ -359,6 +371,7 @@ class BillingServiceTest extends TestCase
             'unit_price' => 100.00,
             'total' => 100.00,
             'next_billing_date' => $asOf->subDay()->toDateString(),
+            'next_invoice_date' => $asOf->subDay()->toDateString(),
             'billing_cycles_count' => 1,
         ]);
 
@@ -428,7 +441,7 @@ class BillingServiceTest extends TestCase
         $this->assertSame(0, $result['invoices_generated']);
         $this->assertSame(0, $result['errors']);
         $this->assertSame(2, Invoice::count());
-        $this->assertNull($order->fresh()->next_billing_date, 'Recurring billing must end at the cycle limit.');
+        $this->assertNull($order->fresh()->next_invoice_date, 'Recurring billing must end at the cycle limit.');
     }
 
     public function test_process_recurring_billing_continues_below_cycles_limit(): void
@@ -445,7 +458,7 @@ class BillingServiceTest extends TestCase
 
         $this->assertSame(1, $result['invoices_generated']);
         $this->assertSame(3, Invoice::count());
-        $this->assertNotNull($order->fresh()->next_billing_date);
+        $this->assertNotNull($order->fresh()->next_invoice_date);
     }
 
     public function test_process_recurring_billing_renews_only_due_items_on_their_own_cycles(): void
@@ -467,6 +480,7 @@ class BillingServiceTest extends TestCase
             'total' => 1100.00,
             'status' => Order::STATUS_ACTIVE,
             'next_billing_date' => now()->subDay()->toDateString(), // earliest item date
+            'next_invoice_date' => now()->subDay()->toDateString(),
         ]);
 
         OrderItem::create([
@@ -478,6 +492,7 @@ class BillingServiceTest extends TestCase
             'unit_price' => 100.00,
             'total' => 100.00,
             'next_billing_date' => now()->subDay()->toDateString(),
+            'next_invoice_date' => now()->subDay()->toDateString(),
             'billing_cycles_count' => 1,
         ]);
 
@@ -490,6 +505,7 @@ class BillingServiceTest extends TestCase
             'unit_price' => 1000.00,
             'total' => 1000.00,
             'next_billing_date' => now()->addMonths(11)->toDateString(),
+            'next_invoice_date' => now()->addMonths(11)->toDateString(),
             'billing_cycles_count' => 1,
         ]);
 
@@ -507,14 +523,14 @@ class BillingServiceTest extends TestCase
         // The monthly item advanced one month from ITS OWN due date and its
         // counter bumped; the annual item is untouched.
         $items = $order->items()->orderBy('id')->get();
-        $this->assertSame(now()->subDay()->addMonth()->toDateString(), $items[0]->fresh()->next_billing_date->toDateString());
+        $this->assertSame(now()->subDay()->addMonth()->toDateString(), $items[0]->fresh()->next_invoice_date->toDateString());
         $this->assertSame(2, $items[0]->fresh()->billing_cycles_count);
         $this->assertSame(now()->addMonths(11)->toDateString(), $items[1]->fresh()->next_billing_date->toDateString());
         $this->assertSame(1, $items[1]->fresh()->billing_cycles_count);
 
         // The order summary tracks the earliest remaining item date (the
         // monthly item renews again one month after its own due date).
-        $this->assertSame(now()->subDay()->addMonth()->toDateString(), $order->fresh()->next_billing_date->toDateString());
+        $this->assertSame(now()->subDay()->addMonth()->toDateString(), $order->fresh()->next_invoice_date->toDateString());
     }
 
     public function test_process_recurring_billing_ends_only_the_item_at_its_snapshot_cycle_limit(): void
@@ -535,6 +551,7 @@ class BillingServiceTest extends TestCase
             'total' => 130.00,
             'status' => Order::STATUS_ACTIVE,
             'next_billing_date' => now()->subDay()->toDateString(),
+            'next_invoice_date' => now()->subDay()->toDateString(),
         ]);
 
         OrderItem::create([
@@ -546,6 +563,7 @@ class BillingServiceTest extends TestCase
             'unit_price' => 50.00,
             'total' => 50.00,
             'next_billing_date' => now()->subDay()->toDateString(),
+            'next_invoice_date' => now()->subDay()->toDateString(),
             'recurring_cycles_limit' => 2,
             'billing_cycles_count' => 2, // initial + one renewal — limit reached
         ]);
@@ -559,6 +577,7 @@ class BillingServiceTest extends TestCase
             'unit_price' => 80.00,
             'total' => 80.00,
             'next_billing_date' => now()->subDay()->toDateString(),
+            'next_invoice_date' => now()->subDay()->toDateString(),
             'billing_cycles_count' => 1,
         ]);
 
@@ -570,11 +589,11 @@ class BillingServiceTest extends TestCase
         $this->assertSame(80.00, (float) $invoice->amount);
 
         $items = $order->items()->orderBy('id')->get();
-        $this->assertNull($items[0]->fresh()->next_billing_date, 'The limited item stops renewing at its snapshot limit.');
-        $this->assertSame(now()->subDay()->addMonth()->toDateString(), $items[1]->fresh()->next_billing_date->toDateString());
+        $this->assertNull($items[0]->fresh()->next_invoice_date, 'The limited item stops renewing at its snapshot limit.');
+        $this->assertSame(now()->subDay()->addMonth()->toDateString(), $items[1]->fresh()->next_invoice_date->toDateString());
 
         // The order summary follows the remaining recurring item.
-        $this->assertSame(now()->subDay()->addMonth()->toDateString(), $order->fresh()->next_billing_date->toDateString());
+        $this->assertSame(now()->subDay()->addMonth()->toDateString(), $order->fresh()->next_invoice_date->toDateString());
     }
 
     public function test_process_auto_terminations_terminates_expired_fixed_term(): void
@@ -980,7 +999,7 @@ class BillingServiceTest extends TestCase
 
     private function makeDueOrder(Customer $customer, Product $product, array $overrides = []): Order
     {
-        $order = Order::create(array_merge([
+        $attributes = array_merge([
             'customer_id' => $customer->id,
             'product_id' => $product->id,
             'order_number' => 'ORD-'.date('Y').'-'.str_pad((string) random_int(1, 99999), 5, '0', STR_PAD_LEFT),
@@ -989,7 +1008,13 @@ class BillingServiceTest extends TestCase
             'total' => (float) $product->price,
             'status' => Order::STATUS_ACTIVE,
             'next_billing_date' => now()->subDay()->toDateString(),
-        ], $overrides));
+        ], $overrides);
+
+        // The engine generates from the invoice pointer; a live fixture seeds
+        // both pointers to the same date.
+        $attributes['next_invoice_date'] ??= $attributes['next_billing_date'] ?? null;
+
+        $order = Order::create($attributes);
 
         OrderItem::create([
             'order_id' => $order->id,
@@ -998,6 +1023,7 @@ class BillingServiceTest extends TestCase
             'quantity' => $order->quantity,
             'unit_price' => (float) $product->price,
             'total' => (float) $order->total,
+            'next_invoice_date' => $order->next_invoice_date?->toDateString(),
         ]);
 
         return $order;

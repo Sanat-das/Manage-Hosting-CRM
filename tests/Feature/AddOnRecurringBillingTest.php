@@ -55,7 +55,7 @@ class AddOnRecurringBillingTest extends TestCase
             'next_billing_date' => $asOf->subDay()->toDateString(),
         ]);
 
-        $parent = OrderItem::create([
+        $parent = $this->makeItem([
             'order_id' => $order->id,
             'product_id' => $product->id,
             'product_name' => 'Shared Hosting',
@@ -67,7 +67,7 @@ class AddOnRecurringBillingTest extends TestCase
             'billing_cycles_count' => 1,
         ]);
 
-        OrderItem::create([
+        $this->makeItem([
             'order_id' => $order->id,
             'product_id' => $product->id,
             'product_name' => 'Extra Storage',
@@ -82,7 +82,7 @@ class AddOnRecurringBillingTest extends TestCase
             'product_addon_id' => $addon->id,
         ]);
 
-        $setup = OrderItem::create([
+        $setup = $this->makeItem([
             'order_id' => $order->id,
             'product_id' => $product->id,
             'product_name' => 'Extra Storage — Setup Fee',
@@ -112,6 +112,7 @@ class AddOnRecurringBillingTest extends TestCase
         $this->assertFalse(collect($descriptions)->contains(fn ($d) => str_contains($d, 'Setup Fee')));
 
         $this->assertNull($setup->fresh()->next_billing_date);
+        $this->assertNull($setup->fresh()->next_invoice_date);
         $this->assertSame(0, $setup->fresh()->billing_cycles_count);
 
         // Renewal advances each item from ITS OWN due date (the engine bills
@@ -119,9 +120,16 @@ class AddOnRecurringBillingTest extends TestCase
         $expectedNext = $asOf->subDay()->addMonth()->toDateString();
         foreach ([$parent->id, $order->items()->where('product_name', 'Extra Storage')->value('id')] as $itemId) {
             $item = OrderItem::find($itemId);
-            $this->assertSame($expectedNext, $item->fresh()->next_billing_date->toDateString());
+            $this->assertSame($expectedNext, $item->fresh()->next_invoice_date->toDateString());
             $this->assertSame(2, $item->fresh()->billing_cycles_count);
+            // The renewal invoice is unpaid, so the pay-by date waits for the
+            // money and stays where the customer still owes it.
+            $this->assertSame($asOf->subDay()->toDateString(), $item->fresh()->next_billing_date->toDateString());
         }
+
+        // The order summary mirrors both pointers.
+        $this->assertSame($expectedNext, $order->fresh()->next_invoice_date->toDateString());
+        $this->assertSame($asOf->subDay()->toDateString(), $order->fresh()->next_billing_date->toDateString());
     }
 
     public function test_addon_is_billed_on_its_own_cycle_not_with_the_parent(): void
@@ -143,7 +151,7 @@ class AddOnRecurringBillingTest extends TestCase
             'next_billing_date' => $asOf->subDay()->toDateString(),
         ]);
 
-        $parent = OrderItem::create([
+        $parent = $this->makeItem([
             'order_id' => $order->id,
             'product_id' => $product->id,
             'product_name' => 'Shared Hosting',
@@ -155,7 +163,7 @@ class AddOnRecurringBillingTest extends TestCase
             'billing_cycles_count' => 1,
         ]);
 
-        $addonItem = OrderItem::create([
+        $addonItem = $this->makeItem([
             'order_id' => $order->id,
             'product_id' => $product->id,
             'product_name' => 'Annual Backup',
@@ -182,9 +190,17 @@ class AddOnRecurringBillingTest extends TestCase
         $this->assertSame(1, $invoice->items()->count());
         $this->assertStringContainsString('Shared Hosting', $invoice->items()->first()->description);
 
+        // The add-on is not due yet: neither pointer moved.
         $this->assertSame($asOf->addMonths(6)->toDateString(), $addonItem->fresh()->next_billing_date->toDateString());
+        $this->assertSame($asOf->addMonths(6)->toDateString(), $addonItem->fresh()->next_invoice_date->toDateString());
         $this->assertSame(1, $addonItem->fresh()->billing_cycles_count);
-        $this->assertSame($asOf->subDay()->addMonth()->toDateString(), $order->fresh()->next_billing_date->toDateString());
+
+        // The parent renewed: the generation date moved, the pay-by date waits
+        // for the money.
+        $this->assertSame($asOf->subDay()->addMonth()->toDateString(), $parent->fresh()->next_invoice_date->toDateString());
+        $this->assertSame($asOf->subDay()->toDateString(), $parent->fresh()->next_billing_date->toDateString());
+        $this->assertSame($asOf->subDay()->addMonth()->toDateString(), $order->fresh()->next_invoice_date->toDateString());
+        $this->assertSame($asOf->subDay()->toDateString(), $order->fresh()->next_billing_date->toDateString());
 
         $secondAsOf = $asOf->addMonth()->addDay();
         $second = $service->processRecurringBilling($secondAsOf);
@@ -199,8 +215,12 @@ class AddOnRecurringBillingTest extends TestCase
         }
 
         $this->assertSame($asOf->addMonths(6)->toDateString(), $addonItem->fresh()->next_billing_date->toDateString());
+        $this->assertSame($asOf->addMonths(6)->toDateString(), $addonItem->fresh()->next_invoice_date->toDateString());
         $this->assertSame(1, $addonItem->fresh()->billing_cycles_count);
-        $this->assertSame($asOf->subDay()->addMonths(2)->toDateString(), $order->fresh()->next_billing_date->toDateString());
+        $this->assertSame($asOf->subDay()->addMonths(2)->toDateString(), $parent->fresh()->next_invoice_date->toDateString());
+        $this->assertSame($asOf->subDay()->toDateString(), $parent->fresh()->next_billing_date->toDateString());
+        $this->assertSame($asOf->subDay()->addMonths(2)->toDateString(), $order->fresh()->next_invoice_date->toDateString());
+        $this->assertSame($asOf->subDay()->toDateString(), $order->fresh()->next_billing_date->toDateString());
     }
 
     public function test_addon_due_date_renewal_bills_only_the_addon(): void
@@ -222,7 +242,7 @@ class AddOnRecurringBillingTest extends TestCase
             'next_billing_date' => $asOf->subDay()->toDateString(),
         ]);
 
-        $parent = OrderItem::create([
+        $parent = $this->makeItem([
             'order_id' => $order->id,
             'product_id' => $product->id,
             'product_name' => 'Shared Hosting',
@@ -234,7 +254,7 @@ class AddOnRecurringBillingTest extends TestCase
             'billing_cycles_count' => 2,
         ]);
 
-        $addonItem = OrderItem::create([
+        $addonItem = $this->makeItem([
             'order_id' => $order->id,
             'product_id' => $product->id,
             'product_name' => 'Annual Backup',
@@ -259,9 +279,19 @@ class AddOnRecurringBillingTest extends TestCase
         $this->assertSame(1, $invoice->items()->count());
         $this->assertStringContainsString('Annual Backup', $invoice->items()->first()->description);
 
-        $this->assertSame($asOf->subDay()->addMonths(12)->toDateString(), $addonItem->fresh()->next_billing_date->toDateString());
+        $this->assertSame($asOf->subDay()->addMonths(12)->toDateString(), $addonItem->fresh()->next_invoice_date->toDateString());
         $this->assertSame(2, $addonItem->fresh()->billing_cycles_count);
+        // The renewal invoice is unpaid: the pay-by date still points at the
+        // period the customer owes.
+        $this->assertSame($asOf->subDay()->toDateString(), $addonItem->fresh()->next_billing_date->toDateString());
+
+        // The parent is not due in this run: neither of its pointers moved.
         $this->assertSame($asOf->addMonth()->toDateString(), $parent->fresh()->next_billing_date->toDateString());
+        $this->assertSame($asOf->addMonth()->toDateString(), $parent->fresh()->next_invoice_date->toDateString());
+
+        // The order summary mirrors both pointers.
+        $this->assertSame($asOf->addMonth()->toDateString(), $order->fresh()->next_invoice_date->toDateString());
+        $this->assertSame($asOf->subDay()->toDateString(), $order->fresh()->next_billing_date->toDateString());
     }
 
     private function makeCustomer(): Customer
@@ -288,7 +318,7 @@ class AddOnRecurringBillingTest extends TestCase
 
     private function makeActiveOrder(Customer $customer, Product $product, array $overrides = []): Order
     {
-        return Order::create(array_merge([
+        $attributes = array_merge([
             'customer_id' => $customer->id,
             'product_id' => $product->id,
             'order_number' => 'ORD-'.date('Y').'-'.str_pad((string) random_int(1, 99999), 5, '0', STR_PAD_LEFT),
@@ -297,6 +327,24 @@ class AddOnRecurringBillingTest extends TestCase
             'total' => (float) $product->price,
             'status' => Order::STATUS_ACTIVE,
             'next_billing_date' => CarbonImmutable::today('Asia/Kolkata')->subDay()->toDateString(),
-        ], $overrides));
+        ], $overrides);
+
+        // The engine reads the generation pointer; a fixture modelling a live
+        // schedule seeds both pointers to the same date.
+        $attributes['next_invoice_date'] ??= $attributes['next_billing_date'] ?? null;
+
+        return Order::create($attributes);
+    }
+
+    /**
+     * An order line with both billing pointers seeded to the same date: the
+     * engine generates from `next_invoice_date`, the money moves
+     * `next_billing_date`.
+     */
+    private function makeItem(array $attributes): OrderItem
+    {
+        $attributes['next_invoice_date'] ??= $attributes['next_billing_date'] ?? null;
+
+        return OrderItem::create($attributes);
     }
 }

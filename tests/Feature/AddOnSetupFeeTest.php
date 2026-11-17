@@ -102,12 +102,24 @@ class AddOnSetupFeeTest extends TestCase
 
         // The setup row was never scheduled nor counted.
         $this->assertNull($setup->fresh()->next_billing_date);
+        $this->assertNull($setup->fresh()->next_invoice_date);
         $this->assertSame(0, (int) $setup->fresh()->billing_cycles_count);
 
         // The recurring add-on row renewed twice, each advance from its OWN
         // due date (attach seeded today + cycle, then two anniversary steps).
         $this->assertSame(3, (int) $recurring->fresh()->billing_cycles_count);
-        $this->assertSame($asOf->addMonth()->addMonths(2)->toDateString(), $recurring->fresh()->next_billing_date->toDateString());
+        $this->assertSame($asOf->addMonth()->addMonths(2)->toDateString(), $recurring->fresh()->next_invoice_date->toDateString());
+        // The renewals are unpaid, so the pay-by date waits for the money and
+        // stays at the date attach seeded.
+        $this->assertSame($asOf->addMonth()->toDateString(), $recurring->fresh()->next_billing_date->toDateString());
+
+        // The parent line renewed twice as well; only its generation date moved.
+        $this->assertSame($asOf->addMonths(3)->toDateString(), $parent->fresh()->next_invoice_date->toDateString());
+        $this->assertSame($asOf->addMonth()->toDateString(), $parent->fresh()->next_billing_date->toDateString());
+
+        // The order summary mirrors both pointers.
+        $this->assertSame($asOf->addMonths(3)->toDateString(), $order->fresh()->next_invoice_date->toDateString());
+        $this->assertSame($asOf->addMonth()->toDateString(), $order->fresh()->next_billing_date->toDateString());
     }
 
     private function makeCustomer(): Customer
@@ -146,7 +158,7 @@ class AddOnSetupFeeTest extends TestCase
 
     private function makeOrder(Customer $customer, Product $product, array $overrides = []): Order
     {
-        return Order::create(array_merge([
+        $attributes = array_merge([
             'customer_id' => $customer->id,
             'product_id' => $product->id,
             'order_number' => 'ORD-'.date('Y').'-'.str_pad((string) random_int(1, 99999), 5, '0', STR_PAD_LEFT),
@@ -154,12 +166,18 @@ class AddOnSetupFeeTest extends TestCase
             'quantity' => 1,
             'total' => (float) $product->price,
             'status' => Order::STATUS_ACTIVE,
-        ], $overrides));
+        ], $overrides);
+
+        // The engine reads the generation pointer; a fixture modelling a live
+        // schedule seeds both pointers to the same date.
+        $attributes['next_invoice_date'] ??= $attributes['next_billing_date'] ?? null;
+
+        return Order::create($attributes);
     }
 
     private function makeParent(Order $order, Product $product, array $overrides = []): OrderItem
     {
-        return OrderItem::create(array_merge([
+        $attributes = array_merge([
             'order_id' => $order->id,
             'product_id' => $product->id,
             'product_name' => $product->name,
@@ -168,6 +186,12 @@ class AddOnSetupFeeTest extends TestCase
             'unit_price' => 100.00,
             'total' => 100.00,
             'billing_cycles_count' => 1,
-        ], $overrides));
+        ], $overrides);
+
+        // The engine reads the generation pointer; a fixture modelling a live
+        // schedule seeds both pointers to the same date.
+        $attributes['next_invoice_date'] ??= $attributes['next_billing_date'] ?? null;
+
+        return OrderItem::create($attributes);
     }
 }

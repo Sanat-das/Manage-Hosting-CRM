@@ -169,6 +169,7 @@ class DomainController extends Controller
                     'status' => Order::STATUS_PENDING,
                     'domain_name' => $name,
                     'next_billing_date' => $expiry,
+                    'next_invoice_date' => $expiry,
                 ]);
 
                 OrderItem::create([

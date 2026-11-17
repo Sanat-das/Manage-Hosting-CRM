@@ -67,8 +67,10 @@ class InvoiceVoidRewindsScheduleTest extends TestCase
 
         $invoice = Invoice::where('order_id', $order->id)->sole();
 
-        // The renewal advanced the schedule and recorded the period it billed.
-        $this->assertSame($due->addMonth()->toDateString(), $item->fresh()->next_billing_date->toDateString());
+        // The renewal advanced the invoice pointer and recorded the period it
+        // billed; the pay-by date still waits on payment.
+        $this->assertSame($due->toDateString(), $item->fresh()->next_billing_date->toDateString());
+        $this->assertSame($due->addMonth()->toDateString(), $item->fresh()->next_invoice_date->toDateString());
         $this->assertSame(2, $item->fresh()->billing_cycles_count);
         $this->assertNotNull($item->fresh()->last_billing_date);
         $this->assertSame($due->toDateString(), $invoice->items->first()->billed_due_date->toDateString());
@@ -81,12 +83,13 @@ class InvoiceVoidRewindsScheduleTest extends TestCase
 
         $fresh = $item->fresh();
 
+        $this->assertSame($due->toDateString(), $fresh->next_invoice_date->toDateString());
         $this->assertSame($due->toDateString(), $fresh->next_billing_date->toDateString());
         $this->assertNull($fresh->last_billing_date);
         $this->assertSame(1, $fresh->billing_cycles_count);
 
         // The order summary follows the items again.
-        $this->assertSame($due->toDateString(), $order->fresh()->next_billing_date->toDateString());
+        $this->assertSame($due->toDateString(), $order->fresh()->next_invoice_date->toDateString());
     }
 
     public function test_voiding_an_invoice_that_billed_nothing_leaves_the_schedule_alone(): void
@@ -151,7 +154,7 @@ class InvoiceVoidRewindsScheduleTest extends TestCase
         // The service has since been billed again: the schedule sits one
         // cycle further on, so the void must not touch it.
         $later = $due->addMonths(2)->toDateString();
-        $item->update(['next_billing_date' => $later, 'billing_cycles_count' => 3]);
+        $item->update(['next_billing_date' => $later, 'next_invoice_date' => $later, 'billing_cycles_count' => 3]);
 
         $this->voidInvoice($invoice);
 
@@ -212,7 +215,7 @@ class InvoiceVoidRewindsScheduleTest extends TestCase
 
     private function makeOrder(Customer $customer, Product $product, array $overrides = []): Order
     {
-        return Order::create(array_merge([
+        $attributes = array_merge([
             'customer_id' => $customer->id,
             'product_id' => $product->id,
             'order_number' => 'ORD-'.date('Y').'-'.str_pad((string) random_int(1, 99999), 5, '0', STR_PAD_LEFT),
@@ -220,12 +223,18 @@ class InvoiceVoidRewindsScheduleTest extends TestCase
             'quantity' => 1,
             'total' => (float) $product->price,
             'status' => Order::STATUS_ACTIVE,
-        ], $overrides));
+        ], $overrides);
+
+        // The engine generates from the invoice pointer; a live fixture seeds
+        // both pointers to the same date.
+        $attributes['next_invoice_date'] ??= $attributes['next_billing_date'] ?? null;
+
+        return Order::create($attributes);
     }
 
     private function makeItem(Order $order, Product $product, array $overrides = []): OrderItem
     {
-        return OrderItem::create(array_merge([
+        $attributes = array_merge([
             'order_id' => $order->id,
             'product_id' => $product->id,
             'product_name' => $product->name,
@@ -233,6 +242,10 @@ class InvoiceVoidRewindsScheduleTest extends TestCase
             'quantity' => 1,
             'unit_price' => (float) $product->price,
             'total' => (float) $product->price,
-        ], $overrides));
+        ], $overrides);
+
+        $attributes['next_invoice_date'] ??= $attributes['next_billing_date'] ?? null;
+
+        return OrderItem::create($attributes);
     }
 }

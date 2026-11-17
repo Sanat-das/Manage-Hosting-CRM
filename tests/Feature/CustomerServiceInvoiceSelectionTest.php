@@ -429,7 +429,7 @@ class CustomerServiceInvoiceSelectionTest extends TestCase
 
     private function makeAddonItem(Order $order, OrderItem $parent, Product $product, ProductAddon $addon): OrderItem
     {
-        return OrderItem::create([
+        $attributes = [
             'order_id' => $order->id,
             'product_id' => $product->id,
             'product_name' => $addon->name,
@@ -440,7 +440,13 @@ class CustomerServiceInvoiceSelectionTest extends TestCase
             'next_billing_date' => now()->addMonth()->toDateString(),
             'parent_item_id' => $parent->id,
             'product_addon_id' => $addon->id,
-        ]);
+        ];
+
+        // The selection filter reads the generation pointer; a fixture
+        // modelling a live schedule seeds both pointers to the same date.
+        $attributes['next_invoice_date'] ??= $attributes['next_billing_date'] ?? null;
+
+        return OrderItem::create($attributes);
     }
 
     private function makeSetupFeeItem(Order $order, OrderItem $parent, Product $product, ProductAddon $addon): OrderItem

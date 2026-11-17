@@ -94,7 +94,7 @@ class UpgradeRequestServiceTest extends TestCase
         $due = CarbonImmutable::today('Asia/Kolkata')->addDays(30)->toDateString();
         $last = CarbonImmutable::today('Asia/Kolkata')->toDateString();
 
-        $order = Order::create(array_merge([
+        $attributes = array_merge([
             'customer_id' => $customer->id,
             'product_id' => $from->id,
             'order_number' => app(OrderNumberService::class)->next('ORD'),
@@ -104,9 +104,15 @@ class UpgradeRequestServiceTest extends TestCase
             'status' => Order::STATUS_ACTIVE,
             'next_billing_date' => $due,
             'last_billing_date' => $last,
-        ], $overrides));
+        ], $overrides);
 
-        OrderItem::create([
+        // The engine reads the generation pointer; a live fixture seeds both
+        // pointers to the same date.
+        $attributes['next_invoice_date'] ??= $attributes['next_billing_date'] ?? null;
+
+        $order = Order::create($attributes);
+
+        $itemAttributes = [
             'order_id' => $order->id,
             'product_id' => $from->id,
             'product_name' => $from->name,
@@ -114,8 +120,12 @@ class UpgradeRequestServiceTest extends TestCase
             'quantity' => 1,
             'unit_price' => $unitPrice,
             'total' => $unitPrice,
-            'next_billing_date' => $due,
-        ]);
+            'next_billing_date' => $order->next_billing_date?->toDateString(),
+        ];
+
+        $itemAttributes['next_invoice_date'] ??= $itemAttributes['next_billing_date'] ?? null;
+
+        OrderItem::create($itemAttributes);
 
         return $order;
     }

@@ -51,6 +51,7 @@ final class PerUserNotificationMap
         'ticket.transfer' => ['label' => 'Ticket transferred', 'description' => 'When a ticket is moved to your department.', 'notifiable' => 'user', 'channels' => ['database']],
         'renewal.upcoming' => ['label' => 'Renewal reminder digest', 'description' => 'The daily renewal reminder email.', 'notifiable' => 'user', 'channels' => ['mail']],
         'service.overdue' => ['label' => 'Service overdue digest', 'description' => 'When services become overdue: in-app alert and email digest.', 'notifiable' => 'user', 'channels' => ['database', 'mail']],
+        'invoice.period_untracked' => ['label' => 'Invoice billing period missing', 'description' => 'The scheduled invoices:period-check found open invoices whose lines carry no billing period.', 'notifiable' => 'user', 'channels' => ['database']],
         'chat.mention' => ['label' => 'Chat @mention', 'description' => 'When someone @mentions you in a chat conversation.', 'notifiable' => 'user', 'channels' => ['database']],
         'chat.reply' => ['label' => 'Chat threaded reply', 'description' => 'When someone replies to a chat message you authored.', 'notifiable' => 'user', 'channels' => ['database']],
         'chat.assign' => ['label' => 'Chat assigned', 'description' => 'When a chat conversation is assigned to you.', 'notifiable' => 'user', 'channels' => ['database']],

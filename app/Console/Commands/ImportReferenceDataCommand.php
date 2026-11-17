@@ -381,6 +381,7 @@ class ImportReferenceDataCommand extends Command
                 'order_number' => null,
                 'billing_cycle' => $this->productCycles[(int) ($row['product_id'] ?? 0)] ?? 'monthly',
                 'next_billing_date' => null,
+                'next_invoice_date' => null,
                 'last_billing_date' => null,
                 'updated_at' => now(),
             ],

@@ -123,7 +123,7 @@ class UpgradeLifecycleE2ETest extends TestCase
 
     private function makeOrder(Customer $customer, Product $from, float $unitPrice, array $overrides = []): Order
     {
-        $order = Order::create(array_merge([
+        $attributes = array_merge([
             'customer_id' => $customer->id,
             'product_id' => $from->id,
             'order_number' => 'ORD-'.date('Y').'-'.str_pad((string) random_int(1, 99999), 5, '0', STR_PAD_LEFT),
@@ -133,9 +133,15 @@ class UpgradeLifecycleE2ETest extends TestCase
             'status' => Order::STATUS_ACTIVE,
             'next_billing_date' => '2026-05-01',
             'last_billing_date' => '2026-04-01',
-        ], $overrides));
+        ], $overrides);
 
-        OrderItem::create([
+        // The engine reads the generation pointer; a live fixture seeds both
+        // pointers to the same date.
+        $attributes['next_invoice_date'] ??= $attributes['next_billing_date'] ?? null;
+
+        $order = Order::create($attributes);
+
+        $itemAttributes = [
             'order_id' => $order->id,
             'product_id' => $from->id,
             'product_name' => $from->name,
@@ -144,7 +150,11 @@ class UpgradeLifecycleE2ETest extends TestCase
             'unit_price' => $unitPrice,
             'total' => $unitPrice,
             'next_billing_date' => $order->next_billing_date?->toDateString(),
-        ]);
+        ];
+
+        $itemAttributes['next_invoice_date'] ??= $itemAttributes['next_billing_date'] ?? null;
+
+        OrderItem::create($itemAttributes);
 
         return $order;
     }
@@ -305,10 +315,13 @@ class UpgradeLifecycleE2ETest extends TestCase
         $this->assertNotSame((int) $request->invoice_id, (int) $renewal->id);
         $this->assertNotEquals(83.34, (float) $renewal->amount);
 
-        // The cycle advanced from the item's OWN due date.
+        // The cycle advanced from the item's OWN due date: the generation
+        // pointer moves on billing, the pay-by pointer waits for the money.
         $item = $order->items()->whereNull('product_addon_id')->sole();
-        $this->assertSame('2026-06-01', $item->fresh()->next_billing_date->toDateString());
-        $this->assertSame('2026-06-01', $order->fresh()->next_billing_date->toDateString());
+        $this->assertSame('2026-06-01', $item->fresh()->next_invoice_date->toDateString());
+        $this->assertSame('2026-05-01', $item->fresh()->next_billing_date->toDateString());
+        $this->assertSame('2026-06-01', $order->fresh()->next_invoice_date->toDateString());
+        $this->assertSame('2026-05-01', $order->fresh()->next_billing_date->toDateString());
     }
 
     public function test_client_downgrade_credit_flow(): void
@@ -399,7 +412,8 @@ class UpgradeLifecycleE2ETest extends TestCase
         $item = $order->items()->whereNull('product_addon_id')->sole();
         $this->assertSame((int) $from->id, (int) $item->product_id);
         $this->assertEquals(100.0, (float) $item->unit_price);
-        $this->assertSame('2026-06-01', $order->fresh()->next_billing_date->toDateString());
+        $this->assertSame('2026-06-01', $order->fresh()->next_invoice_date->toDateString());
+        $this->assertSame('2026-05-01', $order->fresh()->next_billing_date->toDateString());
     }
 
     public function test_stacking_guard(): void
@@ -606,8 +620,10 @@ class UpgradeLifecycleE2ETest extends TestCase
         $this->assertStringContainsString('Annual', (string) $line->description);
 
         $item = $item->fresh();
-        $this->assertSame('2027-05-01', $item->next_billing_date->toDateString());
-        $this->assertSame('2027-05-01', $order->fresh()->next_billing_date->toDateString());
+        $this->assertSame('2027-05-01', $item->next_invoice_date->toDateString());
+        $this->assertSame('2026-05-01', $item->next_billing_date->toDateString());
+        $this->assertSame('2027-05-01', $order->fresh()->next_invoice_date->toDateString());
+        $this->assertSame('2026-05-01', $order->fresh()->next_billing_date->toDateString());
     }
 
     public function test_change_type_is_persisted_on_upgrade_request(): void

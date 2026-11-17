@@ -57,9 +57,14 @@
                 <td class="text-muted">{{ $order->created_at?->format('M j, Y') ?? '—' }}</td>
                 <td>
                     {{-- The item lines are what was actually bought; the order's
-                         own product is only a fallback for rows predating them. --}}
+                         own product is only a fallback for rows predating them.
+                         An add-on shares the order's product, so the service
+                         line is the one that names the order. --}}
                     @if ($order->items->isNotEmpty())
-                        {{ $order->items->first()->product_name ?? '—' }}
+                        @php
+                            $serviceItem = $order->items->firstWhere(fn ($i) => $i->product_addon_id === null) ?? $order->items->first();
+                        @endphp
+                        {{ $serviceItem->product_name ?? $order->product?->name ?? '—' }}
                         @if ($order->items->count() > 1)
                             <span class="text-muted small">+{{ $order->items->count() - 1 }} more</span>
                         @endif
