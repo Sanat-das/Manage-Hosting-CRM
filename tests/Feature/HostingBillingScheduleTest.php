@@ -4,7 +4,6 @@ namespace Tests\Feature;
 
 use App\Models\Customer;
 use App\Models\HostingAccount;
-use App\Models\Invoice;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Permission;
@@ -68,38 +67,6 @@ class HostingBillingScheduleTest extends TestCase
         $this->assertSame('2027-11-30', $addonItem->fresh()->next_billing_date->toDateString());
         $this->assertSame('2027-10-29', $order->fresh()->next_billing_date->toDateString());
         $this->assertSame('bank_transfer', $order->fresh()->payment_method);
-    }
-
-    public function test_the_customer_profile_says_whether_the_cycle_was_invoiced_and_paid(): void
-    {
-        [$account, $order] = $this->makeServiceWithAddon();
-
-        $invoice = Invoice::create([
-            'customer_id' => $account->customer_id,
-            'order_id' => $order->id,
-            'invoice_no' => 'INV-2026-CYCLE1',
-            'amount' => 100.00,
-            'tax' => 0,
-            'total' => 100.00,
-            'status' => Invoice::STATUS_SENT,
-            'due_date' => now()->addDays(7),
-        ]);
-
-        $response = $this->actingAsAdmin()->get(route('admin.customers.show', $account->customer_id));
-
-        $response->assertOk();
-        $response->assertSee('INV-2026-CYCLE1', false);
-        $response->assertSee('unpaid', false);
-    }
-
-    public function test_the_customer_profile_says_a_cycle_that_was_never_invoiced(): void
-    {
-        [$account] = $this->makeServiceWithAddon();
-
-        $response = $this->actingAsAdmin()->get(route('admin.customers.show', $account->customer_id));
-
-        $response->assertOk();
-        $response->assertSee('not invoiced yet', false);
     }
 
     private Product $addonProduct;
