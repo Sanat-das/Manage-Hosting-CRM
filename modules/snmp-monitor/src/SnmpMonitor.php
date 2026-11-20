@@ -230,6 +230,9 @@ final class SnmpMonitor extends AbstractModule implements HostingAccountInfoProv
                 'section' => 'Metrics',
                 'help' => 'Collect running processes via hrSWRunTable (top N by CPU/memory). High SNMP walk cost — may be slow on busy hosts.',
             ],
+            // `auto_inventory` / `auto_ports` keys are FROZEN — they live inside
+            // prod product_module JSON blobs and are kept verbatim (NetBox
+            // alignment, decision 7, 2026-11-19). Do not rename.
             [
                 'key' => 'auto_inventory',
                 'label' => 'Auto-Populate Inventory',

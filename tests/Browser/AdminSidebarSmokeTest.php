@@ -32,7 +32,7 @@ class AdminSidebarSmokeTest extends DuskTestCase
      */
     protected array $modules = [
         ['/admin/dns-zones', 'DNS Zones'],
-        ['/admin/inventory-assets', 'Inventory Assets'],
+        ['/admin/devices', 'Devices'],
         ['/admin/datacenters', 'Datacenters'],
         ['/admin/ip-subnets', 'IP Subnets'],
         ['/admin/licenses', 'Licenses'],

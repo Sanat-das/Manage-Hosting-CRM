@@ -12,6 +12,13 @@ class IpAllocationHistory extends Model
     protected $table = 'ip_allocation_history';
 
     /**
+     * Frozen historical record: `ip_address_snapshot` JSON payloads written
+     * before 2026-11-19 may contain "inventory" as the historical
+     * assigned_to_type. Snapshots are never rewritten — do not "fix" old
+     * payloads. (NetBox alignment, decision 3/6.)
+     */
+
+    /**
      * The ledger records its own `changed_at` moment; the table has no
      * created_at / updated_at columns.
      */

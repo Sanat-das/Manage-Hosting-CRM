@@ -47,7 +47,7 @@ use RuntimeException;
  * ip_subnets.status: active|exhausted|reserved|retired
  * ip_addresses.ip_version: 4|6
  * ip_addresses.type: gateway|broadcast|network|reserved|available|assigned|floating|nat
- * ip_addresses.assigned_to_type: service|server|customer|inventory|App\Models\HostingAccount
+ * ip_addresses.assigned_to_type: service|server|customer|device|App\Models\HostingAccount
  * ip_allocation_history.action: allocated|released|reserved|unreserved|ptr_updated|assigned|override
  * dns_zones.zone_type: forward|reverse
  * dns_zones.status: active|inactive
@@ -268,7 +268,7 @@ class IpamDnsSeeder extends Seeder
                 'type' => $row['type'],
                 'assigned_to_type' => $assignedToType,
                 'assigned_to_id' => $assignedToId,
-                'inventory_asset_id' => null,
+                'device_id' => null,
                 'ptr_record' => $row['ptr'],
                 'notes' => $row['type'] === 'assigned'
                     ? 'Allocated to hosting account '.$assignedToId.'.'
@@ -349,7 +349,7 @@ class IpamDnsSeeder extends Seeder
                 $previousType = 'App\Models\HostingAccount';
                 $previousId = $ip['assigned_to_id'];
             } elseif ($entry['action'] === 'reserved') {
-                $newType = 'inventory';
+                $newType = 'device';
                 $newId = 0;
             }
 

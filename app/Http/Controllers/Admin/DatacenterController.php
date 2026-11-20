@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Datacenter;
+use App\Models\Device;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -20,7 +21,12 @@ class DatacenterController extends Controller
 
         $statuses = ['active' => 'Active', 'inactive' => 'Inactive', 'maintenance' => 'Maintenance'];
 
-        $query = Datacenter::withCount('racks');
+        // devices/subnets carry no FK, so the counts describe references that
+        // would dangle after delete; trashed devices are not counted.
+        $query = Datacenter::withCount(['racks', 'subnets'])
+            ->addSelect([
+                'devices_count' => Device::query()->selectRaw('COUNT(*)')->whereColumn('devices.datacenter_id', 'datacenters.id'),
+            ]);
 
         if ($search !== '') {
             $query->where(function ($q) use ($search) {
@@ -77,7 +83,7 @@ class DatacenterController extends Controller
 
     public function show(Datacenter $datacenter): View
     {
-        $datacenter->load(['subnets', 'racks' => fn ($query) => $query->withCount('inventoryAssets')]);
+        $datacenter->load(['subnets', 'racks' => fn ($query) => $query->withCount('devices')]);
 
         return view('admin.datacenters.show', compact('datacenter'));
     }

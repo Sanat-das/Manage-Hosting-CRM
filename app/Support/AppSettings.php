@@ -13,7 +13,6 @@ use App\Settings\EmailSettings;
 use App\Settings\GeneralSettings;
 use App\Settings\HostingSettings;
 use App\Settings\IntegrationSettings;
-use App\Settings\InventorySettings;
 use App\Settings\IpamSettings;
 use App\Settings\LogRetentionSettings;
 use App\Settings\ProductSettings;
@@ -133,13 +132,6 @@ class AppSettings
         'ipam_validate_networks' => IpamSettings::class,
         'ipam_vlan_tracking' => IpamSettings::class,
         'ipam_audit_retention_days' => IpamSettings::class,
-        // inventory (T4.2)
-        'inventory_track_stock' => InventorySettings::class,
-        'inventory_low_stock_threshold' => InventorySettings::class,
-        'inventory_auto_restock' => InventorySettings::class,
-        'inventory_restock_min_quantity' => InventorySettings::class,
-        'inventory_notify_low_stock' => InventorySettings::class,
-        'inventory_stock_unit' => InventorySettings::class,
         // catalog (T4.2)
         'catalog_show_inactive' => CatalogSettings::class,
         'catalog_require_domain_for_hosting' => CatalogSettings::class,
@@ -273,7 +265,6 @@ class AppSettings
             ['id' => 'hosting',      'label' => 'Hosting',       'icon' => 'bi bi-hdd',           'group' => 'Infrastructure'],
             ['id' => 'domain',       'label' => 'Domain',        'icon' => 'bi bi-globe',         'group' => 'Infrastructure'],
             ['id' => 'ipam',         'label' => 'IPAM',          'icon' => 'bi bi-diagram-3',     'group' => 'Infrastructure'],
-            ['id' => 'inventory',    'label' => 'Inventory',     'icon' => 'bi bi-box-seam',      'group' => 'Infrastructure'],
             // Automation
             ['id' => 'automation',   'label' => 'Automation',    'icon' => 'bi bi-robot',         'group' => 'Automation'],
             ['id' => 'cron',         'label' => 'Cron',          'icon' => 'bi bi-clock-history', 'group' => 'Automation'],

@@ -38,7 +38,7 @@
                         <tr>
                             <td><a href="{{ route('admin.racks.show', $rack) }}"><strong>{{ $rack->name }}</strong></a></td>
                             <td>{{ $rack->u_height ?? '—' }}U</td>
-                            <td>{{ $rack->inventory_assets_count }}</td>
+                            <td>{{ $rack->devices_count }}</td>
                             <td>{{ $rack->power_capacity_watts ? $rack->power_capacity_watts . ' W' : '—' }}</td>
                             <td><x-adminlte.partials.status-badge :status="$rack->status" /></td>
                         </tr>

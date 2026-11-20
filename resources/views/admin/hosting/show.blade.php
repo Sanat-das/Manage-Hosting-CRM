@@ -16,7 +16,6 @@
         ['id' => 'info', 'label' => 'Info', 'icon' => 'bi bi-info-circle'],
         ['id' => 'billing', 'label' => 'Billing', 'icon' => 'bi bi-credit-card'],
         ['id' => 'domain', 'label' => 'Domain', 'icon' => 'bi bi-globe'],
-        ['id' => 'assets', 'label' => 'Assets', 'icon' => 'bi bi-diagram-3', 'badge' => $assetRelationships->count()],
         ['id' => 'history', 'label' => 'History', 'icon' => 'bi bi-clock-history', 'badge' => count($audit)],
         ['id' => 'notes', 'label' => 'Notes', 'icon' => 'bi bi-sticky', 'badge' => isset($notes) ? $notes->count() : 0],
     ];
@@ -824,57 +823,6 @@
                                 </tbody>
                             </table>
                         </div>
-                    </div>
-                @endif
-            </div>
-
-            {{-- Assets --}}
-            <div class="tab-pane fade {{ $activeTab === 'assets' ? 'show active' : '' }}" id="assets" role="tabpanel" aria-labelledby="assets-tab">
-                {{-- Linking / unlinking inventory assets moved to the edit page. --}}
-                @if ($assetRelationships->isEmpty())
-                    <p class="text-muted mb-0">No inventory assets are linked to this account.</p>
-                @else
-                    <div class="table-responsive">
-                        <table class="table table-sm align-middle mb-0">
-                            <thead>
-                                <tr>
-                                    <th>Parent</th>
-                                    <th>Relationship</th>
-                                    <th>Child</th>
-                                    <th>Label</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                @foreach ($assetRelationships as $relationship)
-                                    <tr>
-                                        <td>
-                                            <span class="badge text-bg-secondary">{{ $assetKinds[$relationship->parent_kind] ?? $relationship->parent_kind }}</span>
-                                            @if ($relationship->parent_kind === 'inventory_asset')
-                                                <a class="ms-1" href="{{ route('admin.inventory-assets.show', $relationship->parent_id) }}">
-                                                    {{ $assetNames[$relationship->id]['parent'] ?? 'Asset #'.$relationship->parent_id }}
-                                                </a>
-                                            @elseif ($assetNames[$relationship->id]['parent'])
-                                                <span class="ms-1">{{ $assetNames[$relationship->id]['parent'] }}</span>
-                                            @endif
-                                            <code class="ms-1">#{{ $relationship->parent_id }}</code>
-                                        </td>
-                                        <td><code>{{ $relationship->relationship_type }}</code></td>
-                                        <td>
-                                            <span class="badge text-bg-secondary">{{ $assetKinds[$relationship->child_kind] ?? $relationship->child_kind }}</span>
-                                            @if ($relationship->child_kind === 'inventory_asset')
-                                                <a class="ms-1" href="{{ route('admin.inventory-assets.show', $relationship->child_id) }}">
-                                                    {{ $assetNames[$relationship->id]['child'] ?? 'Asset #'.$relationship->child_id }}
-                                                </a>
-                                            @elseif ($assetNames[$relationship->id]['child'])
-                                                <span class="ms-1">{{ $assetNames[$relationship->id]['child'] }}</span>
-                                            @endif
-                                            <code class="ms-1">#{{ $relationship->child_id }}</code>
-                                        </td>
-                                        <td class="text-muted">{{ $relationship->label ?? '—' }}</td>
-                                    </tr>
-                                @endforeach
-                            </tbody>
-                        </table>
                     </div>
                 @endif
             </div>

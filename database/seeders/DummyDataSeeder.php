@@ -4,8 +4,8 @@ namespace Database\Seeders;
 
 use Database\Seeders\Demo\AuditSeeder;
 use Database\Seeders\Demo\CustomerSeeder;
+use Database\Seeders\Demo\DeviceSeeder;
 use Database\Seeders\Demo\InfrastructureSeeder;
-use Database\Seeders\Demo\InventorySeeder;
 use Database\Seeders\Demo\InvoiceSeeder;
 use Database\Seeders\Demo\IpamDnsSeeder;
 use Database\Seeders\Demo\NotificationEmailSeeder;
@@ -34,7 +34,7 @@ use RuntimeException;
  *   4. ProductExtrasSeeder  addons/upgrades/bundles/...        (needs products)
  *   5. InfrastructureSeeder servers + groups/members/...       (no deps)
  *   6. ResourceSeeder       resource types/pools/allocations   (needs infra)
- *   7. InventorySeeder      inventory_assets + relationships   (needs products)
+ *   7. DeviceSeeder        devices + inventory_items   (needs products)
  *   8. ServiceSeeder        hosting_accounts + service_...     (needs cust+prod+infra)
  *   9. OrderSeeder          orders + order_items + history     (needs cust+service)
  *  10. InvoiceSeeder        invoices + invoice_items + quotes  (needs orders)
@@ -72,7 +72,7 @@ class DummyDataSeeder extends Seeder
         ProductExtrasSeeder::class,
         InfrastructureSeeder::class,
         ResourceSeeder::class,
-        InventorySeeder::class,
+        DeviceSeeder::class,
         ServiceSeeder::class,
         OrderSeeder::class,
         InvoiceSeeder::class,

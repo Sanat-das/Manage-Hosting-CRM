@@ -4,8 +4,8 @@ namespace App\Http\Controllers\Admin;
 
 use App\Exceptions\NoAvailableIpException;
 use App\Http\Controllers\Controller;
+use App\Models\Device;
 use App\Models\HostingAccount;
-use App\Models\InventoryAsset;
 use App\Models\IpAddress;
 use App\Models\IpAllocationHistory;
 use App\Models\IpSubnet;
@@ -14,6 +14,7 @@ use App\Services\IpAssignmentService;
 use Closure;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -25,7 +26,7 @@ class IpAddressController extends Controller
     {
         $search = trim((string) $request->query('search'));
 
-        $query = IpAddress::with(['subnet.vlan', 'subnet.datacenter', 'inventoryAsset:id,asset_tag']);
+        $query = IpAddress::with(['subnet.vlan', 'subnet.datacenter', 'device:id,asset_tag']);
         if ($request->filled('subnet_id')) {
             $query->where('subnet_id', $request->query('subnet_id'));
         }
@@ -70,7 +71,7 @@ class IpAddressController extends Controller
      * Typeahead search over IP Manager addresses, used by the asset form's IP
      * picker. Matches the IP, PTR, notes and type as well as the owning
      * subnet's name/CIDR. A blank query returns an empty set without a query,
-     * and results are capped and ordered like the inventory asset picker.
+     * and results are capped and ordered like the device picker.
      */
     public function search(Request $request): JsonResponse
     {
@@ -86,7 +87,7 @@ class IpAddressController extends Controller
         $like = '%'.$q.'%';
 
         $addresses = IpAddress::query()
-            ->with(['subnet:id,name,subnet_cidr,vlan_id', 'subnet.vlan:id,name,vlan_id', 'inventoryAsset:id,asset_tag'])
+            ->with(['subnet:id,name,subnet_cidr,vlan_id', 'subnet.vlan:id,name,vlan_id', 'device:id,asset_tag'])
             ->where(function (Builder $query) use ($like): void {
                 $query->where('ip_address', 'like', $like)
                     ->orWhere('ptr_record', 'like', $like)
@@ -100,7 +101,7 @@ class IpAddressController extends Controller
             ->limit(20)
             ->get([
                 'id', 'ip_address', 'type', 'assigned_to_type', 'subnet_id',
-                'inventory_asset_id', 'last_seen_at',
+                'device_id', 'last_seen_at',
             ]);
 
         return response()->json([
@@ -141,15 +142,15 @@ class IpAddressController extends Controller
      */
     private function searchResultMeta(IpAddress $ip): string
     {
-        $isInventoryAssigned = $ip->assigned_to_type === 'inventory' && $ip->inventoryAsset?->asset_tag !== null;
+        $isDeviceAssigned = $ip->assigned_to_type === 'device' && $ip->device?->asset_tag !== null;
 
-        $assignment = $ip->inventoryAsset?->asset_tag !== null
-            ? 'Asset '.$ip->inventoryAsset->asset_tag
+        $assignment = $ip->device?->asset_tag !== null
+            ? 'Asset '.$ip->device->asset_tag
             : ($ip->is_assigned ? 'assigned' : '');
 
         $parts = array_filter([
-            $isInventoryAssigned ? 'assigned' : (string) $ip->type,
-            ! $isInventoryAssigned && $ip->status !== $ip->type ? (string) $ip->status : '',
+            $isDeviceAssigned ? 'assigned' : (string) $ip->type,
+            ! $isDeviceAssigned && $ip->status !== $ip->type ? (string) $ip->status : '',
             $assignment,
             $ip->last_seen_at !== null ? 'last seen '.$ip->last_seen_at->format('Y-m-d H:i') : '',
         ], fn (string $part): bool => trim($part) !== '');
@@ -160,9 +161,9 @@ class IpAddressController extends Controller
     public function create(): View
     {
         $subnets = IpSubnet::orderBy('subnet_cidr')->get();
-        $inventoryAssets = $this->inventoryAssetOptions();
+        $devices = $this->deviceOptions();
 
-        return view('admin.ip_addresses.create', compact('subnets', 'inventoryAssets'));
+        return view('admin.ip_addresses.create', compact('subnets', 'devices'));
     }
 
     public function store(Request $request, IpAssignmentService $service): RedirectResponse
@@ -172,7 +173,7 @@ class IpAddressController extends Controller
             'ip_address' => ['required', 'string', 'max:45'],
             'ip_version' => ['sometimes', 'string', 'in:4,6'],
             'type' => ['sometimes', 'string', 'in:'.implode(',', IpAddress::TYPES)],
-            'inventory_asset_id' => ['nullable', 'integer', 'exists:inventory_assets,id', ...$this->inventoryAssetIdRules($service, null)],
+            'device_id' => ['nullable', 'integer', 'exists:devices,id', ...$this->deviceIdRules($service, null)],
             'ptr_record' => ['nullable', 'string', 'max:255'],
             'notes' => ['nullable', 'string', 'max:1000'],
         ]);
@@ -180,8 +181,8 @@ class IpAddressController extends Controller
         $validated['type'] = $validated['type'] ?? 'available';
         $ipAddress = IpAddress::create($validated);
 
-        if (($validated['inventory_asset_id'] ?? null) !== null) {
-            $service->assignToAsset($ipAddress, InventoryAsset::findOrFail((int) $validated['inventory_asset_id']));
+        if (($validated['device_id'] ?? null) !== null) {
+            $service->assignToAsset($ipAddress, Device::findOrFail((int) $validated['device_id']));
         }
 
         return redirect()->route('admin.ip-addresses.index')->with('success', 'IP address created.');
@@ -189,7 +190,7 @@ class IpAddressController extends Controller
 
     public function show(IpAddress $ipAddress): View
     {
-        $ipAddress->load(['subnet.vlan', 'subnet.datacenter', 'inventoryAsset']);
+        $ipAddress->load(['subnet.vlan', 'subnet.datacenter', 'device']);
 
         $hostingAccounts = HostingAccount::with(['customer.user:id,first_name,last_name,company', 'product:id,name'])
             ->orderByDesc('id')
@@ -207,9 +208,9 @@ class IpAddressController extends Controller
     public function edit(IpAddress $ipAddress): View
     {
         $subnets = IpSubnet::orderBy('subnet_cidr')->get();
-        $inventoryAssets = $this->inventoryAssetOptions();
+        $devices = $this->deviceOptions();
 
-        return view('admin.ip_addresses.edit', compact('ipAddress', 'subnets', 'inventoryAssets'));
+        return view('admin.ip_addresses.edit', compact('ipAddress', 'subnets', 'devices'));
     }
 
     public function update(Request $request, IpAddress $ipAddress, IpAssignmentService $service): RedirectResponse
@@ -218,19 +219,19 @@ class IpAddressController extends Controller
             'subnet_id' => ['nullable', 'integer', 'exists:ip_subnets,id'],
             'ip_address' => ['sometimes', 'string', 'max:45'],
             'type' => ['sometimes', 'string', 'in:'.implode(',', IpAddress::TYPES)],
-            'inventory_asset_id' => ['nullable', 'integer', 'exists:inventory_assets,id', ...$this->inventoryAssetIdRules($service, $ipAddress)],
+            'device_id' => ['nullable', 'integer', 'exists:devices,id', ...$this->deviceIdRules($service, $ipAddress)],
             'ptr_record' => ['nullable', 'string', 'max:255'],
             'notes' => ['nullable', 'string', 'max:1000'],
         ]);
 
-        $previousAssetId = $ipAddress->inventory_asset_id;
+        $previousAssetId = $ipAddress->device_id;
         $ipAddress->update($validated);
 
-        if (array_key_exists('inventory_asset_id', $validated)) {
-            $newAssetId = $validated['inventory_asset_id'];
+        if (array_key_exists('device_id', $validated)) {
+            $newAssetId = $validated['device_id'];
 
             if ($newAssetId !== null && (int) $newAssetId !== (int) $previousAssetId) {
-                $service->assignToAsset($ipAddress, InventoryAsset::findOrFail((int) $newAssetId));
+                $service->assignToAsset($ipAddress, Device::findOrFail((int) $newAssetId));
             } elseif ($newAssetId === null && $previousAssetId !== null) {
                 $service->releaseFromAsset($ipAddress);
             }
@@ -269,7 +270,7 @@ class IpAddressController extends Controller
         $accountId = $ipAddress->assigned_to_id;
         $accountType = $ipAddress->assigned_to_type;
 
-        if ($accountType === 'inventory') {
+        if ($accountType === 'device') {
             $service->releaseFromAsset($ipAddress, 'Released via IPAM panel by '.(auth()->user()->email ?? 'admin'));
 
             return redirect()->route('admin.ip-addresses.show', $ipAddress)->with('success', "IP {$ipAddress->ip_address} released. Status is now available.");
@@ -310,20 +311,29 @@ class IpAddressController extends Controller
             return back()->withErrors(['delete' => "Cannot delete IP {$ipAddress->ip_address} — it is currently assigned to ".class_basename($ipAddress->assigned_to_type)." #{$ipAddress->assigned_to_id}. Release it first."]);
         }
 
-        $ipAddress->delete();
+        $historyCount = IpAllocationHistory::where('ip_address_id', $ipAddress->id)->count();
+        if ($historyCount > 0) {
+            return redirect()->route('admin.ip-addresses.show', $ipAddress)->withErrors(['delete' => "Cannot delete — this IP has {$historyCount} allocation history record(s). The history is an append-only audit trail."]);
+        }
+
+        try {
+            $ipAddress->delete();
+        } catch (QueryException) {
+            return redirect()->route('admin.ip-addresses.show', $ipAddress)->withErrors(['delete' => 'Cannot delete — this IP carries allocation history or another restrict constraint. The history is an append-only audit trail.']);
+        }
 
         return redirect()->route('admin.ip-addresses.index')->with('success', 'IP address deleted.');
     }
 
     /**
-     * Validation rule for the IP form's inventory_asset_id select, shared by
+     * Validation rule for the IP form's device_id select, shared by
      * store and update. The owner conflict wording comes from the assignment
      * service so both IP-linked forms agree. On store there is no existing
      * address to conflict with, so the check is a no-op.
      *
      * @return array<int, mixed>
      */
-    private function inventoryAssetIdRules(IpAssignmentService $service, ?IpAddress $ip): array
+    private function deviceIdRules(IpAssignmentService $service, ?IpAddress $ip): array
     {
         return [
             function (string $attribute, mixed $value, Closure $fail) use ($service, $ip): void {
@@ -341,14 +351,14 @@ class IpAddressController extends Controller
     }
 
     /**
-     * Inventory assets offered for IP linkage (id + asset_tag), capped like the
+     * Devices offered for IP linkage (id + asset_tag), capped like the
      * hosting asset context so the select stays reasonable on large inventories.
      *
-     * @return Collection<int, InventoryAsset>
+     * @return Collection<int, Device>
      */
-    private function inventoryAssetOptions(): Collection
+    private function deviceOptions(): Collection
     {
-        return InventoryAsset::query()
+        return Device::query()
             ->orderBy('asset_tag')
             ->limit(200)
             ->get(['id', 'asset_tag']);

@@ -23,8 +23,8 @@ class Rack extends Model
         return $this->belongsTo(Datacenter::class);
     }
 
-    public function inventoryAssets(): HasMany
+    public function devices(): HasMany
     {
-        return $this->hasMany(InventoryAsset::class);
+        return $this->hasMany(Device::class);
     }
 }

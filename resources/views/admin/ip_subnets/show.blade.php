@@ -81,9 +81,18 @@
             <div class="col-md-4"><strong>Status:</strong> <x-adminlte.partials.status-badge :status="$ipSubnet->status ?? 'active'" /></div>
         </div>
         <div class="row mt-3">
-            <div class="col-md-4"><strong>Total Addresses:</strong> {{ $ipSubnet->total_addresses ?? '—' }}</div>
-            <div class="col-md-4"><strong>Used:</strong> {{ $ipSubnet->used_addresses ?? 0 }}</div>
-            <div class="col-md-4"><strong>Reserved:</strong> {{ $ipSubnet->reserved_count ?? 0 }}</div>
+            <div class="col-md-4"><strong>Capacity:</strong> {{ $utilization['capacity'] }}</div>
+            <div class="col-md-4"><strong>Used:</strong> {{ $utilization['used'] }}</div>
+            <div class="col-md-4"><strong>Available:</strong> {{ $utilization['available'] }}</div>
+        </div>
+        <div class="row mt-3">
+            <div class="col-md-12">
+                <strong>Utilization:</strong> {{ $utilization['pct'] }}%
+                <div class="progress mt-1" style="height: 1.1rem;" role="progressbar" aria-valuenow="{{ min(100, $utilization['pct']) }}" aria-valuemin="0" aria-valuemax="100" title="{{ $utilization['used'] }} of {{ $utilization['capacity'] }} addresses used">
+                    <div class="progress-bar {{ $utilization['pct'] >= 90 ? 'bg-danger' : ($utilization['pct'] >= 75 ? 'bg-warning' : 'bg-success') }}" style="width: {{ min(100, $utilization['pct']) }}%;">{{ $utilization['used'] }} / {{ $utilization['capacity'] }}</div>
+                </div>
+                <div class="text-muted small mt-1">Assigned: {{ $utilization['assigned'] }} &middot; Reserved: {{ $utilization['reserved'] }}</div>
+            </div>
         </div>
         <div class="row mt-3">
             <div class="col-md-4"><strong>VLAN:</strong> {{ $ipSubnet->vlan?->name ?? '—' }}</div>

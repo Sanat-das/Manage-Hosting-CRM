@@ -67,8 +67,8 @@ class SettingsController extends Controller
      *  - CLOSED sets (guards, billing cycles, cron schedules, date formats)
      *    become a real <select>. The value space is fixed by code, so typing
      *    anything else was only ever a way to save a value nothing could use.
-     *  - OPEN sets (panels, server groups, registrars, DNS providers, stock
-     *    units) become a <datalist> on a text input: the field suggests what
+     *  - OPEN sets (panels, server groups, registrars, DNS providers)
+     *    become a <datalist> on a text input: the field suggests what
      *    exists without refusing anything else. A <select> there would silently
      *    rewrite a stored value the moment the list changed — a module gets
      *    uninstalled, a server group renamed — and settings saves are
@@ -113,7 +113,6 @@ class SettingsController extends Controller
                 ->pluck('name')
                 ->all()),
             'registrars' => $safe(static fn (): array => app(DomainService::class)->registrars()),
-            'stock_units' => ['units', 'pcs', 'licenses', 'GB', 'TB', 'cores', 'hours'],
 
             // No source: nothing in the app defines domain pricing tiers, so
             // this list is a guess kept only so the field is not free text.
@@ -200,7 +199,7 @@ class SettingsController extends Controller
     /**
      * Persist admin settings — typed vs legacy untyped fallback.
      *
-     * Typed keys (160 in AppSettings::TYPED_KEYS) delegate validation to their
+     * Typed keys (169 in AppSettings::TYPED_KEYS) delegate validation to their
      * owning Spatie settings class via `Class::rules()[$key]`.
      *
      * Legacy untyped keys — not ported to typed classes — use fallback

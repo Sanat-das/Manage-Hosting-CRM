@@ -1,4 +1,4 @@
-﻿@extends('adminlte::page')
+@extends('adminlte::page')
 
 @section('title', 'License — '.$license->license_type)
 
@@ -20,7 +20,7 @@
                         <tr><th class="text-muted w-25">Type</th><td>{{ $license->license_type }}</td></tr>
                         <tr><th class="text-muted">Asset</th><td>
                             @if ($license->asset)
-                                <a href="{{ route('admin.inventory-assets.show', $license->asset) }}">{{ $license->asset->asset_tag }}</a>
+                                <a href="{{ route('admin.devices.show', $license->asset) }}">{{ $license->asset->asset_tag }}</a>
                             @else
                                 —
                             @endif

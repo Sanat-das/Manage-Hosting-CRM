@@ -2,7 +2,6 @@
 
 namespace Tests\Feature;
 
-use App\Models\AssetRelationship;
 use App\Models\Datacenter;
 use App\Models\HostingAccount;
 use App\Models\IpAddress;
@@ -22,7 +21,7 @@ use Tests\TestCase;
 
 /**
  * End-to-end integration coverage for the IP provisioning and
- * asset-relationship components working together as an operator
+ * product-config components working together as an operator
  * drives them through the admin flow.
  */
 class ProductConfigOptionsIntegrationTest extends TestCase
@@ -99,11 +98,11 @@ class ProductConfigOptionsIntegrationTest extends TestCase
         ]);
     }
 
-    public function test_dedicated_product_records_hosted_in_asset_relationship(): void
+    public function test_dedicated_product_requires_ip_lease(): void
     {
         $this->actingAsAdmin();
 
-        $server = Server::create([
+        Server::create([
             'name' => 'Dedicated Node 02',
             'ip_address' => '10.0.0.12',
             'server_type' => 'generic',
@@ -117,23 +116,7 @@ class ProductConfigOptionsIntegrationTest extends TestCase
             'require_public_ip' => true,
         ]);
 
-        // A dedicated product is provisioned onto a specific server asset.
-        AssetRelationship::create([
-            'parent_kind' => 'product',
-            'parent_id' => $product->id,
-            'child_kind' => 'server',
-            'child_id' => $server->id,
-            'relationship_type' => 'hosted_in',
-        ]);
-
         $this->assertTrue($product->requiresIp(), 'Dedicated products must require an IP lease');
-        $this->assertDatabaseHas('asset_relationships', [
-            'parent_kind' => 'product',
-            'parent_id' => $product->id,
-            'child_kind' => 'server',
-            'child_id' => $server->id,
-            'relationship_type' => 'hosted_in',
-        ]);
         $this->assertDatabaseHas('datacenters', [
             'id' => $datacenter->id,
             'code' => 'BOM1',

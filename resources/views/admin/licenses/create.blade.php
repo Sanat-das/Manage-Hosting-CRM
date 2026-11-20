@@ -1,4 +1,4 @@
-﻿@extends('adminlte::page')
+@extends('adminlte::page')
 
 @section('title', 'Add License')
 
@@ -10,10 +10,10 @@
     <x-adminlte.partials.flash-alert />
 
     <x-adminlte.partials.form-card icon="bi bi-key" title="New License" :action="route('admin.licenses.store')" submit-label="Save License" :cancel-url="route('admin.licenses.index')">
-        <x-adminlte-select name="inventory_asset_id" label="Inventory Asset" required>
+        <x-adminlte-select name="device_id" label="Device" required>
             <option value="">— Select an asset —</option>
-            @foreach ($inventoryAssets as $inventoryAsset)
-                <option value="{{ $inventoryAsset->id }}" @selected(old('inventory_asset_id') == $inventoryAsset->id)>{{ $inventoryAsset->asset_tag }}</option>
+            @foreach ($devices as $device)
+                <option value="{{ $device->id }}" @selected(old('device_id') == $device->id)>{{ $device->asset_tag }}</option>
             @endforeach
         </x-adminlte-select>
         <div class="row">

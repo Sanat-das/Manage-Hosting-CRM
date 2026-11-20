@@ -3,7 +3,8 @@
 namespace Tests\Feature;
 
 use App\Models\Datacenter;
-use App\Models\InventoryAsset;
+use App\Models\Device;
+use App\Models\DeviceType;
 use App\Models\IpAddress;
 use App\Models\IpSubnet;
 use App\Models\License;
@@ -62,23 +63,29 @@ class InventoryReportTest extends TestCase
     /**
      * @param  array<string, mixed>  $overrides
      */
-    private function makeAsset(array $overrides = []): InventoryAsset
+    private function makeAsset(array $overrides = []): Device
     {
         $this->assetSequence++;
 
-        return InventoryAsset::create(array_merge([
+        $category = $overrides['category'] ?? 'server';
+        unset($overrides['category']);
+
+        if (! array_key_exists('device_type_id', $overrides)) {
+            $overrides['device_type_id'] = (int) DeviceType::factory()->create(['category' => $category])->id;
+        }
+
+        return Device::create(array_merge([
             'asset_tag' => 'AST-'.$this->assetSequence,
-            'asset_type' => 'server',
         ], $overrides));
     }
 
     /**
      * @param  array<string, mixed>  $overrides
      */
-    private function makeLicense(InventoryAsset $asset, array $overrides = []): License
+    private function makeLicense(Device $asset, array $overrides = []): License
     {
         return License::create(array_merge([
-            'inventory_asset_id' => $asset->id,
+            'device_id' => $asset->id,
             'license_type' => 'windows',
             'seats' => 5,
             'seats_available' => 5,
@@ -92,19 +99,19 @@ class InventoryReportTest extends TestCase
         $rack = $this->rack($datacenter);
 
         $this->makeAsset([
-            'asset_type' => 'server',
+            'category' => 'server',
             'status' => 'installed',
             'datacenter_id' => $datacenter->id,
             'rack_id' => $rack->id,
             'rack_u_position' => 2,
         ]);
-        $this->makeAsset(['asset_type' => 'server', 'status' => 'ordered']);
-        $this->makeAsset(['asset_type' => 'switch', 'status' => 'in_stock']);
+        $this->makeAsset(['category' => 'server', 'status' => 'ordered']);
+        $this->makeAsset(['category' => 'switch', 'status' => 'in_stock']);
 
-        // Each license owns a distinct asset (licenses.inventory_asset_id is unique).
-        $expiringAsset = $this->makeAsset(['asset_type' => 'software_license', 'status' => 'assigned']);
-        $renewingAsset = $this->makeAsset(['asset_type' => 'software_license', 'status' => 'assigned']);
-        $expiredAsset = $this->makeAsset(['asset_type' => 'software_license', 'status' => 'assigned']);
+        // Each license owns a distinct device (licenses.device_id is unique).
+        $expiringAsset = $this->makeAsset(['status' => 'assigned']);
+        $renewingAsset = $this->makeAsset(['status' => 'assigned']);
+        $expiredAsset = $this->makeAsset(['status' => 'assigned']);
 
         $this->makeLicense($expiringAsset, ['seats_available' => 0, 'expiry_date' => now()->addDays(10)]);
         $this->makeLicense($renewingAsset, ['seats' => 1, 'seats_available' => 1, 'expiry_date' => now()->addDays(90)]);
@@ -122,15 +129,14 @@ class InventoryReportTest extends TestCase
             ->assertSee('Inventory & Capacity Report')
             ->assertSee('Rack A');
 
-        $this->assertSame(2, $response->viewData('assetsByType')['server']);
-        $this->assertSame(1, $response->viewData('assetsByType')['switch']);
-        $this->assertSame(3, $response->viewData('assetsByType')['software_license']);
+        $this->assertSame(5, $response->viewData('assetsByCategory')['server']);
+        $this->assertSame(1, $response->viewData('assetsByCategory')['switch']);
         $this->assertSame(1, $response->viewData('assetsByStatus')['installed']);
         $this->assertSame(1, $response->viewData('assetsByStatus')['ordered']);
         $this->assertSame(1, $response->viewData('assetsByStatus')['in_stock']);
         $this->assertSame(3, $response->viewData('assetsByStatus')['assigned']);
 
-        $this->assertSame(1, $response->viewData('racks')->first()->inventory_assets_count);
+        $this->assertSame(1, $response->viewData('racks')->first()->devices_count);
 
         $this->assertSame(2, $response->viewData('licensesByStatus')['active']);
         $this->assertSame(1, $response->viewData('licensesByStatus')['expired']);
@@ -153,7 +159,7 @@ class InventoryReportTest extends TestCase
 
         $this->makeAsset([
             'asset_tag' => 'AST-EXPORT',
-            'asset_type' => 'switch',
+            'category' => 'switch',
             'status' => 'in_stock',
             'vendor' => 'Ingram',
             'datacenter_id' => $datacenter->id,
@@ -170,7 +176,7 @@ class InventoryReportTest extends TestCase
         $this->assertStringContainsString('text/csv', (string) $response->headers->get('content-type'));
 
         $content = $response->streamedContent();
-        $this->assertStringContainsString('"Asset Tag",Type,Status,Datacenter,Rack,"U Position",Vendor,"Purchase Date","Purchase Cost","Warranty Expiry"', $content);
+        $this->assertStringContainsString('"Asset Tag",Category,Status,Datacenter,Rack,"U Position",Vendor,"Purchase Date","Purchase Cost","Warranty Expiry"', $content);
         $this->assertStringContainsString('AST-EXPORT,switch,in_stock,"Datacenter DCAA","Rack Alpha",7,Ingram,2026-01-15,750.50,2029-01-15', $content);
     }
 }

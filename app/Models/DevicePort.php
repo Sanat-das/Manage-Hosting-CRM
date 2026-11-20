@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 
-#[Fillable(['inventory_asset_id', 'name', 'port_number', 'port_type', 'media', 'speed_bps', 'status', 'mac_address', 'source', 'snmp_if_index', 'snmp_if_descr', 'last_synced_at', 'notes'])]
+#[Fillable(['device_id', 'name', 'port_number', 'port_type', 'media', 'speed_bps', 'status', 'mac_address', 'source', 'snmp_if_index', 'snmp_if_descr', 'last_synced_at', 'notes'])]
 class DevicePort extends Model
 {
     /**
@@ -51,9 +51,9 @@ class DevicePort extends Model
         ];
     }
 
-    public function inventoryAsset(): BelongsTo
+    public function device(): BelongsTo
     {
-        return $this->belongsTo(InventoryAsset::class, 'inventory_asset_id');
+        return $this->belongsTo(Device::class, 'device_id');
     }
 
     public function connectionAsA(): HasOne

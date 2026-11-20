@@ -13,8 +13,7 @@ use Illuminate\Support\Facades\Route;
 | admin. name prefix (sidebar contract: admin.service-instances.*).
 |
 | Permission gates: granular service-instances / provisioning-events as
- | declared in AdminLteRbacSeeder. Fallback to hosting.* handled in
-| PermissionMiddleware.
+ | declared in AdminLteRbacSeeder.
 */
 
 Route::middleware(['web', 'auth', 'admin', 'throttle:admin'])->prefix('admin')->name('admin.')->group(function () {

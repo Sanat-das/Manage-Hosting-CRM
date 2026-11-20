@@ -2,8 +2,9 @@
 
 namespace Tests\Feature;
 
+use App\Models\Device;
 use App\Models\DevicePort;
-use App\Models\InventoryAsset;
+use App\Models\DeviceType;
 use App\Models\Permission;
 use App\Models\PortConnection;
 use App\Models\Role;
@@ -12,7 +13,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 /**
- * Slice B1: manual device port CRUD on the inventory asset show page, the
+ * Slice B1: manual device port CRUD on the device show page, the
  * ports.manage permission gate, and the peer-port picker search contract.
  */
 class DevicePortCrudTest extends TestCase
@@ -25,8 +26,8 @@ class DevicePortCrudTest extends TestCase
 
         $adminRole = Role::firstOrCreate(['name' => 'admin'], ['label' => 'Administrator']);
         $permissions = [
-            Permission::firstOrCreate(['name' => 'inventory.view'], ['label' => 'View Inventory']),
-            Permission::firstOrCreate(['name' => 'inventory.manage'], ['label' => 'Manage Inventory']),
+            Permission::firstOrCreate(['name' => 'devices.view'], ['label' => 'View Devices']),
+            Permission::firstOrCreate(['name' => 'devices.manage'], ['label' => 'Manage Devices']),
             Permission::firstOrCreate(['name' => 'ports.view'], ['label' => 'View Ports & Connections']),
             Permission::firstOrCreate(['name' => 'ports.manage'], ['label' => 'Manage Ports & Connections']),
         ];
@@ -40,18 +41,18 @@ class DevicePortCrudTest extends TestCase
     /**
      * @param  array<string, mixed>  $overrides
      */
-    private function makeAsset(string $assetTag, array $overrides = []): InventoryAsset
+    private function makeAsset(string $assetTag, array $overrides = []): Device
     {
-        return InventoryAsset::create(array_merge([
+        return Device::create(array_merge([
             'asset_tag' => $assetTag,
-            'asset_type' => 'switch',
+            'device_type_id' => (int) DeviceType::factory()->create(['category' => 'switch'])->id,
         ], $overrides));
     }
 
     /**
      * @param  array<string, mixed>  $overrides
      */
-    private function makePort(InventoryAsset $asset, array $overrides = []): DevicePort
+    private function makePort(Device $asset, array $overrides = []): DevicePort
     {
         return $asset->ports()->create(array_merge([
             'name' => 'GigabitEthernet1/0/1',
@@ -72,7 +73,7 @@ class DevicePortCrudTest extends TestCase
     {
         $asset = $this->makeAsset('PORT-SW-1');
 
-        $response = $this->actingAsAdmin()->post(route('admin.inventory-assets.ports.store', $asset), [
+        $response = $this->actingAsAdmin()->post(route('admin.devices.ports.store', $asset), [
             'name' => 'Gi1/0/24',
             'port_number' => '24',
             'port_type' => 'ethernet',
@@ -87,7 +88,7 @@ class DevicePortCrudTest extends TestCase
         $response->assertSessionHasNoErrors();
 
         $this->assertDatabaseHas('device_ports', [
-            'inventory_asset_id' => $asset->id,
+            'device_id' => $asset->id,
             'name' => 'Gi1/0/24',
             'port_number' => '24',
             'port_type' => 'ethernet',
@@ -110,7 +111,7 @@ class DevicePortCrudTest extends TestCase
             'snmp_if_descr' => 'eth0',
         ]);
 
-        $response = $this->actingAsAdmin()->put(route('admin.inventory-assets.ports.update', [$asset, $port]), [
+        $response = $this->actingAsAdmin()->put(route('admin.devices.ports.update', [$asset, $port]), [
             'name' => 'Gi1/0/2',
             'port_type' => 'sfp',
             'status' => 'down',
@@ -133,7 +134,7 @@ class DevicePortCrudTest extends TestCase
         $port = $this->makePort($asset);
 
         $response = $this->actingAsAdmin()
-            ->delete(route('admin.inventory-assets.ports.destroy', [$asset, $port]));
+            ->delete(route('admin.devices.ports.destroy', [$asset, $port]));
 
         $response->assertSessionHasNoErrors();
         $this->assertDatabaseMissing('device_ports', ['id' => $port->id]);
@@ -145,20 +146,20 @@ class DevicePortCrudTest extends TestCase
         $other = $this->makeAsset('PORT-UNIQ-B');
         $this->makePort($asset, ['name' => 'Gi1/0/1']);
 
-        $response = $this->actingAsAdmin()->post(route('admin.inventory-assets.ports.store', $asset), [
+        $response = $this->actingAsAdmin()->post(route('admin.devices.ports.store', $asset), [
             'name' => 'Gi1/0/1',
             'port_type' => 'ethernet',
         ]);
 
         $response->assertSessionHasErrors('name');
-        $this->assertSame(1, DevicePort::where('inventory_asset_id', $asset->id)->count());
+        $this->assertSame(1, DevicePort::where('device_id', $asset->id)->count());
 
-        $this->actingAsAdmin()->post(route('admin.inventory-assets.ports.store', $other), [
+        $this->actingAsAdmin()->post(route('admin.devices.ports.store', $other), [
             'name' => 'Gi1/0/1',
             'port_type' => 'ethernet',
         ])->assertSessionHasNoErrors();
 
-        $this->assertSame(1, DevicePort::where('inventory_asset_id', $other->id)->count());
+        $this->assertSame(1, DevicePort::where('device_id', $other->id)->count());
     }
 
     public function test_update_and_destroy_return_404_for_a_port_of_another_asset(): void
@@ -168,14 +169,14 @@ class DevicePortCrudTest extends TestCase
         $port = $this->makePort($other);
 
         $this->actingAsAdmin()
-            ->put(route('admin.inventory-assets.ports.update', [$asset, $port]), [
+            ->put(route('admin.devices.ports.update', [$asset, $port]), [
                 'name' => 'Hijacked',
                 'port_type' => 'ethernet',
             ])
             ->assertNotFound();
 
         $this->actingAsAdmin()
-            ->delete(route('admin.inventory-assets.ports.destroy', [$asset, $port]))
+            ->delete(route('admin.devices.ports.destroy', [$asset, $port]))
             ->assertNotFound();
 
         $this->assertDatabaseHas('device_ports', ['id' => $port->id, 'name' => 'GigabitEthernet1/0/1']);
@@ -188,14 +189,14 @@ class DevicePortCrudTest extends TestCase
 
         $viewerRole = Role::firstOrCreate(['name' => 'viewer'], ['label' => 'Viewer']);
         $viewerRole->permissions()->syncWithoutDetaching([
-            Permission::firstOrCreate(['name' => 'inventory.view'], ['label' => 'View Inventory'])->id,
+            Permission::firstOrCreate(['name' => 'devices.view'], ['label' => 'View Devices'])->id,
             Permission::firstOrCreate(['name' => 'ports.view'], ['label' => 'View Ports & Connections'])->id,
         ]);
 
         $user = User::factory()->create();
         $user->assignRole('viewer');
 
-        $response = $this->actingAs($user)->get(route('admin.inventory-assets.show', $asset));
+        $response = $this->actingAs($user)->get(route('admin.devices.show', $asset));
 
         $response->assertOk();
         $response->assertSee('Gi1/0/1');
@@ -210,7 +211,7 @@ class DevicePortCrudTest extends TestCase
         $asset = $this->makeAsset('PORT-ADMIN-1');
         $this->makePort($asset, ['name' => 'Gi1/0/1']);
 
-        $response = $this->actingAsAdmin()->get(route('admin.inventory-assets.show', $asset));
+        $response = $this->actingAsAdmin()->get(route('admin.devices.show', $asset));
 
         $response->assertOk();
         $response->assertSee('Add Port');
@@ -396,8 +397,8 @@ class DevicePortCrudTest extends TestCase
         $this->connect($port, $peer);
 
         $response = $this->actingAsAdmin()
-            ->from(route('admin.inventory-assets.show', $assetA))
-            ->delete(route('admin.inventory-assets.ports.destroy', [$assetA, $port]));
+            ->from(route('admin.devices.show', $assetA))
+            ->delete(route('admin.devices.ports.destroy', [$assetA, $port]));
 
         $response->assertSessionHasErrors(['delete' => 'Disconnect the cable first.']);
         $this->assertDatabaseHas('device_ports', ['id' => $port->id]);

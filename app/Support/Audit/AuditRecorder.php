@@ -69,9 +69,9 @@ final class AuditRecorder
     /**
      * @param  array<string, mixed>  $details
      */
-    public function entity(string $action, Model $entity, array $details = [], ?int $actorId = null): void
+    public function entity(string $action, Model $entity, array $details = [], ?int $actorId = null): bool
     {
-        $this->entityRef($action, $entity->getMorphClass(), $entity->getKey(), $details, $actorId);
+        return $this->entityRef($action, $entity->getMorphClass(), $entity->getKey(), $details, $actorId);
     }
 
     /**
@@ -79,8 +79,12 @@ final class AuditRecorder
      * messages) — same table, referenced by type + id instead of a live model.
      *
      * @param  array<string, mixed>  $details
+     * @return bool true when the row was persisted; false when the security
+     *              channel absorbed the failure. Callers that fail closed (e.g.
+     *              an inventory audit write inside a transaction) must check
+     *              this.
      */
-    public function entityRef(string $action, string $entityType, int|string|null $entityId, array $details = [], ?int $actorId = null): void
+    public function entityRef(string $action, string $entityType, int|string|null $entityId, array $details = [], ?int $actorId = null): bool
     {
         $details = $this->redact($details);
 
@@ -97,7 +101,7 @@ final class AuditRecorder
         $log->request_id = $this->requestId();
         $log->created_at = now();
 
-        $this->persist('audit_log', fn () => $log->save());
+        return $this->persist('audit_log', fn () => $log->save());
     }
 
     public function module(
@@ -143,16 +147,20 @@ final class AuditRecorder
         $this->persist('domain_sync_log', fn () => $log->save());
     }
 
-    private function persist(string $stream, callable $write): void
+    private function persist(string $stream, callable $write): bool
     {
         try {
             $write();
+
+            return true;
         } catch (Throwable $e) {
             // An audit write that fails is itself a security-relevant event.
             AppLog::security()->error('Audit record failed to persist.', [
                 'stream' => $stream,
                 'error' => $e->getMessage(),
             ]);
+
+            return false;
         }
     }
 

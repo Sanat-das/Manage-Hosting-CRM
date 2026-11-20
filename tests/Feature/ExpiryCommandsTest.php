@@ -2,7 +2,8 @@
 
 namespace Tests\Feature;
 
-use App\Models\InventoryAsset;
+use App\Models\Device;
+use App\Models\DeviceType;
 use App\Models\License;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -11,7 +12,7 @@ use Tests\TestCase;
  * Inventory warranty + license expiry scheduled checks.
  *
  * Mirrors the ssl:check-expiry cases in QueueSchedulerTest: the warranty
- * command only reports (inventory_assets has no expiry column), while the
+ * command only reports (devices has no expiry column), while the
  * license command reports, marks past-due rows expired, and flags seat
  * exhaustion.
  */
@@ -24,13 +25,13 @@ class ExpiryCommandsTest extends TestCase
     /**
      * @param  array<string, mixed>  $overrides
      */
-    private function makeAsset(array $overrides = []): InventoryAsset
+    private function makeAsset(array $overrides = []): Device
     {
         $this->assetSequence++;
 
-        return InventoryAsset::create(array_merge([
+        return Device::create(array_merge([
             'asset_tag' => 'AST-'.$this->assetSequence,
-            'asset_type' => 'server',
+            'device_type_id' => (int) DeviceType::factory()->create(['category' => 'server'])->id,
             'status' => 'in_stock',
         ], $overrides));
     }
@@ -43,7 +44,7 @@ class ExpiryCommandsTest extends TestCase
         $asset = $this->makeAsset();
 
         return License::create(array_merge([
-            'inventory_asset_id' => $asset->id,
+            'device_id' => $asset->id,
             'license_type' => 'windows',
             'license_key' => 'KEY-'.$asset->id,
             'seats' => 5,
@@ -75,7 +76,7 @@ class ExpiryCommandsTest extends TestCase
             'warranty_expiry' => now()->addDays(5)->toDateString(),
         ]);
 
-        $this->artisan('inventory:check-warranty-expiry', ['--days' => 30])
+        $this->artisan('devices:check-warranty-expiry', ['--days' => 30])
             ->expectsOutputToContain('AST-SOON')
             ->doesntExpectOutputToContain('AST-FAR')
             ->doesntExpectOutputToContain('AST-RETIRED')
@@ -83,7 +84,7 @@ class ExpiryCommandsTest extends TestCase
             ->assertExitCode(0);
 
         // Reporting must not mutate the row.
-        $this->assertDatabaseHas('inventory_assets', ['asset_tag' => 'AST-SOON', 'status' => 'in_stock']);
+        $this->assertDatabaseHas('devices', ['asset_tag' => 'AST-SOON', 'status' => 'in_stock']);
     }
 
     public function test_warranty_command_reports_expired_count_excluding_retired_and_disposed(): void
@@ -103,8 +104,8 @@ class ExpiryCommandsTest extends TestCase
             'warranty_expiry' => now()->subDays(3)->toDateString(),
         ]);
 
-        $this->artisan('inventory:check-warranty-expiry', ['--days' => 30])
-            ->expectsOutputToContain('1 inventory assets already have an expired warranty.')
+        $this->artisan('devices:check-warranty-expiry', ['--days' => 30])
+            ->expectsOutputToContain('1 devices already have an expired warranty.')
             ->assertExitCode(0);
     }
 
@@ -206,7 +207,7 @@ class ExpiryCommandsTest extends TestCase
     public function test_expiry_commands_are_registered_in_the_scheduler(): void
     {
         $this->artisan('schedule:list')
-            ->expectsOutputToContain('inventory:check-warranty-expiry')
+            ->expectsOutputToContain('devices:check-warranty-expiry')
             ->expectsOutputToContain('licenses:check-expiry')
             ->assertExitCode(0);
     }

@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Datacenter;
+use App\Models\DeviceType;
 use App\Models\Permission;
 use App\Models\Rack;
 use App\Models\Role;
@@ -53,9 +54,9 @@ class RackCapacityTest extends TestCase
 
     private function placeAsset(int $rackId, string $assetTag): int
     {
-        return DB::table('inventory_assets')->insertGetId([
+        return DB::table('devices')->insertGetId([
             'asset_tag' => $assetTag,
-            'asset_type' => 'server',
+            'device_type_id' => (int) DeviceType::factory()->create(['category' => 'server'])->id,
             'rack_id' => $rackId,
             'status' => 'installed',
             'created_at' => now(),

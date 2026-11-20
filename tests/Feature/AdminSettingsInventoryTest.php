@@ -14,14 +14,15 @@ use Tests\TestCase;
 /**
  * Baseline inventory guard for admin/settings.
  *
- * - Captures the 188 name="settings[*]" keys rendered by
+ * - Captures the 182 name="settings[*]" keys rendered by
  *   resources/views/admin/settings/index.blade.php (84 baseline + 94 task-8 typed
  *   surfaced + 3 imap_* policy keys for ticket email piping + 4 security hardening
  *   toggles + 6 branding_* keys added with BrandingSettings + 8 company split
  *   + 1 renewal_invoice_days + 1 company_gstin + 4 invoice bank details, minus the
- *   3 retired notify_* toggles) and asserts the set is unchanged after refactors
+ *   3 retired notify_* toggles, minus the 6 dead inventory_* stock settings)
+ *   and asserts the set is unchanged after refactors
  *   (no drop/rename).
- * - Guards GET query count: 1 legacy settings pluck + 17 typed group loads = <=19.
+ * - Guards GET query count: 2 legacy settings plucks + 17 typed group loads + 1 gst_settings + 1 registrar_settings = <=21.
  *   Ensures SettingsController::loadAll() does not introduce N+1 per-key queries.
  */
 class AdminSettingsInventoryTest extends TestCase
@@ -29,7 +30,7 @@ class AdminSettingsInventoryTest extends TestCase
     use RefreshDatabase;
 
     /**
-     * Baseline set - 188 keys rendered by admin/settings/index.blade.php (84 + 94 typed + 3 imap policy + 4 security hardening + 6 branding + 8 company split + 1 company_gstin + 4 bank - 3 notify_* toggles).
+     * Baseline set - 182 keys rendered by admin/settings/index.blade.php (84 + 94 typed + 3 imap policy + 4 security hardening + 6 branding + 8 company split + 1 company_gstin + 4 bank - 3 notify_* toggles - 6 dead inventory_* stock settings).
      * Global Incoming Mail host/user/pwd removed in department-only refactor (9 keys dropped).
      * Documented verbatim so any drop or rename fails this test.
      * Sorted alphabetically for diff stability; source order is the blade file.
@@ -69,6 +70,12 @@ class AdminSettingsInventoryTest extends TestCase
      *     accepted by SettingsController (see UntypedSettingsTest) — only the
      *     form controls are gone. See migration
      *     2026_11_06_000001_remove_legacy_notification_settings.
+     * v16: 2026-11-18 removed the six dead inventory_* stock settings
+     *     (inventory_track_stock, inventory_low_stock_threshold,
+     *     inventory_auto_restock, inventory_restock_min_quantity,
+     *     inventory_notify_low_stock, inventory_stock_unit) and the Inventory
+     *     tab — controls nothing ever read. See migration
+     *     2026_11_18_100004_remove_dead_inventory_stock_settings.
      */
     public const BASELINE_KEYS = [
         'activity_retention_days',
@@ -180,12 +187,6 @@ class AdminSettingsInventoryTest extends TestCase
         'imap_auto_create_customers',
         'imap_default_department',
         'imap_max_new_tickets_per_hour',
-        'inventory_auto_restock',
-        'inventory_low_stock_threshold',
-        'inventory_notify_low_stock',
-        'inventory_restock_min_quantity',
-        'inventory_stock_unit',
-        'inventory_track_stock',
         'invoice_next_number',
         'invoice_pdf_retention_days',
         'invoice_prefix',
@@ -289,7 +290,7 @@ class AdminSettingsInventoryTest extends TestCase
         $expected = self::BASELINE_KEYS;
         sort($expected);
 
-        $this->assertCount(188, $keys, 'Baseline field count changed - expected 188 name="settings[*]" keys. Got: '.implode(', ', $keys));
+        $this->assertCount(182, $keys, 'Baseline field count changed - expected 182 name="settings[*]" keys. Got: '.implode(', ', $keys));
         $this->assertSame($expected, $keys, 'Baseline field set changed - keys were dropped, renamed, or added.');
     }
 
@@ -351,9 +352,9 @@ class AdminSettingsInventoryTest extends TestCase
         $this->assertStringNotContainsString('<details', $html, 'A collapsible group is back on the settings page.');
         $this->assertStringNotContainsString('<summary', $html);
         $this->assertSame(
-            16,
+            15,
             substr_count($html, 'class="mt-3 settings-group"'),
-            'Expected the 16 always-visible settings groups (13 former Advanced + 3 Log Retention sections) to render as sections.'
+            'Expected the 15 always-visible settings groups (12 former Advanced + 3 Log Retention sections) to render as sections.'
         );
         $this->assertSame(
             substr_count($html, '<div'),
@@ -365,9 +366,9 @@ class AdminSettingsInventoryTest extends TestCase
     public function test_get_query_count_is_bounded_and_has_no_n_plus_one(): void
     {
         // 1 legacy settings pluck in middleware (security hardening toggles) + 1 legacy pluck in
-        // SettingsController::loadAll() + 18 typed group loads (distinct classes in AppSettings::TYPED_KEYS, now includes branding + log_retention)
-        // + 1 gst_settings row for the Billing tab's GST & Tax card = 21, plus 1 registrar_settings
-        // read backing the Default Registrar dropdown (SettingsController::fieldOptions) = 22.
+        // SettingsController::loadAll() + 17 typed group loads (distinct classes in AppSettings::TYPED_KEYS, now includes branding + log_retention; the inventory group is gone)
+        // + 1 gst_settings row for the Billing tab's GST & Tax card = 20, plus 1 registrar_settings
+        // read backing the Default Registrar dropdown (SettingsController::fieldOptions) = 21.
         // The other option sources (adminlte_roles, modules, server_groups) do not match the
         // filter below; registrar_settings does, because its name contains "settings".
         // Guard against N+1 per-key queries (would be ~160+ queries if each TYPED_KEYS entry hit DB).
@@ -394,17 +395,17 @@ class AdminSettingsInventoryTest extends TestCase
         $settingCount = count($settingQueries);
 
         $this->assertLessThanOrEqual(
-            22,
+            21,
             $settingCount,
-            "GET admin.settings.index issued {$settingCount} setting queries (expected <=22 = 2 plucks + 18 typed groups + 1 gst_settings + 1 registrar_settings). "
+            "GET admin.settings.index issued {$settingCount} setting queries (expected <=21 = 2 plucks + 17 typed groups + 1 gst_settings + 1 registrar_settings). "
             ."Total queries: {$totalCount}. Possible N+1. Queries: ".json_encode(array_column($settingQueries, 'query'))
         );
 
-        // Hard N+1 check: 160 TYPED_KEYS should never produce 160 queries.
+        // Hard N+1 check: 169 TYPED_KEYS should never produce 169 queries.
         $this->assertLessThan(
             50,
             $settingCount,
-            "N+1 detected: {$settingCount} setting queries far exceeds 18 group loads for 168 TYPED_KEYS."
+            "N+1 detected: {$settingCount} setting queries far exceeds 17 group loads for 169 TYPED_KEYS."
         );
     }
 

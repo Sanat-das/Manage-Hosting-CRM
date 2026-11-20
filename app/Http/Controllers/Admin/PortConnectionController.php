@@ -5,8 +5,8 @@ namespace App\Http\Controllers\Admin;
 use App\Exceptions\PortConnectionConflictException;
 use App\Http\Controllers\Controller;
 use App\Models\Datacenter;
+use App\Models\Device;
 use App\Models\DevicePort;
-use App\Models\InventoryAsset;
 use App\Models\PortConnection;
 use App\Models\User;
 use App\Services\Exports\CsvStreamService;
@@ -33,7 +33,7 @@ class PortConnectionController extends Controller
      * asset (else 404); the service enforces the one-cable-per-port invariant
      * and reports conflicts as a form error rather than a 500.
      */
-    public function store(Request $request, InventoryAsset $inventoryAsset): RedirectResponse
+    public function store(Request $request, Device $device): RedirectResponse
     {
         $validated = $request->validate([
             'source_port_id' => ['required', 'integer', 'exists:device_ports,id'],
@@ -46,7 +46,7 @@ class PortConnectionController extends Controller
         ]);
 
         $source = DevicePort::query()->findOrFail((int) $validated['source_port_id']);
-        abort_unless((int) $source->inventory_asset_id === (int) $inventoryAsset->id, 404);
+        abort_unless((int) $source->device_id === (int) $device->id, 404);
 
         $peer = DevicePort::query()->findOrFail((int) $validated['peer_port_id']);
 
@@ -129,11 +129,11 @@ class PortConnectionController extends Controller
                             $connection->cable_type,
                             $connection->cable_length_m,
                             $connection->cable_color,
-                            $connection->portA?->inventoryAsset?->asset_tag,
+                            $connection->portA?->device?->asset_tag,
                             $connection->portA?->name,
-                            $connection->portB?->inventoryAsset?->asset_tag,
+                            $connection->portB?->device?->asset_tag,
                             $connection->portB?->name,
-                            $connection->portA?->inventoryAsset?->datacenter?->name,
+                            $connection->portA?->device?->datacenter?->name,
                             $connection->updated_at?->format('Y-m-d H:i:s'),
                         ]);
                     }
@@ -146,12 +146,12 @@ class PortConnectionController extends Controller
         $query = PortConnection::query()
             ->join('device_ports as pa', 'port_connections.port_a_id', '=', 'pa.id')
             ->join('device_ports as pb', 'port_connections.port_b_id', '=', 'pb.id')
-            ->join('inventory_assets as aa', 'pa.inventory_asset_id', '=', 'aa.id')
-            ->join('inventory_assets as ab', 'pb.inventory_asset_id', '=', 'ab.id')
+            ->join('devices as aa', 'pa.device_id', '=', 'aa.id')
+            ->join('devices as ab', 'pb.device_id', '=', 'ab.id')
             ->select('port_connections.*')
             ->whereNull('aa.deleted_at')
             ->whereNull('ab.deleted_at')
-            ->with(['portA.inventoryAsset.datacenter', 'portB.inventoryAsset.datacenter']);
+            ->with(['portA.device.datacenter', 'portB.device.datacenter']);
 
         if ($request->filled('datacenter_id')) {
             $datacenterId = $request->query('datacenter_id');

@@ -2,7 +2,8 @@
 
 namespace Tests\Feature;
 
-use App\Models\InventoryAsset;
+use App\Models\Device;
+use App\Models\DeviceType;
 use App\Models\License;
 use App\Models\LicenseAssignment;
 use App\Models\Permission;
@@ -44,13 +45,13 @@ class LicenseSeatReconciliationTest extends TestCase
     /**
      * @param  array<string, mixed>  $overrides
      */
-    private function makeSoftwareLicenseAsset(array $overrides = []): InventoryAsset
+    private function makeHardwareDevice(array $overrides = []): Device
     {
         $this->assetSequence++;
 
-        return InventoryAsset::create(array_merge([
+        return Device::create(array_merge([
             'asset_tag' => 'AST-SEAT-'.$this->assetSequence,
-            'asset_type' => 'software_license',
+            'device_type_id' => (int) DeviceType::factory()->create(['category' => 'server'])->id,
             'status' => 'in_stock',
         ], $overrides));
     }
@@ -60,10 +61,10 @@ class LicenseSeatReconciliationTest extends TestCase
      */
     private function makeLicense(array $overrides = []): License
     {
-        $asset = $this->makeSoftwareLicenseAsset();
+        $asset = $this->makeHardwareDevice();
 
         return License::create(array_merge([
-            'inventory_asset_id' => $asset->id,
+            'device_id' => $asset->id,
             'license_type' => 'cpanel',
             'license_key' => 'KEY-'.$asset->id,
             'seats' => 5,

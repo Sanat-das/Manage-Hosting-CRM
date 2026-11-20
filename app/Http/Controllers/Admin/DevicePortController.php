@@ -3,8 +3,8 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\Device;
 use App\Models\DevicePort;
-use App\Models\InventoryAsset;
 use Closure;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
@@ -20,7 +20,7 @@ class DevicePortController extends Controller
      * Defaults to free ports only (no cable in either direction); pass
      * include_connected=1 to also return connected ports, ordered free first and
      * annotated with their peer. A blank query returns an empty result set
-     * without touching the database, mirroring InventoryAssetController::search().
+     * without touching the database, mirroring DeviceController::search().
      * The label carries the owning asset tag and the port name; the meta line
      * sums up what a maintainer needs to tell two ports apart, ending with the
      * connection annotation for a cabled port. Every result carries a boolean
@@ -48,12 +48,12 @@ class DevicePortController extends Controller
 
         $ports = DevicePort::query()
             ->with([
-                'inventoryAsset:id,asset_tag,datacenter_id,rack_id',
-                'inventoryAsset.datacenter:id,name',
-                'inventoryAsset.rack:id,name',
-                'inventoryAsset.ipAddresses:id,inventory_asset_id,ip_address',
-                'connectionAsA.portB.inventoryAsset:id,asset_tag',
-                'connectionAsB.portA.inventoryAsset:id,asset_tag',
+                'device:id,asset_tag,datacenter_id,rack_id',
+                'device.datacenter:id,name',
+                'device.rack:id,name',
+                'device.ipAddresses:id,device_id,ip_address',
+                'connectionAsA.portB.device:id,asset_tag',
+                'connectionAsB.portA.device:id,asset_tag',
             ])
             ->when(
                 ! $includeConnected,
@@ -65,13 +65,13 @@ class DevicePortController extends Controller
             )
             ->when(
                 $excludeAssetId !== null,
-                fn (Builder $query) => $query->where('inventory_asset_id', '<>', (int) $excludeAssetId),
+                fn (Builder $query) => $query->where('device_id', '<>', (int) $excludeAssetId),
             )
             ->where(function (Builder $query) use ($like): void {
                 $query->where('name', 'like', $like)
                     ->orWhere('port_number', 'like', $like)
                     ->orWhere('mac_address', 'like', $like)
-                    ->orWhereHas('inventoryAsset', fn (Builder $asset) => $asset->where('asset_tag', 'like', $like));
+                    ->orWhereHas('device', fn (Builder $asset) => $asset->where('asset_tag', 'like', $like));
             })
             ->orderBy('name')
             ->limit(20)
@@ -98,22 +98,22 @@ class DevicePortController extends Controller
         ]);
     }
 
-    public function store(Request $request, InventoryAsset $inventoryAsset): RedirectResponse
+    public function store(Request $request, Device $device): RedirectResponse
     {
-        $validated = $this->validatePort($request, $inventoryAsset);
+        $validated = $this->validatePort($request, $device);
 
-        $inventoryAsset->ports()->create($validated + [
+        $device->ports()->create($validated + [
             'source' => 'manual',
         ]);
 
         return back()->with('success', 'Port added.');
     }
 
-    public function update(Request $request, InventoryAsset $inventoryAsset, DevicePort $devicePort): RedirectResponse
+    public function update(Request $request, Device $device, DevicePort $devicePort): RedirectResponse
     {
-        abort_unless((int) $devicePort->inventory_asset_id === (int) $inventoryAsset->id, 404);
+        abort_unless((int) $devicePort->device_id === (int) $device->id, 404);
 
-        $validated = $this->validatePort($request, $inventoryAsset, $devicePort);
+        $validated = $this->validatePort($request, $device, $devicePort);
 
         // source and the SNMP linkage columns are owned by the importer and are
         // never touched by a manual edit.
@@ -122,9 +122,9 @@ class DevicePortController extends Controller
         return back()->with('success', 'Port updated.');
     }
 
-    public function destroy(InventoryAsset $inventoryAsset, DevicePort $devicePort): RedirectResponse
+    public function destroy(Device $device, DevicePort $devicePort): RedirectResponse
     {
-        abort_unless((int) $devicePort->inventory_asset_id === (int) $inventoryAsset->id, 404);
+        abort_unless((int) $devicePort->device_id === (int) $device->id, 404);
 
         if ($devicePort->connectionAsA()->exists() || $devicePort->connectionAsB()->exists()) {
             return back()->withErrors(['delete' => 'Disconnect the cable first.']);
@@ -144,10 +144,10 @@ class DevicePortController extends Controller
      *
      * @return array<string, mixed>
      */
-    private function validatePort(Request $request, InventoryAsset $inventoryAsset, ?DevicePort $devicePort = null): array
+    private function validatePort(Request $request, Device $device, ?DevicePort $devicePort = null): array
     {
         $uniqueName = Rule::unique('device_ports', 'name')
-            ->where('inventory_asset_id', $inventoryAsset->id);
+            ->where('device_id', $device->id);
         if ($devicePort !== null) {
             $uniqueName->ignore($devicePort->id);
         }
@@ -203,7 +203,7 @@ class DevicePortController extends Controller
 
     private function searchResultLabel(DevicePort $port): string
     {
-        $tag = $port->inventoryAsset?->asset_tag;
+        $tag = $port->device?->asset_tag;
 
         return ($tag !== null && $tag !== '') ? $tag.' · '.$port->name : $port->name;
     }
@@ -216,7 +216,7 @@ class DevicePortController extends Controller
      */
     private function searchResultMeta(DevicePort $port): string
     {
-        $asset = $port->inventoryAsset;
+        $asset = $port->device;
 
         $location = $asset !== null
             ? trim(implode(' / ', array_filter([
@@ -235,7 +235,7 @@ class DevicePortController extends Controller
 
         if ($port->connectionAsA !== null || $port->connectionAsB !== null) {
             $peer = $port->connectionAsA?->portB ?? $port->connectionAsB?->portA;
-            $peerTag = $peer?->inventoryAsset?->asset_tag;
+            $peerTag = $peer?->device?->asset_tag;
 
             $parts[] = ($peer !== null && $peerTag !== null && $peerTag !== '')
                 ? 'connected to '.$peerTag.' '.$peer->name

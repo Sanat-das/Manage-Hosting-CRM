@@ -244,7 +244,7 @@ class SettingsSilentSaveFailuresTest extends TestCase
             'cron_usage_sync', 'cron_pricing_sync', 'cron_report_generation',
             'role_guard', 'product_default_billing_cycle', 'date_format',
             'hosting_default_panel', 'hosting_default_server_group',
-            'domain_default_registrar', 'domain_pricing_tier', 'inventory_stock_unit',
+            'domain_default_registrar', 'domain_pricing_tier',
         ] as $key) {
             $this->assertMatchesRegularExpression(
                 '/<select[^>]*name="settings\['.preg_quote($key, '/').'\]"/',

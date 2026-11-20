@@ -215,18 +215,18 @@ class IpAssignmentServiceTest extends TestCase
         $this->assertSame(HostingAccount::class, $free->fresh()->assigned_to_type);
     }
 
-    public function test_release_from_asset_demotes_an_inventory_asset_id_only_row_to_available(): void
+    public function test_release_from_asset_demotes_an_device_id_only_row_to_available(): void
     {
         $subnet = $this->makeSubnet();
         $ip = $this->makeIp($subnet, '10.1.0.30');
-        // Hand-written/legacy row: linked only by inventory_asset_id, no owner
+        // Hand-written/legacy row: linked only by device_id, no owner
         // pair, but marked assigned — release must not leave it ownerless.
-        $ip->forceFill(['inventory_asset_id' => 123, 'type' => 'assigned'])->save();
+        $ip->forceFill(['device_id' => 123, 'type' => 'assigned'])->save();
 
         $this->service->releaseFromAsset($ip);
 
         $fresh = $ip->fresh();
-        $this->assertNull($fresh->inventory_asset_id);
+        $this->assertNull($fresh->device_id);
         $this->assertNull($fresh->assigned_to_type);
         $this->assertNull($fresh->assigned_to_id);
         $this->assertSame('available', $fresh->type);
@@ -236,12 +236,12 @@ class IpAssignmentServiceTest extends TestCase
     {
         $subnet = $this->makeSubnet();
         $ip = $this->makeIp($subnet, '10.1.0.31');
-        $ip->forceFill(['inventory_asset_id' => 123, 'type' => 'gateway'])->save();
+        $ip->forceFill(['device_id' => 123, 'type' => 'gateway'])->save();
 
         $this->service->releaseFromAsset($ip);
 
         $fresh = $ip->fresh();
-        $this->assertNull($fresh->inventory_asset_id);
+        $this->assertNull($fresh->device_id);
         $this->assertNull($fresh->assigned_to_type);
         $this->assertSame('gateway', $fresh->type);
     }
@@ -250,12 +250,12 @@ class IpAssignmentServiceTest extends TestCase
     {
         $subnet = $this->makeSubnet();
         $ip = $this->makeIp($subnet, '10.1.0.32');
-        $ip->forceFill(['inventory_asset_id' => 123, 'type' => 'reserved'])->save();
+        $ip->forceFill(['device_id' => 123, 'type' => 'reserved'])->save();
 
         $this->service->releaseFromAsset($ip);
 
         $fresh = $ip->fresh();
-        $this->assertNull($fresh->inventory_asset_id);
+        $this->assertNull($fresh->device_id);
         $this->assertNull($fresh->assigned_to_type);
         $this->assertSame('reserved', $fresh->type);
     }
@@ -268,7 +268,7 @@ class IpAssignmentServiceTest extends TestCase
         // Linked to an asset while also leased to a hosting account: releasing
         // the asset link clears only the asset column, never the account lease.
         $ip->forceFill([
-            'inventory_asset_id' => 123,
+            'device_id' => 123,
             'assigned_to_type' => HostingAccount::class,
             'assigned_to_id' => $account->id,
             'type' => 'assigned',
@@ -277,7 +277,7 @@ class IpAssignmentServiceTest extends TestCase
         $this->service->releaseFromAsset($ip);
 
         $fresh = $ip->fresh();
-        $this->assertNull($fresh->inventory_asset_id);
+        $this->assertNull($fresh->device_id);
         $this->assertSame(HostingAccount::class, $fresh->assigned_to_type);
         $this->assertSame($account->id, $fresh->assigned_to_id);
         $this->assertSame('assigned', $fresh->type);

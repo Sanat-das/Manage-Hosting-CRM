@@ -8,6 +8,7 @@ use App\Models\Role;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 
 class RoleController extends Controller
 {
@@ -135,10 +136,10 @@ class RoleController extends Controller
      * for scanning (Dashboard first, System last). Unmatched names fall
      * into "Other" so new seeders never silently disappear.
      *
-     * @param  \Illuminate\Support\Collection<int, \App\Models\Permission>  $permissions
-     * @return array<string, \Illuminate\Support\Collection<int, \App\Models\Permission>>
+     * @param  Collection<int, Permission>  $permissions
+     * @return array<string, Collection<int, Permission>>
      */
-    private function groupedPermissions(\Illuminate\Support\Collection $permissions): array
+    private function groupedPermissions(Collection $permissions): array
     {
         $definitions = [
             'Dashboard & Reporting' => ['dashboard.', 'analytics.', 'reports.', 'activity.', 'search'],
@@ -146,7 +147,7 @@ class RoleController extends Controller
             'Products & Catalog' => ['products.', 'catalog-products.', 'product-bundles.', 'product-upgrades.'],
             'Sales & Billing' => ['orders.', 'invoices.', 'payments.', 'subscriptions.', 'usage-records.', 'tax-rates.'],
             'Hosting' => ['hosting.'],
-            'Infrastructure' => ['datacenters.', 'racks.', 'licenses.', 'inventory.', 'asset-relationships.', 'resource-types.', 'resource-pools.', 'service-instances.', 'provisioning-events.'],
+            'Infrastructure' => ['datacenters.', 'racks.', 'licenses.', 'devices.', 'resource-types.', 'resource-pools.', 'service-instances.', 'provisioning-events.'],
             'Network & DNS' => ['ip-subnets.', 'ip-addresses.', 'vlans.', 'dns-zones.', 'dns-records.'],
             'Domains' => ['domains.'],
             'Support' => ['tickets.', 'kb.'],

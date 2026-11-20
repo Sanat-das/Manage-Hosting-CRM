@@ -3,7 +3,7 @@
 @section('title', 'Port Connections')
 
 @section('content_header')
-    <x-ui.page-header title="Port Connections" subtitle="Cable links between device ports" :breadcrumbs="[['label' => __('adminlte.home'), 'url' => url('/')],['label' => 'Inventory', 'url' => route('admin.inventory-assets.index')],['label' => 'Port Connections', 'active' => true]]" />
+    <x-ui.page-header title="Port Connections" subtitle="Cable links between device ports" :breadcrumbs="[['label' => __('adminlte.home'), 'url' => url('/')],['label' => 'Inventory', 'url' => route('admin.devices.index')],['label' => 'Port Connections', 'active' => true]]" />
 @stop
 
 @section('content')
@@ -50,8 +50,8 @@
 
         @forelse ($connections as $connection)
             @php
-                $assetA = $connection->portA?->inventoryAsset;
-                $assetB = $connection->portB?->inventoryAsset;
+                $assetA = $connection->portA?->device;
+                $assetB = $connection->portB?->device;
                 $locations = array_values(array_unique(array_filter([
                     $assetA?->datacenter?->name,
                     $assetB?->datacenter?->name,
@@ -70,7 +70,7 @@
                 <td>
                     @if ($connection->portA)
                         @if ($assetA)
-                            <a href="{{ route('admin.inventory-assets.show', $assetA) }}">{{ $assetA->asset_tag }}</a>
+                            <a href="{{ route('admin.devices.show', $assetA) }}">{{ $assetA->asset_tag }}</a>
                         @endif
                         <div class="small text-muted">{{ $connection->portA->name }}</div>
                     @else
@@ -80,7 +80,7 @@
                 <td>
                     @if ($connection->portB)
                         @if ($assetB)
-                            <a href="{{ route('admin.inventory-assets.show', $assetB) }}">{{ $assetB->asset_tag }}</a>
+                            <a href="{{ route('admin.devices.show', $assetB) }}">{{ $assetB->asset_tag }}</a>
                         @endif
                         <div class="small text-muted">{{ $connection->portB->name }}</div>
                     @else

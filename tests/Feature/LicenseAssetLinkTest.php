@@ -2,7 +2,8 @@
 
 namespace Tests\Feature;
 
-use App\Models\InventoryAsset;
+use App\Models\Device;
+use App\Models\DeviceType;
 use App\Models\License;
 use App\Models\Permission;
 use App\Models\Role;
@@ -11,9 +12,9 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 /**
- * The 1:1 license ↔ inventory-asset link.
+ * The 1:1 license ↔ device link.
  *
- * licenses.inventory_asset_id is a NOT NULL unique FK, so the admin create
+ * licenses.device_id is a NOT NULL unique FK, so the admin create
  * flow must collect and validate it. Previously the form had no field and
  * every store() attempt failed at the DB level.
  */
@@ -41,13 +42,13 @@ class LicenseAssetLinkTest extends TestCase
     /**
      * @param  array<string, mixed>  $overrides
      */
-    private function makeSoftwareLicenseAsset(array $overrides = []): InventoryAsset
+    private function makeHardwareDevice(array $overrides = []): Device
     {
         $this->assetSequence++;
 
-        return InventoryAsset::create(array_merge([
-            'asset_tag' => 'AST-SW-'.$this->assetSequence,
-            'asset_type' => 'software_license',
+        return Device::create(array_merge([
+            'asset_tag' => 'AST-HW-'.$this->assetSequence,
+            'device_type_id' => (int) DeviceType::factory()->create(['category' => 'server'])->id,
             'status' => 'in_stock',
         ], $overrides));
     }
@@ -56,55 +57,55 @@ class LicenseAssetLinkTest extends TestCase
      * @param  array<string, mixed>  $overrides
      * @return array<string, mixed>
      */
-    private function validPayload(InventoryAsset $asset, array $overrides = []): array
+    private function validPayload(Device $asset, array $overrides = []): array
     {
         return array_merge([
-            'inventory_asset_id' => $asset->id,
+            'device_id' => $asset->id,
             'license_type' => 'cpanel',
             'license_key' => 'KEY-0001',
         ], $overrides);
     }
 
-    public function test_store_persists_the_inventory_asset_link(): void
+    public function test_store_persists_the_device_link(): void
     {
-        $asset = $this->makeSoftwareLicenseAsset();
+        $asset = $this->makeHardwareDevice();
 
         $response = $this->actingAsAdmin()->post('/admin/licenses', $this->validPayload($asset));
 
         $response->assertRedirect(route('admin.licenses.index'));
         $this->assertDatabaseHas('licenses', [
-            'inventory_asset_id' => $asset->id,
+            'device_id' => $asset->id,
             'license_type' => 'cpanel',
             'license_key' => 'KEY-0001',
         ]);
     }
 
-    public function test_store_rejects_a_missing_inventory_asset(): void
+    public function test_store_rejects_a_missing_device(): void
     {
         $response = $this->actingAsAdmin()->post('/admin/licenses', [
             'license_type' => 'cpanel',
             'license_key' => 'KEY-0001',
         ]);
 
-        $response->assertSessionHasErrors('inventory_asset_id');
+        $response->assertSessionHasErrors('device_id');
         $this->assertDatabaseCount('licenses', 0);
     }
 
-    public function test_store_rejects_a_non_existent_inventory_asset(): void
+    public function test_store_rejects_a_non_existent_device(): void
     {
         $response = $this->actingAsAdmin()->post('/admin/licenses', [
-            'inventory_asset_id' => 999_999,
+            'device_id' => 999_999,
             'license_type' => 'cpanel',
             'license_key' => 'KEY-0001',
         ]);
 
-        $response->assertSessionHasErrors('inventory_asset_id');
+        $response->assertSessionHasErrors('device_id');
         $this->assertDatabaseCount('licenses', 0);
     }
 
     public function test_store_accepts_pending_status(): void
     {
-        $asset = $this->makeSoftwareLicenseAsset();
+        $asset = $this->makeHardwareDevice();
 
         $response = $this->actingAsAdmin()->post('/admin/licenses', $this->validPayload($asset, [
             'status' => 'pending',
@@ -112,16 +113,16 @@ class LicenseAssetLinkTest extends TestCase
 
         $response->assertSessionHasNoErrors();
         $this->assertDatabaseHas('licenses', [
-            'inventory_asset_id' => $asset->id,
+            'device_id' => $asset->id,
             'status' => 'pending',
         ]);
     }
 
     public function test_show_renders_a_link_to_the_linked_asset(): void
     {
-        $asset = $this->makeSoftwareLicenseAsset(['asset_tag' => 'AST-SW-LINK']);
+        $asset = $this->makeHardwareDevice(['asset_tag' => 'AST-SW-LINK']);
         $license = License::create([
-            'inventory_asset_id' => $asset->id,
+            'device_id' => $asset->id,
             'license_type' => 'cpanel',
             'license_key' => 'KEY-LINK',
             'status' => 'active',
@@ -130,28 +131,28 @@ class LicenseAssetLinkTest extends TestCase
         $this->actingAsAdmin()->get("/admin/licenses/{$license->id}")
             ->assertOk()
             ->assertSee('AST-SW-LINK')
-            ->assertSee(route('admin.inventory-assets.show', $asset));
+            ->assertSee(route('admin.devices.show', $asset));
     }
 
-    public function test_store_rejects_an_asset_that_is_not_a_software_license(): void
+    public function test_store_accepts_any_hardware_device(): void
     {
-        $server = InventoryAsset::create([
+        $server = Device::create([
             'asset_tag' => 'AST-SRV-1',
-            'asset_type' => 'server',
-            'status' => 'in_stock',
+            'device_type_id' => (int) DeviceType::factory()->create(['category' => 'server'])->id,
+            'status' => 'installed',
         ]);
 
         $response = $this->actingAsAdmin()->post('/admin/licenses', $this->validPayload($server));
 
-        $response->assertSessionHasErrors('inventory_asset_id');
-        $this->assertDatabaseCount('licenses', 0);
+        $response->assertSessionHasNoErrors();
+        $this->assertDatabaseHas('licenses', ['device_id' => $server->id]);
     }
 
     public function test_store_rejects_an_asset_already_linked_to_a_license(): void
     {
-        $asset = $this->makeSoftwareLicenseAsset();
+        $asset = $this->makeHardwareDevice();
         License::create([
-            'inventory_asset_id' => $asset->id,
+            'device_id' => $asset->id,
             'license_type' => 'cpanel',
             'license_key' => 'KEY-FIRST',
             'status' => 'active',
@@ -161,17 +162,17 @@ class LicenseAssetLinkTest extends TestCase
             'license_key' => 'KEY-SECOND',
         ]));
 
-        $response->assertSessionHasErrors('inventory_asset_id');
+        $response->assertSessionHasErrors('device_id');
         $this->assertDatabaseCount('licenses', 1);
     }
 
     public function test_create_form_renders_the_asset_select(): void
     {
-        $this->makeSoftwareLicenseAsset(['asset_tag' => 'AST-SW-FORM']);
+        $this->makeHardwareDevice(['asset_tag' => 'AST-SW-FORM']);
 
         $this->actingAsAdmin()->get('/admin/licenses/create')
             ->assertOk()
-            ->assertSee('name="inventory_asset_id"', false)
+            ->assertSee('name="device_id"', false)
             ->assertSee('AST-SW-FORM');
     }
 }

@@ -10,6 +10,8 @@
 @stop
 
 @section('content')
+    @php($canManage = auth()->user()?->can('racks.manage') ?? false)
+
     <x-adminlte.partials.flash-alert />
 
     <x-adminlte.partials.datatable
@@ -52,12 +54,16 @@
                 <td><a href="{{ route('admin.racks.show', $rack) }}"><strong>{{ $rack->name }}</strong></a></td>
                 <td>{{ $rack->datacenter?->name ?? '—' }}</td>
                 <td>{{ $rack->u_height ?? '—' }}</td>
-                <td>{{ $rack->inventory_assets_count }}</td>
+                <td>{{ $rack->devices_count }}</td>
                 <td>{{ $rack->power_capacity_watts ?? '—' }}</td>
                 <td><x-adminlte.partials.status-badge :status="$rack->status" /></td>
                 <td class="text-end">
                     <div class="table-actions">
                         <a href="{{ route('admin.racks.edit', $rack) }}" class="btn btn-sm btn-outline-secondary btn-icon" title="Edit" aria-label="Edit"><i class="bi bi-pencil"></i></a>
+                        @if ($canManage)
+                            <button type="button" class="btn btn-sm btn-outline-danger btn-icon" title="Delete" aria-label="Delete"
+                                    data-bs-toggle="modal" data-bs-target="#delete-rack-{{ $rack->id }}"><i class="bi bi-trash"></i></button>
+                        @endif
                     </div>
                 </td>
             </tr>
@@ -65,4 +71,20 @@
             <x-ui.empty-table-row colSpan="8" title="No racks found." />
         @endforelse
     </x-adminlte.partials.datatable>
+
+    @if ($canManage)
+        @foreach ($racks as $rack)
+            @php($impactCounts = [
+                'Devices in this rack' => (int) ($rack->devices_count ?? 0),
+            ])
+            <x-adminlte.partials.confirm-modal
+                :id="'delete-rack-' . $rack->id"
+                title="Delete rack"
+                :message="'Delete ' . $rack->name . '? Devices in it are NOT deleted — they keep a dangling rack_id (no FK is enforced).'"
+                :action="route('admin.racks.destroy', $rack)"
+                confirm-label="Delete rack">
+                @include('admin.partials._typed_confirm', ['name' => $rack->name, 'counts' => $impactCounts])
+            </x-adminlte.partials.confirm-modal>
+        @endforeach
+    @endif
 @stop

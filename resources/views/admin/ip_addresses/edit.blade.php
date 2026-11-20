@@ -36,10 +36,10 @@
         </div>
         <div class="row">
             <div class="col-md-6">
-                <x-adminlte-select name="inventory_asset_id" label="Inventory Asset">
+                <x-adminlte-select name="device_id" label="Device">
                     <option value="">— None —</option>
-                    @foreach ($inventoryAssets as $asset)
-                        <option value="{{ $asset->id }}" @selected(old('inventory_asset_id', $ipAddress->inventory_asset_id) == $asset->id)>{{ $asset->asset_tag }}</option>
+                    @foreach ($devices as $asset)
+                        <option value="{{ $asset->id }}" @selected(old('device_id', $ipAddress->device_id) == $asset->id)>{{ $asset->asset_tag }}</option>
                     @endforeach
                 </x-adminlte-select>
             </div>

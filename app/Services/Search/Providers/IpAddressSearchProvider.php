@@ -55,7 +55,7 @@ class IpAddressSearchProvider extends AbstractSearchProvider
 
     protected function baseQuery(): Builder
     {
-        return IpAddress::query()->with(['inventoryAsset:id,asset_tag']);
+        return IpAddress::query()->with(['device:id,asset_tag']);
     }
 
     protected function searchableColumns(): array
@@ -85,8 +85,8 @@ class IpAddressSearchProvider extends AbstractSearchProvider
      */
     private function meta(IpAddress $ip): string
     {
-        $assignment = $ip->inventoryAsset?->asset_tag !== null
-            ? 'Asset '.$ip->inventoryAsset->asset_tag
+        $assignment = $ip->device?->asset_tag !== null
+            ? 'Asset '.$ip->device->asset_tag
             : ($ip->is_assigned ? 'assigned' : '');
 
         $parts = array_filter([

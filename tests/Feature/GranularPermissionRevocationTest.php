@@ -40,8 +40,7 @@ final class GranularPermissionRevocationTest extends TestCase
         'usage-records.view', 'usage-records.manage',
         'resource-types.view', 'resource-types.manage',
         'resource-pools.view', 'resource-pools.manage',
-        'asset-relationships.view', 'asset-relationships.manage',
-        'inventory.view', 'inventory.manage',
+        'devices.view', 'devices.manage',
         'tax-rates.view', 'tax-rates.manage',
         'product-bundles.view', 'product-bundles.manage',
         'product-upgrades.view', 'product-upgrades.manage',
@@ -130,7 +129,7 @@ final class GranularPermissionRevocationTest extends TestCase
     {
         $this->seed(InitialDataSeeder::class);
 
-        foreach (['datacenters.view', 'ip-subnets.manage', 'dns-zones.view', 'inventory.manage', 'tax-rates.view', 'product-bundles.manage', 'service-instances.view', 'notifications.view', 'manage-users'] as $name) {
+        foreach (['datacenters.view', 'ip-subnets.manage', 'dns-zones.view', 'devices.manage', 'tax-rates.view', 'product-bundles.manage', 'service-instances.view', 'notifications.view', 'manage-users'] as $name) {
             $this->assertDatabaseHas('adminlte_permissions', ['name' => $name]);
         }
 
@@ -171,7 +170,7 @@ final class GranularPermissionRevocationTest extends TestCase
             'ip-addresses.view',
             'vlans.view',
             'dns-zones.view',
-            'inventory.view',
+            'devices.view',
             'licenses.view',
             'resource-pools.view',
             'resource-types.view',
@@ -205,7 +204,7 @@ final class GranularPermissionRevocationTest extends TestCase
         }
 
         // Explicit granular route anchors
-        foreach (['datacenters.view', 'ip-addresses.manage', 'dns-zones.view', 'dns-records.manage', 'inventory.view', 'tax-rates.manage', 'product-bundles.view', 'service-instances.view'] as $anchor) {
+        foreach (['datacenters.view', 'ip-addresses.manage', 'dns-zones.view', 'dns-records.manage', 'devices.view', 'tax-rates.manage', 'product-bundles.view', 'service-instances.view'] as $anchor) {
             $this->assertContains($anchor, $names, "routes must gate on {$anchor}");
         }
     }

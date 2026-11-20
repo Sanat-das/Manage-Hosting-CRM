@@ -3,7 +3,8 @@
 namespace Tests\Feature;
 
 use App\Models\Datacenter;
-use App\Models\InventoryAsset;
+use App\Models\Device;
+use App\Models\DeviceType;
 use App\Models\Permission;
 use App\Models\Rack;
 use App\Models\Role;
@@ -13,7 +14,7 @@ use Tests\TestCase;
 
 /**
  * The rack show page renders a per-U elevation of the rack alongside the
- * inventory asset list. These tests assert every U height row is emitted, that
+ * devices list. These tests assert every U height row is emitted, that
  * an occupied position shows (and links) its asset tag, that an empty position
  * shows the placeholder, and that the asset list itself names the asset by
  * asset_tag rather than the nonexistent `name` column.
@@ -49,11 +50,11 @@ class RackElevationTest extends TestCase
         ]);
     }
 
-    private function placeAsset(Rack $rack, string $assetTag, ?int $position = null, string $status = 'installed'): InventoryAsset
+    private function placeAsset(Rack $rack, string $assetTag, ?int $position = null, string $status = 'installed'): Device
     {
-        return InventoryAsset::create([
+        return Device::create([
             'asset_tag' => $assetTag,
-            'asset_type' => 'server',
+            'device_type_id' => (int) DeviceType::factory()->create(['category' => 'server'])->id,
             'rack_id' => $rack->id,
             'rack_u_position' => $position,
             'status' => $status,
@@ -81,7 +82,7 @@ class RackElevationTest extends TestCase
 
         $response->assertOk();
         $response->assertSee(
-            '<tr data-u-position="42"><td class="text-muted" style="width: 3.5rem;">42U</td><td><a href="'.route('admin.inventory-assets.show', $asset).'">AST-TOP</a>',
+            '<tr data-u-position="42"><td class="text-muted" style="width: 3.5rem;">42U</td><td><a href="'.route('admin.devices.show', $asset).'">AST-TOP</a>',
             false,
         );
     }
@@ -109,7 +110,7 @@ class RackElevationTest extends TestCase
 
         $response->assertOk();
         $response->assertSee(
-            '<tr><td><a href="'.route('admin.inventory-assets.show', $asset).'">AST-LISTED</a></td><td class="text-muted">5</td>',
+            '<tr><td><a href="'.route('admin.devices.show', $asset).'">AST-LISTED</a></td><td class="text-muted">5</td>',
             false,
         );
     }

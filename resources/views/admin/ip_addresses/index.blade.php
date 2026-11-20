@@ -81,14 +81,14 @@
                                 <span class="badge text-bg-primary">HostingAccount #{{ $ip->assigned_to_id }}</span>
                                 <div class="small text-primary text-truncate" style="max-width:110px">{{ $ip->assignedTo->domain ?? 'somenath.vm' }}</div>
                             </a>
-                        @elseif ($ip->assigned_to_type === 'inventory')
-                            @if ($ip->inventoryAsset)
-                                <a href="{{ route('admin.inventory-assets.show', $ip->inventoryAsset) }}" class="text-decoration-none" title="View inventory asset {{ $ip->inventoryAsset->asset_tag }}">
-                                    <span class="badge text-bg-secondary"><i class="bi bi-hdd-stack me-1"></i>Inventory Asset</span>
-                                    <div class="small text-secondary text-truncate" style="max-width:110px">{{ $ip->inventoryAsset->asset_tag }}</div>
+                        @elseif ($ip->assigned_to_type === 'device')
+                            @if ($ip->device)
+                                <a href="{{ route('admin.devices.show', $ip->device) }}" class="text-decoration-none" title="View device {{ $ip->device->asset_tag }}">
+                                    <span class="badge text-bg-secondary"><i class="bi bi-hdd-stack me-1"></i>Device</span>
+                                    <div class="small text-secondary text-truncate" style="max-width:110px">{{ $ip->device->asset_tag }}</div>
                                 </a>
                             @else
-                                <span class="badge text-bg-secondary"><i class="bi bi-hdd-stack me-1"></i>Inventory Asset #{{ $ip->assigned_to_id }}</span>
+                                <span class="badge text-bg-secondary"><i class="bi bi-hdd-stack me-1"></i>Device #{{ $ip->assigned_to_id }}</span>
                             @endif
                         @else
                             <span class="badge text-bg-primary">{{ class_basename($ip->assigned_to_type) }} #{{ $ip->assigned_to_id }}</span>

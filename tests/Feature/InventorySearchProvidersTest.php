@@ -5,24 +5,26 @@ declare(strict_types=1);
 namespace Tests\Feature;
 
 use App\Models\Datacenter;
-use App\Models\InventoryAsset;
+use App\Models\Device;
+use App\Models\DeviceType;
 use App\Models\IpAddress;
 use App\Models\IpSubnet;
+use App\Models\Manufacturer;
 use App\Models\Rack;
 use App\Models\User;
 use App\Services\Search\GlobalSearchService;
-use App\Services\Search\Providers\InventoryAssetSearchProvider;
+use App\Services\Search\Providers\DeviceSearchProvider;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Concerns\CreatesChatUsers;
 use Tests\TestCase;
 
 /**
- * The inventory-assets provider group.
+ * The devices provider group.
  *
  * Mirrors the sibling hosting/billing provider suites: each test drives
  * `GlobalSearchService::groups()` with an explicit one-provider registry, so a
  * presence or absence assertion cannot be masked by an unrelated provider. The
- * gate is the real seeded `inventory.view` permission — the same one the
+ * gate is the real seeded `devices.view` permission — the same one the
  * inventory routes carry (`routes/admin/inventory.php`).
  */
 class InventorySearchProvidersTest extends TestCase
@@ -34,34 +36,34 @@ class InventorySearchProvidersTest extends TestCase
 
     // --- identifier lookup + exact URL --------------------------------------
 
-    public function test_an_inventory_asset_is_found_by_its_asset_tag_and_links_to_its_show_page(): void
+    public function test_a_device_is_found_by_its_asset_tag_and_links_to_its_show_page(): void
     {
         $asset = $this->makeAsset(['asset_tag' => 'AST-ACME-0001']);
 
-        $user = $this->panelUserWith('inventory.view');
+        $user = $this->panelUserWith('devices.view');
         $groups = $this->groupsFor($user, 'AST-ACME-0001');
 
-        $group = $groups['inventory-assets'] ?? null;
+        $group = $groups['devices'] ?? null;
 
         $this->assertNotNull($group);
-        $this->assertSame('Inventory', $group['label']);
+        $this->assertSame('Devices', $group['label']);
         $this->assertCount(1, $group['results']);
 
         $result = $group['results'][0];
 
         $this->assertSame($asset->id, $result['id']);
         $this->assertSame('AST-ACME-0001', $result['label']);
-        $this->assertSame(route('admin.inventory-assets.show', $asset), $result['url']);
+        $this->assertSame(route('admin.devices.show', $asset), $result['url']);
     }
 
-    public function test_an_inventory_asset_is_found_by_its_serial_number(): void
+    public function test_a_device_is_found_by_its_serial_number(): void
     {
         $asset = $this->makeAsset(['asset_tag' => 'AST-ACME-0002', 'serial_number' => 'SN-ACME-9001']);
 
-        $user = $this->panelUserWith('inventory.view');
+        $user = $this->panelUserWith('devices.view');
         $groups = $this->groupsFor($user, 'SN-ACME-9001');
 
-        $group = $groups['inventory-assets'] ?? null;
+        $group = $groups['devices'] ?? null;
 
         $this->assertNotNull($group);
         $this->assertCount(1, $group['results']);
@@ -73,7 +75,7 @@ class InventorySearchProvidersTest extends TestCase
      * The provider mirrors the standalone picker: a term may match a datacenter
      * or rack name through the asset's own belongsTo relations.
      */
-    public function test_an_inventory_asset_is_found_by_its_datacenter_and_rack_names(): void
+    public function test_a_device_is_found_by_its_datacenter_and_rack_names(): void
     {
         $datacenter = Datacenter::create(['name' => 'Northwind DC', 'code' => 'NW1', 'status' => 'active']);
         $rack = Rack::create(['datacenter_id' => $datacenter->id, 'name' => 'Rockwood Rack', 'u_height' => 42, 'status' => 'active']);
@@ -83,17 +85,17 @@ class InventorySearchProvidersTest extends TestCase
             'rack_id' => $rack->id,
         ]);
 
-        $user = $this->panelUserWith('inventory.view');
+        $user = $this->panelUserWith('devices.view');
 
         $byDatacenter = $this->groupsFor($user, 'Northwind');
 
-        $this->assertArrayHasKey('inventory-assets', $byDatacenter);
-        $this->assertSame($asset->id, $byDatacenter['inventory-assets']['results'][0]['id']);
+        $this->assertArrayHasKey('devices', $byDatacenter);
+        $this->assertSame($asset->id, $byDatacenter['devices']['results'][0]['id']);
 
         $byRack = $this->groupsFor($user, 'Rockwood');
 
-        $this->assertArrayHasKey('inventory-assets', $byRack);
-        $this->assertSame($asset->id, $byRack['inventory-assets']['results'][0]['id']);
+        $this->assertArrayHasKey('devices', $byRack);
+        $this->assertSame($asset->id, $byRack['devices']['results'][0]['id']);
     }
 
     /**
@@ -101,20 +103,20 @@ class InventorySearchProvidersTest extends TestCase
      * the asset's own `ipAddresses` relation, so a maintainer holding the IP
      * from a server's network config still lands on the asset.
      */
-    public function test_an_inventory_asset_is_found_by_an_assigned_ip_address(): void
+    public function test_a_device_is_found_by_an_assigned_ip_address(): void
     {
         $subnet = IpSubnet::create(['name' => 'Edge Subnet', 'subnet_cidr' => '10.95.20.0/24']);
         $asset = $this->makeAsset(['asset_tag' => 'AST-IP-0001']);
         IpAddress::create([
             'subnet_id' => $subnet->id,
             'ip_address' => '10.95.20.14',
-            'inventory_asset_id' => $asset->id,
+            'device_id' => $asset->id,
         ]);
 
-        $user = $this->panelUserWith('inventory.view');
+        $user = $this->panelUserWith('devices.view');
         $groups = $this->groupsFor($user, '10.95.20.14');
 
-        $group = $groups['inventory-assets'] ?? null;
+        $group = $groups['devices'] ?? null;
 
         $this->assertNotNull($group);
         $this->assertCount(1, $group['results']);
@@ -131,7 +133,7 @@ class InventorySearchProvidersTest extends TestCase
         $user = $this->panelUserWith('products.view');
         $groups = $this->groupsFor($user, 'AST-ACME');
 
-        $this->assertArrayNotHasKey('inventory-assets', $groups);
+        $this->assertArrayNotHasKey('devices', $groups);
         $this->assertSame([], $groups);
     }
 
@@ -141,7 +143,7 @@ class InventorySearchProvidersTest extends TestCase
      * The end-to-end composition the per-leg suites leave uncovered: a user
      * holding the real seeded `support` role sees the group through
      * `GlobalSearchService`, and the seeded `staff` role — which deliberately
-     * omits `inventory.view` — does not.
+     * omits `devices.view` — does not.
      *
      * Both users name their role through the `users.role` column, exactly as
      * `PanelAccessTest` builds panel users, so the group gate is resolved from
@@ -154,13 +156,13 @@ class InventorySearchProvidersTest extends TestCase
         $support = User::factory()->create(['role' => 'support']);
         $supportGroups = $this->groupsFor($support, 'AST-ROLE-0001');
 
-        $this->assertArrayHasKey('inventory-assets', $supportGroups);
-        $this->assertSame($asset->id, $supportGroups['inventory-assets']['results'][0]['id']);
+        $this->assertArrayHasKey('devices', $supportGroups);
+        $this->assertSame($asset->id, $supportGroups['devices']['results'][0]['id']);
 
         $staff = User::factory()->create(['role' => 'staff']);
         $staffGroups = $this->groupsFor($staff, 'AST-ROLE-0001');
 
-        $this->assertArrayNotHasKey('inventory-assets', $staffGroups);
+        $this->assertArrayNotHasKey('devices', $staffGroups);
     }
 
     // --- helpers ------------------------------------------------------------
@@ -170,7 +172,7 @@ class InventorySearchProvidersTest extends TestCase
      */
     private function groupsFor(User $user, string $term, int $limit = 5): array
     {
-        $service = new GlobalSearchService([InventoryAssetSearchProvider::class]);
+        $service = new GlobalSearchService([DeviceSearchProvider::class]);
 
         return collect($service->groups($service->permissionNames($user), $term, $limit))
             ->keyBy('key')
@@ -180,11 +182,18 @@ class InventorySearchProvidersTest extends TestCase
     /**
      * @param  array<string, mixed>  $overrides
      */
-    private function makeAsset(array $overrides = []): InventoryAsset
+    private function makeAsset(array $overrides = []): Device
     {
-        return InventoryAsset::create(array_merge([
+        if (! array_key_exists('device_type_id', $overrides)) {
+            $manufacturer = Manufacturer::factory()->create();
+            $overrides['device_type_id'] = (int) DeviceType::factory()->create([
+                'manufacturer_id' => $manufacturer->id,
+                'category' => 'server',
+            ])->id;
+        }
+
+        return Device::create(array_merge([
             'asset_tag' => 'AST-DEFAULT-1',
-            'asset_type' => 'server',
         ], $overrides));
     }
 }

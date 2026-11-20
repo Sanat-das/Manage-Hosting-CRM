@@ -2,8 +2,9 @@
 
 namespace Tests\Feature;
 
+use App\Models\Device;
+use App\Models\DeviceType;
 use App\Models\HostingAccount;
-use App\Models\InventoryAsset;
 use App\Models\IpAddress;
 use App\Models\IpSubnet;
 use App\Models\Permission;
@@ -27,9 +28,9 @@ class IpAssetLinkTest extends TestCase
         $adminRole = Role::firstOrCreate(['name' => 'admin'], ['label' => 'Administrator']);
         $view = Permission::firstOrCreate(['name' => 'ip-addresses.view'], ['label' => 'View IP Addresses']);
         $manage = Permission::firstOrCreate(['name' => 'ip-addresses.manage'], ['label' => 'Manage IP Addresses']);
-        $inventoryView = Permission::firstOrCreate(['name' => 'inventory.view'], ['label' => 'View Inventory']);
-        $inventoryManage = Permission::firstOrCreate(['name' => 'inventory.manage'], ['label' => 'Manage Inventory']);
-        $adminRole->permissions()->syncWithoutDetaching([$view->id, $manage->id, $inventoryView->id, $inventoryManage->id]);
+        $devicesView = Permission::firstOrCreate(['name' => 'devices.view'], ['label' => 'View Devices']);
+        $devicesManage = Permission::firstOrCreate(['name' => 'devices.manage'], ['label' => 'Manage Devices']);
+        $adminRole->permissions()->syncWithoutDetaching([$view->id, $manage->id, $devicesView->id, $devicesManage->id]);
 
         $user->assignRole('admin');
 
@@ -56,11 +57,11 @@ class IpAssetLinkTest extends TestCase
         ]);
     }
 
-    private function makeAsset(string $assetTag): InventoryAsset
+    private function makeAsset(string $assetTag): Device
     {
-        return InventoryAsset::create([
+        return Device::create([
             'asset_tag' => $assetTag,
-            'asset_type' => 'server',
+            'device_type_id' => (int) DeviceType::factory()->create(['category' => 'server'])->id,
         ]);
     }
 
@@ -87,7 +88,7 @@ class IpAssetLinkTest extends TestCase
         ], $overrides));
     }
 
-    public function test_store_persists_inventory_asset_link(): void
+    public function test_store_persists_device_link(): void
     {
         $subnet = $this->makeSubnet();
         $asset = $this->makeAsset('LINK-CREATE-1');
@@ -95,31 +96,31 @@ class IpAssetLinkTest extends TestCase
         $response = $this->actingAsAdmin()->post('/admin/ip-addresses', [
             'subnet_id' => $subnet->id,
             'ip_address' => '10.90.1.10',
-            'inventory_asset_id' => $asset->id,
+            'device_id' => $asset->id,
         ]);
 
         $response->assertRedirect(route('admin.ip-addresses.index'));
         $this->assertDatabaseHas('ip_addresses', [
             'ip_address' => '10.90.1.10',
-            'inventory_asset_id' => $asset->id,
+            'device_id' => $asset->id,
         ]);
     }
 
-    public function test_store_rejects_unknown_inventory_asset(): void
+    public function test_store_rejects_unknown_device(): void
     {
         $subnet = $this->makeSubnet();
 
         $response = $this->actingAsAdmin()->post('/admin/ip-addresses', [
             'subnet_id' => $subnet->id,
             'ip_address' => '10.90.1.11',
-            'inventory_asset_id' => 999999,
+            'device_id' => 999999,
         ]);
 
-        $response->assertSessionHasErrors('inventory_asset_id');
+        $response->assertSessionHasErrors('device_id');
         $this->assertDatabaseMissing('ip_addresses', ['ip_address' => '10.90.1.11']);
     }
 
-    public function test_update_links_then_unlinks_inventory_asset(): void
+    public function test_update_links_then_unlinks_device(): void
     {
         $subnet = $this->makeSubnet();
         $asset = $this->makeAsset('LINK-UPDATE-1');
@@ -129,33 +130,33 @@ class IpAssetLinkTest extends TestCase
         ]);
 
         $link = $this->actingAsAdmin()->put("/admin/ip-addresses/{$ip->id}", [
-            'inventory_asset_id' => $asset->id,
+            'device_id' => $asset->id,
         ]);
 
         $link->assertRedirect(route('admin.ip-addresses.show', $ip));
-        $this->assertSame($asset->id, $ip->fresh()->inventory_asset_id);
+        $this->assertSame($asset->id, $ip->fresh()->device_id);
 
         $unlink = $this->actingAsAdmin()->put("/admin/ip-addresses/{$ip->id}", [
-            'inventory_asset_id' => null,
+            'device_id' => null,
         ]);
 
         $unlink->assertRedirect(route('admin.ip-addresses.show', $ip));
-        $this->assertNull($ip->fresh()->inventory_asset_id);
+        $this->assertNull($ip->fresh()->device_id);
     }
 
-    public function test_show_links_to_linked_inventory_asset(): void
+    public function test_show_links_to_linked_device(): void
     {
         $subnet = $this->makeSubnet();
         $asset = $this->makeAsset('LINK-SHOW-1');
         $ip = IpAddress::create([
             'subnet_id' => $subnet->id,
             'ip_address' => '10.90.3.10',
-            'inventory_asset_id' => $asset->id,
+            'device_id' => $asset->id,
         ]);
 
         $response = $this->actingAsAdmin()->get("/admin/ip-addresses/{$ip->id}");
 
-        $response->assertSee(route('admin.inventory-assets.show', $asset), false);
+        $response->assertSee(route('admin.devices.show', $asset), false);
         $response->assertSee($asset->asset_tag, false);
     }
 
@@ -165,11 +166,11 @@ class IpAssetLinkTest extends TestCase
         $subnet = $this->makeSubnet($vlan);
         $asset = $this->makeAsset('LINK-DETAILS-1');
         $ip = $this->makeIp($subnet, '10.90.9.10', [
-            'inventory_asset_id' => $asset->id,
+            'device_id' => $asset->id,
             'last_seen_at' => '2026-10-06 12:34:00',
         ]);
 
-        $response = $this->actingAsAdmin()->get(route('admin.inventory-assets.show', $asset));
+        $response = $this->actingAsAdmin()->get(route('admin.devices.show', $asset));
 
         $response->assertOk();
         $response->assertSee(route('admin.ip-addresses.show', $ip), false);
@@ -187,7 +188,7 @@ class IpAssetLinkTest extends TestCase
     {
         $asset = $this->makeAsset('LINK-DETAILS-EMPTY');
 
-        $response = $this->actingAsAdmin()->get(route('admin.inventory-assets.show', $asset));
+        $response = $this->actingAsAdmin()->get(route('admin.devices.show', $asset));
 
         $response->assertOk();
         $response->assertDontSee('IP Address(es)');
@@ -201,9 +202,9 @@ class IpAssetLinkTest extends TestCase
     {
         $subnet = $this->makeSubnet();
         $asset = $this->makeAsset('LINK-IPCARD-NOVLAN');
-        $ip = $this->makeIp($subnet, '10.90.9.11', ['inventory_asset_id' => $asset->id]);
+        $ip = $this->makeIp($subnet, '10.90.9.11', ['device_id' => $asset->id]);
 
-        $response = $this->actingAsAdmin()->get(route('admin.inventory-assets.show', $asset));
+        $response = $this->actingAsAdmin()->get(route('admin.devices.show', $asset));
 
         $response->assertOk();
         $response->assertSeeInOrder(['<th>Subnet</th>', '<th>VLAN</th>', '<th>Last Seen</th>'], false);
@@ -220,15 +221,15 @@ class IpAssetLinkTest extends TestCase
         $response = $this->actingAsAdmin()->post('/admin/ip-addresses', [
             'subnet_id' => $subnet->id,
             'ip_address' => '10.90.8.10',
-            'inventory_asset_id' => $asset->id,
+            'device_id' => $asset->id,
         ]);
 
         $response->assertRedirect(route('admin.ip-addresses.index'));
 
         $ip = IpAddress::where('ip_address', '10.90.8.10')->firstOrFail();
-        $this->assertSame('inventory', $ip->assigned_to_type);
+        $this->assertSame('device', $ip->assigned_to_type);
         $this->assertSame($asset->id, $ip->assigned_to_id);
-        $this->assertSame($asset->id, $ip->inventory_asset_id);
+        $this->assertSame($asset->id, $ip->device_id);
         $this->assertSame('assigned', $ip->type);
     }
 
@@ -239,31 +240,31 @@ class IpAssetLinkTest extends TestCase
         $ip = $this->makeIp($subnet, '10.90.4.10');
 
         $response = $this->actingAsAdmin()->put("/admin/ip-addresses/{$ip->id}", [
-            'inventory_asset_id' => $asset->id,
+            'device_id' => $asset->id,
         ]);
 
         $response->assertRedirect(route('admin.ip-addresses.show', $ip));
 
         $fresh = $ip->fresh();
-        $this->assertSame('inventory', $fresh->assigned_to_type);
+        $this->assertSame('device', $fresh->assigned_to_type);
         $this->assertSame($asset->id, $fresh->assigned_to_id);
-        $this->assertSame($asset->id, $fresh->inventory_asset_id);
+        $this->assertSame($asset->id, $fresh->device_id);
         $this->assertSame('assigned', $fresh->type);
     }
 
-    public function test_clearing_inventory_asset_id_releases_the_assignment(): void
+    public function test_clearing_device_id_releases_the_assignment(): void
     {
         $subnet = $this->makeSubnet();
         $asset = $this->makeAsset('LINK-MORPH-CLEAR');
         $ip = $this->makeIp($subnet, '10.90.5.10', [
-            'inventory_asset_id' => $asset->id,
-            'assigned_to_type' => 'inventory',
+            'device_id' => $asset->id,
+            'assigned_to_type' => 'device',
             'assigned_to_id' => $asset->id,
             'type' => 'assigned',
         ]);
 
         $response = $this->actingAsAdmin()->put("/admin/ip-addresses/{$ip->id}", [
-            'inventory_asset_id' => null,
+            'device_id' => null,
         ]);
 
         $response->assertRedirect(route('admin.ip-addresses.show', $ip));
@@ -271,24 +272,24 @@ class IpAssetLinkTest extends TestCase
         $fresh = $ip->fresh();
         $this->assertNull($fresh->assigned_to_type);
         $this->assertNull($fresh->assigned_to_id);
-        $this->assertNull($fresh->inventory_asset_id);
+        $this->assertNull($fresh->device_id);
         $this->assertSame('available', $fresh->type);
 
         $this->assertDatabaseHas('ip_allocation_history', [
             'ip_address_id' => $ip->id,
             'action' => 'released',
-            'previous_assigned_to_type' => 'inventory',
+            'previous_assigned_to_type' => 'device',
             'previous_assigned_to_id' => $asset->id,
         ]);
     }
 
-    public function test_release_action_clears_inventory_asset_id(): void
+    public function test_release_action_clears_device_id(): void
     {
         $subnet = $this->makeSubnet();
         $asset = $this->makeAsset('LINK-MORPH-RELEASE');
         $ip = $this->makeIp($subnet, '10.90.6.10', [
-            'inventory_asset_id' => $asset->id,
-            'assigned_to_type' => 'inventory',
+            'device_id' => $asset->id,
+            'assigned_to_type' => 'device',
             'assigned_to_id' => $asset->id,
             'type' => 'assigned',
         ]);
@@ -300,7 +301,7 @@ class IpAssetLinkTest extends TestCase
         $fresh = $ip->fresh();
         $this->assertNull($fresh->assigned_to_type);
         $this->assertNull($fresh->assigned_to_id);
-        $this->assertNull($fresh->inventory_asset_id);
+        $this->assertNull($fresh->device_id);
         $this->assertSame('available', $fresh->type);
     }
 
@@ -336,22 +337,22 @@ class IpAssetLinkTest extends TestCase
         ]);
     }
 
-    public function test_index_and_show_render_the_inventory_asset_as_the_assignee(): void
+    public function test_index_and_show_render_the_device_as_the_assignee(): void
     {
         $subnet = $this->makeSubnet();
         $asset = $this->makeAsset('LINK-RENDER-1');
         $ip = $this->makeIp($subnet, '10.90.7.10', [
-            'inventory_asset_id' => $asset->id,
-            'assigned_to_type' => 'inventory',
+            'device_id' => $asset->id,
+            'assigned_to_type' => 'device',
             'assigned_to_id' => $asset->id,
             'type' => 'assigned',
         ]);
 
-        $assetUrl = route('admin.inventory-assets.show', $asset);
+        $assetUrl = route('admin.devices.show', $asset);
 
         $this->actingAsAdmin()->get("/admin/ip-addresses/{$ip->id}")
             ->assertOk()
-            ->assertSee('Inventory Asset')
+            ->assertSee('Device')
             ->assertSee($assetUrl, false)
             ->assertSee($asset->asset_tag, false);
 

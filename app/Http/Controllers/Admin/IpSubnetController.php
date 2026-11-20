@@ -93,7 +93,22 @@ class IpSubnetController extends Controller
     {
         $ipSubnet->load(['datacenter', 'vlan', 'ipAddresses']);
 
-        return view('admin.ip_subnets.show', compact('ipSubnet'));
+        $capacity = (int) $ipSubnet->total_addresses;
+        $assigned = $ipSubnet->ipAddresses()->whereNotNull('assigned_to_type')->count();
+        $reserved = $ipSubnet->ipAddresses()->whereNull('assigned_to_type')->where('type', '!=', 'available')->count();
+        $used = $assigned + $reserved;
+        $available = max(0, $capacity - $used);
+
+        $utilization = [
+            'capacity' => $capacity,
+            'assigned' => $assigned,
+            'reserved' => $reserved,
+            'available' => $available,
+            'used' => $used,
+            'pct' => $capacity > 0 ? round($used / $capacity * 100, 1) : 0,
+        ];
+
+        return view('admin.ip_subnets.show', compact('ipSubnet', 'utilization'));
     }
 
     public function edit(IpSubnet $ipSubnet): View

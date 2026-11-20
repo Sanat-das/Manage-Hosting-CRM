@@ -45,7 +45,7 @@ final class DummyDataConfig
     public const PRODUCTS = 6;
 
     /** Total application tables the demo seed must populate. */
-    public const TOTAL_BUSINESS_TABLES = 99;
+    public const TOTAL_BUSINESS_TABLES = 98;
 
     /**
      * Framework-owned tables intentionally absent from `ROWS`.
@@ -171,14 +171,13 @@ final class DummyDataConfig
         'provisioning_adapters' => 5,
         'provisioning_events' => 6,
 
-        // --- Infrastructure & inventory (14) --------------------------
+        // --- Infrastructure & inventory (13) --------------------------
         'servers' => 4,
         'server_groups' => 2,
         'server_group_members' => 4,
         'datacenters' => 2,
         'racks' => 4,
-        'inventory_assets' => 10,
-        'asset_relationships' => 5,
+        'devices' => 10,
         'licenses' => 5,
         'license_assignments' => 5,
         'ip_subnets' => 3,
@@ -320,8 +319,7 @@ final class DummyDataConfig
         'server_group_members' => ['server_group_id', 'server_id'],
         'datacenters' => ['code'],
         'racks' => ['datacenter_id', 'name'],
-        'inventory_assets' => ['asset_tag'],
-        'asset_relationships' => ['parent_kind', 'parent_id', 'child_kind', 'child_id', 'relationship_type'],
+        'devices' => ['asset_tag'],
         'licenses' => ['license_key'],
         'license_assignments' => ['license_id', 'assigned_to_type', 'assigned_to_id'],
         'ip_subnets' => ['subnet_cidr'],

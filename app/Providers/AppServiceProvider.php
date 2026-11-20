@@ -2,7 +2,11 @@
 
 namespace App\Providers;
 
+use App\Models\Device;
+use App\Models\InventoryItem;
 use App\Models\User;
+use App\Observers\DeviceObserver;
+use App\Observers\InventoryItemObserver;
 use App\Services\Installer\InstallerService;
 use App\Support\AppSettings;
 use App\Support\Branding;
@@ -84,6 +88,9 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         Paginator::useBootstrapFive();
+
+        Device::observe(DeviceObserver::class);
+        InventoryItem::observe(InventoryItemObserver::class);
 
         GridFilters::register();
         GridSort::register();

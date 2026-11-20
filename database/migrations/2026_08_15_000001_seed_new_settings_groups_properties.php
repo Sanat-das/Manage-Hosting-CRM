@@ -7,7 +7,6 @@ use App\Settings\CronSettings;
 use App\Settings\DomainSettings;
 use App\Settings\HostingSettings;
 use App\Settings\IntegrationSettings;
-use App\Settings\InventorySettings;
 use App\Settings\IpamSettings;
 use App\Settings\ProductSettings;
 use App\Settings\RoleSettings;
@@ -33,7 +32,6 @@ return new class extends Migration
         IntegrationSettings::class,
         HostingSettings::class,
         IpamSettings::class,
-        InventorySettings::class,
         CatalogSettings::class,
         ProductSettings::class,
         AnalyticsSettings::class,

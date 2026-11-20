@@ -12,7 +12,6 @@ use App\Settings\CronSettings;
 use App\Settings\DomainSettings;
 use App\Settings\HostingSettings;
 use App\Settings\IntegrationSettings;
-use App\Settings\InventorySettings;
 use App\Settings\IpamSettings;
 use App\Settings\ProductSettings;
 use App\Settings\RoleSettings;
@@ -49,7 +48,6 @@ class NewSettingsGroupsTest extends TestCase
             'integration' => [IntegrationSettings::class, 'integration'],
             'hosting' => [HostingSettings::class, 'hosting'],
             'ipam' => [IpamSettings::class, 'ipam'],
-            'inventory' => [InventorySettings::class, 'inventory'],
             'catalog' => [CatalogSettings::class, 'catalog'],
             'product' => [ProductSettings::class, 'product'],
             'analytics' => [AnalyticsSettings::class, 'analytics'],
@@ -67,7 +65,6 @@ class NewSettingsGroupsTest extends TestCase
             'integration' => [IntegrationSettings::class, 'cpanel_host', 'panel.example.com'],
             'hosting' => [HostingSettings::class, 'hosting_default_panel', 'plesk'],
             'ipam' => [IpamSettings::class, 'ipam_default_ipv4_gateway', '10.0.0.1'],
-            'inventory' => [InventorySettings::class, 'inventory_stock_unit', 'licenses'],
             'catalog' => [CatalogSettings::class, 'catalog_default_sort', 'name'],
             'product' => [ProductSettings::class, 'product_sku_prefix', 'HST-'],
             'analytics' => [AnalyticsSettings::class, 'analytics_tracking_code', 'G-ABCDE12345'],
@@ -235,7 +232,6 @@ class NewSettingsGroupsTest extends TestCase
             ->assertSee('Integration Settings')
             ->assertSee('Hosting Settings')
             ->assertSee('IPAM Settings')
-            ->assertSee('Inventory Settings')
             ->assertSee('Catalog Settings')
             ->assertSee('Product Settings')
             ->assertSee('Analytics Settings')

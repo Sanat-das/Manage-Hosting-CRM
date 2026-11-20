@@ -10,7 +10,6 @@ use Illuminate\Support\Facades\Route;
 | Filled from the placeholder. Mirrors the group shape in
 | routes/admin/enterprise.php: standard admin group (web + auth + admin),
 | reads gated by product-bundles.view, writes by product-bundles.manage.
-| Fallback to hosting.* handled in PermissionMiddleware.
 */
 
 Route::middleware(['web', 'auth', 'admin', 'throttle:admin'])->prefix('admin')->name('admin.')->group(function () {

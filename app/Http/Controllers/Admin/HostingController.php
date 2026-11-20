@@ -7,13 +7,10 @@ use App\Contracts\Integrations\Capabilities\HostingAccountToolsProvider;
 use App\Contracts\Integrations\ProvisioningResult;
 use App\Exceptions\NoAvailableIpException;
 use App\Http\Controllers\Controller;
-use App\Models\AssetRelationship;
 use App\Models\AuditLog;
 use App\Models\Customer;
-use App\Models\Datacenter;
 use App\Models\HostingAccount;
 use App\Models\HostingNote;
-use App\Models\InventoryAsset;
 use App\Models\IpAddress;
 use App\Models\IpSubnet;
 use App\Models\Module;
@@ -22,12 +19,9 @@ use App\Models\PanelAccount;
 use App\Models\Product;
 use App\Models\ProductModule;
 use App\Models\ProvisioningEvent;
-use App\Models\Rack;
-use App\Models\ResourcePool;
 use App\Models\Server;
 use App\Models\ServiceInstance;
 use App\Models\SslCertificate;
-use App\Models\Vlan;
 use App\Services\Billing\BillingService;
 use App\Services\HostingService;
 use App\Services\Integrations\IntegrationRegistry;
@@ -50,7 +44,6 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
-use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
@@ -81,25 +74,6 @@ class HostingController extends Controller
 
     /** Cap on the "choose specific IP" list so the edit page stays fast on large pools. */
     private const AVAILABLE_IP_LIMIT = 100;
-
-    /**
-     * Asset kind => [model class, display column] used to resolve an asset
-     * relationship's parent/child entity to its display name. Mirrors
-     * ProductHostedOnController::PARENT_DISPLAY; kinds without a resolvable
-     * name (license) fall back to "Kind #id".
-     */
-    private const ASSET_DISPLAY = [
-        'product' => [Product::class, 'name'],
-        'server' => [Server::class, 'name'],
-        // hosting_account username is legacy/module-managed — host_name is the product identifier
-        'hosting_account' => [HostingAccount::class, 'host_name'],
-        'datacenter' => [Datacenter::class, 'name'],
-        'rack' => [Rack::class, 'name'],
-        'ip_subnet' => [IpSubnet::class, 'name'],
-        'vlan' => [Vlan::class, 'name'],
-        'resource_pool' => [ResourcePool::class, 'name'],
-        'inventory_asset' => [InventoryAsset::class, 'asset_tag'],
-    ];
 
     public function __construct(
         private readonly HostingService $hostingService,
@@ -272,10 +246,6 @@ class HostingController extends Controller
         }
 
         $sslCerts = $sslCerts->unique('id')->values()->sortByDesc('expiry_date');
-
-        // Asset relationships, display names and linkable inventory assets —
-        // shared with the edit page (link / remove controls) via assetContext().
-        $assetContext = $this->assetContext($hostingAccount);
 
         // Billing context for the Billing tab: recurring amount resolved from
         // the order's cycle when one exists (see recurringAmountFor), plus the
@@ -486,16 +456,11 @@ class HostingController extends Controller
             'packages' => $packages,
             'assignedIps' => $assignedIps,
             'sslCerts' => $sslCerts,
-            'assetRelationships' => $assetContext['assetRelationships'],
-            'assetNames' => $assetContext['assetNames'],
-            'inventoryAssets' => $assetContext['inventoryAssets'],
             'recurringAmount' => $recurringAmount,
             'order' => $order,
             'domain' => $order?->domain,
             'invoices' => $order?->invoices ?? collect(),
             'packageSnapshot' => $packageSnapshot,
-            'assetKinds' => AssetRelationship::ASSET_KINDS,
-            'relationshipTypes' => AssetRelationship::RELATIONSHIP_TYPES,
             'notes' => $notes,
             'hypervEffectiveOptions' => $hypervEffectiveOptions,
             'hypervEffectiveDefault' => $hypervEffectiveDefault,
@@ -592,9 +557,6 @@ class HostingController extends Controller
 
         $ipSubnets = IpSubnet::orderBy('subnet_cidr')->get(['id', 'name', 'subnet_cidr']);
 
-        // Lifecycle + asset-linking cards use the same context as the show page.
-        $assetContext = $this->assetContext($hostingAccount);
-
         // Billing context for the Billing tab: the linked order (cycle,
         // dates, payment method, subscription id) plus the recurring amount
         // resolution used on the show page — the form pre-fills from these.
@@ -607,11 +569,6 @@ class HostingController extends Controller
             'availableIps' => $availableIps,
             'ipSubnets' => $ipSubnets,
             'packages' => $options['products'],
-            'assetRelationships' => $assetContext['assetRelationships'],
-            'assetNames' => $assetContext['assetNames'],
-            'inventoryAssets' => $assetContext['inventoryAssets'],
-            'assetKinds' => AssetRelationship::ASSET_KINDS,
-            'relationshipTypes' => AssetRelationship::RELATIONSHIP_TYPES,
             'order' => $order,
             'billingItem' => $order?->items()->whereNull('product_addon_id')->where('product_id', $hostingAccount->product_id)->first()
                 ?? $order?->items()->whereNull('product_addon_id')->orderBy('id')->first(),
@@ -2068,87 +2025,6 @@ class HostingController extends Controller
             ?? $account->product?->price;
 
         return $price === null ? null : (float) $price;
-    }
-
-    /**
-     * Resolve display names for both the parent and child side of every asset
-     * relationship, one query per kind (no N+1). Keyed by relationship id:
-     * [id => ['parent' => ?string, 'child' => ?string]]; unresolvable kinds
-     * (e.g. license) keep null so the view falls back to "Kind #id".
-     *
-     * @param  Collection<int, AssetRelationship>  $relationships
-     * @return array<int, array{parent: ?string, child: ?string}>
-     */
-    private function resolveAssetNames(Collection $relationships): array
-    {
-        $names = [];
-
-        foreach ($relationships as $relationship) {
-            $names[$relationship->id] = ['parent' => null, 'child' => null];
-        }
-
-        foreach (['parent' => 'parent_kind', 'child' => 'child_kind'] as $side => $kindColumn) {
-            $idColumn = $side.'_id';
-            $idsByKind = [];
-
-            foreach ($relationships as $relationship) {
-                $kind = $relationship->{$kindColumn};
-
-                if (array_key_exists($kind, self::ASSET_DISPLAY)) {
-                    $idsByKind[$kind][$relationship->{$idColumn}] = $relationship->id;
-                }
-            }
-
-            foreach ($idsByKind as $kind => $ids) {
-                [$model, $column] = self::ASSET_DISPLAY[$kind];
-                $rows = $model::query()->whereIn('id', array_keys($ids))->get(['id', $column]);
-
-                foreach ($rows as $row) {
-                    $names[$ids[$row->id]][$side] = $row->{$column};
-                }
-            }
-        }
-
-        return $names;
-    }
-
-    /**
-     * Asset relationships touching this account (either side of the link),
-     * restricted to inventory assets, plus the display-name lookup and the
-     * assets available to link. Shared by the show page (read-only display)
-     * and the edit page (link / remove controls).
-     *
-     * @return array{
-     *     assetRelationships: Collection<int, AssetRelationship>,
-     *     assetNames: array<int, array{parent: ?string, child: ?string}>,
-     *     inventoryAssets: Collection<int, InventoryAsset>,
-     * }
-     */
-    private function assetContext(HostingAccount $account): array
-    {
-        $assetRelationships = AssetRelationship::query()
-            ->where(function ($query) use ($account) {
-                $query->where(function ($q) use ($account) {
-                    $q->where('parent_kind', 'hosting_account')
-                        ->where('parent_id', $account->id)
-                        ->where('child_kind', 'inventory_asset');
-                })->orWhere(function ($q) use ($account) {
-                    $q->where('child_kind', 'hosting_account')
-                        ->where('child_id', $account->id)
-                        ->where('parent_kind', 'inventory_asset');
-                });
-            })
-            ->orderBy('id')
-            ->get();
-
-        return [
-            'assetRelationships' => $assetRelationships,
-            'assetNames' => $this->resolveAssetNames($assetRelationships),
-            'inventoryAssets' => InventoryAsset::query()
-                ->orderBy('asset_tag')
-                ->limit(200)
-                ->get(['id', 'asset_tag', 'model', 'asset_type']),
-        ];
     }
 
     private function formOptions(): array

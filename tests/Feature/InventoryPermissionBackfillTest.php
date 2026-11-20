@@ -1,7 +1,5 @@
 <?php
 
-declare(strict_types=1);
-
 namespace Tests\Feature;
 
 use App\Models\Permission;
@@ -13,17 +11,21 @@ use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 /**
- * Guards the activation of `inventory.view` for the support role.
+ * Regression anchor for the 2026_10_06 support-role inventory/devices backfill.
  *
- * `inventory.view` is declared in AdminLteRbacSeeder's inventory and gates the
- * inventory index/show routes and the InventoryAssetSearchProvider. It is
- * granted to the support role ONLY, so:
+ * The fresh-install path is seeded from AdminLteRbacSeeder, and the upgrade
+ * path replays the frozen 2026_10_06_000001 backfill migration verbatim. The
+ * historical migration is decision-6 history: it creates the permission row
+ * under its ORIGINAL name/label (`inventory.view` / 'View Inventory'), which
+ * the later 2026_11_19_000003 rename migration upgrades to `devices.view` /
+ * 'View Devices'. This suite therefore asserts both vocabularies, one per
+ * path:
  *
- *  - the seeder (fresh installs) must attach it to support and to no other
- *    non-admin role;
- *  - the backfill migration (existing installs, where the updater runs
- *    `migrate --force` and never `db:seed`) must attach it to support and must
- *    be idempotent.
+ *  - seeder (fresh installs): `devices.view` attached to support and to no
+ *    other non-admin role;
+ *  - backfill migration (existing installs, where the updater runs
+ *    `migrate --force` and never `db:seed`): `inventory.view` created by the
+ *    replay and granted to support, idempotently.
  *
  * Everything runs on sqlite :memory: via RefreshDatabase (`phpunit.xml`), no
  * MySQL, matching the SearchPermissionBackfillTest conventions.
@@ -34,7 +36,11 @@ final class InventoryPermissionBackfillTest extends TestCase
 
     private const BACKFILL_MIGRATION = 'migrations/2026_10_06_000001_backfill_support_inventory_view_permission.php';
 
-    private const PERMISSION = 'inventory.view';
+    /** The live, post-rename permission name (seeder path). */
+    private const PERMISSION = 'devices.view';
+
+    /** The original name the frozen 2026_10_06 backfill migration declares. */
+    private const BACKFILL_PERMISSION = 'inventory.view';
 
     /**
      * Run the real backfill migration against the current (seeded) database.
@@ -55,25 +61,33 @@ final class InventoryPermissionBackfillTest extends TestCase
         $migration->up();
     }
 
-    private function inventoryPermissionId(): int
+    private function permissionId(string $name): int
     {
-        $id = Permission::where('name', self::PERMISSION)->value('id');
+        $id = Permission::where('name', $name)->value('id');
 
-        $this->assertNotNull($id, 'Permission [inventory.view] is not present in adminlte_permissions.');
+        $this->assertNotNull($id, "Permission [{$name}] is not present in adminlte_permissions.");
 
         return (int) $id;
     }
 
-    private function inventoryPivotCount(): int
+    private function pivotCount(string $name): int
     {
         return DB::table('adminlte_permission_role')
-            ->where('permission_id', $this->inventoryPermissionId())
+            ->where('permission_id', $this->permissionId($name))
             ->count();
     }
 
-    // ─────────────────────────────────────────────────────────────────
+    private function removeLivePermission(): void
+    {
+        DB::table('adminlte_permission_role')
+            ->where('permission_id', $this->permissionId(self::PERMISSION))
+            ->delete();
+        DB::table('adminlte_permissions')->where('name', self::PERMISSION)->delete();
+    }
+
+    // ─────────────────────────────────────────────────────────────
     // Seeder (fresh-install path)
-    // ─────────────────────────────────────────────────────────────────
+    // ─────────────────────────────────────────────────────────────
 
     public function test_seeder_grants_inventory_view_to_support_only(): void
     {
@@ -84,7 +98,7 @@ final class InventoryPermissionBackfillTest extends TestCase
         $this->assertNotNull($support, 'Role [support] was not seeded.');
         $this->assertTrue(
             $support->hasPermission(self::PERMISSION),
-            'Role [support] must hold the inventory.view permission.'
+            'Role [support] must hold the devices.view permission.'
         );
 
         foreach (['staff', 'viewer'] as $name) {
@@ -93,14 +107,14 @@ final class InventoryPermissionBackfillTest extends TestCase
             $this->assertNotNull($role, "Role [{$name}] was not seeded.");
             $this->assertFalse(
                 $role->hasPermission(self::PERMISSION),
-                "Role [{$name}] must NOT hold inventory.view (support-only grant)."
+                "Role [{$name}] must NOT hold devices.view (support-only grant)."
             );
         }
     }
 
-    // ─────────────────────────────────────────────────────────────────
+    // ─────────────────────────────────────────────────────────────
     // Backfill migration (upgrade path)
-    // ─────────────────────────────────────────────────────────────────
+    // ─────────────────────────────────────────────────────────────
 
     public function test_backfill_migration_grants_inventory_view_to_support_idempotently(): void
     {
@@ -108,42 +122,39 @@ final class InventoryPermissionBackfillTest extends TestCase
 
         // Simulate a pre-backfill install: the role matrix exists but the
         // inventory permission and every one of its pivot rows are absent.
-        DB::table('adminlte_permission_role')
-            ->where('permission_id', $this->inventoryPermissionId())
-            ->delete();
-        DB::table('adminlte_permissions')->where('name', self::PERMISSION)->delete();
+        $this->removeLivePermission();
 
         $this->assertSame(0, Permission::where('name', self::PERMISSION)->count(), 'Precondition: inventory permission removed.');
 
         $this->runBackfillMigration();
 
-        $this->assertSame(1, Permission::where('name', self::PERMISSION)->count(), 'The migration must create exactly one inventory permission row.');
+        $this->assertSame(1, Permission::where('name', self::BACKFILL_PERMISSION)->count(), 'The migration must create exactly one inventory permission row.');
         $this->assertSame(
             'View Inventory',
-            Permission::where('name', self::PERMISSION)->value('label'),
-            'The backfilled permission label must match the seeder inventory.'
+            Permission::where('name', self::BACKFILL_PERMISSION)->value('label'),
+            'The backfilled permission label must match the historical seeder inventory.'
         );
 
         $support = Role::where('name', 'support')->first();
 
         $this->assertNotNull($support, 'Role [support] was not seeded.');
         $this->assertTrue(
-            $support->hasPermission(self::PERMISSION),
+            $support->hasPermission(self::BACKFILL_PERMISSION),
             'Backfill must grant inventory.view to role [support].'
         );
         // Support-only: no other role gains the pivot from this backfill.
-        $this->assertSame(1, $this->inventoryPivotCount(), 'The migration must attach inventory.view to the support role and no other.');
+        $this->assertSame(1, $this->pivotCount(self::BACKFILL_PERMISSION), 'The migration must attach inventory.view to the support role and no other.');
 
         // Idempotency: a second run must change NOTHING — no duplicate
         // permission rows, no duplicate pivot rows.
-        $permissionCount = Permission::where('name', self::PERMISSION)->count();
-        $pivotCount = $this->inventoryPivotCount();
+        $permissionCount = Permission::where('name', self::BACKFILL_PERMISSION)->count();
+        $pivotCount = $this->pivotCount(self::BACKFILL_PERMISSION);
         $totalPivotCount = DB::table('adminlte_permission_role')->count();
 
         $this->runBackfillMigration();
 
-        $this->assertSame($permissionCount, Permission::where('name', self::PERMISSION)->count(), 'Re-running the migration duplicated the inventory permission row.');
-        $this->assertSame($pivotCount, $this->inventoryPivotCount(), 'Re-running the migration changed the inventory pivot row count.');
+        $this->assertSame($permissionCount, Permission::where('name', self::BACKFILL_PERMISSION)->count(), 'Re-running the migration duplicated the inventory permission row.');
+        $this->assertSame($pivotCount, $this->pivotCount(self::BACKFILL_PERMISSION), 'Re-running the migration changed the inventory pivot row count.');
         $this->assertSame($totalPivotCount, DB::table('adminlte_permission_role')->count(), 'Re-running the migration changed the total pivot row count.');
     }
 
@@ -154,10 +165,7 @@ final class InventoryPermissionBackfillTest extends TestCase
         $supportId = Role::where('name', 'support')->value('id');
 
         // Simulate a fresh install: no support role, no inventory permission.
-        DB::table('adminlte_permission_role')
-            ->where('permission_id', $this->inventoryPermissionId())
-            ->delete();
-        DB::table('adminlte_permissions')->where('name', self::PERMISSION)->delete();
+        $this->removeLivePermission();
 
         if ($supportId !== null) {
             DB::table('adminlte_permission_role')->where('role_id', $supportId)->delete();
@@ -175,7 +183,7 @@ final class InventoryPermissionBackfillTest extends TestCase
 
         // The permission row may be (re)declared, but with no support role the
         // grant must be a no-op.
-        $permissionId = Permission::where('name', self::PERMISSION)->value('id');
+        $permissionId = Permission::where('name', self::BACKFILL_PERMISSION)->value('id');
 
         $this->assertNotNull($permissionId, 'The migration should still declare the permission row.');
         $this->assertSame(

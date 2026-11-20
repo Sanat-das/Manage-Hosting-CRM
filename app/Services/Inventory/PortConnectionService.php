@@ -41,7 +41,7 @@ final class PortConnectionService
 
             /** @var Collection<int, DevicePort> $locked */
             $locked = DevicePort::query()
-                ->with('inventoryAsset')
+                ->with('device')
                 ->whereKey([$sourceId, $peerId])
                 ->lockForUpdate()
                 ->get()
@@ -91,8 +91,8 @@ final class PortConnectionService
 
             $fresh->fill(Arr::only($cable, self::CABLE_FIELDS))->save();
 
-            $portA = DevicePort::query()->with('inventoryAsset')->findOrFail($fresh->port_a_id);
-            $portB = DevicePort::query()->with('inventoryAsset')->findOrFail($fresh->port_b_id);
+            $portA = DevicePort::query()->with('device')->findOrFail($fresh->port_a_id);
+            $portB = DevicePort::query()->with('device')->findOrFail($fresh->port_b_id);
 
             $this->writeEvent($portA, $portB, 'cable_updated', $fresh, $actor);
 
@@ -105,8 +105,8 @@ final class PortConnectionService
         DB::transaction(function () use ($connection, $actor): void {
             $fresh = PortConnection::query()->whereKey($connection->getKey())->lockForUpdate()->firstOrFail();
 
-            $portA = DevicePort::query()->with('inventoryAsset')->findOrFail($fresh->port_a_id);
-            $portB = DevicePort::query()->with('inventoryAsset')->findOrFail($fresh->port_b_id);
+            $portA = DevicePort::query()->with('device')->findOrFail($fresh->port_a_id);
+            $portB = DevicePort::query()->with('device')->findOrFail($fresh->port_b_id);
 
             // The ledger keeps the connection id even though the row is about to
             // be deleted (the events table has no foreign key).
@@ -131,9 +131,9 @@ final class PortConnectionService
             'port_connection_id' => $connection->getKey(),
             'port_a_id' => $portA->getKey(),
             'port_b_id' => $portB->getKey(),
-            'a_asset_tag' => (string) ($portA->inventoryAsset?->asset_tag ?? ''),
+            'a_asset_tag' => (string) ($portA->device?->asset_tag ?? ''),
             'a_port_name' => (string) $portA->name,
-            'b_asset_tag' => (string) ($portB->inventoryAsset?->asset_tag ?? ''),
+            'b_asset_tag' => (string) ($portB->device?->asset_tag ?? ''),
             'b_port_name' => (string) $portB->name,
             'action' => $action,
             'cable_label' => $connection->cable_label,

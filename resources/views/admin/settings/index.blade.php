@@ -1728,60 +1728,6 @@
                 <small class="text-muted d-block mb-2 last-updated" data-section="ipam">@if($lu)Last updated: {{ \Illuminate\Support\Carbon::parse($lu->created_at)->format('Y-m-d H:i:s') }} — <span title="{{ $lu->description }}">{{ \Illuminate\Support\Str::limit($lu->description, 120) }}</span>@else Last updated: never @endif</small>
             </div>
 
-            {{-- Inventory --}}
-            <div class="tab-pane fade @if ($activeTab === 'inventory') show active @endif" id="pane-inventory" role="tabpanel" aria-labelledby="tab-inventory">
-                <x-adminlte-card icon="bi bi-box-seam" title="Inventory Settings">
-                    <div class="row">
-                        <div class="col-md-4">
-                            @php $stockUnitValue = old('settings.inventory_stock_unit', $settings['inventory_stock_unit'] ?? 'units'); @endphp
-                            <x-adminlte-select name="settings[inventory_stock_unit]" label="Stock Unit">
-                                {!! $selectOptions($fieldOptions['stock_units'] ?? [], $stockUnitValue, $blankIfUnset($stockUnitValue)) !!}
-                            </x-adminlte-select>
-                        </div>
-                        <div class="col-md-4">
-                            <x-adminlte-input name="settings[inventory_low_stock_threshold]" label="Low Stock Threshold" type="number" min="0"
-                                value="{{ old('settings.inventory_low_stock_threshold', $settings['inventory_low_stock_threshold'] ?? '5') }}">
-                                <small class="form-text text-muted">Min 0</small>
-                            </x-adminlte-input>
-                        </div>
-                        <div class="col-md-4">
-                            <x-adminlte-input name="settings[inventory_restock_min_quantity]" label="Restock Min Quantity" type="number" min="0"
-                                value="{{ old('settings.inventory_restock_min_quantity', $settings['inventory_restock_min_quantity'] ?? '10') }}">
-                                <small class="form-text text-muted">Min 0</small>
-                            </x-adminlte-input>
-                        </div>
-                    </div>
-                    <div class="mt-3 settings-group">
-                        <h4 class="settings-group-title">Inventory tracking</h4>
-                        <div class="row mt-2">
-                            <div class="col-md-4">
-                                <x-adminlte-select name="settings[inventory_track_stock]" label="Track Stock">
-                                    <option value="yes" @selected(($settings['inventory_track_stock'] ?? 'no') === 'yes')>Yes</option>
-                                    <option value="no" @selected(($settings['inventory_track_stock'] ?? 'no') === 'no')>No</option>
-                                </x-adminlte-select>
-                                <small class="form-text text-muted">Yes / No</small>
-                            </div>
-                            <div class="col-md-4">
-                                <x-adminlte-select name="settings[inventory_auto_restock]" label="Auto Restock">
-                                    <option value="yes" @selected(($settings['inventory_auto_restock'] ?? 'no') === 'yes')>Yes</option>
-                                    <option value="no" @selected(($settings['inventory_auto_restock'] ?? 'no') === 'no')>No</option>
-                                </x-adminlte-select>
-                                <small class="form-text text-muted">Yes / No</small>
-                            </div>
-                            <div class="col-md-4">
-                                <x-adminlte-select name="settings[inventory_notify_low_stock]" label="Notify Low Stock">
-                                    <option value="yes" @selected(($settings['inventory_notify_low_stock'] ?? 'yes') === 'yes')>Yes</option>
-                                    <option value="no" @selected(($settings['inventory_notify_low_stock'] ?? 'yes') === 'no')>No</option>
-                                </x-adminlte-select>
-                                <small class="form-text text-muted">Yes / No</small>
-                            </div>
-                        </div>
-                    </div>
-                </x-adminlte-card>
-                @php $lu = $lastUpdated['inventory'] ?? $lastUpdated['all'] ?? null; @endphp
-                <small class="text-muted d-block mb-2 last-updated" data-section="inventory">@if($lu)Last updated: {{ \Illuminate\Support\Carbon::parse($lu->created_at)->format('Y-m-d H:i:s') }} — <span title="{{ $lu->description }}">{{ \Illuminate\Support\Str::limit($lu->description, 120) }}</span>@else Last updated: never @endif</small>
-            </div>
-
             {{-- Catalog --}}
             <div class="tab-pane fade @if ($activeTab === 'catalog') show active @endif" id="pane-catalog" role="tabpanel" aria-labelledby="tab-catalog">
                 <x-adminlte-card icon="bi bi-shop" title="Catalog Settings">

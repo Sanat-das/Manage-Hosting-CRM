@@ -4,24 +4,33 @@ declare(strict_types=1);
 
 namespace Modules\SnmpMonitor\Services;
 
-use App\Models\InventoryAsset;
+use App\Models\Device;
+use App\Models\DeviceType;
+use App\Models\Manufacturer;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Str;
 use Modules\SnmpMonitor\Models\SnmpTarget;
 
 /**
- * Turns a successful poll's SNMP identity into a core inventory_assets row and
+ * Turns a successful poll's SNMP identity into a core devices row and
  * links it back to the snmp_targets row. Called from PollHostBatch on the same
  * success path as the IPAM liveness stamp, behind its own try/catch: a failure
  * here MUST never break or fail a poll that already answered.
  *
  * Gated by the module config toggle `auto_inventory` (default enabled). The
  * toggle is all-or-nothing: when off, neither the target's identity columns nor
- * the core inventory row are touched.
+ * the core device row are touched.
  *
  * Reuse over duplication: a target that already links an asset keeps it; a
  * target whose device was discovered before (same derived asset_tag) reuses
  * that asset. Human-edited fields are never overwritten — only a NULL
  * manufacturer is backfilled, and status/notes are written on creation only.
+ *
+ * Newly created devices must not end up without a catalog type (NetBox
+ * requires a device type), so creation resolves-or-creates the manufacturer
+ * (enterprise match, else 'Unknown') and a placeholder device type per
+ * category ('Discovered Server' / 'Discovered Switch' / 'Discovered PDU' /
+ * 'Discovered Device'), linking the device via device_type_id.
  */
 final class InventoryDiscoveryService
 {
@@ -33,7 +42,7 @@ final class InventoryDiscoveryService
      * Longest-prefix wins, so a more specific registration always beats a
      * broader one. Everything else falls back to a server/other heuristic.
      *
-     * @var array<string, array{0: string, 1: string}> [asset_type, manufacturer]
+     * @var array<string, array{0: string, 1: string}> [category, manufacturer]
      */
     private const ENTERPRISE_MAP = [
         '1.3.6.1.4.1.9' => ['switch', 'Cisco'],
@@ -46,7 +55,7 @@ final class InventoryDiscoveryService
     ];
 
     /**
-     * Persist the device identity on the target and link its inventory asset.
+     * Persist the device identity on the target and link its device.
      *
      * @param  array<string, mixed>  $payload  SnmpCollector::collect() output
      * @param  array<string, mixed>  $config  decrypted snmp-monitor product config
@@ -68,7 +77,7 @@ final class InventoryDiscoveryService
             'sys_descr' => $sysDescr,
             'sys_object_id' => $sysObjectId,
             'last_discovered_at' => Carbon::now(),
-            'inventory_asset_id' => $asset->id,
+            'device_id' => $asset->id,
         ])->save();
     }
 
@@ -76,12 +85,12 @@ final class InventoryDiscoveryService
      * Resolve the linked asset, reusing rather than duplicating: an existing
      * target link first, then the derived asset_tag, then a fresh row.
      */
-    private function resolveAsset(SnmpTarget $target, ?string $sysName, ?string $sysObjectId): InventoryAsset
+    private function resolveAsset(SnmpTarget $target, ?string $sysName, ?string $sysObjectId): Device
     {
-        $linkedId = $target->inventory_asset_id;
+        $linkedId = $target->device_id;
 
         if ($linkedId !== null) {
-            $linked = InventoryAsset::query()->find($linkedId);
+            $linked = Device::query()->find($linkedId);
 
             if ($linked !== null) {
                 return $this->backfillManufacturer($linked, $sysObjectId);
@@ -89,7 +98,7 @@ final class InventoryDiscoveryService
         }
 
         $tag = $this->assetTagFor($sysName, (string) $target->host, (int) $target->id);
-        $existing = InventoryAsset::query()->where('asset_tag', $tag)->first();
+        $existing = Device::query()->where('asset_tag', $tag)->first();
 
         if ($existing !== null) {
             return $this->backfillManufacturer($existing, $sysObjectId);
@@ -99,25 +108,99 @@ final class InventoryDiscoveryService
     }
 
     /**
-     * Create the asset with the heuristic type and manufacturer. status uses
-     * the column default (in_stock); notes is the one-time discovery marker.
+     * Create the asset with the classified category and manufacturer, linked
+     * to a (resolved or created) placeholder device type. status uses the
+     * column default (in_stock); notes is the one-time discovery marker.
      */
-    private function createAsset(SnmpTarget $target, string $tag, ?string $sysObjectId): InventoryAsset
+    private function createAsset(SnmpTarget $target, string $tag, ?string $sysObjectId): Device
     {
         $match = $this->matchEnterprise($sysObjectId);
 
-        $assetType = $match !== null
+        $category = $match !== null
             ? $match[0]
             : (in_array($target->target_os, [SnmpTarget::OS_LINUX, SnmpTarget::OS_WINDOWS], true)
                 ? 'server'
                 : 'other_hardware');
 
-        return InventoryAsset::create([
+        $manufacturerName = $match !== null ? $match[1] : 'Unknown';
+        $manufacturerId = $this->resolveManufacturerId($manufacturerName);
+        $deviceTypeId = $this->resolveDeviceTypeId($manufacturerId, $category);
+
+        return Device::create([
             'asset_tag' => $tag,
-            'asset_type' => $assetType,
-            'manufacturer' => $match[1] ?? null,
+            'device_type_id' => $deviceTypeId,
+            'manufacturer' => $match !== null ? $match[1] : null,
             'notes' => self::DISCOVERY_NOTE,
         ]);
+    }
+
+    /**
+     * Resolve the manufacturer by unique name, creating it when absent.
+     */
+    private function resolveManufacturerId(string $name): int
+    {
+        $existing = Manufacturer::query()->where('name', $name)->first(['id']);
+
+        if ($existing !== null) {
+            return (int) $existing->id;
+        }
+
+        $slug = Str::slug($name);
+        $slug = $slug === '' ? 'manufacturer' : $slug;
+        $candidate = $slug;
+        $suffix = 2;
+
+        while (Manufacturer::query()->where('slug', $candidate)->exists()) {
+            $candidate = $slug.'-'.$suffix;
+            $suffix++;
+        }
+
+        return (int) Manufacturer::query()->create(['name' => $name, 'slug' => $candidate])->id;
+    }
+
+    /**
+     * Resolve a placeholder device type for a discovery class, creating it
+     * when absent. The model is deliberately generic — SNMP gives an
+     * identity class, not a part number — and stable so re-discovery reuses
+     * the same type instead of minting one per poll.
+     */
+    private function resolveDeviceTypeId(int $manufacturerId, string $category): int
+    {
+        $model = match ($category) {
+            'server' => 'Discovered Server',
+            'switch' => 'Discovered Switch',
+            'pdu' => 'Discovered PDU',
+            default => 'Discovered Device',
+        };
+
+        $existing = DeviceType::query()
+            ->where('manufacturer_id', $manufacturerId)
+            ->where('model', $model)
+            ->first(['id']);
+
+        if ($existing !== null) {
+            return (int) $existing->id;
+        }
+
+        $manufacturerName = (string) Manufacturer::query()->whereKey($manufacturerId)->value('name');
+        $base = Str::slug($manufacturerName.' '.$model);
+        $base = $base === '' ? 'discovered-device' : $base;
+        $candidate = $base;
+        $suffix = 2;
+
+        while (DeviceType::query()->where('slug', $candidate)->exists()) {
+            $candidate = $base.'-'.$suffix;
+            $suffix++;
+        }
+
+        return (int) DeviceType::query()->create([
+            'manufacturer_id' => $manufacturerId,
+            'model' => $model,
+            'slug' => $candidate,
+            'category' => $category,
+            'u_height' => 1,
+            'is_full_depth' => true,
+        ])->id;
     }
 
     /**
@@ -125,7 +208,7 @@ final class InventoryDiscoveryService
      * is empty. A non-null human value and every other field (model, status,
      * notes, tag, type) are left untouched.
      */
-    private function backfillManufacturer(InventoryAsset $asset, ?string $sysObjectId): InventoryAsset
+    private function backfillManufacturer(Device $asset, ?string $sysObjectId): Device
     {
         $match = $this->matchEnterprise($sysObjectId);
 
@@ -145,7 +228,7 @@ final class InventoryDiscoveryService
 
     /**
      * Match a sysObjectID against the enterprise map. Returns the longest
-     * matching prefix's [asset_type, manufacturer], or null when none match.
+     * matching prefix's [category, manufacturer], or null when none match.
      *
      * @return array{0: string, 1: string}|null
      */
@@ -191,7 +274,7 @@ final class InventoryDiscoveryService
         $candidate = $base;
         $suffix = 2;
 
-        while (InventoryAsset::query()->where('asset_tag', $candidate)->exists()) {
+        while (Device::query()->where('asset_tag', $candidate)->exists()) {
             $candidate = $base.'-'.$suffix;
             $suffix++;
         }

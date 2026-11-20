@@ -9,7 +9,6 @@
         ['id' => 'billing', 'label' => 'Billing', 'icon' => 'bi bi-credit-card'],
         ['id' => 'lifecycle', 'label' => 'Lifecycle', 'icon' => 'bi bi-lightning'],
         ['id' => 'ips', 'label' => 'IP Addresses', 'icon' => 'bi bi-hdd-network', 'badge' => $assignedIps->count()],
-        ['id' => 'assets', 'label' => 'Inventory Assets', 'icon' => 'bi bi-diagram-3', 'badge' => $assetRelationships->count()],
     ];
 @endphp
 
@@ -380,125 +379,9 @@
                 </div>
             </div>
 
-            {{-- Inventory Assets --}}
-            <div class="tab-pane fade {{ $activeTab === 'assets' ? 'show active' : '' }}" id="assets" role="tabpanel" aria-labelledby="assets-tab">
-                @can('asset-relationships.manage')
-                <div class="border rounded p-3 mb-3">
-                    <h6 class="text-primary mb-3"><i class="bi bi-plus-circle me-1"></i> Link an inventory asset</h6>
-                    <form method="POST" action="{{ route('admin.asset-relationships.store') }}">
-                        @csrf
-                        <input type="hidden" name="parent_kind" value="hosting_account">
-                        <input type="hidden" name="parent_id" value="{{ $hostingAccount->id }}">
-                        <input type="hidden" name="child_kind" value="inventory_asset">
-                        <div class="row g-2 align-items-end">
-                            <div class="col-md-5">
-                                <label class="form-label small text-muted mb-1">Inventory asset</label>
-                                <select name="child_id" class="form-select form-select-sm" required>
-                                    <option value="">Select asset...</option>
-                                    @foreach ($inventoryAssets as $asset)
-                                        <option value="{{ $asset->id }}" @selected((int) old('child_id') === $asset->id)>
-                                            {{ $asset->asset_tag }}{{ $asset->model ? ' — '.$asset->model : '' }} ({{ ucfirst($asset->asset_type) }})
-                                        </option>
-                                    @endforeach
-                                </select>
-                            </div>
-                            <div class="col-md-3">
-                                <label class="form-label small text-muted mb-1">Relationship</label>
-                                <select name="relationship_type" class="form-select form-select-sm" required>
-                                    @foreach ($relationshipTypes as $type)
-                                        <option value="{{ $type }}" @selected(old('relationship_type', 'hosted_on') === $type)>
-                                            {{ ucfirst(str_replace('_', ' ', $type)) }}
-                                        </option>
-                                    @endforeach
-                                </select>
-                            </div>
-                            <div class="col-md-2">
-                                <label class="form-label small text-muted mb-1">Label (optional)</label>
-                                <input type="text" name="label" maxlength="255" class="form-control form-control-sm"
-                                       placeholder="e.g. Primary node" value="{{ old('label') }}">
-                            </div>
-                            <div class="col-md-2">
-                                <button type="submit" class="btn btn-sm btn-primary w-100">
-                                    <i class="bi bi-link-45deg me-1"></i> Link
-                                </button>
-                            </div>
-                        </div>
-                    </form>
-                </div>
-                @endcan
-
-                @if ($assetRelationships->isEmpty())
-                    <p class="text-muted mb-0">No inventory assets are linked to this account.</p>
-                @else
-                    <div class="table-responsive">
-                        <table class="table table-sm align-middle mb-0">
-                            <thead>
-                                <tr>
-                                    <th>Parent</th>
-                                    <th>Relationship</th>
-                                    <th>Child</th>
-                                    <th>Label</th>
-                                    <th class="text-end">Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                @foreach ($assetRelationships as $relationship)
-                                    <tr>
-                                        <td>
-                                            <span class="badge text-bg-secondary">{{ $assetKinds[$relationship->parent_kind] ?? $relationship->parent_kind }}</span>
-                                            @if ($relationship->parent_kind === 'inventory_asset')
-                                                <a class="ms-1" href="{{ route('admin.inventory-assets.show', $relationship->parent_id) }}">
-                                                    {{ $assetNames[$relationship->id]['parent'] ?? 'Asset #'.$relationship->parent_id }}
-                                                </a>
-                                            @elseif ($assetNames[$relationship->id]['parent'])
-                                                <span class="ms-1">{{ $assetNames[$relationship->id]['parent'] }}</span>
-                                            @endif
-                                            <code class="ms-1">#{{ $relationship->parent_id }}</code>
-                                        </td>
-                                        <td><code>{{ $relationship->relationship_type }}</code></td>
-                                        <td>
-                                            <span class="badge text-bg-secondary">{{ $assetKinds[$relationship->child_kind] ?? $relationship->child_kind }}</span>
-                                            @if ($relationship->child_kind === 'inventory_asset')
-                                                <a class="ms-1" href="{{ route('admin.inventory-assets.show', $relationship->child_id) }}">
-                                                    {{ $assetNames[$relationship->id]['child'] ?? 'Asset #'.$relationship->child_id }}
-                                                </a>
-                                            @elseif ($assetNames[$relationship->id]['child'])
-                                                <span class="ms-1">{{ $assetNames[$relationship->id]['child'] }}</span>
-                                            @endif
-                                            <code class="ms-1">#{{ $relationship->child_id }}</code>
-                                        </td>
-                                        <td class="text-muted">{{ $relationship->label ?? '—' }}</td>
-                                        <td class="text-end">
-                                            @can('asset-relationships.manage')
-                                                <button type="button" class="btn btn-sm btn-outline-danger" title="Remove link"
-                                                        data-bs-toggle="modal" data-bs-target="#remove-asset-{{ $relationship->id }}">
-                                                    <i class="bi bi-x-lg"></i>
-                                                </button>
-                                            @endcan
-                                        </td>
-                                    </tr>
-                                @endforeach
-                            </tbody>
-                        </table>
-                    </div>
-                @endif
-            </div>
         </x-adminlte.partials.detail-tabs>
     </x-adminlte-card>
 
-    {{-- Remove-link confirm modals: outside the tab container so they stay
-         functional regardless of which pane is active. --}}
-    @foreach ($assetRelationships as $relationship)
-        @can('asset-relationships.manage')
-        <x-adminlte.partials.confirm-modal
-            :id="'remove-asset-' . $relationship->id"
-            title="Remove asset link"
-            :message="'Remove this ' . $relationship->relationship_type . ' link between ' . $relationship->parent_kind . ' #' . $relationship->parent_id . ' and ' . $relationship->child_kind . ' #' . $relationship->child_id . '?'"
-            :action="route('admin.asset-relationships.destroy', $relationship)"
-            confirm-label="Remove link"
-        />
-        @endcan
-    @endforeach
 
     @push('js')
         <script>
@@ -622,7 +505,7 @@
                 }
 
                 // Keep the active pane open across the back() redirects the
-                // lifecycle / IP / asset / billing actions return with. Skipped
+                // lifecycle / IP / billing actions return with. Skipped
                 // when the Details form failed validation — its error fields
                 // live on the Details pane (and we let the Billing tab's own
                 // validation errors surface on the Billing pane instead).

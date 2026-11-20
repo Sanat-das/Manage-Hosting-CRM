@@ -160,7 +160,7 @@ class DummyDataSeederTest extends TestCase
      *   - provisioning_events.adapter_id     (adapter lives in payload JSON)
      *   - service_instances.hosting_account_id (no such column)
      *   - subscription_changes.subscription_id (no such column)
-     *   - licenses.product_id                (licenses use inventory_asset_id)
+     *   - licenses.product_id                (licenses use device_id)
      *   - license_assignments.hosting_account_id (polymorphic assigned_to_*)
      *   - ssl_certificates.hosting_account_id (uses customer_id/order_id)
      *

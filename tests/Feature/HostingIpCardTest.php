@@ -181,7 +181,7 @@ class HostingIpCardTest extends TestCase
             // ...and no lifecycle / asset-linking controls (all moved to edit).
             ->assertDontSee('Suspend account')
             ->assertDontSee('Change password')
-            ->assertDontSee('Link an inventory asset');
+            ->assertDontSee('Link a device');
     }
 
     public function test_edit_page_contains_ip_assignment_controls(): void
@@ -196,7 +196,6 @@ class HostingIpCardTest extends TestCase
             ->assertSee('data-bs-target="#details"', false)
             ->assertSee('data-bs-target="#lifecycle"', false)
             ->assertSee('data-bs-target="#ips"', false)
-            ->assertSee('data-bs-target="#assets"', false)
             ->assertSee('Pull Next Available')
             ->assertSee('Assign selected');
 
@@ -209,7 +208,7 @@ class HostingIpCardTest extends TestCase
             ->assertJsonFragment(['ip_address' => '10.1.0.22']);
     }
 
-    public function test_edit_page_contains_lifecycle_and_asset_controls(): void
+    public function test_edit_page_contains_lifecycle_controls(): void
     {
         $subnet = $this->makeSubnet();
         $account = $this->makeAccount();
@@ -222,7 +221,6 @@ class HostingIpCardTest extends TestCase
             ->assertSee('Suspend account')
             ->assertSee('Change package')
             ->assertSee('Change password')
-            ->assertSee('Link an inventory asset')
             // Direct status override dropdown removed — lifecycle buttons only.
             ->assertDontSee('name="status"', false);
     }

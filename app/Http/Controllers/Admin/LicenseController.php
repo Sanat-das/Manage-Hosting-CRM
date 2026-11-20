@@ -3,7 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
-use App\Models\InventoryAsset;
+use App\Models\Device;
 use App\Models\License;
 use App\Services\Licenses\LicenseSeatReconciler;
 use Illuminate\Http\RedirectResponse;
@@ -47,21 +47,20 @@ class LicenseController extends Controller
 
     public function create(): View
     {
-        $inventoryAssets = InventoryAsset::where('asset_type', 'software_license')
-            ->orderBy('asset_tag')
+        $devices = Device::orderBy('asset_tag')
             ->get(['id', 'asset_tag']);
 
-        return view('admin.licenses.create', compact('inventoryAssets'));
+        return view('admin.licenses.create', compact('devices'));
     }
 
     public function store(Request $request): RedirectResponse
     {
         $validated = $request->validate([
-            'inventory_asset_id' => [
+            'device_id' => [
                 'required',
                 'integer',
-                Rule::exists('inventory_assets', 'id')->where('asset_type', 'software_license'),
-                Rule::unique('licenses', 'inventory_asset_id'),
+                Rule::exists('devices', 'id')->whereNull('deleted_at'),
+                Rule::unique('licenses', 'device_id'),
             ],
             'license_type' => ['required', 'string', 'max:100'],
             'license_key' => ['required', 'string', 'max:500'],
@@ -95,8 +94,8 @@ class LicenseController extends Controller
 
     public function update(Request $request, License $license): RedirectResponse
     {
-        // `inventory_asset_id` is intentionally immutable after creation: a
-        // license is 1:1 with its inventory asset (validated in store()), so
+        // `device_id` is intentionally immutable after creation: a
+        // license is 1:1 with its device (validated in store()), so
         // the field is deliberately absent from this update payload.
         $validated = $request->validate([
             'license_type' => ['sometimes', 'string', 'max:100'],

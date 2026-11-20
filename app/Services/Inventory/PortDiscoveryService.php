@@ -2,14 +2,14 @@
 
 namespace App\Services\Inventory;
 
+use App\Models\Device;
 use App\Models\DevicePort;
-use App\Models\InventoryAsset;
 use App\Support\Logging\AppLog;
 use Illuminate\Support\Carbon;
 use Throwable;
 
 /**
- * Imports SNMP interface data into a linked inventory asset's device_ports.
+ * Imports SNMP interface data into a linked device's device_ports.
  *
  * Called from the polling pipeline (PollHostBatch) when the module config
  * toggle `auto_ports` is on, and from the `snmp:sync-ports` reconcile command.
@@ -35,7 +35,7 @@ final class PortDiscoveryService
      * @param  array<int, array<string, mixed>>  $interfaces  SnmpCollector payload['interfaces']
      * @return array{created: int, updated: int, skipped: int, stale: int}
      */
-    public function syncForAsset(InventoryAsset $asset, array $interfaces, bool $dryRun = false): array
+    public function syncForAsset(Device $asset, array $interfaces, bool $dryRun = false): array
     {
         $counts = ['created' => 0, 'updated' => 0, 'skipped' => 0, 'stale' => 0];
         $now = Carbon::now();
@@ -80,7 +80,7 @@ final class PortDiscoveryService
      * @param  array<string, mixed>  $interface
      * @return 'created'|'updated'|'skipped'
      */
-    private function syncInterface(InventoryAsset $asset, array $interface, Carbon $now, bool $dryRun): string
+    private function syncInterface(Device $asset, array $interface, Carbon $now, bool $dryRun): string
     {
         $index = $this->interfaceIndex($interface);
 
@@ -113,10 +113,10 @@ final class PortDiscoveryService
      * Dedupe cascade: (asset_id, snmp_if_index) → (asset_id, snmp_if_descr)
      * → (asset_id, name).
      */
-    private function findMatch(InventoryAsset $asset, int $index, ?string $descrKey, ?string $name): ?DevicePort
+    private function findMatch(Device $asset, int $index, ?string $descrKey, ?string $name): ?DevicePort
     {
         $byIndex = DevicePort::query()
-            ->where('inventory_asset_id', $asset->id)
+            ->where('device_id', $asset->id)
             ->where('snmp_if_index', $index)
             ->first();
 
@@ -126,7 +126,7 @@ final class PortDiscoveryService
 
         if ($descrKey !== null) {
             $byDescr = DevicePort::query()
-                ->where('inventory_asset_id', $asset->id)
+                ->where('device_id', $asset->id)
                 ->where('snmp_if_descr', $descrKey)
                 ->first();
 
@@ -137,7 +137,7 @@ final class PortDiscoveryService
 
         if ($name !== null) {
             return DevicePort::query()
-                ->where('inventory_asset_id', $asset->id)
+                ->where('device_id', $asset->id)
                 ->where('name', $name)
                 ->first();
         }
@@ -208,7 +208,7 @@ final class PortDiscoveryService
      * @param  array<string, mixed>  $interface
      */
     private function createPort(
-        InventoryAsset $asset,
+        Device $asset,
         array $interface,
         int $index,
         ?string $descrKey,
@@ -218,13 +218,13 @@ final class PortDiscoveryService
     ): string {
         $name = $displayName;
 
-        if (DevicePort::query()->where('inventory_asset_id', $asset->id)->where('name', $name)->exists()) {
+        if (DevicePort::query()->where('device_id', $asset->id)->where('name', $name)->exists()) {
             $name = $displayName.' (if'.$index.')';
         }
 
         if (! $dryRun) {
             DevicePort::create([
-                'inventory_asset_id' => $asset->id,
+                'device_id' => $asset->id,
                 'name' => $name,
                 'port_type' => $this->mapPortType($interface['type'] ?? null),
                 'speed_bps' => $this->mapSpeed($interface['speed'] ?? null),
@@ -247,10 +247,10 @@ final class PortDiscoveryService
      *
      * @param  list<int>  $presentIndices
      */
-    private function markStale(InventoryAsset $asset, array $presentIndices, bool $dryRun): int
+    private function markStale(Device $asset, array $presentIndices, bool $dryRun): int
     {
         $query = DevicePort::query()
-            ->where('inventory_asset_id', $asset->id)
+            ->where('device_id', $asset->id)
             ->where('source', 'snmp')
             ->whereNotNull('snmp_if_index');
 

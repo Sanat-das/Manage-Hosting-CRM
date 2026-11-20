@@ -3,8 +3,9 @@
 namespace Tests\Feature;
 
 use App\Models\Datacenter;
+use App\Models\Device;
 use App\Models\DevicePort;
-use App\Models\InventoryAsset;
+use App\Models\DeviceType;
 use App\Models\Permission;
 use App\Models\PortConnection;
 use App\Models\Role;
@@ -27,8 +28,8 @@ class PortConnectionTest extends TestCase
 
         $adminRole = Role::firstOrCreate(['name' => 'admin'], ['label' => 'Administrator']);
         $permissions = [
-            Permission::firstOrCreate(['name' => 'inventory.view'], ['label' => 'View Inventory']),
-            Permission::firstOrCreate(['name' => 'inventory.manage'], ['label' => 'Manage Inventory']),
+            Permission::firstOrCreate(['name' => 'devices.view'], ['label' => 'View Devices']),
+            Permission::firstOrCreate(['name' => 'devices.manage'], ['label' => 'Manage Devices']),
             Permission::firstOrCreate(['name' => 'ports.view'], ['label' => 'View Ports & Connections']),
             Permission::firstOrCreate(['name' => 'ports.manage'], ['label' => 'Manage Ports & Connections']),
         ];
@@ -42,18 +43,18 @@ class PortConnectionTest extends TestCase
     /**
      * @param  array<string, mixed>  $overrides
      */
-    private function makeAsset(string $assetTag, array $overrides = []): InventoryAsset
+    private function makeAsset(string $assetTag, array $overrides = []): Device
     {
-        return InventoryAsset::create(array_merge([
+        return Device::create(array_merge([
             'asset_tag' => $assetTag,
-            'asset_type' => 'switch',
+            'device_type_id' => (int) DeviceType::factory()->create(['category' => 'switch'])->id,
         ], $overrides));
     }
 
     /**
      * @param  array<string, mixed>  $overrides
      */
-    private function makePort(InventoryAsset $asset, array $overrides = []): DevicePort
+    private function makePort(Device $asset, array $overrides = []): DevicePort
     {
         return $asset->ports()->create(array_merge([
             'name' => 'GigabitEthernet1/0/1',
@@ -64,11 +65,11 @@ class PortConnectionTest extends TestCase
     /**
      * @param  array<string, mixed>  $cable
      */
-    private function connectViaHttp(InventoryAsset $asset, DevicePort $source, DevicePort $peer, array $cable = [])
+    private function connectViaHttp(Device $asset, DevicePort $source, DevicePort $peer, array $cable = [])
     {
         return $this->actingAsAdmin()
-            ->from(route('admin.inventory-assets.show', $asset))
-            ->post(route('admin.inventory-assets.port-connections.store', $asset), array_merge([
+            ->from(route('admin.devices.show', $asset))
+            ->post(route('admin.devices.port-connections.store', $asset), array_merge([
                 'source_port_id' => $source->id,
                 'peer_port_id' => $peer->id,
             ], $cable));
@@ -362,7 +363,7 @@ class PortConnectionTest extends TestCase
         // Panel access with an unrelated permission, but no ports.view.
         $viewerRole = Role::firstOrCreate(['name' => 'viewer'], ['label' => 'Viewer']);
         $viewerRole->permissions()->syncWithoutDetaching([
-            Permission::firstOrCreate(['name' => 'inventory.view'], ['label' => 'View Inventory'])->id,
+            Permission::firstOrCreate(['name' => 'devices.view'], ['label' => 'View Devices'])->id,
         ]);
 
         $user = User::factory()->create();
@@ -381,7 +382,7 @@ class PortConnectionTest extends TestCase
 
         $this->connectViaHttp($asset, $left, $right)->assertSessionHasNoErrors();
 
-        $response = $this->actingAsAdmin()->get(route('admin.inventory-assets.show', $asset));
+        $response = $this->actingAsAdmin()->get(route('admin.devices.show', $asset));
 
         $response->assertOk();
         $response->assertSee('2 connected');
@@ -407,7 +408,7 @@ class PortConnectionTest extends TestCase
 
         $this->connectViaHttp($local, $localPort, $remotePort)->assertSessionHasNoErrors();
 
-        $response = $this->actingAsAdmin()->get(route('admin.inventory-assets.show', $local));
+        $response = $this->actingAsAdmin()->get(route('admin.devices.show', $local));
 
         $response->assertOk();
         $response->assertSee('1 connected');

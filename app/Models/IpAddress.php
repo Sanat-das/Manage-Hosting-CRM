@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
 
-#[Fillable(['subnet_id', 'ip_address', 'ip_version', 'type', 'assigned_to_type', 'assigned_to_id', 'inventory_asset_id', 'ptr_record', 'notes', 'last_seen_at'])]
+#[Fillable(['subnet_id', 'ip_address', 'ip_version', 'type', 'assigned_to_type', 'assigned_to_id', 'device_id', 'ptr_record', 'notes', 'last_seen_at'])]
 class IpAddress extends Model
 {
     protected $table = 'ip_addresses';
@@ -35,9 +35,9 @@ class IpAddress extends Model
         return $this->morphTo(__FUNCTION__, 'assigned_to_type', 'assigned_to_id');
     }
 
-    public function inventoryAsset(): BelongsTo
+    public function device(): BelongsTo
     {
-        return $this->belongsTo(InventoryAsset::class, 'inventory_asset_id');
+        return $this->belongsTo(Device::class, 'device_id');
     }
 
     /**

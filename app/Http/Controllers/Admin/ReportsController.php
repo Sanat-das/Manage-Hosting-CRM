@@ -4,10 +4,11 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Customer;
+use App\Models\Device;
 use App\Models\Domain;
 use App\Models\HostingAccount;
-use App\Models\InventoryAsset;
 use App\Models\Invoice;
+use App\Models\IpAddress;
 use App\Models\IpSubnet;
 use App\Models\License;
 use App\Models\Order;
@@ -122,19 +123,20 @@ class ReportsController extends Controller
     }
 
     /**
-     * Inventory & capacity report — assets, racks, licenses and IPAM utilization.
+     * Inventory & capacity report - devices, racks, licenses and IPAM utilization.
      */
     public function inventory(Request $request): View
     {
-        $assetsByType = InventoryAsset::selectRaw('asset_type, COUNT(*) as count')
-            ->groupBy('asset_type')
-            ->pluck('count', 'asset_type');
+        $assetsByCategory = Device::join('device_types', 'device_types.id', '=', 'devices.device_type_id')
+            ->selectRaw('device_types.category as category, COUNT(*) as count')
+            ->groupBy('device_types.category')
+            ->pluck('count', 'category');
 
-        $assetsByStatus = InventoryAsset::selectRaw('status, COUNT(*) as count')
+        $assetsByStatus = Device::selectRaw('status, COUNT(*) as count')
             ->groupBy('status')
             ->pluck('count', 'status');
 
-        $racks = Rack::withCount('inventoryAssets')
+        $racks = Rack::withCount('devices')
             ->with('datacenter')
             ->orderBy('name')
             ->get();
@@ -154,13 +156,22 @@ class ReportsController extends Controller
             ->get();
 
         $subnets = IpSubnet::withCount('ipAddresses')
+            ->addSelect([
+                'assigned_count' => IpAddress::selectRaw('COUNT(*)')
+                    ->whereColumn('subnet_id', 'ip_subnets.id')
+                    ->whereNotNull('assigned_to_type'),
+                'reserved_count_live' => IpAddress::selectRaw('COUNT(*)')
+                    ->whereColumn('subnet_id', 'ip_subnets.id')
+                    ->whereNull('assigned_to_type')
+                    ->where('type', '!=', 'available'),
+            ])
             ->orderBy('name')
             ->get();
 
         $vlanCount = Vlan::count();
 
         return view('admin.reports.inventory', compact(
-            'assetsByType',
+            'assetsByCategory',
             'assetsByStatus',
             'racks',
             'licensesByStatus',
@@ -267,15 +278,15 @@ class ReportsController extends Controller
 
     private function exportInventory($handle): void
     {
-        fputcsv($handle, ['Asset Tag', 'Type', 'Status', 'Datacenter', 'Rack', 'U Position', 'Vendor', 'Purchase Date', 'Purchase Cost', 'Warranty Expiry']);
+        fputcsv($handle, ['Asset Tag', 'Category', 'Status', 'Datacenter', 'Rack', 'U Position', 'Vendor', 'Purchase Date', 'Purchase Cost', 'Warranty Expiry']);
 
-        InventoryAsset::with(['datacenter', 'rack'])
+        Device::with(['datacenter', 'rack', 'deviceType'])
             ->orderBy('id')
             ->chunk(500, function ($assets) use ($handle) {
                 foreach ($assets as $a) {
                     fputcsv($handle, [
                         $a->asset_tag,
-                        $a->asset_type,
+                        $a->deviceType?->category,
                         $a->status,
                         $a->datacenter?->name ?? '',
                         $a->rack?->name ?? '',

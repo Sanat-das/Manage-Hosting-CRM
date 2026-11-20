@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-#[Fillable(['inventory_asset_id', 'license_type', 'license_key', 'seats', 'seats_available', 'vendor', 'purchase_order', 'expiry_date', 'renewal_date', 'cost', 'status', 'notes'])]
+#[Fillable(['device_id', 'license_type', 'license_key', 'seats', 'seats_available', 'vendor', 'purchase_order', 'expiry_date', 'renewal_date', 'cost', 'status', 'notes'])]
 class License extends Model
 {
     protected function casts(): array
@@ -23,7 +23,7 @@ class License extends Model
 
     public function asset(): BelongsTo
     {
-        return $this->belongsTo(InventoryAsset::class, 'inventory_asset_id');
+        return $this->belongsTo(Device::class, 'device_id');
     }
 
     public function assignments(): HasMany

@@ -1,16 +1,13 @@
 <?php
 
-use App\Http\Controllers\Admin\AssetRelationshipController;
 use App\Http\Controllers\Admin\CatalogProductController;
 use App\Http\Controllers\Admin\DatacenterController;
 use App\Http\Controllers\Admin\IpAddressController;
 use App\Http\Controllers\Admin\IpSubnetController;
 use App\Http\Controllers\Admin\LicenseController;
-use App\Http\Controllers\Admin\ProductHostedOnController;
 use App\Http\Controllers\Admin\RackController;
 use App\Http\Controllers\Admin\ResourcePoolController;
 use App\Http\Controllers\Admin\ResourceTypeController;
-use App\Http\Controllers\Admin\ServerHostingTreeController;
 use App\Http\Controllers\Admin\SubscriptionController;
 use App\Http\Controllers\Admin\UsageRecordController;
 use App\Http\Controllers\Admin\VlanController;
@@ -26,8 +23,7 @@ use Illuminate\Support\Facades\Route;
 |
 | Permission gates: granular per sub-resource (e.g. datacenters.view,
 | ip-subnets.manage) as declared in AdminLteRbacSeeder, the sole permission
-| inventory. Asset relationships use their own granular
-| asset-relationships.view / asset-relationships.manage pair.
+| inventory.
 */
 
 Route::middleware(['web', 'auth', 'admin', 'throttle:admin'])->prefix('admin')->name('admin.')->group(function () {
@@ -85,7 +81,7 @@ Route::middleware(['web', 'auth', 'admin', 'throttle:admin'])->prefix('admin')->
     Route::get('ip-addresses', [IpAddressController::class, 'index'])
         ->middleware('permission:ip-addresses.view')->name('ip-addresses.index');
     Route::get('ip-addresses/search', [IpAddressController::class, 'search'])
-        ->middleware('permission:inventory.view')->name('ip-addresses.search');
+        ->middleware('permission:ip-addresses.view')->name('ip-addresses.search');
     Route::get('ip-addresses/create', [IpAddressController::class, 'create'])
         ->middleware('permission:ip-addresses.manage')->name('ip-addresses.create');
     Route::post('ip-addresses', [IpAddressController::class, 'store'])
@@ -197,25 +193,4 @@ Route::middleware(['web', 'auth', 'admin', 'throttle:admin'])->prefix('admin')->
     Route::delete('resource-pools/{resourcePool}', [ResourcePoolController::class, 'destroy'])
         ->middleware('permission:resource-pools.manage')->name('resource-pools.destroy');
 
-    // Asset relationships (reporting links)
-    Route::get('asset-relationships', [AssetRelationshipController::class, 'index'])
-        ->middleware('permission:asset-relationships.view')->name('asset-relationships.index');
-
-    // Server hosting tree (read-only report)
-    Route::get('hosting-tree', [ServerHostingTreeController::class, 'index'])
-        ->middleware('permission:asset-relationships.view')->name('hosting-tree.index');
-    Route::get('asset-relationships/create', [AssetRelationshipController::class, 'create'])
-        ->middleware('permission:asset-relationships.manage')->name('asset-relationships.create');
-    Route::post('asset-relationships', [AssetRelationshipController::class, 'store'])
-        ->middleware('permission:asset-relationships.manage')->name('asset-relationships.store');
-    Route::get('asset-relationships/{assetRelationship}/edit', [AssetRelationshipController::class, 'edit'])
-        ->middleware('permission:asset-relationships.manage')->name('asset-relationships.edit');
-    Route::put('asset-relationships/{assetRelationship}', [AssetRelationshipController::class, 'update'])
-        ->middleware('permission:asset-relationships.manage')->name('asset-relationships.update');
-    Route::delete('asset-relationships/{assetRelationship}', [AssetRelationshipController::class, 'destroy'])
-        ->middleware('permission:asset-relationships.manage')->name('asset-relationships.destroy');
-
-    // Product hosted-on report (read-only)
-    Route::get('product-hosting-tree', [ProductHostedOnController::class, 'index'])
-        ->middleware('permission:asset-relationships.view')->name('product-hosting-tree.index');
 });

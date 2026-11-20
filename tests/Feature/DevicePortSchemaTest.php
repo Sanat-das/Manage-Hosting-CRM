@@ -2,7 +2,8 @@
 
 namespace Tests\Feature;
 
-use App\Models\InventoryAsset;
+use App\Models\Device;
+use App\Models\DeviceType;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
@@ -30,11 +31,11 @@ class DevicePortSchemaTest extends TestCase
     /**
      * @param  array<string, mixed>  $overrides
      */
-    private function makeAsset(string $assetTag, array $overrides = []): InventoryAsset
+    private function makeAsset(string $assetTag, array $overrides = []): Device
     {
-        return InventoryAsset::create(array_merge([
+        return Device::create(array_merge([
             'asset_tag' => $assetTag,
-            'asset_type' => 'switch',
+            'device_type_id' => (int) DeviceType::factory()->create(['category' => 'switch'])->id,
         ], $overrides));
     }
 
@@ -45,7 +46,7 @@ class DevicePortSchemaTest extends TestCase
         $columns = array_column(Schema::getColumns('device_ports'), 'name');
 
         foreach ([
-            'id', 'inventory_asset_id', 'name', 'port_number', 'port_type', 'media',
+            'id', 'device_id', 'name', 'port_number', 'port_type', 'media',
             'speed_bps', 'status', 'mac_address', 'source', 'snmp_if_index',
             'snmp_if_descr', 'last_synced_at', 'notes', 'created_at', 'updated_at',
         ] as $column) {
@@ -138,6 +139,6 @@ class DevicePortSchemaTest extends TestCase
         ]);
 
         $this->assertSame(1, $asset->ports()->count());
-        $this->assertSame($asset->id, $asset->ports()->sole()->inventory_asset_id);
+        $this->assertSame($asset->id, $asset->ports()->sole()->device_id);
     }
 }

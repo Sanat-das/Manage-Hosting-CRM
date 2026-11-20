@@ -3,19 +3,19 @@
 @section('title', 'Inventory & Capacity Report')
 
 @section('content_header')
-    <x-ui.page-header title="Inventory & Capacity Report" subtitle="Asset, rack, license and IPAM utilization overview" :breadcrumbs="[['label' => __('adminlte.home'), 'url' => url('/')],['label' => 'Reports'],['label' => 'Inventory & Capacity Report','active' => true]]" />
+    <x-ui.page-header title="Inventory & Capacity Report" subtitle="Device, rack, license and IPAM utilization overview" :breadcrumbs="[['label' => __('adminlte.home'), 'url' => url('/')],['label' => 'Reports'],['label' => 'Inventory & Capacity Report','active' => true]]" />
 @stop
 
 @section('content')
     <div class="row mb-4">
         <div class="col-md-6">
-            <x-adminlte-card icon="bi bi-box-seam" title="Assets by Type">
+            <x-adminlte-card icon="bi bi-box-seam" title="Devices by Category">
                 <table class="table table-sm mb-0">
                     <tbody>
-                        @forelse ($assetsByType as $type => $count)
-                            <tr><td class="text-capitalize">{{ str_replace('_', ' ', $type) }}</td><td class="text-end fw-bold">{{ $count }}</td></tr>
+                        @forelse ($assetsByCategory as $category => $count)
+                            <tr><td class="text-capitalize">{{ str_replace('_', ' ', $category) }}</td><td class="text-end fw-bold">{{ $count }}</td></tr>
                         @empty
-                            <x-ui.empty-table-row colSpan="2" title="No assets." />
+                            <x-ui.empty-table-row colSpan="2" title="No devices." />
                         @endforelse
                     </tbody>
                 </table>
@@ -45,7 +45,7 @@
                         <td><strong>{{ $rack->name }}</strong></td>
                         <td>{{ $rack->datacenter?->name ?? '—' }}</td>
                         <td class="text-end">{{ $rack->u_height }}U</td>
-                        <td class="text-end fw-bold">{{ $rack->inventory_assets_count }}</td>
+                        <td class="text-end fw-bold">{{ $rack->devices_count }}</td>
                     </tr>
                 @empty
                     <x-ui.empty-table-row colSpan="4" title="No racks defined." />
@@ -104,14 +104,17 @@
 
     <x-adminlte-card icon="bi bi-diagram-3" title="Subnets & VLANs">
         <table class="table table-hover align-middle mb-0">
-            <thead><tr><th>Subnet</th><th>CIDR</th><th class="text-end">IPs</th><th class="text-end">Capacity</th></tr></thead>
+            <thead><tr><th>Subnet</th><th>CIDR</th><th class="text-end">Used</th><th class="text-end">Capacity</th></tr></thead>
             <tbody>
                 @forelse ($subnets as $subnet)
+                    @php
+                        $subnetUsed = (int) $subnet->assigned_count + (int) $subnet->reserved_count_live;
+                    @endphp
                     <tr>
                         <td><strong>{{ $subnet->name }}</strong></td>
                         <td class="text-muted">{{ $subnet->subnet_cidr }}</td>
-                        <td class="text-end fw-bold">{{ $subnet->ip_addresses_count }}</td>
-                        <td class="text-end">{{ $subnet->total_addresses }}</td>
+                        <td class="text-end fw-bold">{{ $subnetUsed }}</td>
+                        <td class="text-end">{{ (int) $subnet->total_addresses }}</td>
                     </tr>
                 @empty
                     <x-ui.empty-table-row colSpan="4" title="No subnets defined." />

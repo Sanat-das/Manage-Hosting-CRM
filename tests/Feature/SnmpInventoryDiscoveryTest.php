@@ -4,7 +4,8 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
-use App\Models\InventoryAsset;
+use App\Models\Device;
+use App\Models\DeviceType;
 use App\Services\Modules\ModuleManager;
 use FreeDSx\Snmp\Oid;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -20,7 +21,7 @@ use Tests\TestCase;
 require_once __DIR__.'/../Support/InteractsWithSnmpMonitorModule.php';
 
 /**
- * Discovered devices flow into core inventory_assets: a successful poll
+ * Discovered devices flow into core devices: a successful poll
  * persists the SNMP identity on the target and creates/links exactly one
  * asset, reusing it on later polls and never overwriting a human edit. The
  * whole path is gated by the `auto_inventory` toggle and isolated so an
@@ -44,7 +45,7 @@ final class SnmpInventoryDiscoveryTest extends TestCase
     // becomes a linked 'server' asset; the identity columns are persisted.
     // ------------------------------------------------------------------
 
-    public function test_successful_poll_creates_one_linked_inventory_asset(): void
+    public function test_successful_poll_creates_one_linked_device(): void
     {
         Carbon::setTestNow($t0 = Carbon::parse('2026-08-25 10:00:00'));
 
@@ -56,15 +57,16 @@ final class SnmpInventoryDiscoveryTest extends TestCase
 
         (new PollHostBatch([$target->id]))->handle($manager);
 
-        $asset = InventoryAsset::query()->sole();
+        $asset = Device::query()->sole();
         $this->assertSame('SNMP-LINUX-VPS-01', $asset->asset_tag);
-        $this->assertSame('server', $asset->asset_type);
+        $this->assertSame('server', $asset->deviceType->category);
+        $this->assertNotNull($asset->device_type_id);
         $this->assertNull($asset->manufacturer);
         $this->assertSame('Discovered via SNMP poll.', $asset->notes);
         $this->assertSame('in_stock', $asset->status);
 
         $target = $target->fresh();
-        $this->assertSame($asset->id, $target->inventory_asset_id);
+        $this->assertSame($asset->id, $target->device_id);
         $this->assertSame('LINUX-VPS-01', $target->sys_name);
         $this->assertStringContainsString('Linux linux-vps-01', (string) $target->sys_descr);
         $this->assertSame('1.3.6.1.4.1.8072.3.2.10', $target->sys_object_id);
@@ -90,9 +92,10 @@ final class SnmpInventoryDiscoveryTest extends TestCase
 
         (new PollHostBatch([$target->id]))->handle($manager);
 
-        $asset = InventoryAsset::query()->sole();
+        $asset = Device::query()->sole();
         $this->assertSame('SNMP-CORE-SW-01', $asset->asset_tag);
-        $this->assertSame('switch', $asset->asset_type);
+        $this->assertSame('switch', $asset->deviceType->category);
+        $this->assertSame('Cisco', $asset->deviceType->manufacturer?->name);
         $this->assertSame('Cisco', $asset->manufacturer);
     }
 
@@ -111,15 +114,15 @@ final class SnmpInventoryDiscoveryTest extends TestCase
         $this->bindCapturingCollector($this->fakeSnmpClient());
 
         (new PollHostBatch([$target->id]))->handle($manager);
-        $first = InventoryAsset::query()->sole();
+        $first = Device::query()->sole();
 
         Carbon::setTestNow($t0->copy()->addSeconds(60));
         (new PollHostBatch([$target->id]))->handle($manager);
 
-        $this->assertSame(1, InventoryAsset::query()->count(), 'A second poll must never create a duplicate asset.');
-        $second = InventoryAsset::query()->sole();
+        $this->assertSame(1, Device::query()->count(), 'A second poll must never create a duplicate asset.');
+        $second = Device::query()->sole();
         $this->assertSame($first->id, $second->id);
-        $this->assertSame($first->id, $target->fresh()->inventory_asset_id);
+        $this->assertSame($first->id, $target->fresh()->device_id);
         $this->assertSame('2026-08-25 10:01:00', $target->fresh()->last_discovered_at?->format('Y-m-d H:i:s'));
     }
 
@@ -142,15 +145,15 @@ final class SnmpInventoryDiscoveryTest extends TestCase
 
         (new PollHostBatch([$first->id, $second->id]))->handle($manager);
 
-        $this->assertSame(2, InventoryAsset::query()->count());
+        $this->assertSame(2, Device::query()->count());
 
-        $tags = InventoryAsset::query()->pluck('asset_tag')->all();
+        $tags = Device::query()->pluck('asset_tag')->all();
         sort($tags);
         $this->assertSame(['SNMP-DUP-HOST', 'SNMP-DUP-HOST-2'], $tags);
 
         $this->assertNotSame(
-            $first->fresh()->inventory_asset_id,
-            $second->fresh()->inventory_asset_id,
+            $first->fresh()->device_id,
+            $second->fresh()->device_id,
             'Each colliding device must link to its own asset.'
         );
     }
@@ -166,7 +169,10 @@ final class SnmpInventoryDiscoveryTest extends TestCase
         $module = $this->activateSnmpMonitorModule($manager);
         $product = $this->makeMonitoredProduct($manager, $module);
 
-        $trashed = InventoryAsset::create(['asset_tag' => 'SNMP-DUP-HOST', 'asset_type' => 'server']);
+        $trashed = Device::create([
+            'asset_tag' => 'SNMP-DUP-HOST',
+            'device_type_id' => (int) DeviceType::factory()->create(['category' => 'server'])->id,
+        ]);
         $trashed->delete();
 
         $target = $this->makeTarget($this->makeAccount($product), ['host' => '192.0.2.73']);
@@ -177,10 +183,10 @@ final class SnmpInventoryDiscoveryTest extends TestCase
 
         (new PollHostBatch([$target->id]))->handle($manager);
 
-        $asset = InventoryAsset::query()->sole();
+        $asset = Device::query()->sole();
         $this->assertSame('SNMP-DUP-HOST', $asset->asset_tag);
-        $this->assertSame(1, InventoryAsset::query()->count());
-        $this->assertSame(2, InventoryAsset::withTrashed()->count());
+        $this->assertSame(1, Device::query()->count());
+        $this->assertSame(2, Device::withTrashed()->count());
     }
 
     // ------------------------------------------------------------------
@@ -201,7 +207,7 @@ final class SnmpInventoryDiscoveryTest extends TestCase
 
         (new PollHostBatch([$target->id]))->handle($manager);
 
-        $asset = InventoryAsset::query()->sole();
+        $asset = Device::query()->sole();
         $asset->forceFill([
             'status' => 'maintenance',
             'notes' => 'racked manually',
@@ -210,14 +216,14 @@ final class SnmpInventoryDiscoveryTest extends TestCase
 
         (new PollHostBatch([$target->id]))->handle($manager);
 
-        $fresh = InventoryAsset::query()->sole();
+        $fresh = Device::query()->sole();
         $this->assertSame('maintenance', $fresh->status);
         $this->assertSame('racked manually', $fresh->notes);
         $this->assertSame('Acme Corp', $fresh->manufacturer, 'A non-null human manufacturer must never be overwritten.');
     }
 
     // ------------------------------------------------------------------
-    // Toggle off: no inventory asset, no target identity writes, poll still
+    // Toggle off: no device, no target identity writes, poll still
     // succeeds.
     // ------------------------------------------------------------------
 
@@ -232,10 +238,10 @@ final class SnmpInventoryDiscoveryTest extends TestCase
 
         (new PollHostBatch([$target->id]))->handle($manager);
 
-        $this->assertSame(0, InventoryAsset::query()->count());
+        $this->assertSame(0, Device::query()->count());
 
         $fresh = $target->fresh();
-        $this->assertNull($fresh->inventory_asset_id);
+        $this->assertNull($fresh->device_id);
         $this->assertNull($fresh->sys_name);
         $this->assertNull($fresh->last_discovered_at);
         $this->assertSame(SnmpTarget::STATUS_UP, $fresh->status, 'The toggle only affects inventory, never the poll itself.');
@@ -253,7 +259,7 @@ final class SnmpInventoryDiscoveryTest extends TestCase
         $module = $this->activateSnmpMonitorModule($manager);
         $target = $this->makeTarget($this->makeAccount($this->makeMonitoredProduct($manager, $module)));
 
-        Schema::withoutForeignKeyConstraints(fn () => Schema::drop('inventory_assets'));
+        Schema::withoutForeignKeyConstraints(fn () => Schema::drop('devices'));
 
         $this->bindCapturingCollector($this->fakeSnmpClient());
 

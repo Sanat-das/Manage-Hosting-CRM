@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Modules\SnmpMonitor\Console;
 
-use App\Models\InventoryAsset;
+use App\Models\Device;
 use App\Services\Inventory\PortDiscoveryService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Collection;
@@ -14,7 +14,7 @@ use Throwable;
 
 /**
  * Reconciles SNMP interfaces into device ports for every monitored target
- * that is linked to a core inventory asset.
+ * that is linked to a core device.
  *
  * This is the backfill/repair path for the live `auto_ports` hook: it reads
  * the last collected payload from `snmp_latest` (monitoring connection) and
@@ -26,11 +26,11 @@ final class SyncInventoryPortsCommand extends Command
     /** @var string */
     protected $signature = 'snmp:sync-ports
         {--target=* : Sync only these SNMP target ids}
-        {--asset=* : Sync only these inventory asset ids}
+        {--asset=* : Sync only these device ids}
         {--dry-run : Report planned changes without writing}';
 
     /** @var string */
-    protected $description = 'Import SNMP interfaces into device ports for linked inventory assets';
+    protected $description = 'Import SNMP interfaces into device ports for linked devices';
 
     public function handle(): int
     {
@@ -41,7 +41,7 @@ final class SyncInventoryPortsCommand extends Command
         );
 
         if ($targets->isEmpty()) {
-            $this->info('No SNMP targets with a linked inventory asset to sync.');
+            $this->info('No SNMP targets with a linked device to sync.');
 
             return self::SUCCESS;
         }
@@ -51,7 +51,7 @@ final class SyncInventoryPortsCommand extends Command
         $processed = 0;
 
         foreach ($targets as $target) {
-            $asset = InventoryAsset::query()->find((int) $target->inventory_asset_id);
+            $asset = Device::query()->find((int) $target->device_id);
 
             if ($asset === null) {
                 continue;
@@ -101,7 +101,7 @@ final class SyncInventoryPortsCommand extends Command
     }
 
     /**
-     * Targets in scope: linked to an inventory asset, narrowed by the
+     * Targets in scope: linked to a device, narrowed by the
      * optional --target / --asset id filters.
      *
      * @param  list<int>  $targetIds
@@ -110,14 +110,14 @@ final class SyncInventoryPortsCommand extends Command
      */
     private function targets(array $targetIds, array $assetIds): Collection
     {
-        $query = SnmpTarget::query()->whereNotNull('inventory_asset_id');
+        $query = SnmpTarget::query()->whereNotNull('device_id');
 
         if ($targetIds !== []) {
             $query->whereIn('id', $targetIds);
         }
 
         if ($assetIds !== []) {
-            $query->whereIn('inventory_asset_id', $assetIds);
+            $query->whereIn('device_id', $assetIds);
         }
 
         return $query->orderBy('id')->get();

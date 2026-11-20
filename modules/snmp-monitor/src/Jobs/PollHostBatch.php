@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Modules\SnmpMonitor\Jobs;
 
-use App\Models\InventoryAsset;
+use App\Models\Device;
 use App\Models\IpAddress;
 use App\Models\Module;
 use App\Services\Inventory\PortDiscoveryService;
@@ -236,10 +236,10 @@ class PollHostBatch implements ShouldQueue
         if ((bool) ($config['auto_ports'] ?? false)) {
             try {
                 $interfaces = (array) ($payload['interfaces'] ?? []);
-                $assetId = $target->fresh()->inventory_asset_id;
+                $assetId = $target->fresh()->device_id;
 
                 if ($interfaces !== [] && $assetId !== null) {
-                    $asset = InventoryAsset::find($assetId);
+                    $asset = Device::find($assetId);
 
                     if ($asset !== null) {
                         app(PortDiscoveryService::class)->syncForAsset($asset, $interfaces);

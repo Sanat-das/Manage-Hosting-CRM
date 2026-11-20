@@ -15,7 +15,7 @@ class RackController extends Controller
     {
         $search = trim((string) $request->query('search'));
 
-        $query = Rack::with('datacenter')->withCount('inventoryAssets');
+        $query = Rack::with('datacenter')->withCount('devices');
 
         if ($search !== '') {
             $query->where('name', 'like', "%{$search}%");
@@ -63,7 +63,7 @@ class RackController extends Controller
 
     public function show(Rack $rack): View
     {
-        $rack->load(['datacenter', 'inventoryAssets']);
+        $rack->load(['datacenter', 'devices']);
 
         return view('admin.racks.show', compact('rack'));
     }

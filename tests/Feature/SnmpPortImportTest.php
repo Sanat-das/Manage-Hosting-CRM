@@ -4,8 +4,9 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
+use App\Models\Device;
 use App\Models\DevicePort;
-use App\Models\InventoryAsset;
+use App\Models\DeviceType;
 use App\Services\Inventory\PortDiscoveryService;
 use App\Services\Modules\ModuleManager;
 use FreeDSx\Snmp\Oid;
@@ -26,7 +27,7 @@ require_once __DIR__.'/../Support/InteractsWithSnmpMonitorModule.php';
 /**
  * Slice C — SNMP interface import: the live `auto_ports` hook on PollHostBatch
  * and the `snmp:sync-ports` reconcile command both drive PortDiscoveryService
- * to upsert device_ports on the linked inventory asset.
+ * to upsert device_ports on the linked device.
  *
  * The default scripted ifTable fixture carries no ifType, so a loopback that
  * the plan's skip rule (ifType 24) can catch is supplied per-test rather than
@@ -112,10 +113,10 @@ final class SnmpPortImportTest extends TestCase
 
         (new PollHostBatch([$target->id]))->handle($manager);
 
-        $asset = InventoryAsset::query()->sole();
-        $this->assertSame($asset->id, $target->fresh()->inventory_asset_id);
+        $asset = Device::query()->sole();
+        $this->assertSame($asset->id, $target->fresh()->device_id);
 
-        $ports = DevicePort::query()->where('inventory_asset_id', $asset->id)->get();
+        $ports = DevicePort::query()->where('device_id', $asset->id)->get();
         $this->assertSame(1, $ports->count(), 'Only the non-loopback interface becomes a port.');
 
         $eth0 = $ports->sole();
@@ -243,10 +244,10 @@ final class SnmpPortImportTest extends TestCase
 
     public function test_manual_port_is_matched_and_backfilled_with_snmp_linkage_only(): void
     {
-        $asset = InventoryAsset::create(['asset_tag' => 'SW-MANUAL-01', 'asset_type' => 'switch']);
+        $asset = Device::create(['asset_tag' => 'SW-MANUAL-01', 'device_type_id' => (int) DeviceType::factory()->create(['category' => 'switch'])->id]);
 
         $manual = DevicePort::create([
-            'inventory_asset_id' => $asset->id,
+            'device_id' => $asset->id,
             'name' => 'eth0',
             'port_type' => 'sfp',
             'media' => 'fiber',
@@ -312,15 +313,15 @@ final class SnmpPortImportTest extends TestCase
 
         (new PollHostBatch([$target->id]))->handle($manager);
 
-        $asset = InventoryAsset::query()->sole();
+        $asset = Device::query()->sole();
 
-        $eth0 = DevicePort::query()->where('inventory_asset_id', $asset->id)->where('snmp_if_index', 2)->sole();
+        $eth0 = DevicePort::query()->where('device_id', $asset->id)->where('snmp_if_index', 2)->sole();
         $this->assertSame('ethernet', $eth0->port_type);
         $this->assertSame(1000000000, $eth0->speed_bps);
         $this->assertSame('AA:BB:CC:DD:EE:FF', $eth0->mac_address);
         $this->assertSame('up', $eth0->status);
 
-        $eth1 = DevicePort::query()->where('inventory_asset_id', $asset->id)->where('snmp_if_index', 3)->sole();
+        $eth1 = DevicePort::query()->where('device_id', $asset->id)->where('snmp_if_index', 3)->sole();
         $this->assertNull($eth1->speed_bps, 'The 4294967295 unknown-ifSpeed sentinel maps to null.');
         $this->assertSame('down', $eth1->status, 'operStatus 2 maps to down.');
     }
@@ -332,7 +333,7 @@ final class SnmpPortImportTest extends TestCase
 
     public function test_removed_interface_marks_the_port_stale_and_retains_it(): void
     {
-        $asset = InventoryAsset::create(['asset_tag' => 'SW-STALE-01', 'asset_type' => 'switch']);
+        $asset = Device::create(['asset_tag' => 'SW-STALE-01', 'device_type_id' => (int) DeviceType::factory()->create(['category' => 'switch'])->id]);
         $service = app(PortDiscoveryService::class);
 
         $service->syncForAsset($asset, [
@@ -376,7 +377,7 @@ final class SnmpPortImportTest extends TestCase
 
         (new PollHostBatch([$target->id]))->handle($manager);
 
-        $this->assertSame(1, InventoryAsset::query()->count(), 'auto_inventory still runs.');
+        $this->assertSame(1, Device::query()->count(), 'auto_inventory still runs.');
         $this->assertSame(0, DevicePort::query()->count(), 'auto_ports off must import nothing.');
         $this->assertSame(SnmpTarget::STATUS_UP, $target->fresh()->status, 'The toggle only affects ports.');
     }
@@ -400,7 +401,7 @@ final class SnmpPortImportTest extends TestCase
 
         (new PollHostBatch([$target->id]))->handle($manager);
 
-        $asset = InventoryAsset::query()->sole();
+        $asset = Device::query()->sole();
         $this->assertSame(0, DevicePort::query()->count());
 
         Artisan::registerCommand(app(SyncInventoryPortsCommand::class));

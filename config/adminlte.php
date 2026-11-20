@@ -368,6 +368,7 @@ return [
             'submenu' => [
                 ['text' => 'Sales Report', 'route' => 'admin.reports.sales', 'icon' => 'bi bi-dot', 'can' => 'reports.view'],
                 ['text' => 'Revenue Report', 'route' => 'admin.reports.revenue', 'icon' => 'bi bi-dot', 'can' => 'reports.view'],
+                ['text' => 'Inventory & Capacity', 'route' => 'admin.reports.inventory', 'icon' => 'bi bi-dot', 'can' => 'reports.view'],
                 ['text' => 'Export', 'route' => 'admin.reports.export', 'icon' => 'bi bi-dot', 'can' => 'reports.export'],
             ],
         ],
@@ -404,9 +405,12 @@ return [
             'icon' => 'bi bi-boxes',
             'can' => 'admin.panel',
             'submenu' => [
-                ['text' => 'Inventory', 'route' => 'admin.inventory-assets.index', 'icon' => 'bi bi-box-seam', 'can' => 'inventory.view'],
+                ['text' => 'Devices', 'route' => 'admin.devices.index', 'icon' => 'bi bi-box-seam', 'can' => 'devices.view'],
+                ['text' => 'Inventory Items', 'route' => 'admin.inventory-items.index', 'icon' => 'bi bi-bricks', 'can' => 'devices.view'],
                 ['text' => 'Connections', 'route' => 'admin.port-connections.index', 'icon' => 'bi bi-plug', 'can' => 'ports.view'],
-                ['text' => 'Asset Relationships', 'route' => 'admin.asset-relationships.index', 'icon' => 'bi bi-link-45deg', 'can' => 'asset-relationships.view'],
+                ['text' => 'Manufacturers', 'route' => 'admin.manufacturers.index', 'icon' => 'bi bi-building', 'can' => 'devices.view'],
+                ['text' => 'Device Types', 'route' => 'admin.device-types.index', 'icon' => 'bi bi-cpu', 'can' => 'devices.view'],
+                ['text' => 'Tags', 'route' => 'admin.tags.index', 'icon' => 'bi bi-tags', 'can' => 'devices.view'],
             ],
         ],
         [

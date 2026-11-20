@@ -4,9 +4,10 @@ namespace App\Console\Commands;
 
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 /**
- * Import the reference project's demo data (seed.sql + seed_inventory_assets.sql)
+ * Import the reference project's demo data (seed.sql + seed_devices.sql)
  * into the Laravel application database.
  *
  * The reference MySQL server is no longer running, so the self-contained seed
@@ -24,7 +25,7 @@ class ImportReferenceDataCommand extends Command
 {
     protected $signature = 'app:import-reference-data {--force : Re-run even if already imported}';
 
-    protected $description = 'Import reference project demo data (seed.sql + inventory assets) with ID remapping';
+    protected $description = 'Import reference project demo data (seed.sql + devices) with ID remapping';
 
     /**
      * Tables in dependency order (parents before children so FK constraints hold).
@@ -56,7 +57,7 @@ class ImportReferenceDataCommand extends Command
 
     /**
      * Columns that existed in the reference schema but were removed from the
-     * target (products.type, the 10 quota_* columns and inventory_assets'
+     * target (products.type, the 10 quota_* columns and devices'
      * lifecycle_state). Seed rows still carry them; they are stripped before
      * insert so the query builder never writes a column the migrated schema
      * no longer has.
@@ -65,7 +66,22 @@ class ImportReferenceDataCommand extends Command
      */
     private const REMOVED_COLUMNS = [
         'products' => ['type', 'quota_disk', 'quota_bandwidth', 'quota_email', 'quota_database', 'quota_cpu_cores', 'quota_cpu_speed', 'quota_ram', 'quota_ips', 'quota_ftp_accounts', 'quota_subdomains'],
-        'inventory_assets' => ['lifecycle_state'],
+        'devices' => ['lifecycle_state'],
+    ];
+
+    /**
+     * Category for each (manufacturer, model) pair the reference seed ships.
+     * Derived from the historical device type values before the legacy type
+     * column was dropped (server→server, switch→switch, pdu→pdu); any pair
+     * not listed falls back to other_hardware.
+     *
+     * @var array<string, string>
+     */
+    private const DEVICE_TYPE_CATEGORIES = [
+        'Dell|PowerEdge R750' => 'server',
+        'HP|ProLiant DL380 Gen10' => 'server',
+        'Arista|7280R3 10GbE Switch' => 'switch',
+        'APC|Switched Rack PDU AP8981' => 'pdu',
     ];
 
     /** @var array<string, array<int, int>> old-id => new-id maps per remapped table */
@@ -86,7 +102,7 @@ class ImportReferenceDataCommand extends Command
         }
 
         $seedPath = database_path('seed-data/reference-seed.sql');
-        $invPath = database_path('seed-data/reference-inventory-assets.sql');
+        $invPath = database_path('seed-data/reference-devices.sql');
 
         if (! is_file($seedPath) || ! is_file($invPath)) {
             $this->error('Seed files missing from database/seed-data/.');
@@ -116,8 +132,8 @@ class ImportReferenceDataCommand extends Command
                         $this->line("  ✓ {$table}: {$count} rows");
                     }
 
-                    $invCount = $this->importInventoryAssets($data['inventory_assets'] ?? ['columns' => [], 'rows' => []]);
-                    $this->line("  ✓ inventory_assets: {$invCount} rows");
+                    $invCount = $this->importDevices($data['devices'] ?? ['columns' => [], 'rows' => []]);
+                    $this->line("  ✓ devices: {$invCount} rows");
 
                     $this->assignStaffRoles($data['users'] ?? ['columns' => [], 'rows' => []]);
 
@@ -207,12 +223,17 @@ class ImportReferenceDataCommand extends Command
     }
 
     /**
-     * Inventory assets use auto-increment ids (the seed file has no id column),
-     * and its parent_asset_id references are positional (insertion order), so
-     * they resolve correctly as long as we insert into the empty table in the
-     * same order the reference used.
+     * Devices use auto-increment ids (the seed file has no id column),
+     * so they are inserted into the empty table and the new ids are remembered
+     * for the import record.
+     *
+     * Every row is linked to a device type: (manufacturer, model) pairs are
+     * resolved against existing catalog rows or created on the fly (with the
+     * category from DEVICE_TYPE_CATEGORIES), upserting the manufacturer by
+     * name. Device types and manufacturers created here are deliberately NOT
+     * deleted by deletePreviouslyImported() — a --force re-run reuses them.
      */
-    private function importInventoryAssets(array $source): int
+    private function importDevices(array $source): int
     {
         if ($source['rows'] === []) {
             return 0;
@@ -224,20 +245,97 @@ class ImportReferenceDataCommand extends Command
         ), $source['rows']);
 
         $rows = array_map(function (array $row): array {
-            foreach (self::REMOVED_COLUMNS['inventory_assets'] ?? [] as $column) {
+            foreach (self::REMOVED_COLUMNS['devices'] ?? [] as $column) {
                 unset($row[$column]);
             }
 
             return $row;
         }, $rows);
 
+        foreach ($rows as &$row) {
+            $row['device_type_id'] = $this->resolveDeviceTypeId($row);
+        }
+        unset($row);
+
         $ids = [];
         foreach ($rows as $row) {
-            $ids[] = (int) DB::table('inventory_assets')->insertGetId($row);
+            $ids[] = (int) DB::table('devices')->insertGetId($row);
         }
-        $this->insertedIds['inventory_assets'] = $ids;
+        $this->insertedIds['devices'] = $ids;
 
         return count($rows);
+    }
+
+    /**
+     * Resolve (creating when absent) the device type for a seed row's
+     * (manufacturer, model) pair. Fails closed: a device row without a
+     * manufacturer or model cannot be classified and aborts the import.
+     *
+     * @param  array<string, mixed>  $row
+     */
+    private function resolveDeviceTypeId(array $row): int
+    {
+        $manufacturerName = trim((string) ($row['manufacturer'] ?? ''));
+        $model = trim((string) ($row['model'] ?? ''));
+
+        if ($manufacturerName === '' || $model === '') {
+            throw new \RuntimeException(
+                'Device '.($row['asset_tag'] ?? '(unknown tag)').' has no manufacturer/model; cannot resolve a device type.'
+            );
+        }
+
+        $manufacturer = DB::table('manufacturers')->where('name', $manufacturerName)->first(['id']);
+
+        if ($manufacturer === null) {
+            $manufacturerId = (int) DB::table('manufacturers')->insertGetId([
+                'name' => $manufacturerName,
+                'slug' => $this->uniqueSlug('manufacturers', $manufacturerName),
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        } else {
+            $manufacturerId = (int) $manufacturer->id;
+        }
+
+        $existing = DB::table('device_types')
+            ->where('manufacturer_id', $manufacturerId)
+            ->where('model', $model)
+            ->first(['id']);
+
+        if ($existing !== null) {
+            return (int) $existing->id;
+        }
+
+        return (int) DB::table('device_types')->insertGetId([
+            'manufacturer_id' => $manufacturerId,
+            'model' => $model,
+            'slug' => $this->uniqueSlug('device_types', $manufacturerName.' '.$model),
+            'category' => self::DEVICE_TYPE_CATEGORIES[$manufacturerName.'|'.$model] ?? 'other_hardware',
+            'u_height' => 1,
+            'is_full_depth' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+    }
+
+    /**
+     * A slug derived from $nameBase that is free in $table; suffixed
+     * -2, -3, ... when the base is taken.
+     */
+    private function uniqueSlug(string $table, string $nameBase): string
+    {
+        $base = Str::slug($nameBase);
+        $base = $base === '' ? 'entry' : $base;
+
+        $candidate = $base;
+        $suffix = 2;
+
+        while (DB::table($table)->where('slug', $candidate)->exists()) {
+            $candidate = $base.'-'.$suffix;
+            $suffix++;
+        }
+
+        return $candidate;
     }
 
     /**
@@ -343,8 +441,8 @@ class ImportReferenceDataCommand extends Command
 
         // Reverse dependency order: children before parents.
         $reverse = array_reverse(array_keys(self::TABLES));
-        if (! empty($ids['inventory_assets'])) {
-            $reverse[] = 'inventory_assets';
+        if (! empty($ids['devices'])) {
+            $reverse[] = 'devices';
         }
 
         foreach ($reverse as $table) {
@@ -454,7 +552,7 @@ class ImportReferenceDataCommand extends Command
 
             if (isset($result[$table])) {
                 // Seed files may split one logical table across multiple
-                // INSERT statements (e.g. inventory_assets) — accumulate rows.
+                // INSERT statements (e.g. devices) — accumulate rows.
                 if ($result[$table]['columns'] !== $columns) {
                     throw new \RuntimeException("Column mismatch across INSERT statements for `{$table}`.");
                 }

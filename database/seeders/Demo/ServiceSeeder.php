@@ -21,7 +21,7 @@ use Illuminate\Support\Facades\DB;
  *   subscription_periods  -> service_instances (2 per service: expired + active)
  *   subscription_changes  -> service_instances (renewal / upgrade / addon)
  *   usage_records         -> service_instances + resource_types
- *   licenses              -> inventory_assets (1:1, `inventory_asset_id` UNIQUE)
+ *   licenses              -> devices (1:1, `device_id` UNIQUE)
  *   license_assignments   -> licenses -> servers / service_instances
  *   ssl_certificates      -> customers
  *
@@ -40,7 +40,7 @@ use Illuminate\Support\Facades\DB;
  * --------------------------------------------
  * Nothing here assumes an id. Customers are found through
  * `users.email LIKE 'client%'`, products/servers by name, resource types by
- * slug and inventory assets by `asset_tag`, every time `run()` executes. The
+ * slug and devices by `asset_tag`, every time `run()` executes. The
  * dev database already contains an operator-created customer (id 5), so demo
  * customer ids start at 6 — hard-coded ids would silently mis-link.
  *
@@ -663,7 +663,7 @@ class ServiceSeeder extends Seeder
     // -----------------------------------------------------------------
 
     /**
-     * `licenses.inventory_asset_id` is a UNIQUE constrained FK — one license
+     * `licenses.device_id` is a UNIQUE constrained FK — one license
      * per asset, and a license cannot exist without one. The two demo server
      * assets (`DEMO-SRV-0001/0002`) therefore carry one control-panel license
      * each; assets already holding a license are skipped so a re-run (or a
@@ -678,7 +678,7 @@ class ServiceSeeder extends Seeder
      */
     private function seedLicenses(array $services): void
     {
-        $assets = $this->inventoryAssetIds();
+        $assets = $this->deviceIds();
         $servers = $this->serverIds();
 
         $plan = [
@@ -742,7 +742,7 @@ class ServiceSeeder extends Seeder
             }
 
             $alreadyLicensed = DB::table('licenses')
-                ->where('inventory_asset_id', $assetId)
+                ->where('device_id', $assetId)
                 ->where('license_key', '!=', $row['license_key'])
                 ->exists();
 
@@ -761,7 +761,7 @@ class ServiceSeeder extends Seeder
             }
 
             $licenseId = (int) $this->seedRowOnce('licenses', [
-                'inventory_asset_id' => $assetId,
+                'device_id' => $assetId,
                 'license_type' => $row['license_type'],
                 'license_key' => $row['license_key'],
                 'seats' => $row['seats'],
@@ -772,7 +772,7 @@ class ServiceSeeder extends Seeder
                 'renewal_date' => now()->addMonths(9)->toDateString(),
                 'cost' => $row['cost'],
                 'status' => 'active',
-                'notes' => 'Demo license attached to inventory asset '.$row['asset_tag'].'.',
+                'notes' => 'Demo license attached to device '.$row['asset_tag'].'.',
             ]);
 
             foreach ($targets as [$type, $targetId, $note]) {
@@ -929,9 +929,9 @@ class ServiceSeeder extends Seeder
     }
 
     /** @return array<string, int> asset_tag => id */
-    private function inventoryAssetIds(): array
+    private function deviceIds(): array
     {
-        return DB::table('inventory_assets')->pluck('id', 'asset_tag')
+        return DB::table('devices')->pluck('id', 'asset_tag')
             ->map(fn ($id) => (int) $id)->all();
     }
 

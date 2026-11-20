@@ -43,7 +43,7 @@ class SnmpTarget extends Model
         'sys_name',
         'sys_descr',
         'sys_object_id',
-        'inventory_asset_id',
+        'device_id',
         'last_discovered_at',
     ];
 
@@ -58,7 +58,7 @@ class SnmpTarget extends Model
             'last_polled_at' => 'datetime',
             'next_poll_at' => 'datetime',
             'last_response_ms' => 'integer',
-            'inventory_asset_id' => 'integer',
+            'device_id' => 'integer',
             'last_discovered_at' => 'datetime',
         ];
     }

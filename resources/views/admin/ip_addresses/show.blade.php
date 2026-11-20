@@ -47,17 +47,17 @@
                                             <i class="bi bi-box-arrow-up-right ms-1" style="font-size:0.75rem"></i>
                                         </div>
                                     </a>
-                                @elseif ($ipAddress->assigned_to_type === 'inventory')
-                                    @if ($ipAddress->inventoryAsset)
-                                        <a href="{{ route('admin.inventory-assets.show', $ipAddress->inventoryAsset) }}" class="text-decoration-none">
-                                            <span class="badge text-bg-secondary"><i class="bi bi-hdd-stack me-1"></i>Inventory Asset</span>
+                                @elseif ($ipAddress->assigned_to_type === 'device')
+                                    @if ($ipAddress->device)
+                                        <a href="{{ route('admin.devices.show', $ipAddress->device) }}" class="text-decoration-none">
+                                            <span class="badge text-bg-secondary"><i class="bi bi-hdd-stack me-1"></i>Device</span>
                                             <div class="small mt-1 text-secondary">
-                                                <strong>{{ $ipAddress->inventoryAsset->asset_tag }}</strong>
+                                                <strong>{{ $ipAddress->device->asset_tag }}</strong>
                                                 <i class="bi bi-box-arrow-up-right ms-1" style="font-size:0.75rem"></i>
                                             </div>
                                         </a>
                                     @else
-                                        <span class="badge text-bg-secondary"><i class="bi bi-hdd-stack me-1"></i>Inventory Asset #{{ $ipAddress->assigned_to_id }}</span>
+                                        <span class="badge text-bg-secondary"><i class="bi bi-hdd-stack me-1"></i>Device #{{ $ipAddress->assigned_to_id }}</span>
                                     @endif
                                 @else
                                     <span class="badge text-bg-primary">{{ class_basename($ipAddress->assigned_to_type) }} #{{ $ipAddress->assigned_to_id }}</span>
@@ -73,10 +73,10 @@
                         </td></tr>
                         <tr><th class="text-muted">Subnet</th><td>{{ $ipAddress->subnet?->subnet_cidr ? $ipAddress->subnet->subnet_cidr.' ('.$ipAddress->subnet->name.')' : '—' }}</td></tr>
                         <tr><th class="text-muted">VLAN</th><td>{{ $ipAddress->subnet?->vlan?->name ? $ipAddress->subnet->vlan->name.' (ID '.$ipAddress->subnet->vlan->vlan_id.')' : '—' }}</td></tr>
-                        <tr><th class="text-muted">Inventory Asset</th><td>
-                            @if ($ipAddress->inventoryAsset)
-                                <a href="{{ route('admin.inventory-assets.show', $ipAddress->inventoryAsset) }}" class="text-decoration-none">
-                                    <span class="badge text-bg-secondary"><i class="bi bi-hdd-stack me-1"></i>{{ $ipAddress->inventoryAsset->asset_tag }}</span>
+                        <tr><th class="text-muted">Device</th><td>
+                            @if ($ipAddress->device)
+                                <a href="{{ route('admin.devices.show', $ipAddress->device) }}" class="text-decoration-none">
+                                    <span class="badge text-bg-secondary"><i class="bi bi-hdd-stack me-1"></i>{{ $ipAddress->device->asset_tag }}</span>
                                     <i class="bi bi-box-arrow-up-right ms-1" style="font-size:0.75rem"></i>
                                 </a>
                             @else

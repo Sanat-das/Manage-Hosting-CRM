@@ -60,7 +60,7 @@ Schedule::command('ssl:check-expiry --days=30')
     ->withoutOverlapping()
     ->runInBackground();
 
-Schedule::command('inventory:check-warranty-expiry --days=30')
+Schedule::command('devices:check-warranty-expiry --days=30')
     ->dailyAt('03:15')
     ->withoutOverlapping()
     ->runInBackground();

@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Datacenter;
+use App\Models\IpSubnet;
 use App\Models\Vlan;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -15,7 +16,12 @@ class VlanController extends Controller
     {
         $search = trim((string) $request->query('search'));
 
-        $query = Vlan::with('datacenter');
+        // ip_subnets.vlan_id carries no FK, so this counts references that
+        // would dangle after delete.
+        $query = Vlan::with('datacenter')
+            ->addSelect([
+                'subnets_count' => IpSubnet::query()->selectRaw('COUNT(*)')->whereColumn('ip_subnets.vlan_id', 'vlans.id'),
+            ]);
 
         if ($search !== '') {
             $query->where(function ($q) use ($search) {

@@ -3,9 +3,10 @@
 use App\Services\Search\Providers\CatalogProductSearchProvider;
 use App\Services\Search\Providers\ContactSearchProvider;
 use App\Services\Search\Providers\CustomerSearchProvider;
+use App\Services\Search\Providers\DeviceSearchProvider;
 use App\Services\Search\Providers\DomainSearchProvider;
 use App\Services\Search\Providers\HostingAccountSearchProvider;
-use App\Services\Search\Providers\InventoryAssetSearchProvider;
+use App\Services\Search\Providers\InventoryItemSearchProvider;
 use App\Services\Search\Providers\InvoiceSearchProvider;
 use App\Services\Search\Providers\IpAddressSearchProvider;
 use App\Services\Search\Providers\KnowledgeBaseSearchProvider;
@@ -47,7 +48,8 @@ return [
         KnowledgeBaseSearchProvider::class,
         CatalogProductSearchProvider::class,
         ProductSearchProvider::class,
-        InventoryAssetSearchProvider::class,
+        DeviceSearchProvider::class,
+        InventoryItemSearchProvider::class,
         IpAddressSearchProvider::class,
     ],
 ];

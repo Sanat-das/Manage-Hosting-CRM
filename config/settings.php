@@ -11,7 +11,6 @@ use App\Settings\EmailSettings;
 use App\Settings\GeneralSettings;
 use App\Settings\HostingSettings;
 use App\Settings\IntegrationSettings;
-use App\Settings\InventorySettings;
 use App\Settings\IpamSettings;
 use App\Settings\LogRetentionSettings;
 use App\Settings\ProductSettings;
@@ -40,7 +39,6 @@ return [
         IntegrationSettings::class,
         HostingSettings::class,
         IpamSettings::class,
-        InventorySettings::class,
         CatalogSettings::class,
         ProductSettings::class,
         AnalyticsSettings::class,

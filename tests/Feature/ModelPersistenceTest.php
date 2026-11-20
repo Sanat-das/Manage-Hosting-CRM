@@ -25,14 +25,13 @@ class ModelPersistenceTest extends TestCase
 
     public function test_license_assignment_create_persists(): void
     {
-        $assetId = DB::table('inventory_assets')->insertGetId([
+        $assetId = DB::table('devices')->insertGetId([
             'asset_tag' => 'LIC-ASSET-1',
-            'asset_type' => 'software_license',
             'status' => 'in_stock',
         ]);
 
         $licenseId = DB::table('licenses')->insertGetId([
-            'inventory_asset_id' => $assetId,
+            'device_id' => $assetId,
             'license_type' => 'cpanel',
         ]);
 

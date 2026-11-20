@@ -3,8 +3,8 @@
 namespace App\Services;
 
 use App\Exceptions\NoAvailableIpException;
+use App\Models\Device;
 use App\Models\HostingAccount;
-use App\Models\InventoryAsset;
 use App\Models\IpAddress;
 use App\Models\IpAllocationHistory;
 use Illuminate\Support\Collection;
@@ -180,7 +180,7 @@ class IpAssignmentService
     }
 
     /**
-     * Link an IP address to an inventory asset through the polymorphic
+     * Link an IP address to a device through the polymorphic
      * assignment columns, so IPAM reads the address as assigned and the
      * hosting leasing pool (scopeAvailable) skips it.
      *
@@ -190,22 +190,22 @@ class IpAssignmentService
      * `type` column is promoted to assigned only from available, preserving
      * reserved / gateway / etc.
      */
-    public function assignToAsset(IpAddress $ip, InventoryAsset $asset): void
+    public function assignToAsset(IpAddress $ip, Device $asset): void
     {
         DB::transaction(function () use ($ip, $asset): void {
             $fresh = IpAddress::query()->whereKey($ip->getKey())->lockForUpdate()->firstOrFail();
 
             if ($fresh->assigned_to_type !== null
-                && ! ($fresh->assigned_to_type === 'inventory' && (int) $fresh->assigned_to_id === (int) $asset->id)) {
+                && ! ($fresh->assigned_to_type === 'device' && (int) $fresh->assigned_to_id === (int) $asset->id)) {
                 throw new \RuntimeException(
                     $this->linkConflictMessage($fresh, (int) $asset->id)
                         ?? "IP {$fresh->ip_address} is already assigned.",
                 );
             }
 
-            if ($fresh->assigned_to_type === 'inventory'
+            if ($fresh->assigned_to_type === 'device'
                 && (int) $fresh->assigned_to_id === (int) $asset->id
-                && (int) $fresh->inventory_asset_id === (int) $asset->id) {
+                && (int) $fresh->device_id === (int) $asset->id) {
                 return;
             }
 
@@ -213,9 +213,9 @@ class IpAssignmentService
             $previousType = $fresh->assigned_to_type;
             $previousId = $fresh->assigned_to_id;
 
-            $fresh->assigned_to_type = 'inventory';
+            $fresh->assigned_to_type = 'device';
             $fresh->assigned_to_id = $asset->id;
-            $fresh->inventory_asset_id = $asset->id;
+            $fresh->device_id = $asset->id;
 
             if ($fresh->type === 'available') {
                 $fresh->type = 'assigned';
@@ -228,7 +228,7 @@ class IpAssignmentService
                 'assigned',
                 $previousType,
                 $previousId,
-                'inventory',
+                'device',
                 $asset->id,
                 $snapshot,
                 "Assigned IP {$fresh->ip_address} to asset {$asset->asset_tag}",
@@ -237,8 +237,8 @@ class IpAssignmentService
     }
 
     /**
-     * Unlink an inventory asset from an IP address, clearing the polymorphic
-     * assignment when it points at inventory and returning the address to the
+     * Unlink a device from an IP address, clearing the polymorphic
+     * assignment when it points at a device and returning the address to the
      * pool. A no-op when nothing is linked, so it is safe to call for every
      * row that is no longer chosen.
      */
@@ -247,24 +247,24 @@ class IpAssignmentService
         DB::transaction(function () use ($ip, $reason): void {
             $fresh = IpAddress::query()->whereKey($ip->getKey())->lockForUpdate()->firstOrFail();
 
-            $wasInventory = $fresh->assigned_to_type === 'inventory';
+            $wasDevice = $fresh->assigned_to_type === 'device';
 
-            if (! $wasInventory && $fresh->inventory_asset_id === null) {
+            if (! $wasDevice && $fresh->device_id === null) {
                 return;
             }
 
-            $tag = $fresh->inventory_asset_id !== null
-                ? InventoryAsset::query()->whereKey($fresh->inventory_asset_id)->value('asset_tag')
+            $tag = $fresh->device_id !== null
+                ? Device::query()->whereKey($fresh->device_id)->value('asset_tag')
                 : null;
 
             $snapshot = json_encode($fresh->getAttributes());
             $previousType = $fresh->assigned_to_type;
             $previousId = $fresh->assigned_to_id;
-            $assetLabel = $tag ?? $fresh->inventory_asset_id ?? $previousId ?? $fresh->id;
+            $assetLabel = $tag ?? $fresh->device_id ?? $previousId ?? $fresh->id;
 
-            $fresh->inventory_asset_id = null;
+            $fresh->device_id = null;
 
-            if ($wasInventory) {
+            if ($wasDevice) {
                 $fresh->assigned_to_type = null;
                 $fresh->assigned_to_id = null;
             }
@@ -290,21 +290,21 @@ class IpAssignmentService
 
     /**
      * Human-readable reason the given IP cannot be linked to the asset, or
-     * null when it can. Shared by the inventory-asset and IP form validation
+     * null when it can. Shared by the device and IP form validation
      * closures so both reject the same conflicts with the same wording.
      */
     public function linkConflictMessage(IpAddress $ip, int $assetId): ?string
     {
         $type = $ip->assigned_to_type;
 
-        if ($type === 'inventory') {
+        if ($type === 'device') {
             return (int) $ip->assigned_to_id === $assetId
                 ? null
                 : 'This IP is already linked to another asset.';
         }
 
-        if ($ip->inventory_asset_id !== null) {
-            return (int) $ip->inventory_asset_id === $assetId
+        if ($ip->device_id !== null) {
+            return (int) $ip->device_id === $assetId
                 ? null
                 : 'This IP is already linked to another asset.';
         }

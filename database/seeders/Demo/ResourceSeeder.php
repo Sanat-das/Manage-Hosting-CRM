@@ -48,7 +48,7 @@ use Illuminate\Support\Facades\DB;
  * - `resource_pools` has NO `resource_type_id` column. A pool is linked to a
  *   resource type semantically, through its `pool_type` + `unit`, which this
  *   seeder mirrors from the matching `resource_types.unit`.
- * - `resource_allocations.service_id`, `pool_id`, `inventory_asset_id`,
+ * - `resource_allocations.service_id`, `pool_id`, `device_id`,
  *   `resource_pools.server_id` and `.datacenter_id` are plain unsigned
  *   integers with NO foreign key constraint, so allocations can be seeded
  *   before `service_instances` / `servers` exist. `resource_type_id` IS a real
@@ -231,7 +231,7 @@ class ResourceSeeder extends Seeder
                 'service_id' => $serviceId,
                 'resource_type_id' => $typeIds[$profile['type_slug']],
                 'pool_id' => $poolIds[$profile['pool']] ?? null,
-                'inventory_asset_id' => null,
+                'device_id' => null,
                 'quantity_allocated' => $profile['quantity'],
                 'allocated_at' => now()->subDays(30 - ($i % 30))->startOfHour(),
                 'released_at' => $released ? now()->subDays(2)->startOfHour() : null,
