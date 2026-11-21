@@ -740,7 +740,6 @@ class SupportSeeder extends Seeder
         }
 
         // --- Entity links (whitelisted types only) ------------------
-        // Product is whitelisted, CatalogProduct is NOT
         $links = [];
         if ($productId !== 0) {
             $msgId = (int) DB::table('chat_conversation_messages')->where('conversation_id', $generalId)->where('body', 'Reminder: weekly standup at 10am in this channel. Bring your updates.')->value('id');

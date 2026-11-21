@@ -232,7 +232,6 @@ return [
             'submenu' => [
                 ['text' => 'All Customers', 'route' => 'admin.customers.index', 'icon' => 'bi bi-dot', 'can' => 'customers.view'],
                 ['text' => 'Add Customer', 'route' => 'admin.customers.create', 'icon' => 'bi bi-dot', 'can' => 'customers.create'],
-                ['text' => 'Customer Groups', 'route' => 'admin.customer-groups.index', 'icon' => 'bi bi-dot', 'can' => 'customers.view'],
             ],
         ],
         [
@@ -242,7 +241,6 @@ return [
             'submenu' => [
                 ['text' => 'All Orders', 'route' => 'admin.orders.index', 'icon' => 'bi bi-dot', 'can' => 'orders.view'],
                 ['text' => 'New Order', 'route' => 'admin.orders.create', 'icon' => 'bi bi-dot', 'can' => 'orders.create'],
-                ['text' => 'Shopping Cart', 'route' => 'admin.cart.index', 'icon' => 'bi bi-dot', 'can' => 'orders.view'],
             ],
         ],
 
@@ -287,9 +285,15 @@ return [
                 ['text' => 'Configurable Options', 'route' => 'admin.product-options.index', 'icon' => 'bi bi-dot', 'can' => 'products.options'],
                 ['text' => 'Addons', 'route' => 'admin.addons.index', 'icon' => 'bi bi-dot', 'can' => 'products.addons'],
                 ['text' => 'Product Bundles', 'route' => 'admin.product-bundles.index', 'icon' => 'bi bi-box-seam', 'can' => 'product-bundles.view'],
+            ],
+        ],
+        [
+            'text' => 'Product Lifecycle',
+            'icon' => 'bi bi-arrow-repeat',
+            'can' => 'admin.panel',
+            'submenu' => [
                 ['text' => 'Product Upgrade Paths', 'route' => 'admin.product-upgrades.index', 'icon' => 'bi bi-arrow-up-circle', 'can' => 'product-upgrades.view'],
                 ['text' => 'Upgrade Requests', 'route' => 'admin.upgrade-requests.index', 'icon' => 'bi bi-clipboard-check', 'can' => 'product-upgrades.view'],
-                ['text' => 'Catalog Products', 'route' => 'admin.catalog-products.index', 'icon' => 'bi bi-dot', 'can' => 'catalog-products.view'],
             ],
         ],
         [
@@ -298,8 +302,6 @@ return [
             'can' => 'admin.panel',
             'submenu' => [
                 ['text' => 'All Hosting Services', 'route' => 'admin.hosting.index', 'icon' => 'bi bi-dot', 'can' => 'hosting.view'],
-                ['text' => 'Servers', 'route' => 'admin.servers.index', 'icon' => 'bi bi-dot', 'can' => 'hosting.view'],
-                ['text' => 'Server Groups', 'route' => 'admin.server-groups.index', 'icon' => 'bi bi-dot', 'can' => 'hosting.server_groups'],
                 ['text' => 'Service Instances', 'route' => 'admin.service-instances.index', 'icon' => 'bi bi-dot', 'can' => 'service-instances.view'],
                 ['text' => 'Subscriptions', 'route' => 'admin.subscriptions.index', 'icon' => 'bi bi-arrow-repeat', 'can' => 'subscriptions.view'],
                 ['text' => 'Usage Records', 'route' => 'admin.usage-records.index', 'icon' => 'bi bi-activity', 'can' => 'usage-records.view'],
@@ -343,6 +345,7 @@ return [
             'icon' => 'bi bi-chat-dots',
             'can' => 'admin.panel',
             'submenu' => [
+                ['text' => 'Inbox', 'route' => 'admin.chat.inbox', 'icon' => 'bi bi-dot', 'can' => 'chat.view'],
                 ['text' => 'Conversations', 'route' => 'admin.chat.index', 'icon' => 'bi bi-dot', 'can' => 'chat.view'],
                 ['text' => 'Saved Replies', 'route' => 'admin.chat.canned-replies.index', 'icon' => 'bi bi-dot', 'can' => 'chat.view'],
                 ['text' => 'Satisfaction', 'route' => 'admin.chat.satisfaction', 'icon' => 'bi bi-dot', 'can' => 'chat.manage'],
@@ -367,6 +370,7 @@ return [
                 ['text' => 'Customers Report', 'route' => 'admin.reports.customers', 'icon' => 'bi bi-dot', 'can' => 'reports.view'],
                 ['text' => 'Tickets Report', 'route' => 'admin.reports.tickets', 'icon' => 'bi bi-dot', 'can' => 'reports.view'],
                 ['text' => 'Hosting Report', 'route' => 'admin.reports.hosting', 'icon' => 'bi bi-dot', 'can' => 'reports.view'],
+                ['text' => 'Domains Report', 'route' => 'admin.reports.domains', 'icon' => 'bi bi-dot', 'can' => 'reports.view'],
                 ['text' => 'Inventory & Capacity', 'route' => 'admin.reports.inventory', 'icon' => 'bi bi-dot', 'can' => 'reports.view'],
             ],
         ],
@@ -379,6 +383,8 @@ return [
             'submenu' => [
                 ['text' => 'Datacenters', 'route' => 'admin.datacenters.index', 'icon' => 'bi bi-building', 'can' => 'datacenters.view'],
                 ['text' => 'Racks', 'route' => 'admin.racks.index', 'icon' => 'bi bi-hdd-stack', 'can' => 'racks.view'],
+                ['text' => 'Servers', 'route' => 'admin.servers.index', 'icon' => 'bi bi-dot', 'can' => 'hosting.view'],
+                ['text' => 'Server Groups', 'route' => 'admin.server-groups.index', 'icon' => 'bi bi-dot', 'can' => 'hosting.server_groups'],
                 ['text' => 'Subnets', 'route' => 'admin.ip-subnets.index', 'icon' => 'bi bi-dot', 'can' => 'ip-subnets.view'],
                 ['text' => 'IP Addresses', 'route' => 'admin.ip-addresses.index', 'icon' => 'bi bi-dot', 'can' => 'ip-addresses.view'],
                 ['text' => 'VLANs', 'route' => 'admin.vlans.index', 'icon' => 'bi bi-dot', 'can' => 'vlans.view'],
@@ -434,12 +440,24 @@ return [
             'icon' => 'bi bi-alarm',
             'can' => 'cron.view',
         ],
+        [
+            'text' => 'Notifications',
+            'route' => 'admin.notifications.index',
+            'icon' => 'bi bi-bell',
+            'can' => 'notifications.view',
+        ],
 
         ['header' => 'CONFIGURATION', 'can' => 'admin.panel'],
         [
             'text' => 'Settings',
             'route' => 'admin.settings.index',
             'icon' => 'bi bi-gear',
+            'can' => 'settings.view',
+        ],
+        [
+            'text' => 'GST Settings',
+            'route' => 'admin.gst-settings.edit',
+            'icon' => 'bi bi-percent',
             'can' => 'settings.view',
         ],
         [

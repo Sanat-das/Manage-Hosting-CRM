@@ -35,7 +35,6 @@ final class GranularPermissionRevocationTest extends TestCase
         'dns-zones.view', 'dns-zones.manage',
         'dns-records.view', 'dns-records.manage',
         'licenses.view', 'licenses.manage',
-        'catalog-products.view', 'catalog-products.manage',
         'subscriptions.view', 'subscriptions.manage',
         'usage-records.view', 'usage-records.manage',
         'resource-types.view', 'resource-types.manage',

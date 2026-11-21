@@ -42,7 +42,7 @@ class SubscriptionController extends Controller
 
     public function show(SubscriptionPeriod $subscription): View
     {
-        $subscription->load(['service.customer', 'service.catalogProduct', 'children']);
+        $subscription->load(['service.customer', 'children']);
 
         return view('admin.subscriptions.show', compact('subscription'));
     }

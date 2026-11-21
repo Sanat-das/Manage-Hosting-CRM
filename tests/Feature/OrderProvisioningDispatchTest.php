@@ -55,7 +55,6 @@ class OrderProvisioningDispatchTest extends TestCase
         // The module was handed a real service instance for this order.
         $service = ServiceInstance::where('order_id', $order->id)->sole();
         $this->assertSame('active', $service->status);
-        $this->assertNull($service->catalog_product_id);
 
         $this->assertDatabaseHas('provisioning_events', [
             'service_instance_id' => $service->id,

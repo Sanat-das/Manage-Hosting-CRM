@@ -64,7 +64,6 @@ return Application::configure(basePath: dirname(__DIR__))
             require base_path('routes/admin/config.php');
             require base_path('routes/admin/enterprise.php');
             require base_path('routes/admin/provisioning.php');
-            require base_path('routes/admin/cart.php');
             require base_path('routes/admin/search.php');
             require base_path('routes/admin/dns.php');
             require base_path('routes/admin/inventory.php');

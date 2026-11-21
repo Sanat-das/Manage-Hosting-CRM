@@ -3,7 +3,6 @@
 namespace Tests\Feature;
 
 use App\Http\Middleware\PermissionMiddleware;
-use App\Models\CatalogProduct;
 use App\Models\Customer;
 use App\Models\Invoice;
 use App\Models\Permission;
@@ -41,7 +40,6 @@ class AdminSearchTest extends TestCase
             'service-instances.view',
             'tickets.view',
             'kb.view',
-            'catalog-products.view',
         ] as $permName) {
             $perm = Permission::firstOrCreate(['name' => $permName], ['label' => ucfirst($permName)]);
             $adminRole->permissions()->syncWithoutDetaching($perm->id);
@@ -124,15 +122,8 @@ class AdminSearchTest extends TestCase
         $user->assignRole('client');
         $customer = Customer::create(['user_id' => $user->id, 'status' => 'active']);
 
-        $product = CatalogProduct::create([
-            'name' => 'Basic Shared Hosting',
-            'sku' => 'HOST-SHARED-01',
-            'status' => 'active',
-        ]);
-
         ServiceInstance::create([
             'customer_id' => $customer->id,
-            'catalog_product_id' => $product->id,
             'service_tag' => 'svc-acme-0001',
             'service_type' => 'shared',
             'username' => 'acme',
@@ -143,19 +134,6 @@ class AdminSearchTest extends TestCase
         $response = $this->actingAsAdmin()->get('/admin/search?q=acme.com');
         $response->assertStatus(200);
         $response->assertSee('acme.com');
-    }
-
-    public function test_search_finds_catalog_product(): void
-    {
-        CatalogProduct::create([
-            'name' => 'Basic Shared Hosting',
-            'sku' => 'HOST-SHARED-01',
-            'status' => 'active',
-        ]);
-
-        $response = $this->actingAsAdmin()->get('/admin/search?q=HOST-SHARED-01');
-        $response->assertStatus(200);
-        $response->assertSee('HOST-SHARED-01');
     }
 
     public function test_search_short_query_returns_empty_results(): void

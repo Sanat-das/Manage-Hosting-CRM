@@ -4,7 +4,6 @@ use App\Http\Controllers\Admin\ChatCannedReplyController;
 use App\Http\Controllers\Admin\ChatController;
 use App\Http\Controllers\Admin\ChatSatisfactionController;
 use App\Http\Controllers\Admin\ChatSettingController;
-use App\Http\Controllers\Admin\CustomerGroupController;
 use App\Http\Controllers\Admin\GatewayController;
 use App\Http\Controllers\Admin\GstSettingController;
 use App\Http\Controllers\Admin\RegistrarSettingController;
@@ -12,7 +11,7 @@ use Illuminate\Support\Facades\Route;
 
 /*
 |--------------------------------------------------------------------------
-| Admin Configuration routes (Registrar, GST, Customer Groups, Chat)
+| Admin Configuration routes (Registrar, GST, Chat)
 |--------------------------------------------------------------------------
 | Self-contained route file — wired in bootstrap/app.php via withRouting(then:).
 */
@@ -44,11 +43,6 @@ Route::middleware(['web', 'auth', 'admin', 'throttle:admin'])->prefix('admin')->
     Route::put('gst-settings', [GstSettingController::class, 'update'])
         ->middleware('permission:settings.manage')
         ->name('gst-settings.update');
-
-    // Customer Groups
-    Route::resource('customer-groups', CustomerGroupController::class)
-        ->parameters(['customer-groups' => 'customerGroup'])
-        ->middleware('permission:customers.view');
 
     // Live Chat
     Route::get('chat', [ChatController::class, 'index'])

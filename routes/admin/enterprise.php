@@ -1,6 +1,5 @@
 <?php
 
-use App\Http\Controllers\Admin\CatalogProductController;
 use App\Http\Controllers\Admin\DatacenterController;
 use App\Http\Controllers\Admin\IpAddressController;
 use App\Http\Controllers\Admin\IpSubnetController;
@@ -130,22 +129,6 @@ Route::middleware(['web', 'auth', 'admin', 'throttle:admin'])->prefix('admin')->
         ->middleware('permission:licenses.manage')->name('licenses.update');
     Route::delete('licenses/{license}', [LicenseController::class, 'destroy'])
         ->middleware('permission:licenses.manage')->name('licenses.destroy');
-
-    // Catalog products
-    Route::get('catalog-products', [CatalogProductController::class, 'index'])
-        ->middleware('permission:catalog-products.view')->name('catalog-products.index');
-    Route::get('catalog-products/create', [CatalogProductController::class, 'create'])
-        ->middleware('permission:catalog-products.manage')->name('catalog-products.create');
-    Route::post('catalog-products', [CatalogProductController::class, 'store'])
-        ->middleware('permission:catalog-products.manage')->name('catalog-products.store');
-    Route::get('catalog-products/{catalogProduct}', [CatalogProductController::class, 'show'])
-        ->middleware('permission:catalog-products.view')->name('catalog-products.show');
-    Route::get('catalog-products/{catalogProduct}/edit', [CatalogProductController::class, 'edit'])
-        ->middleware('permission:catalog-products.manage')->name('catalog-products.edit');
-    Route::put('catalog-products/{catalogProduct}', [CatalogProductController::class, 'update'])
-        ->middleware('permission:catalog-products.manage')->name('catalog-products.update');
-    Route::delete('catalog-products/{catalogProduct}', [CatalogProductController::class, 'destroy'])
-        ->middleware('permission:catalog-products.manage')->name('catalog-products.destroy');
 
     // Subscriptions
     Route::get('subscriptions', [SubscriptionController::class, 'index'])

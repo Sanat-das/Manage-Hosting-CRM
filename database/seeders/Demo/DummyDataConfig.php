@@ -45,7 +45,7 @@ final class DummyDataConfig
     public const PRODUCTS = 6;
 
     /** Total application tables the demo seed must populate. */
-    public const TOTAL_BUSINESS_TABLES = 98;
+    public const TOTAL_BUSINESS_TABLES = 97;
 
     /**
      * Framework-owned tables intentionally absent from `ROWS`.
@@ -117,7 +117,6 @@ final class DummyDataConfig
         'product_bundles' => 0,
         'product_upgrade_paths' => 3,
         'product_upgrades' => 3,
-        'catalog_products' => 6,
 
         // --- Sales & billing (11) -------------------------------------
         // 2 orders per customer; each order yields an invoice and line items.
@@ -261,7 +260,6 @@ final class DummyDataConfig
         'product_bundles' => ['bundle_product_id', 'component_product_id'],
         'product_upgrade_paths' => ['from_product_id', 'to_product_id'],
         'product_upgrades' => ['from_product_id', 'to_product_id'],
-        'catalog_products' => ['sku'],
 
         // Sales & billing
         'orders' => ['order_number'],

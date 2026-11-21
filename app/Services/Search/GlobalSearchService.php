@@ -146,8 +146,7 @@ class GlobalSearchService
      * enforces for route gates - keep the two in step. A role the app admits to
      * a screen must also be able to search that screen's records; without this,
      * a custom role holding only `hosting.manage` (or `service-instances.manage`,
-     * `domains.manage`, `catalog-products.manage`) opened the screens and got
-     * zero search results for them.
+     * `domains.manage`) opened the screens and got zero search results for them.
      *
      * Pure string expansion on the already-plucked set: it must never add a
      * query, and it only ever widens `manage` -> `view`, never the reverse.

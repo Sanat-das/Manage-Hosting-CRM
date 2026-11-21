@@ -144,7 +144,7 @@ class RoleController extends Controller
         $definitions = [
             'Dashboard & Reporting' => ['dashboard.', 'analytics.', 'reports.', 'activity.', 'search'],
             'Customer Management' => ['customers.'],
-            'Products & Catalog' => ['products.', 'catalog-products.', 'product-bundles.', 'product-upgrades.'],
+            'Products & Catalog' => ['products.', 'product-bundles.', 'product-upgrades.'],
             'Sales & Billing' => ['orders.', 'invoices.', 'payments.', 'subscriptions.', 'usage-records.', 'tax-rates.'],
             'Hosting' => ['hosting.'],
             'Infrastructure' => ['datacenters.', 'racks.', 'licenses.', 'devices.', 'resource-types.', 'resource-pools.', 'service-instances.', 'provisioning-events.'],

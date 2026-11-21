@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Customer;
+use App\Models\ServiceInstance;
 use App\Models\Ticket;
 use App\Models\TicketAttachment;
 use App\Models\TicketReply;
@@ -20,7 +21,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
-use Symfony\Component\HttpFoundation\StreamedResponse;
+use Symfony\Component\HttpFoundation\Response;
 
 /**
  * Admin support-ticket management.
@@ -263,8 +264,8 @@ class TicketController extends Controller
         $customerHostingAccounts = collect();
 
         if ($ticket->customer_id !== null && $ticket->customer) {
-            if (class_exists(\App\Models\ServiceInstance::class)) {
-                $customerServices = \App\Models\ServiceInstance::with(['catalogProduct.category', 'server'])
+            if (class_exists(ServiceInstance::class)) {
+                $customerServices = ServiceInstance::with(['server'])
                     ->where('customer_id', $ticket->customer_id)
                     ->orderByDesc('id')
                     ->limit(10)
@@ -387,7 +388,7 @@ class TicketController extends Controller
                     ->orWhereRaw('LOWER(first_name) LIKE ?', ["%{$qLower}%"])
                     ->orWhereRaw('LOWER(last_name) LIKE ?', ["%{$qLower}%"])
                     ->orWhereRaw("LOWER(CONCAT(first_name, ' ', last_name)) LIKE ?", ["%{$qLower}%"])
-                    ->orWhereRaw("LOWER(CONCAT(first_name, last_name)) LIKE ?", ["%{$qLower}%"])
+                    ->orWhereRaw('LOWER(CONCAT(first_name, last_name)) LIKE ?', ["%{$qLower}%"])
                     ->orWhereRaw('LOWER(role) LIKE ?', ["%{$qLower}%"]);
             });
             $contactsQuery->limit(20);
@@ -420,7 +421,7 @@ class TicketController extends Controller
      * must not be able to fetch a file by guessing/incrementing another
      * department's ticket id in the URL.
      */
-    public function showAttachment(Request $request, Ticket $ticket, TicketAttachment $attachment): \Symfony\Component\HttpFoundation\Response
+    public function showAttachment(Request $request, Ticket $ticket, TicketAttachment $attachment): Response
     {
         abort_unless(
             TicketService::applyVisibility(Ticket::query(), $request->user())->whereKey($ticket->id)->exists(),
@@ -526,7 +527,8 @@ class TicketController extends Controller
         } catch (DomainException $e) {
             return back()->withErrors(['error' => $e->getMessage()]);
         }
-        return redirect()->route('admin.tickets.show', $ticket)->with('success', "Guest ticket linked to {$customer->full_name}." . ($request->boolean('create_contact') ? ' Contact created.' : ''));
+
+        return redirect()->route('admin.tickets.show', $ticket)->with('success', "Guest ticket linked to {$customer->full_name}.".($request->boolean('create_contact') ? ' Contact created.' : ''));
     }
 
     public function addGuestAsContact(Request $request, Ticket $ticket): RedirectResponse
@@ -544,6 +546,7 @@ class TicketController extends Controller
         } catch (DomainException $e) {
             return back()->withErrors(['error' => $e->getMessage()]);
         }
+
         return redirect()->route('admin.tickets.show', $ticket)->with('success', "Guest added as contact ({$contact->email}) to {$customer->full_name}.");
     }
 

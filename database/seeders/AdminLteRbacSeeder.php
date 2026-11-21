@@ -85,8 +85,6 @@ class AdminLteRbacSeeder extends Seeder
             'dns-records.manage' => 'Manage DNS Records',
             'licenses.view' => 'View Licenses',
             'licenses.manage' => 'Manage Licenses',
-            'catalog-products.view' => 'View Catalog Products',
-            'catalog-products.manage' => 'Manage Catalog Products',
             'subscriptions.view' => 'View Subscriptions',
             'subscriptions.manage' => 'Manage Subscriptions',
             'usage-records.view' => 'View Usage Records',

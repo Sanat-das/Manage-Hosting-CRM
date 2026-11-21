@@ -4,12 +4,10 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
-use App\Models\CatalogProduct;
 use App\Models\KnowledgeBase;
 use App\Models\Product;
 use App\Models\Ticket;
 use App\Services\Search\GlobalSearchService;
-use App\Services\Search\Providers\CatalogProductSearchProvider;
 use App\Services\Search\Providers\KnowledgeBaseSearchProvider;
 use App\Services\Search\Providers\ProductSearchProvider;
 use App\Services\Search\Providers\TicketSearchProvider;
@@ -19,8 +17,7 @@ use Tests\Concerns\CreatesChatUsers;
 use Tests\TestCase;
 
 /**
- * The support/catalog provider lane: tickets, KB articles, catalog products and
- * products.
+ * The support/provider lane: tickets, KB articles and products.
  *
  * Every case drives the REAL providers through GlobalSearchService::groups()
  * so the viewer's permission array flows through queryFor()/baseQueryFor() —
@@ -37,7 +34,6 @@ class SupportCatalogSearchProvidersTest extends TestCase
     private const SUPPORT_PROVIDERS = [
         TicketSearchProvider::class,
         KnowledgeBaseSearchProvider::class,
-        CatalogProductSearchProvider::class,
         ProductSearchProvider::class,
     ];
 
@@ -158,11 +154,10 @@ class SupportCatalogSearchProvidersTest extends TestCase
 
     // --- permission leak ---------------------------------------------------
 
-    public function test_a_viewer_without_support_permissions_gets_no_support_or_catalog_groups(): void
+    public function test_a_viewer_without_support_permissions_gets_no_support_or_product_groups(): void
     {
         $this->makeTicket('TKT-ACME-1', 'Acme ticket');
         $this->makeArticle('published', 'Acme article', 'Acme body');
-        $this->makeCatalogProduct('ACME-SKU-1', 'Acme catalog product');
         $this->makeProduct('Acme product');
 
         $user = $this->panelUserWith('invoices.view');
@@ -170,42 +165,26 @@ class SupportCatalogSearchProvidersTest extends TestCase
 
         $groups = $service->groups($service->permissionNames($user), 'acme', 5);
 
-        $this->assertSame([], $groups, 'No ticket/KB/catalog/product row may leak without its permission.');
+        $this->assertSame([], $groups, 'No ticket/KB/product row may leak without its permission.');
     }
 
-    // --- catalog products + products happy path ----------------------------
+    // --- products happy path ------------------------------------------------
 
-    public function test_catalog_products_are_found_by_sku_and_products_by_name(): void
+    public function test_products_are_found_by_name(): void
     {
-        $catalog = $this->makeCatalogProduct('ACME-VPS-01', 'Acme Managed VPS');
         $product = $this->makeProduct('Acme Shared Hosting');
 
-        $user = $this->panelUserWith('catalog-products.view', 'products.view');
+        $user = $this->panelUserWith('products.view');
         $service = new GlobalSearchService(self::SUPPORT_PROVIDERS);
 
         $groups = $service->groups($service->permissionNames($user), 'acme', 5);
 
-        $catalogGroup = $this->groupByKey($groups, 'catalog-products');
         $productGroup = $this->groupByKey($groups, 'products');
-
-        $this->assertNotNull($catalogGroup, 'The catalog-products group must be present.');
-        $this->assertSame('Catalog Products', $catalogGroup['label']);
-        $this->assertSame('Acme Managed VPS', $catalogGroup['results'][0]['label']);
-        $this->assertSame('ACME-VPS-01', $catalogGroup['results'][0]['subtitle']);
-        $this->assertSame(route('admin.catalog-products.show', $catalog), $catalogGroup['results'][0]['url']);
 
         $this->assertNotNull($productGroup, 'The products group must be present.');
         $this->assertSame('Products', $productGroup['label']);
         $this->assertSame('Acme Shared Hosting', $productGroup['results'][0]['label']);
         $this->assertSame(route('admin.products.show', $product), $productGroup['results'][0]['url']);
-
-        // SKU-only token: proves the SKU column is genuinely searchable.
-        $skuGroups = $service->groups($service->permissionNames($user), 'vps-01', 5);
-        $skuCatalogGroup = $this->groupByKey($skuGroups, 'catalog-products');
-
-        $this->assertNotNull($skuCatalogGroup, 'A SKU-only term must find the catalog product.');
-        $this->assertSame('Acme Managed VPS', $skuCatalogGroup['results'][0]['label']);
-        $this->assertNull($this->groupByKey($skuGroups, 'products'), 'The product name must not match a SKU term.');
     }
 
     // --- helpers -----------------------------------------------------------
@@ -247,15 +226,6 @@ class SupportCatalogSearchProvidersTest extends TestCase
             'helpful' => 0,
             'not_helpful' => 0,
             'status' => $status,
-        ]);
-    }
-
-    private function makeCatalogProduct(string $sku, string $name): CatalogProduct
-    {
-        return CatalogProduct::create([
-            'sku' => $sku,
-            'name' => $name,
-            'status' => 'active',
         ]);
     }
 

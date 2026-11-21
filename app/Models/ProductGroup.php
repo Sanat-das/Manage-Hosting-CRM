@@ -29,9 +29,4 @@ class ProductGroup extends Model
     {
         return $this->hasMany(Product::class);
     }
-
-    public function catalogProducts(): HasMany
-    {
-        return $this->hasMany(CatalogProduct::class, 'category_id');
-    }
 }

@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
-use App\Models\CatalogProduct;
 use App\Models\Customer;
 use App\Models\Module;
 use App\Models\ModuleLog;
@@ -23,8 +22,8 @@ use Tests\TestCase;
  */
 class ModuleProvisioningTest extends TestCase
 {
-    use RefreshDatabase;
     use InteractsWithModuleFixtures;
+    use RefreshDatabase;
 
     private ModuleManager $manager;
 
@@ -40,14 +39,9 @@ class ModuleProvisioningTest extends TestCase
         $user = User::factory()->create();
 
         $customer = Customer::create(['user_id' => $user->id]);
-        $product = CatalogProduct::create([
-            'sku' => 'test-'.uniqid(),
-            'name' => 'Test Product',
-        ]);
 
         return ServiceInstance::create([
             'customer_id' => $customer->id,
-            'catalog_product_id' => $product->id,
             'service_tag' => 'svc-'.uniqid(),
             'username' => 'svcuser',
         ]);

@@ -12,12 +12,10 @@ use Illuminate\Support\Facades\DB;
  *
  * SCOPE
  * -----
- * Eight tables, in dependency order:
+ * Seven tables, in dependency order:
  *
  *   hosting_accounts      -> customers + products + servers  (panel-side accounts)
- *   catalog_products      -> only topped up when empty; `service_instances`
- *                            has a hard FK to it and Task 6 owns the table
- *   service_instances     -> customers + catalog_products    (billing-side services)
+ *   service_instances     -> customers + servers              (billing-side services)
  *   subscription_periods  -> service_instances (2 per service: expired + active)
  *   subscription_changes  -> service_instances (renewal / upgrade / addon)
  *   usage_records         -> service_instances + resource_types
@@ -30,7 +28,9 @@ use Illuminate\Support\Facades\DB;
  * `hosting_accounts` (2026_07_30_120030) is the legacy/panel record and links
  * to `products` + `servers` with plain unsigned columns (no FK constraints).
  * `service_instances` (2026_07_30_120100) is the newer subscription record and
- * links to `catalog_products` with a real `foreignId()->constrained()`.
+ * links to `customers` with a real `foreignId()->constrained()`. It is created
+ * without a catalog link: the reference-only `catalog_products` table was
+ * retired, and the column was nullable since 2026_09_06.
  * `subscription_periods`, `subscription_changes` and `usage_records` all hang
  * off `service_instances.id` via `service_id` — NOT off hosting accounts —
  * so the periods are seeded per service instance even though the brief phrased
@@ -68,12 +68,6 @@ use Illuminate\Support\Facades\DB;
  *   ssl_certificates.certificate_type
  *                                  single|wildcard|multidomain
  *   ssl_certificates.status        active|pending|expired|revoked|failed
- *   catalog_products.product_type  shared_hosting|reseller|vps|dedicated|domain|
- *                                  addon|bundle|license|other
- *   catalog_products.provisioning_method
- *                                  manual|cpanel|plesk|directadmin|proxmox|vmware|
- *                                  hyperv|solusvm|virtualizor|docker|kubernetes|api|custom_script
- *   catalog_products.billing_model one_time|recurring|usage_based|tiered
  *
  * Note `subscription_periods.billing_cycle` is WIDER than
  * `products.billing_cycle` (which has no hourly/daily/usage_based/custom) —
@@ -289,69 +283,8 @@ class ServiceSeeder extends Seeder
     }
 
     // -----------------------------------------------------------------
-    // catalog_products + service_instances
+    // service_instances
     // -----------------------------------------------------------------
-
-    /**
-     * `service_instances.catalog_product_id` is a constrained foreign key, so
-     * a catalog row must exist before any service can be written.
-     *
-     * `catalog_products` is owned by the product-extras seeder, which may or
-     * may not have run yet — the two are allowed to run in either order. So
-     * the catalog entry is resolved BY NAME first (lowest id wins, which keeps
-     * the choice deterministic when several rows share a name) and only
-     * created as a `DEMO-CAT-*` fallback when nothing matches. That way this
-     * seeder never duplicates a catalog row the other seeder already owns, and
-     * never depends on it having run.
-     *
-     * @return array<string, int> logical key => catalog_products.id
-     */
-    private function catalogProductIds(): array
-    {
-        $catalog = [
-            'shared_start' => ['DEMO-CAT-SHARED-START', 'Demo Starter Shared Hosting', 'shared_hosting', 'cpanel', 'recurring', true],
-            'reseller_bronze' => ['DEMO-CAT-RESELLER-BRZ', 'Demo Reseller Bronze', 'reseller', 'cpanel', 'recurring', true],
-            'vps_2gb' => ['DEMO-CAT-VPS-2GB', 'Demo Cloud VPS 2GB', 'vps', 'virtualizor', 'recurring', false],
-            'vps_8gb' => ['DEMO-CAT-VPS-8GB', 'Demo Cloud VPS 8GB', 'vps', 'virtualizor', 'recurring', false],
-        ];
-
-        $ids = [];
-        $sort = 0;
-
-        foreach ($catalog as $key => [$sku, $name, $type, $method, $model, $requiresDomain]) {
-            $sort++;
-
-            $existing = DB::table('catalog_products')
-                ->where('name', $name)
-                ->orderBy('id')
-                ->value('id');
-
-            if ($existing !== null) {
-                $ids[$key] = (int) $existing;
-
-                continue;
-            }
-
-            $ids[$key] = (int) $this->seedRowOnce('catalog_products', [
-                'sku' => $sku,
-                'name' => $name,
-                'category_id' => null,
-                'description' => 'Demo catalog entry backing the seeded service instances.',
-                'product_type' => $type,
-                'provisioning_method' => $method,
-                'provisioning_config' => null,
-                'billing_model' => $model,
-                'require_domain' => $requiresDomain,
-                'show_in_order' => true,
-                'only_admin' => false,
-                'sort_order' => $sort,
-                'status' => 'active',
-                'version' => 1,
-            ]);
-        }
-
-        return $ids;
-    }
 
     /**
      * Billing-side services. Four instances covering three `status` members
@@ -363,13 +296,11 @@ class ServiceSeeder extends Seeder
      */
     private function seedServiceInstances(array $customers): array
     {
-        $catalog = $this->catalogProductIds();
         $servers = $this->serverIds();
 
         $plan = [
             [
                 'tag' => self::PREFIX.'-SVC-0001',
-                'sku' => 'shared_start',
                 'username' => 'demoshop',
                 'domain' => 'demoshop.test',
                 'server' => 'web01.demo.example',
@@ -380,7 +311,6 @@ class ServiceSeeder extends Seeder
             ],
             [
                 'tag' => self::PREFIX.'-SVC-0002',
-                'sku' => 'reseller_bronze',
                 'username' => 'demoagency',
                 'domain' => 'demoagency.test',
                 'server' => 'web02.demo.example',
@@ -391,7 +321,6 @@ class ServiceSeeder extends Seeder
             ],
             [
                 'tag' => self::PREFIX.'-SVC-0003',
-                'sku' => 'vps_2gb',
                 'username' => 'demovps',
                 'domain' => 'demovps.test',
                 'server' => 'vps01.demo.example',
@@ -402,7 +331,6 @@ class ServiceSeeder extends Seeder
             ],
             [
                 'tag' => self::PREFIX.'-SVC-0004',
-                'sku' => 'vps_8gb',
                 'username' => 'demolab',
                 'domain' => 'demolab.test',
                 'server' => 'vps02.demo.example',
@@ -413,7 +341,6 @@ class ServiceSeeder extends Seeder
             ],
             [
                 'tag' => self::PREFIX.'-SVC-0005',
-                'sku' => 'shared_start',
                 'username' => 'demoblog',
                 'domain' => 'demoblog.test',
                 'server' => 'web01.demo.example',
@@ -424,7 +351,6 @@ class ServiceSeeder extends Seeder
             ],
             [
                 'tag' => self::PREFIX.'-SVC-0006',
-                'sku' => 'vps_2gb',
                 'username' => 'demopro',
                 'domain' => 'demopro.test',
                 'server' => 'vps01.demo.example',
@@ -435,7 +361,6 @@ class ServiceSeeder extends Seeder
             ],
             [
                 'tag' => self::PREFIX.'-SVC-0007',
-                'sku' => 'reseller_bronze',
                 'username' => 'demoslvr',
                 'domain' => 'demoslvr.test',
                 'server' => 'web02.demo.example',
@@ -446,7 +371,6 @@ class ServiceSeeder extends Seeder
             ],
             [
                 'tag' => self::PREFIX.'-SVC-0008',
-                'sku' => 'vps_8gb',
                 'username' => 'demotest',
                 'domain' => 'demotest.test',
                 'server' => 'vps02.demo.example',
@@ -460,18 +384,11 @@ class ServiceSeeder extends Seeder
         $services = [];
 
         foreach (array_values($plan) as $index => $row) {
-            $catalogId = $catalog[$row['sku']] ?? null;
-
-            if ($catalogId === null) {
-                continue;
-            }
-
             $customerId = $customers[$index % count($customers)];
             $suspended = $row['status'] === 'suspended';
 
             $id = (int) $this->seedRowOnce('service_instances', [
                 'customer_id' => $customerId,
-                'catalog_product_id' => $catalogId,
                 'order_id' => null,
                 'server_id' => $servers[$row['server']] ?? null,
                 'service_tag' => $row['tag'],

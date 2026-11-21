@@ -26,7 +26,7 @@ class ServiceInstanceController extends Controller
 {
     public function index(Request $request): View
     {
-        $query = ServiceInstance::with(['customer', 'catalogProduct', 'server', 'serverGroup']);
+        $query = ServiceInstance::with(['customer', 'server', 'serverGroup']);
         if ($request->filled('status')) {
             $query->where('status', $request->query('status'));
         }
@@ -45,7 +45,6 @@ class ServiceInstanceController extends Controller
             ->gridSort([
                 'id' => 'id',
                 'domain' => 'domain',
-                'product' => 'catalogProduct.name',
                 'server' => 'server.name',
                 'status' => 'status',
             ])
@@ -57,7 +56,7 @@ class ServiceInstanceController extends Controller
 
     public function show(ServiceInstance $serviceInstance): View
     {
-        $serviceInstance->load(['customer', 'catalogProduct', 'server', 'serverGroup', 'subscriptionPeriods', 'usageRecords']);
+        $serviceInstance->load(['customer', 'server', 'serverGroup', 'subscriptionPeriods', 'usageRecords']);
         $provisioningEvents = ProvisioningEvent::where('service_instance_id', $serviceInstance->id)
             ->orderByDesc('created_at')->limit(20)->get();
 

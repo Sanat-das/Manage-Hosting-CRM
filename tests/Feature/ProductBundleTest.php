@@ -4,13 +4,10 @@ namespace Tests\Feature;
 
 use App\Models\Customer;
 use App\Models\Order;
-use App\Models\OrderItem;
-use App\Models\Permission;
 use App\Models\Product;
 use App\Models\ProductBundle;
 use App\Models\ProductPricing;
 use App\Models\ProductUpgradePath;
-use App\Models\Role;
 use App\Models\User;
 use App\Services\ProductBundlePricingService;
 use Illuminate\Database\QueryException;
@@ -79,19 +76,6 @@ class ProductBundleTest extends TestCase
         $this->addComponent($bundle, $b, 1, 'percent', 0, 1);
 
         return $bundle;
-    }
-
-    private function actingAsAdmin(): self
-    {
-        $user = User::factory()->create();
-
-        $adminRole = Role::firstOrCreate(['name' => 'admin'], ['label' => 'Administrator']);
-        $create = Permission::firstOrCreate(['name' => 'orders.create'], ['label' => 'Create Orders']);
-        $adminRole->permissions()->syncWithoutDetaching([$create->id]);
-
-        $user->assignRole('admin');
-
-        return $this->actingAs($user);
     }
 
     private function makeCustomerUser(): Customer
@@ -233,76 +217,6 @@ class ProductBundleTest extends TestCase
     }
 
     // ─────────────────────────── Cart expansion ───────────────────────────
-
-    public function test_admin_cart_expands_bundle_into_component_line_items_with_bundle_price(): void
-    {
-        $this->actingAsAdmin();
-
-        $bundle = $this->makeBundle();
-
-        $this->post(route('admin.cart.add'), ['product_id' => $bundle->id]);
-
-        $cart = session('cart');
-        $this->assertCount(2, $cart);
-        $this->assertSame(90.0, (float) $cart[0]['total']);
-        $this->assertSame(50.0, (float) $cart[1]['total']);
-        $this->assertSame(140.0, round(array_sum(array_column($cart, 'total')), 2));
-    }
-
-    public function test_admin_cart_bundle_place_order_creates_component_orders_at_bundle_price(): void
-    {
-        $this->actingAsAdmin();
-
-        $bundle = $this->makeBundle();
-        $customer = $this->makeCustomerUser();
-
-        session()->put('cart', [
-            [
-                'product_id' => $bundle->bundleChildren->first()->component_product_id,
-                'billing_cycle' => 'monthly',
-                'domain' => null,
-                'quantity' => 1,
-                'unit_price' => 90.0,
-                'total' => 90.0,
-                'bundle_id' => $bundle->id,
-            ],
-            [
-                'product_id' => $bundle->bundleChildren->last()->component_product_id,
-                'billing_cycle' => 'monthly',
-                'domain' => null,
-                'quantity' => 1,
-                'unit_price' => 50.0,
-                'total' => 50.0,
-                'bundle_id' => $bundle->id,
-            ],
-        ]);
-
-        $this->post(route('admin.cart.place-order'), ['customer_id' => $customer->id]);
-
-        $this->assertSame(2, Order::count());
-        $this->assertSame(2, OrderItem::count());
-        $this->assertSame(140.0, round((float) Order::sum('total'), 2));
-
-        $components = $bundle->bundleChildren->sortBy('sort_order')->pluck('component_product_id');
-        $this->assertEqualsCanonicalizing($components->all(), Order::pluck('product_id')->all());
-    }
-
-    public function test_admin_cart_non_bundle_purchase_is_unchanged(): void
-    {
-        $this->actingAsAdmin();
-
-        $product = $this->makeProduct('Shared Hosting Basic', false, 100);
-
-        $this->post(route('admin.cart.add'), ['product_id' => $product->id, 'billing_cycle' => 'monthly']);
-
-        $cart = session('cart');
-        $this->assertCount(1, $cart);
-        $this->assertSame($product->id, $cart[0]['product_id']);
-        $this->assertSame('monthly', $cart[0]['billing_cycle']);
-        $this->assertArrayNotHasKey('unit_price', $cart[0]);
-        $this->assertArrayNotHasKey('total', $cart[0]);
-        $this->assertArrayNotHasKey('bundle_id', $cart[0]);
-    }
 
     public function test_client_store_expands_bundle_into_component_line_items(): void
     {

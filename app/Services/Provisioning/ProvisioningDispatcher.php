@@ -832,11 +832,10 @@ class ProvisioningDispatcher
     /**
      * The service instance the module operates on, created on first use.
      *
-     * `catalog_product_id` stays null — order-born instances belong to the
-     * storefront `products` table, not the enterprise catalog (see the
-     * 2026_09_06_120000 migration). provisioning_config audit is handled by
-     * persistProvisioningSnapshot() in run() so this method only ensures the
-     * status flip does not wipe unrelated config keys.
+     * Order-born instances belong to the storefront `products` table.
+     * provisioning_config audit is handled by persistProvisioningSnapshot()
+     * in run() so this method only ensures the status flip does not wipe
+     * unrelated config keys.
      */
     private function serviceInstanceFor(Order $order): ServiceInstance
     {
@@ -852,7 +851,6 @@ class ProvisioningDispatcher
 
         return ServiceInstance::create([
             'customer_id' => $order->customer_id,
-            'catalog_product_id' => null,
             'order_id' => $order->id,
             // The module is handed a server to talk to; choosing it is core's
             // job (see ServerAllocator). Null when no server matches — the

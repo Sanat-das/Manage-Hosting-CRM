@@ -20,7 +20,6 @@
             ['label' => 'ID', 'sort' => 'id'],
             ['label' => 'Domain / Username', 'sort' => 'domain'],
             ['label' => 'Customer'],
-            ['label' => 'Product', 'sort' => 'product'],
             ['label' => 'Server', 'sort' => 'server'],
             ['label' => 'Provision'],
             ['label' => 'Status', 'sort' => 'status'],
@@ -32,13 +31,12 @@
                 <td><a href="{{ route('admin.service-instances.show', $inst) }}"><strong>#{{ $inst->id }}</strong></a></td>
                 <td>{{ $inst->domain ?? $inst->username ?? '—' }}</td>
                 <td>{{ $inst->customer?->full_name ?? '—' }}</td>
-                <td>{{ $inst->catalogProduct?->name ?? '—' }}</td>
                 <td>{{ $inst->server?->name ?? '—' }}</td>
                 <td><x-adminlte.partials.status-badge :status="$inst->provision_status" /></td>
                 <td><x-adminlte.partials.status-badge :status="$inst->status" /></td>
             </tr>
         @empty
-            <x-ui.empty-table-row colSpan="7" title="No service instances found." />
+            <x-ui.empty-table-row colSpan="6" title="No service instances found." />
         @endforelse
     </x-adminlte.partials.datatable>
 @stop

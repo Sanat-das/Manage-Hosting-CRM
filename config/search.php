@@ -1,6 +1,5 @@
 <?php
 
-use App\Services\Search\Providers\CatalogProductSearchProvider;
 use App\Services\Search\Providers\ContactSearchProvider;
 use App\Services\Search\Providers\CustomerSearchProvider;
 use App\Services\Search\Providers\DeviceSearchProvider;
@@ -46,7 +45,6 @@ return [
         SslCertificateSearchProvider::class,
         TicketSearchProvider::class,
         KnowledgeBaseSearchProvider::class,
-        CatalogProductSearchProvider::class,
         ProductSearchProvider::class,
         DeviceSearchProvider::class,
         InventoryItemSearchProvider::class,

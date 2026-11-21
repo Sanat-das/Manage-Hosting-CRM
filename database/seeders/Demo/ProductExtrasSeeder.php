@@ -16,7 +16,6 @@ use RuntimeException;
  *   product_upgrade_paths   3 upgrade path configs (enabled flag)
  *   product_bundles         0 — every bundle referenced a removed domain/SSL
  *                           demo product, so the block was deleted outright
- *   catalog_products        6 catalog entries (unique SKU)
  *   product_resources       12 resource allocations (2 per product × 6)
  *   product_quota_summary   7 quota summaries (1 per product)
  *
@@ -27,14 +26,6 @@ use RuntimeException;
  *                                      free/biennial/triennial)
  * product_upgrades.upgrade_type       upgrade|downgrade|both
  * product_bundles.discount_type       percent|fixed
- * catalog_products.product_type       shared_hosting|reseller|vps|dedicated|
- *                                     domain|addon|bundle|license|other
- * catalog_products.provisioning_method  manual|cpanel|plesk|directadmin|
- *                                        proxmox|vmware|hyperv|solusvm|
- *                                        virtualizor|docker|kubernetes|api|
- *                                        custom_script
- * catalog_products.billing_model      one_time|recurring|usage_based|tiered
- * catalog_products.status             active|inactive|retired
  *
  * SQLite compiles these into CHECK constraints, so any invented value aborts
  * the seed. Every literal below is copied verbatim from the migration list.
@@ -44,7 +35,6 @@ use RuntimeException;
  * - product_addons + product_upgrades: 2026_07_30_120010_create_product_tables.php
  * - product_upgrade_paths:             2026_08_14_000002_create_product_upgrade_paths_table.php
  * - product_bundles:                   2026_08_14_000001_create_product_bundles_table.php
- * - catalog_products:                  2026_07_30_120020_create_config_tables.php
  * - product_resources:                 2026_07_30_120090_create_resource_provisioning_tables.php
  * - product_quota_summary:             2026_07_30_120090_create_resource_provisioning_tables.php
  *
@@ -62,8 +52,6 @@ use RuntimeException;
  * - product_quota_summary has NO `id` and NO `created_at` — only product_id
  *   (UNIQUE/FK), summary_json, and updated_at. seedRow returns null for such
  *   tables; we do not chain off the return value.
- * - catalog_products uses SoftDeletes (deleted_at column); the trait writes
- *   through the query builder so soft-deleted rows are not an issue here.
  * - product_addons.product_id is nullable (global addons). The natural key
  *   (product_id, name) handles NULL via IS NULL in updateOrInsert.
  */
@@ -86,28 +74,14 @@ class ProductExtrasSeeder extends Seeder
         'Demo Legacy Hosting Pack',
     ];
 
-    /**
-     * Product types -> product_groups.slug, for resolving catalog_products.
-     *
-     * @var array<string, string>
-     */
-    private const CATALOG_CATEGORY_MAP = [
-        'shared_hosting' => 'shared-hosting',
-        'reseller' => 'reseller-hosting',
-        'vps' => 'vps-hosting',
-        'dedicated' => 'dedicated-servers',
-    ];
-
     public function run(): void
     {
         $products = $this->resolveProducts();
         $resourceTypes = $this->resolveResourceTypes();
-        $groups = $this->resolveGroups();
 
         $this->seedAddons($products);
         $this->seedUpgrades($products);
         $this->seedUpgradePaths($products);
-        $this->seedCatalogProducts($groups);
         $this->seedProductResources($products, $resourceTypes);
         $this->seedQuotaSummaries($products);
 
@@ -145,14 +119,6 @@ class ProductExtrasSeeder extends Seeder
     private function resolveResourceTypes(): array
     {
         return DB::table('resource_types')->pluck('id', 'slug')->all();
-    }
-
-    /**
-     * @return array<string, int> slug => product_groups.id
-     */
-    private function resolveGroups(): array
-    {
-        return DB::table('product_groups')->pluck('id', 'slug')->all();
     }
 
     // ------------------------------------------------------------------
@@ -307,40 +273,6 @@ class ProductExtrasSeeder extends Seeder
     }
 
     // ------------------------------------------------------------------
-    // catalog_products (>= 6)
-    // ------------------------------------------------------------------
-
-    /**
-     * @param  array<string, int>  $groups  slug => product_groups.id
-     */
-    private function seedCatalogProducts(array $groups): void
-    {
-        $entries = [
-            ['sku' => 'DEMO-CAT-001', 'name' => 'Demo Starter Shared Hosting', 'product_type' => 'shared_hosting', 'provisioning_method' => 'cpanel', 'billing_model' => 'recurring', 'require_domain' => true, 'show_in_order' => true, 'only_admin' => false, 'sort_order' => 10, 'status' => 'active', 'version' => 1, 'category_slug' => 'shared-hosting'],
-            ['sku' => 'DEMO-CAT-002', 'name' => 'Demo Business Shared Hosting', 'product_type' => 'shared_hosting', 'provisioning_method' => 'cpanel', 'billing_model' => 'recurring', 'require_domain' => true, 'show_in_order' => true, 'only_admin' => false, 'sort_order' => 20, 'status' => 'active', 'version' => 1, 'category_slug' => 'shared-hosting'],
-            ['sku' => 'DEMO-CAT-003', 'name' => 'Demo Reseller Bronze', 'product_type' => 'reseller', 'provisioning_method' => 'cpanel', 'billing_model' => 'recurring', 'require_domain' => true, 'show_in_order' => true, 'only_admin' => false, 'sort_order' => 30, 'status' => 'active', 'version' => 1, 'category_slug' => 'reseller-hosting'],
-            ['sku' => 'DEMO-CAT-004', 'name' => 'Demo Cloud VPS 2GB', 'product_type' => 'vps', 'provisioning_method' => 'virtualizor', 'billing_model' => 'recurring', 'require_domain' => false, 'show_in_order' => true, 'only_admin' => false, 'sort_order' => 40, 'status' => 'active', 'version' => 1, 'category_slug' => 'vps-hosting'],
-            ['sku' => 'DEMO-CAT-005', 'name' => 'Demo Cloud VPS 8GB', 'product_type' => 'vps', 'provisioning_method' => 'virtualizor', 'billing_model' => 'recurring', 'require_domain' => false, 'show_in_order' => true, 'only_admin' => false, 'sort_order' => 50, 'status' => 'active', 'version' => 1, 'category_slug' => 'vps-hosting'],
-            ['sku' => 'DEMO-CAT-006', 'name' => 'Demo Dedicated E3 Server', 'product_type' => 'dedicated', 'provisioning_method' => 'custom_script', 'billing_model' => 'recurring', 'require_domain' => false, 'show_in_order' => true, 'only_admin' => false, 'sort_order' => 60, 'status' => 'active', 'version' => 1, 'category_slug' => 'dedicated-servers'],
-        ];
-
-        $rows = [];
-
-        foreach ($entries as $entry) {
-            $slug = $entry['category_slug'];
-            unset($entry['category_slug']);
-
-            $rows[] = $entry + [
-                'category_id' => $groups[$slug] ?? null,
-                'description' => null,
-                'provisioning_config' => null,
-            ];
-        }
-
-        $this->seedRows('catalog_products', $rows);
-    }
-
-    // ------------------------------------------------------------------
     // product_resources (>= 12) — 2 per product × 6 products
     // ------------------------------------------------------------------
 
@@ -447,7 +379,6 @@ class ProductExtrasSeeder extends Seeder
             'product_upgrades',
             'product_upgrade_paths',
             'product_bundles',
-            'catalog_products',
             'product_resources',
             'product_quota_summary',
         ];

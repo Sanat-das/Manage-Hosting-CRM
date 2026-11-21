@@ -520,7 +520,6 @@ class ManualProvisioner
                 'domain' => $hostingAccount->domain,
             ],
             [
-                'catalog_product_id' => null,
                 'service_tag' => 'HOST-'.$hostingAccount->id,
                 'username' => $hostingAccount->username ?: 'host'.$hostingAccount->id,
                 'provisioning_method' => $slug,

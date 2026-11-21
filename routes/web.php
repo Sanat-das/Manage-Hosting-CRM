@@ -25,7 +25,7 @@ Route::middleware(['registration.enabled', 'throttle:register'])->group(function
 });
 
 // AdminLTE scaffold routes
-Route::middleware(['web', 'auth'])->prefix('admin')->name('adminlte.')->group(function () {
+Route::middleware(['web', 'auth', 'admin', 'throttle:admin', 'permission:manage-roles'])->prefix('admin')->name('adminlte.')->group(function () {
     // [adminlte:roles]
     Route::get('roles', [RoleController::class, 'index'])->name('roles.index');
     Route::get('roles/create', [RoleController::class, 'create'])->name('roles.create');

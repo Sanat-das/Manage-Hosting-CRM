@@ -106,7 +106,7 @@ The composer can attach structured references to a message so a conversation can
   - Whitelist is `Product`, `Customer`, `CustomerContact`, `Ticket`. Other types return 422, unknown ids return 404, no N+1 on the render path.
 - Attach: `POST /admin/chat/messages/{message}/entity-links` with `linkable_type` and `linkable_id`. Stored as a row in `message_entity_links`. `ChatMessage::entityLinks` is a `morphTo` to `linkable`. Eager loading is required on fetch to keep the message list constant query.
 - `NewChatMessage` broadcast includes the rendered cards so listeners get them without a follow up fetch.
-- Timeline on entity pages: `products/show.blade.php`, `customers/show.blade.php`, `tickets/show.blade.php` render up to 5 recently linked messages with a click through to the conversation. Deviation 10 notes the actual reachable surfaces are `Product` (not `CatalogProduct`), `Customer`, and `Ticket`, because `CatalogProduct` is a different model with no link and `CustomerContact` has no show view. Links still resolve, cards still render via `MessageEntityLink::url()`.
+- Timeline on entity pages: `products/show.blade.php`, `customers/show.blade.php`, `tickets/show.blade.php` render up to 5 recently linked messages with a click through to the conversation. Deviation 10 notes the actual reachable surfaces are `Product`, `Customer`, and `Ticket`, because `CustomerContact` has no show view. Links still resolve, cards still render via `MessageEntityLink::url()`.
 - Working tree note (deviation 12): the three `@include('admin.chat.timeline')` lines at `customers/show.blade.php:655`, `tickets/show.blade.php:957`, and `products/show.blade.php:289` are present in the working tree but are not yet committed, because the owning agent session still holds uncommitted work in those files. Until those lines land, the timeline is dead code. Todo 21 or the owning session commits them.
 
 ---
@@ -476,7 +476,7 @@ These 14 items were recorded during reconciliation on 2026-09-12. Final verifica
 
 9. **Archived conversations are searchable** by anyone entitled to read them, consistent with archive meaning freeze not delete. Hits carry `conversation_archived: true`.
 
-10. **`catalog_products/show.blade.php` is not a timeline surface and `CustomerContact` has no show view.** `MessageEntityLink::LINKABLE_TYPES` whitelists `Product`, `CatalogProduct` is a different model, so that page can never hold a link. Contacts surface on the customer page, matching `MessageEntityLink::url()` for three usable surfaces, not five.
+10. **`CustomerContact` has no show view, so only three entity pages are timeline surfaces.** `MessageEntityLink::LINKABLE_TYPES` whitelists `Product`, `Customer`, `CustomerContact`, and `Ticket`; contacts surface on the customer page, matching `MessageEntityLink::url()` for three usable surfaces, not five.
 
 11. **The audit table is `audit_log`, not `activity_log`.** `audit_log` carries `entity_type` and `entity_id` these events need, `activity_log` is rendered back to customers on the client dashboard where internal chat admin does not belong.
 

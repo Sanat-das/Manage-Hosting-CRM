@@ -156,7 +156,6 @@ class DummyDataSeederTest extends TestCase
      * Column names below were verified against the real migrations. The
      * following pairs from the original plan were DROPPED because the column
      * does not exist in the schema (verified against database/migrations/):
-     *   - catalog_products.product_id        (no product_id column)
      *   - provisioning_events.adapter_id     (adapter lives in payload JSON)
      *   - service_instances.hosting_account_id (no such column)
      *   - subscription_changes.subscription_id (no such column)
@@ -192,8 +191,6 @@ class DummyDataSeederTest extends TestCase
             // Services
             ['hosting_accounts', 'customer_id', 'customers', 'id', false],
             ['hosting_accounts', 'server_id', 'servers', 'id', 'nullable'],
-            // Real column is catalog_product_id (FK to catalog_products).
-            ['service_instances', 'catalog_product_id', 'catalog_products', 'id', false],
             // Real column is service_id (FK to service_instances).
             ['subscription_periods', 'service_id', 'service_instances', 'id', false],
             // Real column is service_id (FK to service_instances).

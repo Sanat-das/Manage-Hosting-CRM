@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
-use App\Models\CatalogProduct;
 use App\Models\Customer;
 use App\Models\CustomerContact;
 use App\Models\HostingAccount;
@@ -62,7 +61,6 @@ class GlobalSearchServiceTest extends TestCase
         'payments.view',
         'tickets.view',
         'kb.view',
-        'catalog-products.view',
         'products.view',
         'users.view',
         'devices.view',
@@ -291,11 +289,11 @@ class GlobalSearchServiceTest extends TestCase
     // --- registry-wide query budget (FU-2) --------------------------------
 
     /**
-     * The real 20-provider registry, zero matching rows: one data query per
+     * The real 19-provider registry, zero matching rows: one data query per
      * admitted provider + one permission pluck, and nothing else.
      *
      * The ceiling is MEASURED off DB::getQueryLog(), never assumed. Empty
-     * result sets fire no eager load, so 20 + 1 = 21 is the whole budget. A
+     * result sets fire no eager load, so 19 + 1 = 20 is the whole budget. A
      * per-provider permission check would add 1-2 queries per provider and
      * blow this ceiling, which is the regression this test exists to catch.
      */
@@ -307,7 +305,7 @@ class GlobalSearchServiceTest extends TestCase
 
         // A shrinking registry must fail loudly here rather than quietly
         // lowering the budget the assertions below measure.
-        $this->assertCount(20, $service->providers());
+        $this->assertCount(19, $service->providers());
 
         DB::enableQueryLog();
         $groups = $service->groups($service->permissionNames($user), 'zzz-no-match-zzz', 5);
@@ -319,9 +317,9 @@ class GlobalSearchServiceTest extends TestCase
         $sql = implode(' | ', array_column($queries, 'query'));
 
         $this->assertLessThanOrEqual(
-            21,
+            20,
             count($queries),
-            'Query budget exceeded (20 provider queries + 1 permission pluck): '.$sql,
+            'Query budget exceeded (19 provider queries + 1 permission pluck): '.$sql,
         );
 
         $this->assertStringNotContainsString('count(*)', strtolower($sql));
@@ -330,13 +328,13 @@ class GlobalSearchServiceTest extends TestCase
     /**
      * The same registry with rows in two providers, both of which eager load.
      *
-     * Budget: 18 zero-match providers x 1 + customer data 1 + `with('user')` 1
-     * + contact data 1 + `with('customer')` 1 + permission pluck 1 = 23.
+     * Budget: 17 zero-match providers x 1 + customer data 1 + `with('user')` 1
+     * + contact data 1 + `with('customer')` 1 + permission pluck 1 = 22.
      *
      * Non-vacuity (why the rows matter): a dropped eager load becomes one lazy
      * query PER ROW inside toResult(), so 3 customers would cost 3 instead of 1
-     * (25 total) and 2 contacts would cost 2 instead of 1 (24 total) - both
-     * above the 23 ceiling. With a single row the count would be identical to
+     * (24 total) and 2 contacts would cost 2 instead of 1 (23 total) - both
+     * above the 22 ceiling. With a single row the count would be identical to
      * the eager-load budget and the assertion could not fail.
      */
     public function test_the_full_registry_stays_within_the_query_budget_with_rows_and_eager_loads(): void
@@ -351,7 +349,7 @@ class GlobalSearchServiceTest extends TestCase
 
         $service = new GlobalSearchService;
 
-        $this->assertCount(20, $service->providers());
+        $this->assertCount(19, $service->providers());
 
         DB::enableQueryLog();
         $groups = $service->groups($service->permissionNames($user), 'acme', 5);
@@ -364,9 +362,9 @@ class GlobalSearchServiceTest extends TestCase
         $sql = implode(' | ', array_column($queries, 'query'));
 
         $this->assertLessThanOrEqual(
-            23,
+            22,
             count($queries),
-            'Query budget exceeded (18 zero-match providers + 2 data queries + 2 eager loads + 1 pluck): '.$sql,
+            'Query budget exceeded (17 zero-match providers + 2 data queries + 2 eager loads + 1 pluck): '.$sql,
         );
 
         $this->assertStringNotContainsString('count(*)', strtolower($sql));
@@ -416,10 +414,10 @@ class GlobalSearchServiceTest extends TestCase
         $this->makeCustomer('acme-client@example.com', 'Acme Hosting');
         $this->makeServer('Acme Hyper-V', '10.0.0.9');
 
-        // A catalog-products manager cannot search customers...
-        $catalogManager = $this->panelUserWith('catalog-products.manage');
+        // A domains manager cannot search customers...
+        $domainsManager = $this->panelUserWith('domains.manage');
         $customers = new GlobalSearchService([CustomerSearchProvider::class]);
-        $this->assertSame([], $customers->groups($customers->permissionNames($catalogManager), 'acme', 5));
+        $this->assertSame([], $customers->groups($customers->permissionNames($domainsManager), 'acme', 5));
 
         // ...and a customers viewer gains no hosting group from the expansion.
         $hostingViewer = $this->panelUserWith('customers.view');
@@ -487,15 +485,9 @@ class GlobalSearchServiceTest extends TestCase
     private function makeServiceInstance(string $serviceTag, string $domain): ServiceInstance
     {
         $customer = $this->makeCustomer($serviceTag.'@example.com', 'Acme Hosting');
-        $product = CatalogProduct::create([
-            'name' => 'Basic Shared Hosting',
-            'sku' => 'HOST-'.strtoupper($serviceTag),
-            'status' => 'active',
-        ]);
 
         return ServiceInstance::create([
             'customer_id' => $customer->id,
-            'catalog_product_id' => $product->id,
             'service_tag' => $serviceTag,
             'service_type' => 'shared',
             'username' => 'acme',

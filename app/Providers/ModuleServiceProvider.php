@@ -43,7 +43,7 @@ class ModuleServiceProvider extends ServiceProvider
             $manager->boot();
 
             $menu = config('adminlte.menu', []);
-            config(['adminlte.menu' => array_merge($menu, $manager->sidebarItems())]);
+            config(['adminlte.menu' => $this->mergeSidebarItems($menu, $manager->sidebarItems())]);
 
             // Module routes load after every core provider has booted and
             // before request dispatch.
@@ -60,6 +60,37 @@ class ModuleServiceProvider extends ServiceProvider
                 error_log('[modules] bootstrap failed: '.$e->getMessage());
             }
         }
+    }
+
+    /**
+     * Merge module-provided items into the adminlte menu. Module links belong
+     * to the panel, so they go before the top-level CLIENT PORTAL header
+     * rather than after it; without that header they are appended. An empty
+     * item list leaves the menu untouched.
+     *
+     * @param  array<int|string, mixed>  $menu
+     * @param  array<int, array<string, mixed>>  $items
+     * @return array<int|string, mixed>
+     */
+    public function mergeSidebarItems(array $menu, array $items): array
+    {
+        if ($items === []) {
+            return $menu;
+        }
+
+        $position = 0;
+        foreach ($menu as $entry) {
+            if (is_array($entry) && ($entry['header'] ?? null) === 'CLIENT PORTAL') {
+                return array_merge(
+                    array_slice($menu, 0, $position, true),
+                    $items,
+                    array_slice($menu, $position, null, true)
+                );
+            }
+            $position++;
+        }
+
+        return array_merge($menu, $items);
     }
 
     /**

@@ -39,7 +39,7 @@ class FullRouteCrawlerTest extends DuskTestCase
 
     /**
      * The crawler resolves {param} segments against real rows and visits every
-     * GET route, so it needs the full canonical data set (users, RBAC, catalog,
+     * GET route, so it needs the full canonical data set (users, RBAC, products,
      * orders, invoices, hosting, tickets, KB, ...). Migrate + seed once per
      * process; never roll back per test, because Dusk serves the app from a
      * long-lived process holding the sqlite connection open.

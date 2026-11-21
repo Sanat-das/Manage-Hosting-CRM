@@ -41,7 +41,6 @@ class AdminSidebarSmokeTest extends DuskTestCase
         ['/admin/datacenters', 'Datacenters'],
         ['/admin/ip-subnets', 'IP Subnets'],
         ['/admin/licenses', 'Licenses'],
-        ['/admin/cart', 'Shopping Cart'],
         ['/admin/search', 'Search Results'],
     ];
 

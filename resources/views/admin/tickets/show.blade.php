@@ -725,16 +725,12 @@
                                     'pending','provisioning' => 'info',
                                     default => 'secondary',
                                 };
-                                $productName = $svc->catalogProduct?->name ?? 'Service #'.$svc->id;
-                                $categoryName = $svc->catalogProduct?->category?->name;
+                                $productName = 'Service #'.$svc->id;
                             @endphp
                             <div class="list-group-item px-2 py-2">
                                 <div class="d-flex align-items-start justify-content-between gap-2">
                                     <div class="flex-grow-1 min-w-0">
                                         <div class="fw-medium small text-truncate" title="{{ $productName }}">{{ $productName }}</div>
-                                        @if($categoryName)
-                                            <div class="text-muted" style="font-size:0.7rem;">{{ $categoryName }}</div>
-                                        @endif
                                         @if($svc->domain)
                                             <div class="text-muted small text-truncate" title="{{ $svc->domain }}"><i class="bi bi-globe me-1"></i>{{ $svc->domain }}</div>
                                         @endif

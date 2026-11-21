@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
-use App\Models\CatalogProduct;
 use App\Models\Customer;
+use App\Models\Product;
 use App\Models\Ticket;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -177,9 +177,8 @@ class GlobalSearchTypeaheadTest extends TestCase
     {
         $this->makeCustomer('acme-client@example.com', 'Acme Hosting');
         $this->makeTicket('TKT-ACME-1', 'Acme is down');
-        CatalogProduct::create([
+        Product::create([
             'name' => 'Acme Hosting Plan',
-            'sku' => 'ACME-HOST-1',
             'status' => 'active',
         ]);
 

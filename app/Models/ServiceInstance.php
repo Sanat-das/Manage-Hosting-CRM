@@ -9,7 +9,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOneThrough;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
-#[Fillable(['customer_id', 'catalog_product_id', 'order_id', 'server_id', 'service_tag', 'username', 'domain', 'password_hash', 'provisioning_method', 'provisioning_config', 'provisioning_adapter_id', 'external_id', 'status', 'provision_status', 'suspension_reason', 'suspended_at', 'terminated_at', 'next_billing_date'])]
+#[Fillable(['customer_id', 'order_id', 'server_id', 'service_tag', 'username', 'domain', 'password_hash', 'provisioning_method', 'provisioning_config', 'provisioning_adapter_id', 'external_id', 'status', 'provision_status', 'suspension_reason', 'suspended_at', 'terminated_at', 'next_billing_date'])]
 class ServiceInstance extends Model
 {
     /**
@@ -39,11 +39,6 @@ class ServiceInstance extends Model
     public function customer(): BelongsTo
     {
         return $this->belongsTo(Customer::class);
-    }
-
-    public function catalogProduct(): BelongsTo
-    {
-        return $this->belongsTo(CatalogProduct::class, 'catalog_product_id');
     }
 
     public function order(): BelongsTo

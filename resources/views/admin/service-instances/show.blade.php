@@ -18,7 +18,6 @@
                         <tr><th class="text-muted">Domain</th><td>{{ $serviceInstance->domain ?? '—' }}</td></tr>
                         <tr><th class="text-muted">Username</th><td>{{ $serviceInstance->username ?? '—' }}</td></tr>
                         <tr><th class="text-muted">Customer</th><td>{{ $serviceInstance->customer?->full_name ?? '—' }}</td></tr>
-                        <tr><th class="text-muted">Product</th><td>{{ $serviceInstance->catalogProduct?->name ?? '—' }}</td></tr>
                         <tr><th class="text-muted">Server</th><td>{{ $serviceInstance->server?->name ?? '—' }}</td></tr>
                         <tr><th class="text-muted">Server Group</th><td>{{ $serviceInstance->serverGroup?->name ?? '—' }}</td></tr>
                         <tr><th class="text-muted">Provision Status</th><td><x-adminlte.partials.status-badge :status="$serviceInstance->provision_status" /></td></tr>

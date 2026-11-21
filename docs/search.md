@@ -17,7 +17,7 @@ One search box, two surfaces, one registry:
 
 Both surfaces call the same service, `App\Services\Search\GlobalSearchService`, which owns a registry of per-entity providers listed in `config/search.php`. Each provider declares the permission that guards its rows. The service resolves the viewer's permission set once per request and skips any provider the viewer may not read, so a group the viewer is not allowed to see is never built.
 
-The curated set is 17 providers:
+The curated set is 16 providers:
 
 | # | Provider | `key()` | Matched fields | Guard permission | Show route | "View all" route |
 |---|---|---|---|---|---|---|
@@ -36,8 +36,7 @@ The curated set is 17 providers:
 | 13 | `SslCertificateSearchProvider` | `ssl` | `domain_name`, `provider` | `hosting.view` (no `ssl.*` permission exists) | `admin.ssl.show` | `admin.ssl.index` |
 | 14 | `TicketSearchProvider` | `tickets` | `ticket_no`, `subject` | `tickets.view` | `admin.tickets.show` | `admin.tickets.index` |
 | 15 | `KnowledgeBaseSearchProvider` | `kb` | `title`, `content` (the subtitle is the category only) | `kb.view` | `admin.kb.show` | `admin.kb.index` |
-| 16 | `CatalogProductSearchProvider` | `catalog-products` | `name`, `sku` | `catalog-products.view` | `admin.catalog-products.show` | `admin.catalog-products.index` |
-| 17 | `ProductSearchProvider` | `products` | `name` | `products.view` | `admin.products.show` | `admin.products.index` |
+| 16 | `ProductSearchProvider` | `products` | `name` | `products.view` | `admin.products.show` | `admin.products.index` |
 
 Providers outside this set (infrastructure, IPAM/DNS, audit and email logs, licenses, settings, modules, cron tasks) are deliberately out of scope today. Each is one provider to add later, following section 9.
 
@@ -99,9 +98,9 @@ if (! in_array($provider->permission(), $permissionNames, true)) {
 }
 ```
 
-The set comes from `GlobalSearchService::permissionNames(User $user)`, which plucks all permission names in **one query** (pivot-assigned roles plus the role named by the legacy `users.role` column). It is called once per request by the controller, never per provider and never per row. `User::hasPermission()` costs one to two queries per call, so checking it inside the provider loop would add 17 to 34 queries per keystroke. Providers therefore never call `hasPermission()`; a provider that needs to vary its query by permission reads the array it is handed (section 5).
+The set comes from `GlobalSearchService::permissionNames(User $user)`, which plucks all permission names in **one query** (pivot-assigned roles plus the role named by the legacy `users.role` column). It is called once per request by the controller, never per provider and never per row. `User::hasPermission()` costs one to two queries per call, so checking it inside the provider loop would add 16 to 32 queries per keystroke. Providers therefore never call `hasPermission()`; a provider that needs to vary its query by permission reads the array it is handed (section 5).
 
-`x.manage` implies `x.view`: `PermissionMiddleware` admits a `.view`-gated route when the user holds the `.manage` twin (section 3.2). The search set mirrors that rule — `permissionNames()` expands every held `x.manage` name into its `x.view` twin (`withImpliedViewPermissions()`) — so a custom role holding only `service-instances.manage` (or `hosting.manage`, `domains.manage`, `catalog-products.manage`) gets the groups whose screens the app already admits it to, instead of opening the screen and finding nothing. The expansion is pure string work on the plucked set: the resolution stays **one query**, it never widens `.view` → `.manage`, and exact membership still decides everything else. No shipped role holds a `.manage` permission by default (`admin` excepted), so this affects custom roles created in the Roles UI.
+`x.manage` implies `x.view`: `PermissionMiddleware` admits a `.view`-gated route when the user holds the `.manage` twin (section 3.2). The search set mirrors that rule — `permissionNames()` expands every held `x.manage` name into its `x.view` twin (`withImpliedViewPermissions()`) — so a custom role holding only `service-instances.manage` (or `hosting.manage`, `domains.manage`) gets the groups whose screens the app already admits it to, instead of opening the screen and finding nothing. The expansion is pure string work on the plucked set: the resolution stays **one query**, it never widens `.view` → `.manage`, and exact membership still decides everything else. No shipped role holds a `.manage` permission by default (`admin` excepted), so this affects custom roles created in the Roles UI.
 
 ### 3.2 The route gate
 
