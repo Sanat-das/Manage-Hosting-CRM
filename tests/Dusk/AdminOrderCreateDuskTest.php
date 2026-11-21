@@ -346,7 +346,7 @@ class AdminOrderCreateDuskTest extends DuskTestCase
             // the value and dispatch change explicitly.
             $browser->script("
                 const productSelect = document.querySelector('#order-lines .order-line:nth-of-type(1) .line-product');
-                productSelect.value = '" . $vpsId . "';
+                productSelect.value = '".$vpsId."';
                 productSelect.dispatchEvent(new Event('change', { bubbles: true }));
             ");
 
@@ -372,7 +372,7 @@ class AdminOrderCreateDuskTest extends DuskTestCase
                 ->waitUntil('document.querySelectorAll("#order-lines .order-line").length === 2')
                 ->script("
                     const backupSelect = document.querySelector('#order-lines .order-line:nth-of-type(2) .line-product');
-                    backupSelect.value = '" . $backupId . "';
+                    backupSelect.value = '".$backupId."';
                     backupSelect.dispatchEvent(new Event('change', { bubbles: true }));
                 ");
 
@@ -413,7 +413,7 @@ class AdminOrderCreateDuskTest extends DuskTestCase
                 ->waitFor('#order-lines')
                 ->script("
                     const productSelect = document.querySelector('#order-lines .order-line:nth-of-type(1) .line-product');
-                    productSelect.value = '" . $vpsId . "';
+                    productSelect.value = '".$vpsId."';
                     productSelect.dispatchEvent(new Event('change', { bubbles: true }));
                 ");
 
@@ -423,7 +423,7 @@ class AdminOrderCreateDuskTest extends DuskTestCase
                 ->assertDontSee('Mumbai, Delhi') // not the whole group
                 ->assertDontSee('Delhi') // a value the order does not get is not advertised
                 ->assertDontSee('Mumbai (+₹100.00') // no modifier label on informational values
-                ->assertMissing('select[name="lines[0][options][' . $infoLinkId . ']"]')
+                ->assertMissing('select[name="lines[0][options]['.$infoLinkId.']"]')
                 // The Datacenter values carry +₹100/+₹200 modifiers, yet the
                 // preview stays at the base price (199 + 18% GST = 234.82).
                 ->waitUntil('document.getElementById("gst-total").textContent === "₹234.82"')
@@ -445,7 +445,7 @@ class AdminOrderCreateDuskTest extends DuskTestCase
                 ->waitFor('#order-lines')
                 ->script("
                     const productSelect = document.querySelector('#order-lines .order-line:nth-of-type(1) .line-product');
-                    productSelect.value = '" . $vpsId . "';
+                    productSelect.value = '".$vpsId."';
                     productSelect.dispatchEvent(new Event('change', { bubbles: true }));
                 ");
 
@@ -486,7 +486,7 @@ class AdminOrderCreateDuskTest extends DuskTestCase
                 ->waitFor('#order-lines')
                 ->script("
                     const productSelect = document.querySelector('#order-lines .order-line:nth-of-type(1) .line-product');
-                    productSelect.value = '" . $vpsId . "';
+                    productSelect.value = '".$vpsId."';
                     productSelect.dispatchEvent(new Event('change', { bubbles: true }));
                 ");
 
@@ -497,7 +497,7 @@ class AdminOrderCreateDuskTest extends DuskTestCase
             // that fails the catalog-price guard to force a validation-error
             // re-render.
             $browser->script("
-                const boxes = document.querySelectorAll('#order-lines .line-options input[name=\"lines[0][options][" . $capLinkId . "][]\"]');
+                const boxes = document.querySelectorAll('#order-lines .line-options input[name=\"lines[0][options][".$capLinkId."][]\"]');
                 boxes[0].checked = true; boxes[1].checked = true;
                 boxes[0].dispatchEvent(new Event('change', { bubbles: true }));
                 boxes[1].dispatchEvent(new Event('change', { bubbles: true }));
@@ -515,7 +515,7 @@ class AdminOrderCreateDuskTest extends DuskTestCase
             // The selections survive the round-trip (pre-checked) and the cap
             // applies to them immediately: Backup + SSL restored, DDoS blocked.
             $state = $browser->script("
-                return Array.from(document.querySelectorAll('#order-lines .line-options input[name=\"lines[0][options][" . $capLinkId . "][]\"]')).map(function (cb) {
+                return Array.from(document.querySelectorAll('#order-lines .line-options input[name=\"lines[0][options][".$capLinkId."][]\"]')).map(function (cb) {
                     return cb.value + '=' + cb.checked + '=' + cb.disabled;
                 });
             ");
@@ -528,12 +528,12 @@ class AdminOrderCreateDuskTest extends DuskTestCase
 
             // Unchecking one drops below the cap and re-enables the third.
             $browser->script("
-                const boxes = document.querySelectorAll('#order-lines .line-options input[name=\"lines[0][options][" . $capLinkId . "][]\"]');
+                const boxes = document.querySelectorAll('#order-lines .line-options input[name=\"lines[0][options][".$capLinkId."][]\"]');
                 boxes[0].checked = false;
                 boxes[0].dispatchEvent(new Event('change', { bubbles: true }));
             ");
             $this->assertFalse(
-                $browser->script("return document.querySelectorAll('#order-lines .line-options input[name=\"lines[0][options][" . $capLinkId . "][]\"]')[2].disabled;")[0],
+                $browser->script("return document.querySelectorAll('#order-lines .line-options input[name=\"lines[0][options][".$capLinkId."][]\"]')[2].disabled;")[0],
                 'Dropping below the cap re-enables the blocked option.'
             );
         });
@@ -552,29 +552,30 @@ class AdminOrderCreateDuskTest extends DuskTestCase
                 ->waitFor('#order-lines')
                 ->script("
                     const productSelect = document.querySelector('#order-lines .order-line:nth-of-type(1) .line-product');
-                    productSelect.value = '" . $vpsId . "';
+                    productSelect.value = '".$vpsId."';
                     productSelect.dispatchEvent(new Event('change', { bubbles: true }));
                 ");
 
             // The product's configurable option control renders; pick a value.
             $browser->waitUntil('document.querySelector("#order-lines .line-options select") !== null')
                 ->script("
-                    const optionSelect = document.querySelector('#order-lines .line-options select[name=\"lines[0][options][" . $linkId . "]\"]');
+                    const optionSelect = document.querySelector('#order-lines .line-options select[name=\"lines[0][options][".$linkId."]\"]');
                     optionSelect.value = 'Priority Support';
                     optionSelect.dispatchEvent(new Event('change', { bubbles: true }));
                     // The required Extras checkbox group needs at least one pick.
-                    const extras = document.querySelectorAll('#order-lines .line-options input[name=\"lines[0][options][" . $capLinkId . "][]\"]');
+                    const extras = document.querySelectorAll('#order-lines .line-options input[name=\"lines[0][options][".$capLinkId."][]\"]');
                     extras[0].checked = true;
                     extras[0].dispatchEvent(new Event('change', { bubbles: true }));
                 ");
 
             $browser->within('#order-lines .order-line:nth-of-type(1)', function (Browser $line) use ($linkId) {
-                $line->assertSelected('select[name="lines[0][options][' . $linkId . ']"]', 'Priority Support');
+                $line->assertSelected('select[name="lines[0][options]['.$linkId.']"]', 'Priority Support');
             });
 
-            // The option carries its price info and moves the total: base
-            // ₹199.00 + Priority Support (+₹149.00/mo) = ₹348.00, GST 18% =
-            // ₹62.64 → ₹410.64.
+            // Preview tracks editable options: base ₹199 + Priority Support
+            // (+₹149/mo) = ₹348 (GST ₹62.64 → ₹410.64), skipping the non-editable
+            // Datacenter link. The persisted order also charges that link's +₹100
+            // Mumbai default, so the total is 199 + 149 + 100 = 448.00.
             $browser->assertSeeIn('.line-adjustment', 'Options +₹149.00 / mo')
                 ->waitUntil('document.getElementById("gst-total").textContent === "₹410.64"')
                 ->assertSeeIn('#gst-subtotal', '₹348.00');
@@ -603,10 +604,10 @@ class AdminOrderCreateDuskTest extends DuskTestCase
             ->firstOrFail();
 
         $this->assertSame($this->vps->id, $order->product_id);
-        $this->assertSame('348.00', (string) $order->total, 'The option modifier is charged: 199 + 149.');
+        $this->assertSame('448.00', (string) $order->total, 'The option modifier and non-editable Datacenter default are charged: 199 + 149 + 100.');
 
         $item = $order->items()->firstOrFail();
-        $this->assertSame('348.00', (string) $item->unit_price);
+        $this->assertSame('448.00', (string) $item->unit_price);
         $this->assertSame('Priority Support', $item->config_options['options'][0]['selected']);
 
         // The inline customer row exists.

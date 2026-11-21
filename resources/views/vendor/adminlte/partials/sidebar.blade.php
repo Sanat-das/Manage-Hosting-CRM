@@ -67,7 +67,7 @@
                     @include('adminlte::partials.menu-item', ['item' => $item])
                 @endforeach
                 @if (empty($items))
-                    <p class="px-3 py-2 text-body-secondary small">No navigation items available.</p>
+                    <li class="nav-item px-3 py-2 text-body-secondary small">No navigation items available.</li>
                 @endif
             </ul>
 

@@ -308,7 +308,7 @@ final class AdminDashboardWidgetsTest extends TestCase
 
         $this->assertTrue($viewer->hasPermission('dashboard.view'), 'precondition: the viewer must reach the dashboard');
 
-        foreach (['reports.view', 'tickets.view', 'cron.view', 'hosting.view'] as $absent) {
+        foreach (['reports.view', 'tickets.view', 'cron.view', 'hosting.view', 'customers.view', 'invoices.view', 'activity.view'] as $absent) {
             $this->assertFalse($viewer->hasPermission($absent), "precondition: the viewer must not hold [{$absent}]");
         }
 
@@ -325,7 +325,8 @@ final class AdminDashboardWidgetsTest extends TestCase
 
         // Scoped to the grid on purpose: the rest of the page renders its own
         // "View all" links outside the widgets (the Total customers small box,
-        // for one), so a page-wide absence check would be false by construction.
+        // gated by customers.view, for one), so a page-wide absence check would
+        // be false by construction.
         $grid = $this->widgetGridSlice($html);
 
         foreach ([
@@ -343,6 +344,99 @@ final class AdminDashboardWidgetsTest extends TestCase
         }
 
         $this->assertStringNotContainsString('View all', $grid, 'no widget may render a View all link for this viewer');
+    }
+
+    public function test_dashboard_links_hide_when_the_viewer_lacks_the_target_permissions(): void
+    {
+        // Same strip as the widget-toggle test: the support role is reduced to
+        // exactly dashboard.view, so every link gated by another permission
+        // must disappear from the rendered page.
+        Role::where('name', 'support')->firstOrFail()->permissions()->sync(
+            [Permission::where('name', 'dashboard.view')->firstOrFail()->id]
+        );
+
+        $viewer = User::factory()->create(['role' => 'support']);
+
+        foreach (['customers.view', 'hosting.view', 'invoices.view', 'tickets.view', 'activity.view'] as $absent) {
+            $this->assertFalse($viewer->hasPermission($absent), "precondition: the viewer must not hold [{$absent}]");
+        }
+
+        $html = $this->actingAs($viewer)
+            ->get(route('admin.dashboard'))
+            ->assertOk()
+            ->getContent();
+
+        foreach ([
+            route('admin.customers.index'),
+            route('admin.hosting.index'),
+            route('admin.invoices.index'),
+            route('admin.tickets.index'),
+            route('admin.activity-log.index'),
+        ] as $link) {
+            $this->assertStringNotContainsString($link, $html, "the [{$link}] link must hide without its target route's permission");
+        }
+
+        foreach (['Add customer', 'Total Customers', 'Active Services', 'Open Invoices', 'Open Tickets'] as $label) {
+            $this->assertStringNotContainsString($label, $html, "the [{$label}] link must hide without its target route's permission");
+        }
+    }
+
+    public function test_recent_activity_view_all_is_gated_by_activity_view_not_settings_view(): void
+    {
+        $support = User::factory()->create(['role' => 'support']);
+
+        $this->assertTrue($support->hasPermission('activity.view'), 'precondition: support holds activity.view');
+        $this->assertFalse($support->hasPermission('settings.view'), 'precondition: support does not hold settings.view');
+
+        $html = $this->actingAs($support)
+            ->get(route('admin.dashboard'))
+            ->assertOk()
+            ->getContent();
+
+        $viewAll = '<a href="'.route('admin.activity-log.index').'" class="btn btn-sm btn-outline-secondary py-1 px-2" style="border-radius: var(--radius-md); font-size: var(--text-xs);">View all</a>';
+
+        $this->assertStringContainsString(
+            $viewAll,
+            $html,
+            'the Recent Activity View all link must render for an activity.view holder without settings.view'
+        );
+    }
+
+    public function test_overdue_renewals_view_all_is_gated_by_hosting_view(): void
+    {
+        $viewAll = '<a href="'.e(route('admin.hosting.index', ['direction' => 'asc', 'sort' => 'due_date'])).'" class="btn btn-sm btn-outline-secondary py-1 px-2" style="border-radius: var(--radius-md); font-size: var(--text-xs);">View all</a>';
+
+        // Marketing holds reports.view but not hosting.view — the old gate
+        // overshowed the link to a user who cannot open the target page.
+        $marketing = User::factory()->create(['role' => 'marketing']);
+        $this->assertTrue($marketing->hasPermission('reports.view'), 'precondition: marketing holds reports.view');
+        $this->assertFalse($marketing->hasPermission('hosting.view'), 'precondition: marketing does not hold hosting.view');
+
+        $marketingHtml = $this->actingAs($marketing)
+            ->get(route('admin.dashboard'))
+            ->assertOk()
+            ->getContent();
+        $this->assertStringNotContainsString(
+            $viewAll,
+            $this->widgetGridSlice($marketingHtml),
+            'the overdue renewals View all link must hide from a reports.view holder without hosting.view'
+        );
+
+        // Support holds hosting.view but not reports.view — the old gate
+        // undershowed the link to a user who can open the target page.
+        $support = User::factory()->create(['role' => 'support']);
+        $this->assertTrue($support->hasPermission('hosting.view'), 'precondition: support holds hosting.view');
+        $this->assertFalse($support->hasPermission('reports.view'), 'precondition: support does not hold reports.view');
+
+        $supportHtml = $this->actingAs($support)
+            ->get(route('admin.dashboard'))
+            ->assertOk()
+            ->getContent();
+        $this->assertStringContainsString(
+            $viewAll,
+            $this->widgetGridSlice($supportHtml),
+            'the overdue renewals View all link must render for a hosting.view holder without reports.view'
+        );
     }
 
     public function test_each_widget_id_appears_exactly_once_in_the_document(): void

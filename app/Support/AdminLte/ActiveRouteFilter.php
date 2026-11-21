@@ -3,6 +3,7 @@
 namespace App\Support\AdminLte;
 
 use ColorlibHQ\AdminLte\Menu\Filters\FilterInterface;
+use Illuminate\Contracts\Config\Repository;
 use Illuminate\Support\Facades\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -19,11 +20,11 @@ use Illuminate\Support\Facades\Route;
  *
  *   - Exact route match lights the item.
  *   - A *listing* item (route action `index`/`show`) is also kept active for
- *     any other route in the same resource group (e.g. admin.orders.index
- *     stays highlighted on admin.orders.show / .status), so the current module
- *     and its parent treeview stay open as you move through a resource.
- *   - create/store siblings (e.g. admin.orders.create) are excluded from the
- *     group match: those pages are highlighted by their own menu item.
+ *     sibling routes in the same resource group, but ONLY when that sibling
+ *     has no menu item of its own (its route name is not declared anywhere in
+ *     the menu). This keeps the current module open while walking a resource,
+ *     yet lets an explicitly declared sibling — e.g. admin.orders.create or
+ *     admin.chat.satisfaction — win outright, so exactly one leaf is active.
  *
  * Submenu parents become active when any of their children is active, which
  * is what opens the parent treeview group.
@@ -39,13 +40,61 @@ class ActiveRouteFilter implements FilterInterface
     private const LISTING_ACTIONS = ['index', 'show'];
 
     /**
-     * Actions owned by their own sibling menu items (usually "New X" / a POST
-     * handler). Excluded from the resource-group match to avoid highlighting
-     * the listing item on those pages.
+     * Every route name explicitly declared anywhere in the menu tree, keyed by
+     * name for O(1) lookup. Built once in the constructor from the live config
+     * (including module-appended items).
      *
-     * @var array<int, string>
+     * @var array<string, true>
      */
-    private const SIBLING_ACTIONS = ['create', 'store'];
+    private array $explicitRoutes;
+
+    public function __construct(Repository $config)
+    {
+        $this->explicitRoutes = [];
+        $this->collectExplicitRoutes((array) $config->get('adminlte.menu', []));
+    }
+
+    /**
+     * Recursively collect every non-null string route name from the menu tree.
+     * Array-form routes ([name, params]) contribute their first element.
+     *
+     * @param  array<int|string, mixed>  $items
+     */
+    private function collectExplicitRoutes(array $items): void
+    {
+        foreach ($items as $item) {
+            if (! is_array($item)) {
+                continue;
+            }
+
+            if (isset($item['route'])) {
+                $name = $this->routeName($item['route']);
+                if ($name !== null && $name !== '') {
+                    $this->explicitRoutes[$name] = true;
+                }
+            }
+
+            if (isset($item['submenu']) && is_array($item['submenu'])) {
+                $this->collectExplicitRoutes($item['submenu']);
+            }
+        }
+    }
+
+    /**
+     * Normalize a menu `route` value (string or [name, params]) to its name.
+     */
+    private function routeName(mixed $route): ?string
+    {
+        if (is_string($route)) {
+            return $route;
+        }
+
+        if (is_array($route) && isset($route[0]) && is_string($route[0])) {
+            return $route[0];
+        }
+
+        return null;
+    }
 
     /**
      * @param  array<string, mixed>  $item
@@ -98,10 +147,10 @@ class ActiveRouteFilter implements FilterInterface
      */
     private function matchesRoute(string|array $route): bool
     {
-        $routeName = is_array($route) ? (string) $route[0] : $route;
+        $routeName = $this->routeName($route);
         $current = Route::currentRouteName();
 
-        if ($current === null || $routeName === '') {
+        if ($current === null || $routeName === null || $routeName === '') {
             return false;
         }
 
@@ -128,12 +177,8 @@ class ActiveRouteFilter implements FilterInterface
             return false;
         }
 
-        // ... and must not be one of the create/store siblings that have their
-        // own menu item.
-        $currentTail = substr($current, strlen($group) + 1);
-        $currentAction = (string) strtok($currentTail, '.');
-
-        return ! in_array($currentAction, self::SIBLING_ACTIONS, true);
+        // ... and must not have its own menu item, which wins outright.
+        return ! isset($this->explicitRoutes[$current]);
     }
 
     /**

@@ -1,11 +1,11 @@
 @extends('adminlte::page')
 
-@section('title', 'Products/Services')
+@section('title', 'Hosting & Services')
 
 @section('content_header')
-    <x-ui.page-header title="Products/Services" subtitle="Manage products/services inventory" :breadcrumbs="[
+    <x-ui.page-header title="Hosting & Services" subtitle="Manage products/services inventory" :breadcrumbs="[
         ['label' => __('adminlte.home'), 'url' => url('/')],
-        ['label' => 'Products/Services', 'active' => true],
+        ['label' => 'Hosting & Services', 'active' => true],
     ]" />
 @stop
 
@@ -14,7 +14,7 @@
 
     <x-adminlte.partials.datatable
         icon="bi bi-hdd-stack"
-        title="All Products/Services"
+        title="All Hosting Services"
         :search-value="$search"
         search-placeholder="Search host name, domain, customer, product..."
         :status-options="[
@@ -42,7 +42,7 @@
         <x-slot name="tools">
             @can('hosting.manage')
                 <a href="{{ route('admin.hosting.create') }}" class="btn btn-sm btn-primary">
-                    <i class="bi bi-plus-lg me-1" aria-hidden="true"></i> Add Product/Service
+                    <i class="bi bi-plus-lg me-1" aria-hidden="true"></i> Add Hosting Service
                 </a>
             @endcan
         </x-slot>

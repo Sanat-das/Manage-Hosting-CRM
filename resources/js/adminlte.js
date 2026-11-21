@@ -506,17 +506,34 @@ function initTreeviewA11y() {
 }
 
 // --- Sidebar toggle a11y -----------------------------------------------------
-// PushMenu only mutates the `sidebar-collapse` class on <body>, so that class
-// is the only honest source of truth for whether the sidebar is expanded.
+// Desktop uses `sidebar-collapse` (the mini rail stays visible and interactive)
+// while the mobile drawer uses `sidebar-open`. Only the closed mobile drawer is
+// truly hidden, so only that state makes the sidebar inert.
 function initSidebarToggleA11y() {
   const toggle = document.querySelector('[data-lte-toggle="sidebar"]')
-  if (!toggle || typeof MutationObserver === 'undefined') return
+  if (!toggle) return
+  const sidebar = document.getElementById('app-sidebar')
+  const mobileQuery = window.matchMedia('(max-width: 991.98px)')
   const sync = () => {
-    const collapsed = document.body.classList.contains('sidebar-collapse')
-    toggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true')
+    let expanded
+    if (mobileQuery.matches) {
+      expanded = document.body.classList.contains('sidebar-open')
+      if (sidebar) sidebar.toggleAttribute('inert', !expanded)
+    } else {
+      expanded = !document.body.classList.contains('sidebar-collapse')
+      if (sidebar) sidebar.removeAttribute('inert')
+    }
+    toggle.setAttribute('aria-expanded', expanded ? 'true' : 'false')
   }
-  const observer = new MutationObserver(sync)
-  observer.observe(document.body, { attributes: true, attributeFilter: ['class'] })
+  if (typeof MutationObserver !== 'undefined') {
+    const observer = new MutationObserver(sync)
+    observer.observe(document.body, { attributes: true, attributeFilter: ['class'] })
+  }
+  if (mobileQuery.addEventListener) {
+    mobileQuery.addEventListener('change', sync)
+  } else if (mobileQuery.addListener) {
+    mobileQuery.addListener(sync)
+  }
   sync()
 }
 
@@ -529,6 +546,7 @@ function initSidebarToggleA11y() {
 // to the scroll bounds so a short menu simply stays at the top.
 
 let _sidebarScrollEl = null
+let _sidebarOsInstance = null
 
 function activeNavLink() {
   // Prefer the deepest active link (a leaf under an open treeview). AdminLTE
@@ -568,7 +586,28 @@ function sidebarScrollElement() {
   return _sidebarScrollEl
 }
 
-function centerActiveMenuItem() {
+// OverlayScrollbars fits the desktop layout only; crossing below the breakpoint
+// tears it down and invalidates the cached scroller so native scrolling takes over.
+function initSidebarScrollbars() {
+  const sidebar = document.querySelector('.sidebar-wrapper')
+  _sidebarScrollEl = null
+
+  if (sidebar && window.innerWidth > 992) {
+    if (!OverlayScrollbars.valid(_sidebarOsInstance)) {
+      _sidebarOsInstance = OverlayScrollbars(sidebar, {
+        scrollbars: { theme: (document.documentElement.getAttribute('data-bs-theme') === 'light' ? 'os-theme-dark' : 'os-theme-light'), autoHide: 'leave', clickScroll: true },
+      })
+    }
+    return
+  }
+
+  if (OverlayScrollbars.valid(_sidebarOsInstance)) {
+    _sidebarOsInstance.destroy()
+  }
+  _sidebarOsInstance = null
+}
+
+function centerActiveMenuItem(behavior) {
   const link = activeNavLink()
   const scroller = sidebarScrollElement()
   if (!link || !scroller || link.offsetParent === null) return
@@ -585,7 +624,9 @@ function centerActiveMenuItem() {
   const maxScroll = scroller.scrollHeight - scroller.clientHeight
   const clamped = Math.max(0, Math.min(target, maxScroll))
 
-  scroller.scrollTo({ top: clamped, behavior: (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) ? 'auto' : 'smooth' })
+  const reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  const scrollBehavior = behavior || (reduceMotion ? 'auto' : 'smooth')
+  scroller.scrollTo({ top: clamped, behavior: scrollBehavior })
 }
 
 function initFormValidation() {
@@ -626,12 +667,7 @@ function initFormValidation() {
 }
 
 whenReady(() => {
-  const sidebar = document.querySelector('.sidebar-wrapper')
-  if (sidebar && window.innerWidth > 992) {
-    OverlayScrollbars(sidebar, {
-      scrollbars: { theme: (document.documentElement.getAttribute('data-bs-theme') === 'light' ? 'os-theme-dark' : 'os-theme-light'), autoHide: 'leave', clickScroll: true },
-    })
-  }
+  initSidebarScrollbars()
 
   initColorMode()
   initCharts().then(() => {
@@ -648,8 +684,14 @@ whenReady(() => {
   initGridScrollableHint()
   initFormValidation()
 
-  centerActiveMenuItem()
-  if (document.readyState === 'complete') centerActiveMenuItem()
+  centerActiveMenuItem('auto')
+  if (document.readyState === 'complete') centerActiveMenuItem('auto')
 })
 
-window.addEventListener('load', centerActiveMenuItem)
+window.addEventListener('load', () => centerActiveMenuItem('auto'))
+
+let _sidebarResizeTimer = null
+window.addEventListener('resize', () => {
+  clearTimeout(_sidebarResizeTimer)
+  _sidebarResizeTimer = setTimeout(initSidebarScrollbars, 150)
+})

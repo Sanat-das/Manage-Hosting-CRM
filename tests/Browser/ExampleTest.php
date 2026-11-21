@@ -2,20 +2,23 @@
 
 namespace Tests\Browser;
 
-use Illuminate\Foundation\Testing\DatabaseMigrations;
 use Laravel\Dusk\Browser;
 use Tests\DuskTestCase;
 
 class ExampleTest extends DuskTestCase
 {
     /**
-     * A basic browser test example.
+     * The application root renders the client login page (not a Laravel
+     * welcome page), so assert the copy that page actually shows.
      */
-    public function test_basic_example(): void
+    public function test_client_login_page_renders_at_root(): void
     {
         $this->browse(function (Browser $browser) {
             $browser->visit('/')
-                ->assertSee('Laravel');
+                ->assertPathIs('/')
+                ->assertSee('Client Portal')
+                ->assertSee('Sign in to manage your services')
+                ->assertSee('Staff login');
         });
     }
 }

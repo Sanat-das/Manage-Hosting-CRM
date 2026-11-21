@@ -15,9 +15,11 @@
                         <i class="bi bi-download"></i> Export
                     </a>
                 @endcan
-                <a href="{{ route('admin.customers.index') }}" class="btn btn-sm btn-primary d-inline-flex align-items-center gap-1" style="border-radius: var(--radius-md); font-size: var(--text-sm);">
-                    <i class="bi bi-plus-lg"></i> Add customer
-                </a>
+                @can('customers.view')
+                    <a href="{{ route('admin.customers.index') }}" class="btn btn-sm btn-primary d-inline-flex align-items-center gap-1" style="border-radius: var(--radius-md); font-size: var(--text-sm);">
+                        <i class="bi bi-plus-lg"></i> Add customer
+                    </a>
+                @endcan
             </div>
         </x-slot:actions>
     </x-ui.page-header>
@@ -67,36 +69,44 @@
 
     {{-- Metrics row — enterprise 8px system --}}
     <div class="row g-4 mb-1">
-        <div class="col-lg-3 col-6">
-            <x-adminlte-small-box :title="number_format($m['customers'] ?? 0)" text="Total Customers" icon="bi bi-people" theme="primary" :url="route('admin.customers.index')" url-text="View all" />
-            <div class="small text-muted mt-1 d-flex align-items-center gap-1" style="font-size: var(--text-xs); font-variant-numeric: tabular-nums;"><i class="bi bi-graph-up-arrow" style="font-size: 0.7rem; opacity:0.7;"></i> Active accounts overview</div>
-        </div>
-        <div class="col-lg-3 col-6">
-            <x-adminlte-small-box :title="number_format($m['activeServices'] ?? 0)" text="Active Services" icon="bi bi-hdd-stack" theme="success" :url="route('admin.hosting.index')" url-text="Manage services" />
-            <div class="small text-muted mt-1 d-flex align-items-center gap-1" style="font-size: var(--text-xs);"><i class="bi bi-check-circle" style="font-size: 0.7rem; opacity:0.7;"></i> Provisioned & running</div>
-        </div>
-        <div class="col-lg-3 col-6">
-            <x-adminlte-small-box :title="number_format($m['openInvoices'] ?? 0)" text="Open Invoices" icon="bi bi-receipt" theme="warning" :url="route('admin.invoices.index')" url-text="View invoices" />
-            <div class="small d-flex align-items-center gap-1 mt-1" style="font-size: var(--text-xs);">
-                @if(($m['overdueInvoices'] ?? 0) > 0)
-                    <span class="badge rounded-pill text-bg-danger" style="font-size: 0.65rem; padding: 0.2em 0.45em;">{{ $m['overdueInvoices'] }} overdue</span>
-                    <span class="text-muted" style="font-variant-numeric: tabular-nums;">out of {{ number_format($m['openInvoices']) }} open</span>
-                @else
-                    <span class="text-muted">No overdue — all clear</span>
-                @endif
+        @can('customers.view')
+            <div class="col-lg-3 col-6">
+                <x-adminlte-small-box :title="number_format($m['customers'] ?? 0)" text="Total Customers" icon="bi bi-people" theme="primary" :url="route('admin.customers.index')" url-text="View all" />
+                <div class="small text-muted mt-1 d-flex align-items-center gap-1" style="font-size: var(--text-xs); font-variant-numeric: tabular-nums;"><i class="bi bi-graph-up-arrow" style="font-size: 0.7rem; opacity:0.7;"></i> Active accounts overview</div>
             </div>
-        </div>
-        <div class="col-lg-3 col-6">
-            <x-adminlte-small-box :title="number_format($m['openTickets'] ?? 0)" text="Open Tickets" icon="bi bi-life-preserver" theme="info" :url="route('admin.tickets.index')" url-text="View tickets" />
-            <div class="small d-flex align-items-center gap-1 mt-1" style="font-size: var(--text-xs);">
-                @if(($m['urgentTickets'] ?? 0) > 0)
-                    <span class="badge rounded-pill text-bg-danger" style="font-size: 0.65rem; padding: 0.2em 0.45em;">{{ $m['urgentTickets'] }} urgent</span>
-                    <span class="text-muted">needs attention</span>
-                @else
-                    <span class="text-muted">No urgent tickets</span>
-                @endif
+        @endcan
+        @can('hosting.view')
+            <div class="col-lg-3 col-6">
+                <x-adminlte-small-box :title="number_format($m['activeServices'] ?? 0)" text="Active Services" icon="bi bi-hdd-stack" theme="success" :url="route('admin.hosting.index')" url-text="Manage services" />
+                <div class="small text-muted mt-1 d-flex align-items-center gap-1" style="font-size: var(--text-xs);"><i class="bi bi-check-circle" style="font-size: 0.7rem; opacity:0.7;"></i> Provisioned & running</div>
             </div>
-        </div>
+        @endcan
+        @can('invoices.view')
+            <div class="col-lg-3 col-6">
+                <x-adminlte-small-box :title="number_format($m['openInvoices'] ?? 0)" text="Open Invoices" icon="bi bi-receipt" theme="warning" :url="route('admin.invoices.index')" url-text="View invoices" />
+                <div class="small d-flex align-items-center gap-1 mt-1" style="font-size: var(--text-xs);">
+                    @if(($m['overdueInvoices'] ?? 0) > 0)
+                        <span class="badge rounded-pill text-bg-danger" style="font-size: 0.65rem; padding: 0.2em 0.45em;">{{ $m['overdueInvoices'] }} overdue</span>
+                        <span class="text-muted" style="font-variant-numeric: tabular-nums;">out of {{ number_format($m['openInvoices']) }} open</span>
+                    @else
+                        <span class="text-muted">No overdue — all clear</span>
+                    @endif
+                </div>
+            </div>
+        @endcan
+        @can('tickets.view')
+            <div class="col-lg-3 col-6">
+                <x-adminlte-small-box :title="number_format($m['openTickets'] ?? 0)" text="Open Tickets" icon="bi bi-life-preserver" theme="info" :url="route('admin.tickets.index')" url-text="View tickets" />
+                <div class="small d-flex align-items-center gap-1 mt-1" style="font-size: var(--text-xs);">
+                    @if(($m['urgentTickets'] ?? 0) > 0)
+                        <span class="badge rounded-pill text-bg-danger" style="font-size: 0.65rem; padding: 0.2em 0.45em;">{{ $m['urgentTickets'] }} urgent</span>
+                        <span class="text-muted">needs attention</span>
+                    @else
+                        <span class="text-muted">No urgent tickets</span>
+                    @endif
+                </div>
+            </div>
+        @endcan
     </div>
 
     {{-- Revenue KPI stripe --}}
@@ -165,7 +175,7 @@
         <div class="col-lg-8">
             <x-adminlte-card icon="bi bi-clock-history" title="Recent Activity">
                 <x-slot:tools>
-                    @can('settings.view')
+                    @can('activity.view')
                         <a href="{{ route('admin.activity-log.index') }}" class="btn btn-sm btn-outline-secondary py-1 px-2" style="border-radius: var(--radius-md); font-size: var(--text-xs);">View all</a>
                     @endcan
                 </x-slot:tools>

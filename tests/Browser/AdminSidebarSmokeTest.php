@@ -2,28 +2,33 @@
 
 namespace Tests\Browser;
 
+use App\Models\User;
+use Database\Seeders\AdminLteRbacSeeder;
 use Laravel\Dusk\Browser;
 use Tests\DuskTestCase;
 
 /**
  * Admin sidebar smoke test.
  *
- * Verifies gate #5 of Phase 5.2: after logging in as the seeded admin,
- * every sidebar module page resolves without a 404 or 403.
+ * Verifies gate #5 of Phase 5.2: after logging in as an admin holding the full
+ * RBAC permission set, every sidebar module page resolves without a 404/403.
  *
- * NOTE: This intentionally does NOT use RefreshDatabase / DatabaseMigrations.
- * Dusk runs against the live site (APP_URL in .env.dusk.local) backed by the
- * real MySQL database, so this test is strictly read-only: it logs in with the
- * seeded admin credentials and asserts each module page renders its own
- * heading (a 404/403 page would show the error layout instead).
- *
- * The whole flow lives in a single test method: Dusk reuses one Chrome
- * profile across browse() calls in a single run, so once the first browse()
- * logs in, the authenticated session persists into later browse() blocks and
- * any subsequent "login" is redirected away from the login form.
+ * Database strategy (same as tests/Dusk): the schema is migrated FRESH once
+ * per process and never rolled back between tests — Dusk serves the app from a
+ * long-lived process that holds the sqlite connection open, so per-test
+ * DatabaseMigrations would drop tables underneath it. setUp() seeds the RBAC
+ * role/permission matrix and recreates only this test's own admin user (cleaned
+ * by email), then authenticates with loginAs() instead of driving the UI login
+ * form with hard-coded credentials.
  */
 class AdminSidebarSmokeTest extends DuskTestCase
 {
+    private const ADMIN_EMAIL = 'admin-sidebar-smoke@example.test';
+
+    private static bool $schemaMigrated = false;
+
+    private User $admin;
+
     /**
      * Modules from the AdminLTE sidebar, each with its URL and the unique
      * <h1> heading its index page renders when it resolves successfully.
@@ -40,20 +45,42 @@ class AdminSidebarSmokeTest extends DuskTestCase
         ['/admin/search', 'Search Results'],
     ];
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        if (! self::$schemaMigrated) {
+            $this->artisan('migrate:fresh', ['--force' => true]);
+            self::$schemaMigrated = true;
+        }
+
+        // Recreate the RBAC matrix so the admin role holds every permission
+        // the module routes gate on, then (re)create only this test's admin.
+        $this->seed(AdminLteRbacSeeder::class);
+        User::where('email', self::ADMIN_EMAIL)->delete();
+
+        $this->admin = User::create([
+            'email' => self::ADMIN_EMAIL,
+            'password_hash' => bcrypt('password'),
+            'first_name' => 'Sidebar',
+            'last_name' => 'Smoke',
+            'role' => 'admin',
+            'status' => 'active',
+        ]);
+        $this->admin->assignRole('admin');
+    }
+
     /**
-     * Log in as the seeded admin and confirm every sidebar module resolves
-     * without redirecting (no auth bounce), rendering its own heading — i.e.
-     * the route exists (not a 404) and passes the permission gate (not a 403).
+     * Log in as the Dusk-created admin and confirm every sidebar module
+     * resolves without redirecting (no auth bounce), rendering its own
+     * heading — i.e. the route exists (not a 404) and passes the permission
+     * gate (not a 403).
      */
     public function test_admin_login_and_all_sidebar_modules_resolve(): void
     {
         $this->browse(function (Browser $browser) {
-            $browser->visit('/login')
-                ->type('email', 'admin@localhost.com')
-                ->type('password', 'Admin@123')
-                ->press('button[type="submit"]')
-                ->waitForLocation('/admin/dashboard', 15)
-                // Landing on the dashboard proves the seeded admin login works.
+            $browser->loginAs($this->admin)
+                ->visit('/admin/dashboard')
                 ->assertPathIs('/admin/dashboard')
                 ->assertSee('Dashboard');
 

@@ -15,7 +15,7 @@
 @section('content_header')
     <x-ui.page-header title="Edit {{ $hostingAccount->host_name }}" subtitle="Update product/service configuration" :breadcrumbs="[
         ['label' => __('adminlte.home'), 'url' => url('/')],
-        ['label' => 'Products/Services', 'url' => route('admin.hosting.index')],
+        ['label' => 'Hosting & Services', 'url' => route('admin.hosting.index')],
         ['label' => '#'.$hostingAccount->id, 'url' => route('admin.hosting.show', $hostingAccount)],
         ['label' => 'Edit', 'active' => true],
     ]" />
@@ -87,7 +87,7 @@
                     <div class="d-flex gap-2 mt-2">
                         <a href="{{ route('admin.hosting.show', $hostingAccount) }}" class="btn btn-outline-secondary">Cancel</a>
                         <button type="submit" class="btn btn-primary">
-                            <i class="bi bi-check-lg me-1" aria-hidden="true"></i> Update Product/Service
+                            <i class="bi bi-check-lg me-1" aria-hidden="true"></i> Update Hosting Service
                         </button>
                     </div>
                 </form>

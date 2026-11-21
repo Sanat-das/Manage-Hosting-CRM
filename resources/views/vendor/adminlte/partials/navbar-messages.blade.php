@@ -144,8 +144,7 @@
             var res = await fetch(unreadUrl, { headers: { 'Accept': 'application/json' }, credentials: 'same-origin' });
             if (!res.ok) return;
             var data = await res.json();
-            var unread = Object.values(data.unread || {}).reduce(function (sum, n) { return sum + (Number(n) || 0); }, 0);
-            renderBadge(unread + ((data.inbox || []).length));
+            renderBadge(Number(data.count) || 0);
         } catch (e) { /* badge keeps its server-rendered value */ }
     }
 

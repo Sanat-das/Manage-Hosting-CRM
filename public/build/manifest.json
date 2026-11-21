@@ -60,7 +60,7 @@
     ]
   },
   "resources/css/app.css": {
-    "file": "assets/app-BcLtJ12q.css",
+    "file": "assets/app-Rmv0MU02.css",
     "name": "app",
     "names": [
       "app.css"
@@ -96,7 +96,7 @@
     "isEntry": true
   },
   "resources/js/adminlte.js": {
-    "file": "assets/adminlte-DdI5aPxL.js",
+    "file": "assets/adminlte-CKMMhEz8.js",
     "name": "adminlte",
     "src": "resources/js/adminlte.js",
     "isEntry": true,

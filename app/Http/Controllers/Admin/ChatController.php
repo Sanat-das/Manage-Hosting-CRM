@@ -1159,6 +1159,7 @@ class ChatController extends Controller
 
         return response()->json([
             'unread' => $this->chat->unreadCounts($user),
+            'count' => ChatNavbar::messageCount($user),
             'online' => $online,
             // Availability travels with the roster it describes. Sent from the
             // same payload rather than a second endpoint because the sidebar

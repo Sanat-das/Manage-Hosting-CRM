@@ -9,7 +9,7 @@
      shown to a logged-out visitor into a 500, anywhere in the application. --}}
 @if ($user)
 <li class="nav-item dropdown user-menu">
-    <a href="#" class="nav-link dropdown-toggle d-flex align-items-center" data-bs-toggle="dropdown">
+    <a href="#" class="nav-link dropdown-toggle d-flex align-items-center" data-bs-toggle="dropdown" aria-label="{{ $name }}">
         <i class="bi bi-person-circle rounded-circle shadow me-2 mt-0" style="font-size:1.5rem;line-height:1;width:1.5rem;height:1.5rem;display:inline-flex;align-items:center;justify-content:center;"></i>
         <span class="d-none d-md-inline">{{ $name }}</span>
     </a>
@@ -21,14 +21,6 @@
                 {{ $name }}
                 @if ($memberSince)<small>{{ __('adminlte.member_since') }} {{ $memberSince }}</small>@endif
             </p>
-        </li>
-        {{-- Body --}}
-        <li class="user-body">
-            <div class="row">
-                <div class="col-4 text-center"><a href="#">{{ __('adminlte.followers') }}</a></div>
-                <div class="col-4 text-center"><a href="#">{{ __('adminlte.sales') }}</a></div>
-                <div class="col-4 text-center"><a href="#">{{ __('adminlte.friends') }}</a></div>
-            </div>
         </li>
         {{-- Footer --}}
         <li class="user-footer">

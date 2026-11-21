@@ -1,12 +1,12 @@
 @extends('adminlte::page')
 
-@section('title', 'Add Product/Service')
+@section('title', 'Add Hosting Service')
 
 @section('content_header')
-    <x-ui.page-header title="Add Product/Service" subtitle="Provision a new product/service" :breadcrumbs="[
+    <x-ui.page-header title="Add Hosting Service" subtitle="Provision a new product/service" :breadcrumbs="[
         ['label' => __('adminlte.home'), 'url' => url('/')],
-        ['label' => 'Products/Services', 'url' => route('admin.hosting.index')],
-        ['label' => 'Add Product/Service', 'active' => true],
+        ['label' => 'Hosting & Services', 'url' => route('admin.hosting.index')],
+        ['label' => 'Add Hosting Service', 'active' => true],
     ]" />
 @stop
 
@@ -15,9 +15,9 @@
 
     <x-adminlte.partials.form-card
         icon="bi bi-hdd-stack"
-        title="New Product/Service"
+        title="New Hosting Service"
         :action="route('admin.hosting.store')"
-        submit-label="Save Product/Service"
+        submit-label="Save Hosting Service"
         :cancel-url="route('admin.hosting.index')"
     >
         {{-- New accounts are always created in 'pending' (reference CreateHostingCommand). --}}

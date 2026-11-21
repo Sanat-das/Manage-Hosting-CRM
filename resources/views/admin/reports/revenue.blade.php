@@ -12,6 +12,9 @@
             <x-adminlte-input name="from" type="date" label="From" value="{{ $from }}" />
             <x-adminlte-input name="to" type="date" label="To" value="{{ $to }}" />
             <button type="submit" class="btn btn-primary"><i class="bi bi-search me-1"></i> Filter</button>
+            @can('reports.export')
+                <a href="{{ route('admin.reports.export', ['type' => 'invoices', 'from' => $from, 'to' => $to]) }}" class="btn btn-outline-success"><i class="bi bi-download me-1"></i> Export CSV</a>
+            @endcan
         </form>
     </x-adminlte-card>
 

@@ -5,7 +5,7 @@
 @section('content_header')
     <x-ui.page-header title="{{ $hostingAccount->host_name }}" subtitle="View product/service details" :breadcrumbs="[
         ['label' => __('adminlte.home'), 'url' => url('/')],
-        ['label' => 'Products/Services', 'url' => route('admin.hosting.index')],
+        ['label' => 'Hosting & Services', 'url' => route('admin.hosting.index')],
         ['label' => '#'.$hostingAccount->id, 'active' => true],
     ]" />
 @stop

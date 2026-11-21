@@ -1,7 +1,7 @@
 @php
     $navLeft = app('adminlte')->menu('navbar-left');
 @endphp
-<nav class="app-header {{ config('adminlte.classes_topnav', 'navbar-expand bg-body') }} navbar">
+<nav class="app-header {{ config('adminlte.classes_topnav', 'navbar-expand bg-body') }} navbar" aria-label="{{ __('Top navigation') }}">
     <div class="{{ config('adminlte.classes_topnav_container', 'container-fluid') }}">
         {{-- Left side --}}
         <ul class="navbar-nav">

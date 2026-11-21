@@ -7,14 +7,15 @@
 @endphp
 
 @if ($isHeader)
-    <li class="nav-header">{{ $item['header'] }}</li>
+    <li class="nav-header" role="heading" aria-level="2">{{ $item['header'] }}</li>
 
 @elseif ($isSubmenu)
     @php
-        $submenuId = 'sidebar-submenu-'.Str::slug($item['text']);
+        $route = $item['route'] ?? null;
+        $submenuId = 'sidebar-submenu-'.Str::slug(is_array($route) ? ($route[0] ?? '') : ($route ?? $item['text']));
     @endphp
     <li class="nav-item {{ $isActive ? 'menu-open' : '' }}">
-        <a href="#" class="nav-link {{ $isActive ? 'active' : '' }}" role="button" aria-expanded="{{ $isActive ? 'true' : 'false' }}" aria-haspopup="true" aria-controls="{{ $submenuId }}" title="{{ $item['text'] }}">
+        <a href="#" class="nav-link {{ $isActive ? 'active' : '' }}" role="button" aria-expanded="{{ $isActive ? 'true' : 'false' }}" aria-controls="{{ $submenuId }}" title="{{ $item['text'] }}">
             @isset($item['icon'])
                 <i class="nav-icon {{ $item['icon'] }} {{ isset($item['icon_color']) ? 'text-'.$item['icon_color'] : '' }}" aria-hidden="true"></i>
             @endisset

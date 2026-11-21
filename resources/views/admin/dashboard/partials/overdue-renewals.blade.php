@@ -4,7 +4,7 @@
 <x-adminlte-card icon="bi bi-exclamation-triangle-fill" title="Overdue renewals">
     <x-slot:tools>
         <button type="button" class="btn btn-sm btn-outline-secondary py-1 px-2" data-widget-toggle title="Hide widget" aria-pressed="false" style="border-radius: var(--radius-md); font-size: var(--text-xs);"><i class="bi bi-eye"></i><span class="visually-hidden">Hide widget</span></button>
-        @can('reports.view')
+        @can('hosting.view')
             <a href="{{ route('admin.hosting.index', ['direction' => 'asc', 'sort' => 'due_date']) }}" class="btn btn-sm btn-outline-secondary py-1 px-2" style="border-radius: var(--radius-md); font-size: var(--text-xs);">View all</a>
         @endcan
     </x-slot:tools>

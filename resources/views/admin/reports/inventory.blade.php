@@ -7,6 +7,12 @@
 @stop
 
 @section('content')
+    @can('reports.export')
+        <div class="mb-3">
+            <a href="{{ route('admin.reports.export', ['type' => 'inventory', 'from' => $from ?? now()->startOfYear()->toDateString(), 'to' => $to ?? now()->toDateString()]) }}" class="btn btn-outline-success"><i class="bi bi-download me-1"></i> Export CSV</a>
+        </div>
+    @endcan
+
     <div class="row mb-4">
         <div class="col-md-6">
             <x-adminlte-card icon="bi bi-box-seam" title="Devices by Category">

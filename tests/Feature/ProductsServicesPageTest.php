@@ -41,8 +41,8 @@ class ProductsServicesPageTest extends TestCase
         $this->actingAsAdmin()
             ->get(route('admin.hosting.index'))
             ->assertOk()
-            ->assertSee('Products/Services')
-            ->assertSee('All Products/Services')
+            ->assertSee('Hosting & Services')
+            ->assertSee('All Hosting Services')
             ->assertSee('Billing Cycle')
             ->assertSee('Recurring Amount')
             ->assertSee('Next Due Date');
