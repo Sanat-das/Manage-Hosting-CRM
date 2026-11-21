@@ -21,14 +21,14 @@ class AnalyticsController extends Controller
         // Revenue by month (last 12 months)
         $revenueByMonth = Invoice::where('status', 'paid')
             ->where('paid_at', '>=', now()->subMonths(12))
-            ->selectRaw("DATE_FORMAT(paid_at, '%Y-%m') as month, SUM(total) as total")
+            ->selectRaw('substr(paid_at, 1, 7) as month, SUM(total) as total')
             ->groupBy('month')
             ->orderBy('month')
             ->pluck('total', 'month')
             ->toArray();
 
         // Customer count by month (registered)
-        $customersByMonth = Customer::selectRaw("DATE_FORMAT(created_at, '%Y-%m') as month, COUNT(*) as count")
+        $customersByMonth = Customer::selectRaw('substr(created_at, 1, 7) as month, COUNT(*) as count')
             ->where('created_at', '>=', now()->subMonths(12))
             ->groupBy('month')
             ->orderBy('month')

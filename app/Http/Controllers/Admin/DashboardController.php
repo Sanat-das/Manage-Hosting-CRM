@@ -16,6 +16,7 @@ use App\ViewModels\Admin\OverdueRenewalsViewModel;
 use App\ViewModels\Admin\SupportQueueRiskViewModel;
 use App\ViewModels\Admin\SystemHealthViewModel;
 use App\ViewModels\Admin\UpcomingRenewalsViewModel;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\View\View;
@@ -83,10 +84,10 @@ class DashboardController extends Controller
             }
             $raw = Invoice::where('status', 'paid')
                 ->where('paid_at', '>=', now()->subMonths(6)->startOfMonth())
-                ->selectRaw("DATE_FORMAT(paid_at, '%b %y') as label, DATE_FORMAT(paid_at, '%Y-%m') as k, SUM(total) as total")
-                ->groupBy('k', 'label')
+                ->selectRaw('substr(paid_at, 1, 7) as k, SUM(total) as total')
+                ->groupBy('k')
                 ->orderBy('k')
-                ->pluck('total', 'label')
+                ->pluck('total', 'k')
                 ->toArray();
 
             // Ensure 6 buckets even when sparse — backfill zeros for missing months.
@@ -94,16 +95,14 @@ class DashboardController extends Controller
             $values = [];
             for ($i = 5; $i >= 0; $i--) {
                 $d = now()->subMonths($i);
-                $label = $d->format('M y');
-                $k = $d->format('M y');
-                // Match against the DATE_FORMAT '%b %y' labels (e.g. "Jan 26")
+                $k = $d->format('Y-m');
                 $labels[] = $d->format('M');
-                $values[] = (float) ($raw[$k] ?? $raw[$d->format('M y')] ?? 0);
+                $values[] = (float) ($raw[$k] ?? 0);
             }
 
-            // If raw used '%b %y' with full month name mismatch, fallback to ordered values
+            // Fallback to the ordered buckets when every value is zero
             if (array_sum($values) === 0.0 && count($raw) > 0) {
-                $labels = array_keys($raw);
+                $labels = array_map(fn (string $key) => Carbon::createFromFormat('Y-m', $key)->format('M y'), array_keys($raw));
                 $values = array_values(array_map(fn ($v) => (float) $v, $raw));
             }
 
